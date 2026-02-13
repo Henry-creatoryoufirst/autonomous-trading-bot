@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Henry's Trading Bot Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .gradient-bg { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+    .card { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+    .glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+    .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen text-white p-6">
+  <div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h1 class="text-3xl font-bold">🤖 Trading Bot Dashboard</h1>
+        <p class="text-gray-400 mt-1">Henry's Autonomous Agent v3.0</p>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="card rounded-lg px-4 py-2">
+          <span class="text-sm text-gray-400">Last Update:</span>
+          <span id="last-update" class="ml-2 text-gray-300 font-medium">--:--:--</span>
+        </div>
+        <div class="card rounded-lg px-4 py-2">
+          <span class="text-sm text-gray-400">Status:</span>
+          <span id="status" class="ml-2 text-green-400 font-medium">● Live</span>
+        </div>
+        <button onclick="refreshAll()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+          <span id="refresh-icon">🔄</span> Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm">Portfolio Value</p>
+        <p id="portfolio-value" class="text-3xl font-bold mt-1">Loading...</p>
+        <p id="portfolio-change" class="text-sm mt-2 text-gray-400">--</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm">Initial Investment</p>
+        <p id="initial-value" class="text-3xl font-bold mt-1">$230.00</p>
+        <p class="text-sm mt-2 text-gray-500">Starting capital</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm">Peak Value</p>
+        <p id="peak-value" class="text-3xl font-bold mt-1">--</p>
+        <p id="drawdown" class="text-sm mt-2 text-yellow-400">Drawdown: --%</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm">Total Trades</p>
+        <p id="total-trades" class="text-3xl font-bold mt-1">--</p>
+        <p id="success-rate" class="text-sm mt-2 text-gray-400">--/-- successful</p>
+      </div>
+    </div>
+
+    <!-- Market Conditions -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm mb-2">Fear & Greed Index</p>
+        <div class="flex items-center gap-4">
+          <div id="fear-greed-circle" class="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold border-4">
+            --
+          </div>
+          <div>
+            <p id="fear-greed-label" class="text-xl font-medium">Loading...</p>
+            <p id="fear-greed-hint" class="text-sm text-gray-400">--</p>
+          </div>
+        </div>
+      </div>
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm mb-2">ETH Price</p>
+        <p id="eth-price" class="text-2xl font-bold">--</p>
+        <p id="eth-change" class="text-sm text-gray-400">24h: --%</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <p class="text-gray-400 text-sm mb-2">BTC Price</p>
+        <p id="btc-price" class="text-2xl font-bold">--</p>
+        <p id="btc-change" class="text-sm text-gray-400">24h: --%</p>
+      </div>
+    </div>
+
+    <!-- Holdings & Strategy -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div class="card rounded-xl p-6">
+        <h3 class="text-lg font-semibold mb-4">💼 Current Holdings</h3>
+        <div id="holdings" class="space-y-3">
+          <p class="text-gray-500">Loading wallet balances...</p>
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-700">
+          <a href="https://basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F"
+             target="_blank"
+             class="text-blue-400 hover:text-blue-300 text-sm">
+            View on Basescan →
+          </a>
+        </div>
+      </div>
+      <div class="card rounded-xl p-6">
+        <h3 class="text-lg font-semibold mb-4">📈 Strategy Settings</h3>
+        <div class="space-y-3">
+          <div class="flex justify-between">
+            <span class="text-gray-400">Max Buy Size</span>
+            <span class="font-medium">$10.00</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Max Sell</span>
+            <span class="font-medium">50% of position</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Check Interval</span>
+            <span class="font-medium">15 minutes</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Diversification</span>
+            <span class="text-green-400 font-medium">✓ Enabled</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400">Polymarket Arb</span>
+            <span class="text-yellow-400 font-medium">Scanning</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Token Prices -->
+    <div class="card rounded-xl p-6 mb-8">
+      <h3 class="text-lg font-semibold mb-4">📊 Tracked Tokens</h3>
+      <div id="token-grid" class="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <p class="text-gray-500 col-span-full">Loading market data...</p>
+      </div>
+    </div>
+
+    <!-- Trade History -->
+    <div class="card rounded-xl p-6">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold">📜 Trade History</h3>
+        <span id="trade-count" class="text-sm text-gray-400">-- trades</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-left text-gray-400 border-b border-gray-700">
+              <th class="pb-3">Time</th>
+              <th class="pb-3">Action</th>
+              <th class="pb-3">Trade</th>
+              <th class="pb-3">Amount</th>
+              <th class="pb-3">Status</th>
+              <th class="pb-3">Reasoning</th>
+            </tr>
+          </thead>
+          <tbody id="trade-history">
+            <tr>
+              <td colspan="6" class="py-8 text-center text-gray-500">
+                Loading trade history...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-8 text-center text-gray-500 text-sm">
+      <p>Auto-refreshes every 30 seconds • Wallet: 0x55509AA76E2769eCCa5B4293359e3001dA16dd0F</p>
+    </div>
+  </div>
+
+  <script>
+    const WALLET = '0x55509AA76E2769eCCa5B4293359e3001dA16dd0F';
+    const INITIAL_VALUE = 230;
+
+    // Token addresses on Base
+    const TOKENS = {
+      ETH: { address: 'native', coingeckoId: 'ethereum', decimals: 18 },
+      USDC: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', coingeckoId: 'usd-coin', decimals: 6 },
+      cbBTC: { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', coingeckoId: 'bitcoin', decimals: 8 },
+      WETH: { address: '0x4200000000000000000000000000000000000006', coingeckoId: 'ethereum', decimals: 18 },
+      AERO: { address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631', coingeckoId: 'aerodrome-finance', decimals: 18 },
+      BRETT: { address: '0x532f27101965dd16442E59d40670FaF5eBB142E4', coingeckoId: 'brett', decimals: 18 },
+      DEGEN: { address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', coingeckoId: 'degen-base', decimals: 18 },
+      WELL: { address: '0xA88594D404727625A9437C3f886C7643872296AE', coingeckoId: 'moonwell', decimals: 18 },
+    };
+
+    let marketData = {};
+    let tradeData = { trades: [], totalTrades: 0, successfulTrades: 0, peakValue: INITIAL_VALUE };
+
+    // Fetch Fear & Greed Index
+    async function fetchFearGreed() {
+      try {
+        const res = await fetch('https://api.alternative.me/fng/');
+        const data = await res.json();
+        return {
+          value: parseInt(data.data[0].value),
+          classification: data.data[0].value_classification
+        };
+      } catch (e) {
+        console.error('Fear & Greed fetch failed:', e);
+        return { value: 50, classification: 'Neutral' };
+      }
+    }
+
+    // Fetch market prices from CoinGecko
+    async function fetchMarketData() {
+      try {
+        const ids = [...new Set(Object.values(TOKENS).map(t => t.coingeckoId))].join(',');
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`
+        );
+        const data = await res.json();
+
+        const prices = {};
+        for (const coin of data) {
+          prices[coin.id] = {
+            price: coin.current_price,
+            change24h: coin.price_change_percentage_24h || 0,
+            change7d: coin.price_change_percentage_7d_in_currency || 0,
+            name: coin.name,
+            symbol: coin.symbol.toUpperCase()
+          };
+        }
+        return prices;
+      } catch (e) {
+        console.error('Market data fetch failed:', e);
+        return {};
+      }
+    }
+
+    // Fetch wallet balances from Basescan API (free tier)
+    async function fetchWalletBalances() {
+      const balances = {};
+
+      try {
+        // Fetch ETH balance
+        const ethRes = await fetch(
+          `https://api.basescan.org/api?module=account&action=balance&address=${WALLET}&tag=latest`
+        );
+        const ethData = await ethRes.json();
+        if (ethData.status === '1') {
+          balances.ETH = parseFloat(ethData.result) / 1e18;
+        }
+
+        // Fetch ERC20 token balances
+        const tokenRes = await fetch(
+          `https://api.basescan.org/api?module=account&action=tokentx&address=${WALLET}&page=1&offset=100&sort=desc`
+        );
+        const tokenData = await tokenRes.json();
+
+        if (tokenData.status === '1' && tokenData.result) {
+          // Calculate net balances from transfer history
+          const tokenBalances = {};
+          for (const tx of tokenData.result) {
+            const symbol = tx.tokenSymbol;
+            const decimals = parseInt(tx.tokenDecimal);
+            const value = parseFloat(tx.value) / Math.pow(10, decimals);
+
+            if (!tokenBalances[symbol]) tokenBalances[symbol] = 0;
+
+            if (tx.to.toLowerCase() === WALLET.toLowerCase()) {
+              tokenBalances[symbol] += value;
+            } else if (tx.from.toLowerCase() === WALLET.toLowerCase()) {
+              tokenBalances[symbol] -= value;
+            }
+          }
+
+          for (const [symbol, balance] of Object.entries(tokenBalances)) {
+            if (balance > 0.0001) {
+              balances[symbol] = balance;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Wallet balance fetch failed:', e);
+      }
+
+      return balances;
+    }
+
+    // Try to load trade history from local file (works with local server)
+    async function fetchTradeHistory() {
+      try {
+        const res = await fetch('../logs/trades.json');
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        // File not accessible, use stored data
+      }
+      return tradeData;
+    }
+
+    // Update all dashboard elements
+    async function refreshAll() {
+      document.getElementById('refresh-icon').classList.add('pulse');
+      document.getElementById('status').innerHTML = '<span class="text-yellow-400">● Updating...</span>';
+
+      try {
+        // Fetch all data in parallel
+        const [fearGreed, prices, balances, trades] = await Promise.all([
+          fetchFearGreed(),
+          fetchMarketData(),
+          fetchWalletBalances(),
+          fetchTradeHistory()
+        ]);
+
+        marketData = prices;
+        if (trades.trades) tradeData = trades;
+
+        // Update Fear & Greed
+        updateFearGreed(fearGreed);
+
+        // Update market prices
+        updateMarketPrices(prices);
+
+        // Update holdings & portfolio value
+        updateHoldings(balances, prices);
+
+        // Update trade history
+        updateTradeHistory(tradeData);
+
+        // Update timestamp
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+        document.getElementById('status').innerHTML = '<span class="text-green-400">● Live</span>';
+
+      } catch (e) {
+        console.error('Refresh failed:', e);
+        document.getElementById('status').innerHTML = '<span class="text-red-400">● Error</span>';
+      }
+
+      document.getElementById('refresh-icon').classList.remove('pulse');
+    }
+
+    function updateFearGreed(fg) {
+      const circle = document.getElementById('fear-greed-circle');
+      const label = document.getElementById('fear-greed-label');
+      const hint = document.getElementById('fear-greed-hint');
+
+      circle.textContent = fg.value;
+      label.textContent = fg.classification;
+
+      // Color based on value
+      let color, hintText;
+      if (fg.value <= 25) {
+        color = 'border-red-500 text-red-400';
+        hintText = '🟢 Accumulation zone';
+      } else if (fg.value <= 45) {
+        color = 'border-orange-500 text-orange-400';
+        hintText = 'Cautious buying';
+      } else if (fg.value <= 55) {
+        color = 'border-yellow-500 text-yellow-400';
+        hintText = 'Neutral - hold';
+      } else if (fg.value <= 75) {
+        color = 'border-lime-500 text-lime-400';
+        hintText = 'Consider profits';
+      } else {
+        color = 'border-green-500 text-green-400';
+        hintText = '🔴 Take profits!';
+      }
+
+      circle.className = `w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold border-4 ${color}`;
+      hint.textContent = hintText;
+    }
+
+    function updateMarketPrices(prices) {
+      // ETH
+      const eth = prices['ethereum'];
+      if (eth) {
+        document.getElementById('eth-price').textContent = `$${eth.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        const ethChange = document.getElementById('eth-change');
+        ethChange.textContent = `24h: ${eth.change24h >= 0 ? '+' : ''}${eth.change24h.toFixed(1)}%`;
+        ethChange.className = `text-sm ${eth.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`;
+      }
+
+      // BTC
+      const btc = prices['bitcoin'];
+      if (btc) {
+        document.getElementById('btc-price').textContent = `$${btc.price.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+        const btcChange = document.getElementById('btc-change');
+        btcChange.textContent = `24h: ${btc.change24h >= 0 ? '+' : ''}${btc.change24h.toFixed(1)}%`;
+        btcChange.className = `text-sm ${btc.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`;
+      }
+
+      // Token grid
+      const grid = document.getElementById('token-grid');
+      const tokenSymbols = ['ETH', 'cbBTC', 'AERO', 'BRETT', 'DEGEN', 'WELL'];
+
+      grid.innerHTML = tokenSymbols.map(symbol => {
+        const token = TOKENS[symbol];
+        const data = prices[token?.coingeckoId];
+        if (!data) return '';
+
+        const changeClass = data.change24h >= 0 ? 'text-green-400' : 'text-red-400';
+        const changeSign = data.change24h >= 0 ? '+' : '';
+
+        return `
+          <div class="bg-gray-800/50 rounded-lg p-3">
+            <div class="flex justify-between items-start">
+              <span class="font-medium">${symbol}</span>
+              <span class="${changeClass} text-xs">${changeSign}${data.change24h.toFixed(1)}%</span>
+            </div>
+            <p class="text-lg font-bold mt-1">$${data.price < 1 ? data.price.toFixed(4) : data.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateHoldings(balances, prices) {
+      const holdingsEl = document.getElementById('holdings');
+      let totalValue = 0;
+      const holdings = [];
+
+      // Calculate USD values from Basescan
+      for (const [symbol, balance] of Object.entries(balances)) {
+        if (balance < 0.0001) continue;
+
+        let price = 0;
+        let usdValue = 0;
+
+        if (symbol === 'USDC') {
+          price = 1;
+          usdValue = balance;
+        } else {
+          const token = TOKENS[symbol];
+          if (token && prices[token.coingeckoId]) {
+            price = prices[token.coingeckoId].price;
+            usdValue = balance * price;
+          }
+        }
+
+        if (usdValue > 0.01) {
+          holdings.push({ symbol, balance, usdValue, price });
+          totalValue += usdValue;
+        }
+      }
+
+      // Also count WETH as ETH
+      if (balances.WETH && prices['ethereum']) {
+        const wethValue = balances.WETH * prices['ethereum'].price;
+        totalValue += wethValue;
+        const ethHolding = holdings.find(h => h.symbol === 'ETH');
+        if (ethHolding) {
+          ethHolding.balance += balances.WETH;
+          ethHolding.usdValue += wethValue;
+        } else {
+          holdings.push({ symbol: 'ETH (WETH)', balance: balances.WETH, usdValue: wethValue, price: prices['ethereum'].price });
+        }
+      }
+
+      // FALLBACK: If Basescan didn't return data, use trades.json values
+      if (totalValue < 1 && tradeData.currentValue) {
+        totalValue = tradeData.currentValue;
+
+        // Estimate holdings from trade history
+        const estimatedHoldings = {};
+        let remainingUSDC = 300; // You added ~$300 USDC
+
+        // Count successful trades
+        if (tradeData.trades) {
+          for (const trade of tradeData.trades) {
+            if (trade.success && trade.action === 'BUY') {
+              remainingUSDC -= trade.amountUSD;
+              if (!estimatedHoldings[trade.toToken]) {
+                estimatedHoldings[trade.toToken] = 0;
+              }
+              estimatedHoldings[trade.toToken] += trade.amountUSD;
+            }
+          }
+        }
+
+        // Add ETH (original holding)
+        estimatedHoldings['ETH'] = 74; // Original ~$74 in ETH
+
+        // Build holdings display
+        for (const [symbol, value] of Object.entries(estimatedHoldings)) {
+          if (value > 0) {
+            holdings.push({
+              symbol,
+              balance: 0, // Unknown exact balance
+              usdValue: value,
+              price: 0,
+              estimated: true
+            });
+          }
+        }
+
+        // Add remaining USDC
+        if (remainingUSDC > 0) {
+          holdings.push({ symbol: 'USDC', balance: remainingUSDC, usdValue: remainingUSDC, price: 1 });
+        }
+      }
+
+      // Sort by value descending
+      holdings.sort((a, b) => b.usdValue - a.usdValue);
+
+      // Update display
+      if (holdings.length === 0) {
+        holdingsEl.innerHTML = '<p class="text-gray-500">Fetching wallet data...</p>';
+      } else {
+        holdingsEl.innerHTML = holdings.map(h => `
+          <div class="flex justify-between items-center">
+            <div>
+              <span class="font-medium">${h.symbol}</span>
+              ${h.estimated ? '<span class="text-yellow-500 text-xs ml-1">~est</span>' : ''}
+              ${!h.estimated && h.balance ? `<span class="text-gray-500 text-sm ml-2">${h.balance < 1 ? h.balance.toFixed(6) : h.balance.toFixed(4)}</span>` : ''}
+            </div>
+            <span class="font-medium ${h.estimated ? 'text-yellow-400' : ''}">$${h.usdValue.toFixed(2)}</span>
+          </div>
+        `).join('');
+      }
+
+      // Update portfolio value
+      document.getElementById('portfolio-value').textContent = `$${totalValue.toFixed(2)}`;
+
+      // P&L
+      const pnl = totalValue - INITIAL_VALUE;
+      const pnlPercent = (pnl / INITIAL_VALUE) * 100;
+      const changeEl = document.getElementById('portfolio-change');
+      changeEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)`;
+      changeEl.className = `text-sm mt-2 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+      // Peak & drawdown
+      const peak = Math.max(tradeData.peakValue || INITIAL_VALUE, totalValue);
+      document.getElementById('peak-value').textContent = `$${peak.toFixed(2)}`;
+      const drawdown = ((peak - totalValue) / peak) * 100;
+      document.getElementById('drawdown').textContent = `Drawdown: ${drawdown.toFixed(1)}%`;
+    }
+
+    function updateTradeHistory(data) {
+      document.getElementById('total-trades').textContent = data.totalTrades || 0;
+      document.getElementById('success-rate').textContent = `${data.successfulTrades || 0}/${data.totalTrades || 0} successful`;
+      document.getElementById('trade-count').textContent = `${data.trades?.length || 0} trades`;
+
+      const historyEl = document.getElementById('trade-history');
+
+      if (data.trades && data.trades.length > 0) {
+        historyEl.innerHTML = data.trades.slice(-15).reverse().map(trade => `
+          <tr class="border-b border-gray-800 hover:bg-gray-800/30">
+            <td class="py-3 text-sm">${new Date(trade.timestamp).toLocaleString()}</td>
+            <td class="py-3">
+              <span class="px-2 py-1 rounded text-xs font-medium ${
+                trade.action === 'BUY' ? 'bg-green-900 text-green-300' :
+                trade.action === 'SELL' ? 'bg-red-900 text-red-300' :
+                'bg-gray-700 text-gray-300'
+              }">${trade.action}</span>
+            </td>
+            <td class="py-3">${trade.fromToken} → ${trade.toToken}</td>
+            <td class="py-3">$${trade.amountUSD?.toFixed(2) || '0.00'}</td>
+            <td class="py-3">
+              ${trade.success ?
+                `<a href="https://basescan.org/tx/${trade.txHash}" target="_blank" class="text-green-400 hover:text-green-300">✓ Success</a>` :
+                '<span class="text-red-400">✗ Failed</span>'}
+            </td>
+            <td class="py-3 text-sm text-gray-400 max-w-xs truncate" title="${trade.reasoning || ''}">${trade.reasoning || '-'}</td>
+          </tr>
+        `).join('');
+      } else {
+        historyEl.innerHTML = `
+          <tr>
+            <td colspan="6" class="py-8 text-center text-gray-500">
+              No trades recorded yet. Waiting for bot activity...
+            </td>
+          </tr>
+        `;
+      }
+    }
+
+    // Initial load
+    refreshAll();
+
+    // Auto-refresh every 30 seconds
+    setInterval(refreshAll, 30000);
+  </script>
+</body>
+</html>

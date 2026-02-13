@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment variables (IMPORTANT - keep secrets local)
+.env
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+dist/
+build/

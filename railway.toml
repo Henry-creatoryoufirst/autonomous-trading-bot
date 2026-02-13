@@ -1,0 +1,12 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+healthcheckPath = "/"
+healthcheckTimeout = 10
+
+[service]
+internalPort = 3000
