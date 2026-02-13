@@ -1,12 +1,7 @@
-[build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
-
 [deploy]
-restartPolicyType = "always"
+# This is a background worker service, not a web server
+# Disable healthcheck since there's no HTTP endpoint
+healthcheckPath = ""
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-healthcheckPath = "/"
-healthcheckTimeout = 10
-
-[service]
-internalPort = 3000
