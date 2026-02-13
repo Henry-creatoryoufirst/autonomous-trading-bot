@@ -985,3 +985,15 @@ async function main() {
 }
 
 main().catch(console.error);
+
+// Simple HTTP health check server for Railway
+import http from 'http';
+const healthServer = http.createServer((req, res) => {
+  if (req.url === '/' || req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK - Trading Bot Running');
+  }
+});
+healthServer.listen(process.env.PORT || 3000, () => {
+  console.log('Health check server running on port', process.env.PORT || 3000);
+});
