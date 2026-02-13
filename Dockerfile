@@ -20,7 +20,6 @@ RUN npm ci --only=production
 RUN npm install -g tsx
 
 # Install Coinbase Agentic Wallet CLI
-RUN npm install -g @coinbase/agentic-wallet
 
 # Copy application files
 COPY . .
