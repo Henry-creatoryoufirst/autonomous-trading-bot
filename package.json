@@ -1,26 +1,28 @@
 {
   "name": "henry-autonomous-trading-agent",
-  "version": "3.1.1",
-  "description": "Expanded Universe Autonomous Trading Agent - Sector Allocation + Risk Management",
+  "version": "3.2.0",
+  "description": "Autonomous Trading Agent - Live CDP SDK Execution + Sector Allocation + Risk Management",
   "type": "module",
-  "main": "agent-v3.1.ts",
+  "main": "agent-v3.2.ts",
   "scripts": {
-    "start": "npx tsx agent-v3.1.ts",
+    "start": "npx tsx agent-v3.2.ts",
+    "start:v3.1": "npx tsx agent-v3.1.ts",
     "start:v3": "npx tsx agent-v3.ts",
     "start:v2": "npx tsx agent.ts",
-    "dev": "npx tsx watch agent-v3.1.ts",
+    "dev": "npx tsx watch agent-v3.2.ts",
     "arb": "npx tsx scripts/scan-arbitrage.ts",
-    "balance": "npx awal balance",
     "status": "npx tsx scripts/status.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@coinbase/cdp-sdk": "^1.40.0",
     "@langchain/anthropic": "^0.3.14",
     "@langchain/core": "^0.3.19",
     "@langchain/langgraph": "^0.2.21",
     "axios": "^1.7.9",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
+    "viem": "^2.21.0",
     "ws": "^8.19.0"
   },
   "devDependencies": {
