@@ -731,9 +731,14 @@ Respond with ONLY valid JSON:
         }
         const decision = JSON.parse(text);
 
-        const validTokens = ["USDC", ...CONFIG.activeTokens];
+        const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens];
+        console.log(`   AI raw response: action=${decision.action} from=${decision.fromToken} to=${decision.toToken} amt=$${decision.amountUSD}`);
+        if (decision.action === "HOLD") {
+          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: decision.reasoning || "AI chose HOLD" };
+        }
         if (!validTokens.includes(decision.fromToken) || !validTokens.includes(decision.toToken)) {
-          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Invalid token in decision" };
+          console.log(`   ⚠️ Invalid tokens: from="${decision.fromToken}" to="${decision.toToken}" — not in valid list`);
+          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Invalid token: ${decision.fromToken}→${decision.toToken}` };
         }
 
         if (decision.action === "BUY" || decision.action === "REBALANCE") {
