@@ -1099,20 +1099,21 @@ async function main() {
     }
     // ====================================================================
     // ONE-TIME FUND RECOVERY: Transfer from Smart Account to EOA Account
-    // Smart Account 0x5550... was created by old terminal bot, funds are stuck there.
-    // This runs ONCE — if smart account has tokens, batch-transfer them to the EOA.
     // ====================================================================
+    console.log("\n[RECOVERY] === STARTING FUND RECOVERY CHECK ===");
     try {
       const SMART_ACCOUNT_OLD = "0x55509AA76E2769eCCa5B4293359e3001dA16dd0F";
-      console.log(`\n  🔄 Checking smart account ${SMART_ACCOUNT_OLD.slice(0, 10)}... for recoverable funds...`);
+      console.log(`[RECOVERY] Looking up smart account for owner ${account.address.slice(0, 10)}...`);
 
       const smartAccount = await cdpClient.evm.getOrCreateSmartAccount({ owner: account });
-      console.log(`  Smart Account address: ${smartAccount.address}`);
+      console.log(`[RECOVERY] Smart Account resolved: ${smartAccount.address}`);
+      console.log(`[RECOVERY] Expected old wallet: ${SMART_ACCOUNT_OLD}`);
+      console.log(`[RECOVERY] Match: ${smartAccount.address.toLowerCase() === SMART_ACCOUNT_OLD.toLowerCase()}`);
 
       if (smartAccount.address.toLowerCase() === SMART_ACCOUNT_OLD.toLowerCase()) {
-        console.log(`  ✅ Smart account matches — checking balances...`);
+        console.log("[RECOVERY] Smart account matches! Checking balances...");
 
-        // Check ETH balance on smart account via RPC
+        // Check ETH balance via RPC
         const ethBalResp = await fetch("https://mainnet.base.org", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1120,10 +1121,9 @@ async function main() {
         });
         const ethBalJson = await ethBalResp.json();
         const ethBalance = BigInt(ethBalJson.result || "0x0");
-        const ethFormatted = Number(ethBalance) / 1e18;
-        console.log(`  ETH balance: ${ethFormatted} ETH`);
+        console.log(`[RECOVERY] ETH balance: ${Number(ethBalance) / 1e18} ETH`);
 
-        // Check a few key ERC-20 tokens
+        // Check ERC-20 tokens (sequentially to avoid rate limits)
         const tokensToRecover = [
           { symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
           { symbol: "WETH", address: "0x4200000000000000000000000000000000000006", decimals: 18 },
@@ -1152,21 +1152,26 @@ async function main() {
               const balance = BigInt(json.result);
               if (balance > 0n) {
                 tokensWithBalance.push({ ...token, balance });
-                console.log(`  ${token.symbol}: ${Number(balance) / Math.pow(10, token.decimals)}`);
+                console.log(`[RECOVERY] ${token.symbol}: ${Number(balance) / Math.pow(10, token.decimals)}`);
               }
             }
-          } catch { /* skip failed balance checks */ }
+            // Small delay between RPC calls to avoid rate limiting
+            await new Promise(r => setTimeout(r, 200));
+          } catch (e: any) {
+            console.log(`[RECOVERY] Failed to check ${token.symbol}: ${e.message}`);
+          }
         }
 
+        console.log(`[RECOVERY] Found ${tokensWithBalance.length} tokens with balances`);
+
         // Build batch transfer calls if there's anything to recover
-        if (tokensWithBalance.length > 0 || ethBalance > BigInt("5000000000000000")) { // > 0.005 ETH
-          console.log(`\n  💰 Found recoverable funds! Building batch transfer...`);
-          const destination = CONFIG.walletAddress; // The EOA account (0xB7c5...)
+        if (tokensWithBalance.length > 0 || ethBalance > BigInt("5000000000000000")) {
+          console.log("[RECOVERY] Building batch transfer...");
+          const destination = CONFIG.walletAddress;
           const calls: { to: string; value: bigint; data: string }[] = [];
 
-          // ERC-20 transfers (encoded transfer(address,uint256))
           for (const token of tokensWithBalance) {
-            const transferSelector = "0xa9059cbb"; // transfer(address,uint256)
+            const transferSelector = "0xa9059cbb";
             const paddedAddr = destination.slice(2).padStart(64, "0");
             const paddedAmt = token.balance.toString(16).padStart(64, "0");
             calls.push({
@@ -1174,50 +1179,50 @@ async function main() {
               value: 0n,
               data: transferSelector + paddedAddr + paddedAmt,
             });
-            console.log(`  → Transfer ${Number(token.balance) / Math.pow(10, token.decimals)} ${token.symbol}`);
+            console.log(`[RECOVERY] Queued: ${Number(token.balance) / Math.pow(10, token.decimals)} ${token.symbol} -> ${destination.slice(0, 10)}...`);
           }
 
-          // ETH transfer (leave 0.005 for gas)
-          const gasReserve = BigInt("5000000000000000"); // 0.005 ETH
+          const gasReserve = BigInt("5000000000000000");
           if (ethBalance > gasReserve) {
             const ethToSend = ethBalance - gasReserve;
             calls.push({ to: destination, value: ethToSend, data: "0x" });
-            console.log(`  → Transfer ${Number(ethToSend) / 1e18} ETH (keeping 0.005 for gas)`);
+            console.log(`[RECOVERY] Queued: ${Number(ethToSend) / 1e18} ETH -> ${destination.slice(0, 10)}...`);
           }
 
           if (calls.length > 0) {
-            console.log(`\n  📤 Sending ${calls.length} operations via UserOperation...`);
+            console.log(`[RECOVERY] Sending ${calls.length} operations via UserOperation...`);
             const result = await cdpClient.evm.sendUserOperation({
               smartAccount,
               network: "base",
               calls,
             });
-            console.log(`  UserOp submitted! Hash: ${result.userOpHash}`);
-            console.log(`  Status: ${result.status}`);
+            console.log(`[RECOVERY] UserOp submitted! Hash: ${result.userOpHash}`);
+            console.log(`[RECOVERY] Status: ${result.status}`);
 
-            // Wait for confirmation
-            console.log(`  ⏳ Waiting for confirmation...`);
+            console.log("[RECOVERY] Waiting for confirmation...");
             const confirmed = await cdpClient.evm.waitForUserOperation({
               smartAccountAddress: smartAccount.address,
               userOpHash: result.userOpHash,
             });
 
             if (confirmed.status === "complete") {
-              console.log(`  ✅ FUND RECOVERY COMPLETE! Tx: https://basescan.org/tx/${confirmed.transactionHash}`);
+              console.log(`[RECOVERY] COMPLETE! Tx: https://basescan.org/tx/${confirmed.transactionHash}`);
             } else {
-              console.log(`  ⚠️ UserOp status: ${confirmed.status}. May need manual recovery.`);
+              console.log(`[RECOVERY] UserOp status: ${confirmed.status}. Details: ${JSON.stringify(confirmed)}`);
             }
           }
         } else {
-          console.log(`  No significant funds to recover from smart account.`);
+          console.log("[RECOVERY] No significant funds to recover.");
         }
       } else {
-        console.log(`  Smart account ${smartAccount.address} doesn't match old wallet. Skipping recovery.`);
+        console.log(`[RECOVERY] Smart account ${smartAccount.address} does NOT match old wallet. Skipping.`);
       }
     } catch (recoveryError: any) {
-      console.error(`  ⚠️ Fund recovery attempt failed: ${recoveryError.message}`);
-      console.error(`  This is non-critical — bot will continue normally.`);
+      console.log(`[RECOVERY] ERROR: ${recoveryError.message}`);
+      console.log(`[RECOVERY] Stack: ${recoveryError.stack?.split('\n').slice(0, 3).join(' | ')}`);
+      console.log("[RECOVERY] Non-critical, bot continues normally.");
     }
+    console.log("[RECOVERY] === FUND RECOVERY CHECK DONE ===\n");
 
   } catch (error: any) {
     console.error(`\n❌ CDP initialization FAILED: ${error.message}`);
