@@ -425,8 +425,11 @@ async function getMarketData(): Promise<MarketData> {
       .map((t: any) => t.symbol);
 
     return { tokens, fearGreed, trendingTokens };
-  } catch (error) {
-    console.error("Failed to fetch market data:", error);
+  } catch (error: any) {
+    const msg = error?.response?.status
+      ? `HTTP ${error.response.status}: ${error.message}`
+      : error?.message || String(error);
+    console.error("Failed to fetch market data:", msg);
     return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [] };
   }
 }
@@ -438,13 +441,24 @@ async function getMarketData(): Promise<MarketData> {
 const BASE_RPC_URL = "https://mainnet.base.org";
 
 async function rpcCall(method: string, params: any[]): Promise<any> {
-  const response = await axios.post(BASE_RPC_URL, {
-    jsonrpc: "2.0", id: 1, method, params,
-  }, { timeout: 15000 });
-  if (response.data.error) {
-    throw new Error(`RPC error: ${response.data.error.message}`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await axios.post(BASE_RPC_URL, {
+        jsonrpc: "2.0", id: 1, method, params,
+      }, { timeout: 15000 });
+      if (response.data.error) {
+        throw new Error(`RPC error: ${response.data.error.message}`);
+      }
+      return response.data.result;
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 429 && attempt < 3) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+        continue;
+      }
+      throw error;
+    }
   }
-  return response.data.result;
 }
 
 async function getETHBalance(address: string): Promise<number> {
@@ -664,49 +678,60 @@ Respond with ONLY valid JSON:
   "sector": "<sector name if relevant>"
 }`;
 
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 500,
-      messages: [{ role: "user", content: systemPrompt }],
-    });
+  // Retry up to 3 times with exponential backoff for rate limits
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 500,
+        messages: [{ role: "user", content: systemPrompt }],
+      });
 
-    const content = response.content[0];
-    if (content.type === "text") {
-      let text = content.text.trim();
-      if (text.startsWith("```")) {
-        text = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-      }
-      const decision = JSON.parse(text);
-
-      const validTokens = ["USDC", ...CONFIG.activeTokens];
-      if (!validTokens.includes(decision.fromToken) || !validTokens.includes(decision.toToken)) {
-        return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Invalid token in decision" };
-      }
-
-      if (decision.action === "BUY" || decision.action === "REBALANCE") {
-        decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
-        if (decision.amountUSD < 1.00) {
-          decision.action = "HOLD";
-          decision.reasoning = `Trade amount ($${decision.amountUSD.toFixed(2)}) too small. Minimum $1.00. Holding.`;
+      const content = response.content[0];
+      if (content.type === "text") {
+        let text = content.text.trim();
+        if (text.startsWith("```")) {
+          text = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
         }
-      } else if (decision.action === "SELL") {
-        const holding = balances.find(b => b.symbol === decision.fromToken);
-        if (!holding || holding.usdValue < 1) {
-          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `No ${decision.fromToken} to sell` };
-        }
-        const maxSellForToken = holding.usdValue * (CONFIG.trading.maxSellPercent / 100);
-        decision.amountUSD = Math.min(decision.amountUSD, maxSellForToken);
-        decision.tokenAmount = decision.amountUSD / (holding.price || 1);
-      }
+        const decision = JSON.parse(text);
 
-      return decision;
+        const validTokens = ["USDC", ...CONFIG.activeTokens];
+        if (!validTokens.includes(decision.fromToken) || !validTokens.includes(decision.toToken)) {
+          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Invalid token in decision" };
+        }
+
+        if (decision.action === "BUY" || decision.action === "REBALANCE") {
+          decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
+          if (decision.amountUSD < 1.00) {
+            decision.action = "HOLD";
+            decision.reasoning = `Trade amount ($${decision.amountUSD.toFixed(2)}) too small. Minimum $1.00. Holding.`;
+          }
+        } else if (decision.action === "SELL") {
+          const holding = balances.find(b => b.symbol === decision.fromToken);
+          if (!holding || holding.usdValue < 1) {
+            return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `No ${decision.fromToken} to sell` };
+          }
+          const maxSellForToken = holding.usdValue * (CONFIG.trading.maxSellPercent / 100);
+          decision.amountUSD = Math.min(decision.amountUSD, maxSellForToken);
+          decision.tokenAmount = decision.amountUSD / (holding.price || 1);
+        }
+
+        return decision;
+      }
+      return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Parse error" };
+    } catch (error: any) {
+      const status = error?.status || error?.response?.status;
+      if (status === 429 && attempt < 3) {
+        const waitSec = Math.pow(2, attempt) * 10; // 20s, 40s
+        console.log(`  ⏳ Rate limited (429). Waiting ${waitSec}s before retry ${attempt + 1}/3...`);
+        await new Promise(resolve => setTimeout(resolve, waitSec * 1000));
+        continue;
+      }
+      console.error("AI decision failed:", error.message);
+      return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Error: ${error.message}` };
     }
-    return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Parse error" };
-  } catch (error: any) {
-    console.error("AI decision failed:", error.message);
-    return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Error: ${error.message}` };
   }
+  return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Max retries exceeded" };
 }
 
 // ============================================================================
@@ -833,7 +858,11 @@ async function executeTrade(
     console.error(`     Error: ${errorMsg}`);
     if (error.code) console.error(`     Code: ${error.code}`);
     if (error.status) console.error(`     Status: ${error.status}`);
-    if (error.response?.data) console.error(`     API Response: ${JSON.stringify(error.response.data).substring(0, 500)}`);
+    if (error.response?.data) {
+      try {
+        console.error(`     API Response: ${JSON.stringify(error.response.data).substring(0, 500)}`);
+      } catch { console.error(`     API Response: [non-serializable]`); }
+    }
     if (error.stack) console.error(`     Stack: ${error.stack.split('\n').slice(0, 5).join('\n     ')}`);
 
     // Handle specific error types
@@ -1047,7 +1076,11 @@ async function main() {
   console.log("\n🚀 Agent v3.2 running! Press Ctrl+C to stop.\n");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  console.error("Fatal error:", err?.message || String(err));
+  if (err?.stack) console.error(err.stack.split('\n').slice(0, 5).join('\n'));
+  process.exit(1);
+});
 
 // Simple HTTP health check server for Railway
 import http from 'http';
