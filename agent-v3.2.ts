@@ -1103,12 +1103,11 @@ async function main() {
     console.log("\n[RECOVERY] === STARTING FUND RECOVERY CHECK ===");
     try {
       const SMART_ACCOUNT_OLD = "0x55509AA76E2769eCCa5B4293359e3001dA16dd0F";
-      console.log(`[RECOVERY] Looking up smart account for owner ${account.address.slice(0, 10)}...`);
+      console.log(`[RECOVERY] Looking up smart account by address ${SMART_ACCOUNT_OLD.slice(0, 10)}...`);
 
-      const smartAccount = await cdpClient.evm.getOrCreateSmartAccount({ name: "henry-trading-bot", owner: account });
+      const smartAccount = await cdpClient.evm.getSmartAccount({ address: SMART_ACCOUNT_OLD, owner: account });
       console.log(`[RECOVERY] Smart Account resolved: ${smartAccount.address}`);
-      console.log(`[RECOVERY] Expected old wallet: ${SMART_ACCOUNT_OLD}`);
-      console.log(`[RECOVERY] Match: ${smartAccount.address.toLowerCase() === SMART_ACCOUNT_OLD.toLowerCase()}`);
+      console.log(`[RECOVERY] Owner verified: ${account.address}`);
 
       if (smartAccount.address.toLowerCase() === SMART_ACCOUNT_OLD.toLowerCase()) {
         console.log("[RECOVERY] Smart account matches! Checking balances...");
@@ -1215,7 +1214,7 @@ async function main() {
           console.log("[RECOVERY] No significant funds to recover.");
         }
       } else {
-        console.log(`[RECOVERY] Smart account ${smartAccount.address} does NOT match old wallet. Skipping.`);
+        console.log(`[RECOVERY] Smart account ${smartAccount.address} address mismatch (unexpected). Skipping.`);
       }
     } catch (recoveryError: any) {
       console.log(`[RECOVERY] ERROR: ${recoveryError.message}`);
