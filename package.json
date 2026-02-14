@@ -1,6 +1,6 @@
 {
   "name": "henry-autonomous-trading-agent",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Expanded Universe Autonomous Trading Agent - Sector Allocation + Risk Management",
   "type": "module",
   "main": "agent-v3.1.ts",

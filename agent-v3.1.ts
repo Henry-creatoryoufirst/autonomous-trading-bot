@@ -1,7 +1,14 @@
 /**
- * Henry's Autonomous Trading Agent v3.1
+ * Henry's Autonomous Trading Agent v3.1.1
  *
  * MAJOR UPGRADE: Expanded Token Universe + Sector Allocation
+ *
+ * FIX IN V3.1.1:
+ * - FIXED: Balance reading now uses direct on-chain RPC calls to Base network
+ * - FIXED: Replaced broken awal CLI balance parsing that returned $0
+ * - All ERC-20 token balances read via eth_call (balanceOf)
+ * - ETH balance read via eth_getBalance
+ * - Parallel balance fetching for all tokens
  *
  * NEW IN V3.1:
  * - 25+ tokens across 4 sectors (Blue Chip, AI, Meme, DeFi)
@@ -409,7 +416,9 @@ async function executeAwalCommand(command: string): Promise<string> {
     }
     return stdout;
   } catch (error: any) {
-    console.error("AWAL command failed:", error.message);
+    console.error(`\u274C AWAL CLI command failed: npx awal ${command}`);
+    console.error(`   Error: ${error.message}`);
+    console.error(`   \u2139\uFE0F The awal CLI may not be installed or authenticated. Trade execution requires awal.`);
     throw error;
   }
 }
@@ -504,33 +513,97 @@ async function getMarketData(): Promise<MarketData> {
   }
 }
 
-async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
-  try {
-    const output = await executeAwalCommand("balance");
-    const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
-    const lines = output.split("\n");
+// ============================================================================
+// DIRECT ON-CHAIN BALANCE READING (replaces broken awal CLI)
+// ============================================================================
 
-    for (const line of lines) {
-      const match = line.match(/(\w+)\s+\$?([\d.]+)/);
-      if (match) {
-        const symbol = match[1];
-        const balance = parseFloat(match[2]);
-        const token = TOKEN_REGISTRY[symbol];
-        if (balance > 0 || ["USDC", "ETH", "WETH"].includes(symbol)) {
-          balances.push({
-            symbol,
-            balance,
-            usdValue: symbol === "USDC" ? balance : 0,
-            sector: token?.sector,
-          });
-        }
-      }
-    }
-    return balances;
-  } catch (error) {
-    console.error("Failed to get balances:", error);
-    return [];
+const BASE_RPC_URL = "https://mainnet.base.org";
+
+async function rpcCall(method: string, params: any[]): Promise<any> {
+  const response = await axios.post(BASE_RPC_URL, {
+    jsonrpc: "2.0",
+    id: 1,
+    method,
+    params,
+  }, { timeout: 15000 });
+  if (response.data.error) {
+    throw new Error(`RPC error: ${response.data.error.message}`);
   }
+  return response.data.result;
+}
+
+async function getETHBalance(address: string): Promise<number> {
+  const result = await rpcCall("eth_getBalance", [address, "latest"]);
+  return parseInt(result, 16) / 1e18;
+}
+
+async function getERC20Balance(tokenAddress: string, walletAddress: string, decimals: number = 18): Promise<number> {
+  // balanceOf(address) selector = 0x70a08231
+  const data = "0x70a08231" + walletAddress.slice(2).padStart(64, "0");
+  const result = await rpcCall("eth_call", [
+    { to: tokenAddress, data },
+    "latest",
+  ]);
+  return parseInt(result, 16) / Math.pow(10, decimals);
+}
+
+// Token decimals on Base (most are 18, USDC is 6, cbBTC is 8)
+const TOKEN_DECIMALS: Record<string, number> = {
+  USDC: 6,
+  cbBTC: 8,
+};
+
+async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
+  const walletAddress = CONFIG.walletAddress;
+  const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
+
+  console.log(`   \uD83D\uDCE1 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
+
+  // Fetch all balances in parallel for speed
+  const balancePromises: { symbol: string; promise: Promise<number> }[] = [];
+
+  for (const [symbol, token] of Object.entries(TOKEN_REGISTRY)) {
+    if (token.address === "native") {
+      // ETH native balance
+      balancePromises.push({ symbol, promise: getETHBalance(walletAddress) });
+    } else {
+      // ERC-20 token balance
+      const decimals = TOKEN_DECIMALS[symbol] || 18;
+      balancePromises.push({
+        symbol,
+        promise: getERC20Balance(token.address, walletAddress, decimals),
+      });
+    }
+  }
+
+  // Resolve all in parallel
+  const results = await Promise.allSettled(
+    balancePromises.map(async ({ symbol, promise }) => {
+      const balance = await promise;
+      return { symbol, balance };
+    })
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const { symbol, balance } = result.value;
+      const token = TOKEN_REGISTRY[symbol];
+      if (balance > 0 || ["USDC", "ETH", "WETH"].includes(symbol)) {
+        balances.push({
+          symbol,
+          balance,
+          usdValue: symbol === "USDC" ? balance : 0, // USD values updated later with market prices
+          sector: token?.sector,
+        });
+      }
+    } else {
+      // Log but do not fail - skip tokens with RPC errors
+      console.warn(`   \u26A0\uFE0F Failed to fetch balance for a token: ${result.reason}`);
+    }
+  }
+
+  console.log(`   \u2705 Found ${balances.filter(b => b.balance > 0).length} tokens with balances`);
+  return balances;
 }
 
 // ============================================================================
