@@ -220,13 +220,18 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // Initialize CDP Client - supports both old and new env var naming
 // CDP SDK credential format (verified from source):
 //   apiKeyId: UUID string (e.g. "fe3fabdc-...")
-//   apiKeySecret: Raw base64 Ed25519 key (no PEM headers needed)
+//   apiKeySecret: Either raw base64 Ed25519 key (88 chars) OR PEM PKCS#8 EC key (-----BEGIN PRIVATE KEY-----)
 //   walletSecret: Raw base64 DER-encoded ECDSA P-256 key (no PEM headers - SDK wraps internally)
 function createCdpClient(): CdpClient {
   // Try new naming first, then fall back to old
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME;
-  const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.CDP_API_KEY_PRIVATE_KEY;
+  let apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.CDP_API_KEY_PRIVATE_KEY;
   const walletSecret = process.env.CDP_WALLET_SECRET;
+
+  // Railway env vars may store PEM newlines as literal \n — convert to real newlines
+  if (apiKeySecret && apiKeySecret.includes('\\n')) {
+    apiKeySecret = apiKeySecret.replace(/\\n/g, '\n');
+  }
 
   if (!apiKeyId || !apiKeySecret) {
     console.error("❌ CDP API credentials not found. Need CDP_API_KEY_ID + CDP_API_KEY_SECRET (or CDP_API_KEY_NAME + CDP_API_KEY_PRIVATE_KEY)");
