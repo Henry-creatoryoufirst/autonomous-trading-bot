@@ -3,583 +3,657 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Henry's Trading Bot Dashboard</title>
+  <title>Schertzinger Company Limited — Autonomous Trading Command</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; }
-    .gradient-bg { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
-    .card { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-    .glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
-    .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
-    .pulse { animation: pulse 2s infinite; }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: {
+            brand: { 50: '#f0f4ff', 100: '#dbe4ff', 200: '#bac8ff', 300: '#91a7ff', 400: '#748ffc', 500: '#5c7cfa', 600: '#4c6ef5', 700: '#4263eb', 800: '#3b5bdb', 900: '#364fc7' },
+            surface: { 900: '#0a0e1a', 800: '#0f1629', 700: '#151d35', 600: '#1c2541', 500: '#243050' },
+            accent: { gold: '#f0b429', emerald: '#10b981', crimson: '#ef4444', amber: '#f59e0b', sky: '#38bdf8' }
+          }
+        }
+      }
     }
+  </script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; background: #060a14; color: #e2e8f0; overflow-x: hidden; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Premium gradient mesh background */
+    .mesh-bg {
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 40%, rgba(76, 110, 245, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 20%, rgba(16, 185, 129, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse 50% 60% at 50% 90%, rgba(240, 180, 41, 0.04) 0%, transparent 50%),
+        linear-gradient(180deg, #060a14 0%, #0a0e1a 100%);
+    }
+
+    /* Glass card */
+    .glass {
+      background: rgba(15, 22, 41, 0.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .glass-highlight {
+      background: linear-gradient(135deg, rgba(15, 22, 41, 0.8) 0%, rgba(21, 29, 53, 0.6) 100%);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    /* Glow effects */
+    .glow-emerald { box-shadow: 0 0 30px rgba(16, 185, 129, 0.15), inset 0 1px 0 rgba(16, 185, 129, 0.1); }
+    .glow-brand { box-shadow: 0 0 30px rgba(76, 110, 245, 0.15), inset 0 1px 0 rgba(76, 110, 245, 0.1); }
+    .glow-gold { box-shadow: 0 0 30px rgba(240, 180, 41, 0.12), inset 0 1px 0 rgba(240, 180, 41, 0.08); }
+
+    /* Pulse animation for live indicator */
+    .live-pulse { animation: livePulse 2s ease-in-out infinite; }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+      50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    }
+
+    /* Shimmer loading */
+    .shimmer { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+
+    /* Sector bar */
+    .sector-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06); overflow: hidden; }
+    .sector-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+
+    /* Trade row hover */
+    .trade-row { transition: background 0.15s ease; }
+    .trade-row:hover { background: rgba(76, 110, 245, 0.06); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+    /* Chart container */
+    .chart-container { position: relative; }
+
+    /* Counter animation */
+    .counter { transition: all 0.6s ease; }
+
+    /* Fade in */
+    .fade-in { animation: fadeIn 0.5s ease forwards; opacity: 0; }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    /* Status badge */
+    .status-badge { letter-spacing: 0.05em; }
   </style>
 </head>
-<body class="gradient-bg min-h-screen text-white p-6">
-  <div class="max-w-7xl mx-auto">
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-8">
-      <div>
-        <h1 class="text-3xl font-bold">🤖 Trading Bot Dashboard</h1>
-        <p class="text-gray-400 mt-1">Henry's Autonomous Agent v3.0</p>
+<body class="mesh-bg min-h-screen">
+  <div class="max-w-[1440px] mx-auto px-6 py-6">
+
+    <!-- ═══ HEADER ═══ -->
+    <header class="flex items-center justify-between mb-8">
+      <div class="flex items-center gap-5">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center shadow-lg shadow-brand-600/20">
+          <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight text-white">Schertzinger Company Limited</h1>
+          <p class="text-xs text-slate-500 font-medium tracking-wide uppercase mt-0.5">Autonomous Trading Command &middot; Agent v3.1.1</p>
+        </div>
       </div>
-      <div class="flex items-center gap-4">
-        <div class="card rounded-lg px-4 py-2">
-          <span class="text-sm text-gray-400">Last Update:</span>
-          <span id="last-update" class="ml-2 text-gray-300 font-medium">--:--:--</span>
+      <div class="flex items-center gap-3">
+        <div class="glass rounded-lg px-3 py-1.5 flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-emerald-400 live-pulse"></div>
+          <span id="status-text" class="text-xs font-medium text-emerald-400 status-badge uppercase">Live</span>
         </div>
-        <div class="card rounded-lg px-4 py-2">
-          <span class="text-sm text-gray-400">Status:</span>
-          <span id="status" class="ml-2 text-green-400 font-medium">● Live</span>
+        <div class="glass rounded-lg px-3 py-1.5">
+          <span class="text-xs text-slate-500">Updated </span>
+          <span id="last-update" class="text-xs font-medium text-slate-400 mono">--:--</span>
         </div>
-        <button onclick="refreshAll()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-medium flex items-center gap-2">
-          <span id="refresh-icon">🔄</span> Refresh
+        <button onclick="refreshAll()" id="refresh-btn" class="glass rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-white hover:border-brand-600/30 transition-all duration-200 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
         </button>
       </div>
+    </header>
+
+    <!-- ═══ HERO METRICS ═══ -->
+    <div class="grid grid-cols-12 gap-4 mb-6">
+      <!-- Portfolio Value — Hero -->
+      <div class="col-span-12 md:col-span-4 glass-highlight rounded-2xl p-6 glow-emerald">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Portfolio Value</span>
+          <span class="text-xs font-medium text-emerald-500/70 mono" id="portfolio-network">Base Network</span>
+        </div>
+        <div class="flex items-baseline gap-2 mt-2">
+          <span id="portfolio-value" class="text-4xl font-extrabold text-white tracking-tight mono counter">$0.00</span>
+        </div>
+        <div class="flex items-center gap-3 mt-3">
+          <span id="pnl-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-400 mono">+$0.00</span>
+          <span id="pnl-percent" class="text-xs text-slate-500 mono">+0.0% all-time</span>
+        </div>
+      </div>
+
+      <!-- P&L / Peak / Drawdown -->
+      <div class="col-span-6 md:col-span-2 glass rounded-2xl p-5">
+        <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Initial</span>
+        <p class="text-2xl font-bold text-white mt-2 mono">$230</p>
+        <p class="text-xs text-slate-600 mt-1">Starting capital</p>
+      </div>
+      <div class="col-span-6 md:col-span-2 glass rounded-2xl p-5">
+        <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Peak</span>
+        <p id="peak-value" class="text-2xl font-bold text-white mt-2 mono">$0.00</p>
+        <p id="drawdown" class="text-xs text-amber-500/70 mt-1 mono">0.0% drawdown</p>
+      </div>
+      <div class="col-span-6 md:col-span-2 glass rounded-2xl p-5">
+        <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Trades</span>
+        <p id="total-trades" class="text-2xl font-bold text-white mt-2 mono">0</p>
+        <p id="success-rate" class="text-xs text-slate-600 mt-1">0 successful</p>
+      </div>
+      <div class="col-span-6 md:col-span-2 glass rounded-2xl p-5">
+        <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Fear &amp; Greed</span>
+        <div class="flex items-baseline gap-2 mt-2">
+          <span id="fg-value" class="text-2xl font-bold mono text-amber-400">--</span>
+          <span id="fg-label" class="text-xs font-medium text-slate-500">&mdash;</span>
+        </div>
+        <div class="w-full h-1.5 rounded-full bg-slate-800 mt-2 overflow-hidden">
+          <div id="fg-bar" class="h-full rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400 transition-all duration-700" style="width: 50%"></div>
+        </div>
+      </div>
     </div>
 
-    <!-- Main Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm">Portfolio Value</p>
-        <p id="portfolio-value" class="text-3xl font-bold mt-1">Loading...</p>
-        <p id="portfolio-change" class="text-sm mt-2 text-gray-400">--</p>
-      </div>
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm">Initial Investment</p>
-        <p id="initial-value" class="text-3xl font-bold mt-1">$230.00</p>
-        <p class="text-sm mt-2 text-gray-500">Starting capital</p>
-      </div>
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm">Peak Value</p>
-        <p id="peak-value" class="text-3xl font-bold mt-1">--</p>
-        <p id="drawdown" class="text-sm mt-2 text-yellow-400">Drawdown: --%</p>
-      </div>
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm">Total Trades</p>
-        <p id="total-trades" class="text-3xl font-bold mt-1">--</p>
-        <p id="success-rate" class="text-sm mt-2 text-gray-400">--/-- successful</p>
+    <!-- ═══ MARKET TICKER ═══ -->
+    <div class="glass rounded-xl px-5 py-3 mb-6 flex items-center gap-6 overflow-x-auto" id="ticker-bar">
+      <span class="text-xs text-slate-600 font-medium uppercase tracking-wider whitespace-nowrap">Markets</span>
+      <div class="flex items-center gap-5" id="ticker-items">
+        <span class="text-xs text-slate-600">Loading prices...</span>
       </div>
     </div>
 
-    <!-- Market Conditions -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm mb-2">Fear & Greed Index</p>
-        <div class="flex items-center gap-4">
-          <div id="fear-greed-circle" class="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold border-4">
-            --
+    <!-- ═══ MAIN GRID: Holdings + Sectors + AI ═══ -->
+    <div class="grid grid-cols-12 gap-4 mb-6">
+
+      <!-- Holdings -->
+      <div class="col-span-12 lg:col-span-5 glass rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-sm font-semibold text-white tracking-tight">Holdings</h2>
+          <a href="https://basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F" target="_blank" class="text-xs text-brand-400 hover:text-brand-300 transition-colors">View on-chain &rarr;</a>
+        </div>
+        <div id="holdings-list" class="space-y-3">
+          <div class="shimmer h-10 rounded-lg"></div>
+          <div class="shimmer h-10 rounded-lg"></div>
+          <div class="shimmer h-10 rounded-lg"></div>
+        </div>
+      </div>
+
+      <!-- Sector Allocation -->
+      <div class="col-span-12 lg:col-span-4 glass rounded-2xl p-6">
+        <h2 class="text-sm font-semibold text-white tracking-tight mb-5">Sector Allocation</h2>
+        <div class="chart-container mb-4" style="height: 180px;">
+          <canvas id="sectorChart"></canvas>
+        </div>
+        <div id="sector-legend" class="space-y-2.5"></div>
+      </div>
+
+      <!-- AI Agent Status -->
+      <div class="col-span-12 lg:col-span-3 glass rounded-2xl p-6">
+        <h2 class="text-sm font-semibold text-white tracking-tight mb-5">Agent Intelligence</h2>
+        <div class="space-y-4">
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+              <span class="text-xs font-medium text-slate-400">Model</span>
+            </div>
+            <p class="text-sm font-semibold text-white">Claude Sonnet 4</p>
           </div>
           <div>
-            <p id="fear-greed-label" class="text-xl font-medium">Loading...</p>
-            <p id="fear-greed-hint" class="text-sm text-gray-400">--</p>
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-1.5 h-1.5 rounded-full bg-brand-400"></div>
+              <span class="text-xs font-medium text-slate-400">Cycle Interval</span>
+            </div>
+            <p class="text-sm font-semibold text-white">Every 15 minutes</p>
           </div>
-        </div>
-      </div>
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm mb-2">ETH Price</p>
-        <p id="eth-price" class="text-2xl font-bold">--</p>
-        <p id="eth-change" class="text-sm text-gray-400">24h: --%</p>
-      </div>
-      <div class="card rounded-xl p-6">
-        <p class="text-gray-400 text-sm mb-2">BTC Price</p>
-        <p id="btc-price" class="text-2xl font-bold">--</p>
-        <p id="btc-change" class="text-sm text-gray-400">24h: --%</p>
-      </div>
-    </div>
-
-    <!-- Holdings & Strategy -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-      <div class="card rounded-xl p-6">
-        <h3 class="text-lg font-semibold mb-4">💼 Current Holdings</h3>
-        <div id="holdings" class="space-y-3">
-          <p class="text-gray-500">Loading wallet balances...</p>
-        </div>
-        <div class="mt-4 pt-4 border-t border-gray-700">
-          <a href="https://basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F"
-             target="_blank"
-             class="text-blue-400 hover:text-blue-300 text-sm">
-            View on Basescan →
-          </a>
-        </div>
-      </div>
-      <div class="card rounded-xl p-6">
-        <h3 class="text-lg font-semibold mb-4">📈 Strategy Settings</h3>
-        <div class="space-y-3">
-          <div class="flex justify-between">
-            <span class="text-gray-400">Max Buy Size</span>
-            <span class="font-medium">$10.00</span>
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-1.5 h-1.5 rounded-full bg-amber-400"></div>
+              <span class="text-xs font-medium text-slate-400">Strategy</span>
+            </div>
+            <p class="text-sm font-semibold text-white">Sector Rebalancing</p>
+            <p class="text-xs text-slate-600 mt-0.5">18 tokens &middot; 4 sectors</p>
           </div>
-          <div class="flex justify-between">
-            <span class="text-gray-400">Max Sell</span>
-            <span class="font-medium">50% of position</span>
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-1.5 h-1.5 rounded-full bg-sky-400"></div>
+              <span class="text-xs font-medium text-slate-400">Max Trade</span>
+            </div>
+            <p class="text-sm font-semibold text-white">$100.00 USDC</p>
           </div>
-          <div class="flex justify-between">
-            <span class="text-gray-400">Check Interval</span>
-            <span class="font-medium">15 minutes</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-400">Diversification</span>
-            <span class="text-green-400 font-medium">✓ Enabled</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-400">Polymarket Arb</span>
-            <span class="text-yellow-400 font-medium">Scanning</span>
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <div class="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
+              <span class="text-xs font-medium text-slate-400">Polymarket</span>
+            </div>
+            <p class="text-sm font-semibold text-amber-400">Scanning</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Token Prices -->
-    <div class="card rounded-xl p-6 mb-8">
-      <h3 class="text-lg font-semibold mb-4">📊 Tracked Tokens</h3>
-      <div id="token-grid" class="grid grid-cols-2 md:grid-cols-6 gap-4">
-        <p class="text-gray-500 col-span-full">Loading market data...</p>
-      </div>
-    </div>
-
-    <!-- Trade History -->
-    <div class="card rounded-xl p-6">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold">📜 Trade History</h3>
-        <span id="trade-count" class="text-sm text-gray-400">-- trades</span>
+    <!-- ═══ TRADE LOG ═══ -->
+    <div class="glass rounded-2xl p-6 mb-6">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-sm font-semibold text-white tracking-tight">Trade Log</h2>
+        <span id="trade-count" class="text-xs text-slate-600 mono">0 trades</span>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead>
-            <tr class="text-left text-gray-400 border-b border-gray-700">
-              <th class="pb-3">Time</th>
-              <th class="pb-3">Action</th>
-              <th class="pb-3">Trade</th>
-              <th class="pb-3">Amount</th>
-              <th class="pb-3">Status</th>
-              <th class="pb-3">Reasoning</th>
+            <tr class="text-left border-b border-white/5">
+              <th class="pb-3 text-xs font-medium text-slate-600 uppercase tracking-wider">Time</th>
+              <th class="pb-3 text-xs font-medium text-slate-600 uppercase tracking-wider">Action</th>
+              <th class="pb-3 text-xs font-medium text-slate-600 uppercase tracking-wider">Pair</th>
+              <th class="pb-3 text-xs font-medium text-slate-600 uppercase tracking-wider text-right">Amount</th>
+              <th class="pb-3 text-xs font-medium text-slate-600 uppercase tracking-wider">Status</th>
+              <th class="pb-3 text-xs font-medium text-slate-600 uppercase tracking-wider">AI Reasoning</th>
             </tr>
           </thead>
-          <tbody id="trade-history">
-            <tr>
-              <td colspan="6" class="py-8 text-center text-gray-500">
-                Loading trade history...
-              </td>
-            </tr>
+          <tbody id="trade-body">
+            <tr><td colspan="6" class="py-12 text-center text-slate-700 text-sm">Waiting for trade data...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- Footer -->
-    <div class="mt-8 text-center text-gray-500 text-sm">
-      <p>Auto-refreshes every 30 seconds • Wallet: 0x55509AA76E2769eCCa5B4293359e3001dA16dd0F</p>
-    </div>
+    <!-- ═══ FOOTER ═══ -->
+    <footer class="flex items-center justify-between py-4 border-t border-white/5">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-slate-700">Schertzinger Company Limited</span>
+        <span class="text-xs text-slate-800">&middot;</span>
+        <span class="text-xs text-slate-700">Auto-refresh 30s</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-slate-700 mono">0x5550...d0F</span>
+        <span class="text-xs text-slate-800">&middot;</span>
+        <span class="text-xs text-slate-700">Base Mainnet</span>
+      </div>
+    </footer>
   </div>
 
   <script>
+    // ═══════════════════════════════════════════════════════════════
+    // CONFIGURATION
+    // ═══════════════════════════════════════════════════════════════
+
     const WALLET = '0x55509AA76E2769eCCa5B4293359e3001dA16dd0F';
     const INITIAL_VALUE = 230;
+    const BASE_RPC = 'https://mainnet.base.org';
 
-    // Token addresses on Base
     const TOKENS = {
-      ETH: { address: 'native', coingeckoId: 'ethereum', decimals: 18 },
-      USDC: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', coingeckoId: 'usd-coin', decimals: 6 },
-      cbBTC: { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', coingeckoId: 'bitcoin', decimals: 8 },
-      WETH: { address: '0x4200000000000000000000000000000000000006', coingeckoId: 'ethereum', decimals: 18 },
-      AERO: { address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631', coingeckoId: 'aerodrome-finance', decimals: 18 },
-      BRETT: { address: '0x532f27101965dd16442E59d40670FaF5eBB142E4', coingeckoId: 'brett', decimals: 18 },
-      DEGEN: { address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', coingeckoId: 'degen-base', decimals: 18 },
-      WELL: { address: '0xA88594D404727625A9437C3f886C7643872296AE', coingeckoId: 'moonwell', decimals: 18 },
+      ETH:     { address: 'native', coingeckoId: 'ethereum', decimals: 18, sector: 'Blue Chip' },
+      USDC:    { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', coingeckoId: 'usd-coin', decimals: 6, sector: 'Stablecoin' },
+      cbBTC:   { address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', coingeckoId: 'bitcoin', decimals: 8, sector: 'Blue Chip' },
+      cbETH:   { address: '0x2Ae3F1Ec7F1F5012CFeAb0185bfc7aa3cf0DEc22', coingeckoId: 'coinbase-wrapped-staked-eth', decimals: 18, sector: 'Blue Chip' },
+      WETH:    { address: '0x4200000000000000000000000000000000000006', coingeckoId: 'ethereum', decimals: 18, sector: 'Blue Chip' },
+      VIRTUAL: { address: '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', coingeckoId: 'virtual-protocol', decimals: 18, sector: 'AI & Agents' },
+      AIXBT:   { address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825', coingeckoId: 'aixbt', decimals: 18, sector: 'AI & Agents' },
+      HIGHER:  { address: '0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe', coingeckoId: 'higher', decimals: 18, sector: 'AI & Agents' },
+      BRETT:   { address: '0x532f27101965dd16442E59d40670FaF5eBB142E4', coingeckoId: 'brett', decimals: 18, sector: 'Meme' },
+      DEGEN:   { address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', coingeckoId: 'degen-base', decimals: 18, sector: 'Meme' },
+      TOSHI:   { address: '0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4', coingeckoId: 'toshi', decimals: 18, sector: 'Meme' },
+      AERO:    { address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631', coingeckoId: 'aerodrome-finance', decimals: 18, sector: 'DeFi' },
+      WELL:    { address: '0xA88594D404727625A9437C3f886C7643872296AE', coingeckoId: 'moonwell', decimals: 18, sector: 'DeFi' },
     };
 
-    let marketData = {};
-    let tradeData = { trades: [], totalTrades: 0, successfulTrades: 0, peakValue: INITIAL_VALUE };
+    const SECTOR_COLORS = {
+      'Blue Chip': '#4c6ef5',
+      'AI & Agents': '#a855f7',
+      'Meme': '#f59e0b',
+      'DeFi': '#10b981',
+      'Stablecoin': '#64748b',
+    };
 
-    // Fetch Fear & Greed Index
-    async function fetchFearGreed() {
-      try {
-        const res = await fetch('https://api.alternative.me/fng/');
-        const data = await res.json();
-        return {
-          value: parseInt(data.data[0].value),
-          classification: data.data[0].value_classification
-        };
-      } catch (e) {
-        console.error('Fear & Greed fetch failed:', e);
-        return { value: 50, classification: 'Neutral' };
-      }
+    const SECTOR_TARGETS = {
+      'Blue Chip': 0.40,
+      'AI & Agents': 0.20,
+      'Meme': 0.20,
+      'DeFi': 0.20,
+    };
+
+    let marketPrices = {};
+    let sectorChart = null;
+
+    // ═══════════════════════════════════════════════════════════════
+    // RPC BALANCE READING (same as the bot)
+    // ═══════════════════════════════════════════════════════════════
+
+    async function rpcCall(method, params) {
+      const res = await fetch(BASE_RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      return data.result;
     }
 
-    // Fetch market prices from CoinGecko
+    async function getETHBalance(address) {
+      const result = await rpcCall('eth_getBalance', [address, 'latest']);
+      return parseInt(result, 16) / 1e18;
+    }
+
+    async function getERC20Balance(tokenAddr, wallet, decimals) {
+      const data = '0x70a08231' + wallet.slice(2).padStart(64, '0');
+      const result = await rpcCall('eth_call', [{ to: tokenAddr, data }, 'latest']);
+      return parseInt(result, 16) / Math.pow(10, decimals);
+    }
+
+    async function fetchOnChainBalances() {
+      const balances = {};
+      const promises = Object.entries(TOKENS).map(async ([symbol, token]) => {
+        try {
+          let bal;
+          if (token.address === 'native') {
+            bal = await getETHBalance(WALLET);
+          } else {
+            bal = await getERC20Balance(token.address, WALLET, token.decimals);
+          }
+          if (bal > 0.000001) balances[symbol] = bal;
+        } catch (e) {
+          // skip failed tokens silently
+        }
+      });
+      await Promise.allSettled(promises);
+      return balances;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MARKET DATA
+    // ═══════════════════════════════════════════════════════════════
+
     async function fetchMarketData() {
       try {
         const ids = [...new Set(Object.values(TOKENS).map(t => t.coingeckoId))].join(',');
-        const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`
-        );
+        const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&sparkline=false&price_change_percentage=24h`);
         const data = await res.json();
-
         const prices = {};
         for (const coin of data) {
           prices[coin.id] = {
             price: coin.current_price,
             change24h: coin.price_change_percentage_24h || 0,
-            change7d: coin.price_change_percentage_7d_in_currency || 0,
             name: coin.name,
-            symbol: coin.symbol.toUpperCase()
+            symbol: coin.symbol.toUpperCase(),
+            image: coin.image,
           };
         }
         return prices;
       } catch (e) {
-        console.error('Market data fetch failed:', e);
+        console.error('Market data error:', e);
         return {};
       }
     }
 
-    // Fetch wallet balances from Basescan API (free tier)
-    async function fetchWalletBalances() {
-      const balances = {};
-
+    async function fetchFearGreed() {
       try {
-        // Fetch ETH balance
-        const ethRes = await fetch(
-          `https://api.basescan.org/api?module=account&action=balance&address=${WALLET}&tag=latest`
-        );
-        const ethData = await ethRes.json();
-        if (ethData.status === '1') {
-          balances.ETH = parseFloat(ethData.result) / 1e18;
-        }
-
-        // Fetch ERC20 token balances
-        const tokenRes = await fetch(
-          `https://api.basescan.org/api?module=account&action=tokentx&address=${WALLET}&page=1&offset=100&sort=desc`
-        );
-        const tokenData = await tokenRes.json();
-
-        if (tokenData.status === '1' && tokenData.result) {
-          // Calculate net balances from transfer history
-          const tokenBalances = {};
-          for (const tx of tokenData.result) {
-            const symbol = tx.tokenSymbol;
-            const decimals = parseInt(tx.tokenDecimal);
-            const value = parseFloat(tx.value) / Math.pow(10, decimals);
-
-            if (!tokenBalances[symbol]) tokenBalances[symbol] = 0;
-
-            if (tx.to.toLowerCase() === WALLET.toLowerCase()) {
-              tokenBalances[symbol] += value;
-            } else if (tx.from.toLowerCase() === WALLET.toLowerCase()) {
-              tokenBalances[symbol] -= value;
-            }
-          }
-
-          for (const [symbol, balance] of Object.entries(tokenBalances)) {
-            if (balance > 0.0001) {
-              balances[symbol] = balance;
-            }
-          }
-        }
+        const res = await fetch('https://api.alternative.me/fng/');
+        const data = await res.json();
+        return { value: parseInt(data.data[0].value), label: data.data[0].value_classification };
       } catch (e) {
-        console.error('Wallet balance fetch failed:', e);
+        return { value: 50, label: 'Neutral' };
       }
-
-      return balances;
     }
 
-    // Try to load trade history from local file (works with local server)
     async function fetchTradeHistory() {
       try {
         const res = await fetch('../logs/trades.json');
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch (e) {
-        // File not accessible, use stored data
-      }
-      return tradeData;
+        if (res.ok) return await res.json();
+      } catch (e) {}
+      return { trades: [], totalTrades: 0, successfulTrades: 0, peakValue: INITIAL_VALUE };
     }
 
-    // Update all dashboard elements
-    async function refreshAll() {
-      document.getElementById('refresh-icon').classList.add('pulse');
-      document.getElementById('status').innerHTML = '<span class="text-yellow-400">● Updating...</span>';
+    // ═══════════════════════════════════════════════════════════════
+    // RENDER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════
 
-      try {
-        // Fetch all data in parallel
-        const [fearGreed, prices, balances, trades] = await Promise.all([
-          fetchFearGreed(),
-          fetchMarketData(),
-          fetchWalletBalances(),
-          fetchTradeHistory()
-        ]);
+    function renderPortfolio(totalValue, peakValue) {
+      const pnl = totalValue - INITIAL_VALUE;
+      const pnlPct = (pnl / INITIAL_VALUE) * 100;
+      const drawdown = peakValue > 0 ? ((peakValue - totalValue) / peakValue * 100) : 0;
 
-        marketData = prices;
-        if (trades.trades) tradeData = trades;
+      document.getElementById('portfolio-value').textContent = `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-        // Update Fear & Greed
-        updateFearGreed(fearGreed);
+      const badge = document.getElementById('pnl-badge');
+      const pctEl = document.getElementById('pnl-percent');
+      const sign = pnl >= 0 ? '+' : '';
+      badge.textContent = `${sign}$${Math.abs(pnl).toFixed(2)}`;
+      badge.className = `inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold mono ${pnl >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`;
+      pctEl.textContent = `${sign}${pnlPct.toFixed(1)}% all-time`;
 
-        // Update market prices
-        updateMarketPrices(prices);
-
-        // Update holdings & portfolio value
-        updateHoldings(balances, prices);
-
-        // Update trade history
-        updateTradeHistory(tradeData);
-
-        // Update timestamp
-        document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
-        document.getElementById('status').innerHTML = '<span class="text-green-400">● Live</span>';
-
-      } catch (e) {
-        console.error('Refresh failed:', e);
-        document.getElementById('status').innerHTML = '<span class="text-red-400">● Error</span>';
-      }
-
-      document.getElementById('refresh-icon').classList.remove('pulse');
+      document.getElementById('peak-value').textContent = `$${peakValue.toFixed(2)}`;
+      document.getElementById('drawdown').textContent = `${drawdown.toFixed(1)}% drawdown`;
     }
 
-    function updateFearGreed(fg) {
-      const circle = document.getElementById('fear-greed-circle');
-      const label = document.getElementById('fear-greed-label');
-      const hint = document.getElementById('fear-greed-hint');
+    function renderFearGreed(fg) {
+      document.getElementById('fg-value').textContent = fg.value;
+      document.getElementById('fg-label').textContent = fg.label;
+      document.getElementById('fg-bar').style.width = `${fg.value}%`;
 
-      circle.textContent = fg.value;
-      label.textContent = fg.classification;
-
-      // Color based on value
-      let color, hintText;
-      if (fg.value <= 25) {
-        color = 'border-red-500 text-red-400';
-        hintText = '🟢 Accumulation zone';
-      } else if (fg.value <= 45) {
-        color = 'border-orange-500 text-orange-400';
-        hintText = 'Cautious buying';
-      } else if (fg.value <= 55) {
-        color = 'border-yellow-500 text-yellow-400';
-        hintText = 'Neutral - hold';
-      } else if (fg.value <= 75) {
-        color = 'border-lime-500 text-lime-400';
-        hintText = 'Consider profits';
-      } else {
-        color = 'border-green-500 text-green-400';
-        hintText = '🔴 Take profits!';
-      }
-
-      circle.className = `w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold border-4 ${color}`;
-      hint.textContent = hintText;
+      const valueEl = document.getElementById('fg-value');
+      if (fg.value <= 25) valueEl.className = 'text-2xl font-bold mono text-red-400';
+      else if (fg.value <= 45) valueEl.className = 'text-2xl font-bold mono text-orange-400';
+      else if (fg.value <= 55) valueEl.className = 'text-2xl font-bold mono text-amber-400';
+      else if (fg.value <= 75) valueEl.className = 'text-2xl font-bold mono text-lime-400';
+      else valueEl.className = 'text-2xl font-bold mono text-emerald-400';
     }
 
-    function updateMarketPrices(prices) {
-      // ETH
-      const eth = prices['ethereum'];
-      if (eth) {
-        document.getElementById('eth-price').textContent = `$${eth.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-        const ethChange = document.getElementById('eth-change');
-        ethChange.textContent = `24h: ${eth.change24h >= 0 ? '+' : ''}${eth.change24h.toFixed(1)}%`;
-        ethChange.className = `text-sm ${eth.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`;
-      }
-
-      // BTC
-      const btc = prices['bitcoin'];
-      if (btc) {
-        document.getElementById('btc-price').textContent = `$${btc.price.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
-        const btcChange = document.getElementById('btc-change');
-        btcChange.textContent = `24h: ${btc.change24h >= 0 ? '+' : ''}${btc.change24h.toFixed(1)}%`;
-        btcChange.className = `text-sm ${btc.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`;
-      }
-
-      // Token grid
-      const grid = document.getElementById('token-grid');
-      const tokenSymbols = ['ETH', 'cbBTC', 'AERO', 'BRETT', 'DEGEN', 'WELL'];
-
-      grid.innerHTML = tokenSymbols.map(symbol => {
-        const token = TOKENS[symbol];
-        const data = prices[token?.coingeckoId];
-        if (!data) return '';
-
-        const changeClass = data.change24h >= 0 ? 'text-green-400' : 'text-red-400';
-        const changeSign = data.change24h >= 0 ? '+' : '';
-
-        return `
-          <div class="bg-gray-800/50 rounded-lg p-3">
-            <div class="flex justify-between items-start">
-              <span class="font-medium">${symbol}</span>
-              <span class="${changeClass} text-xs">${changeSign}${data.change24h.toFixed(1)}%</span>
-            </div>
-            <p class="text-lg font-bold mt-1">$${data.price < 1 ? data.price.toFixed(4) : data.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-          </div>
-        `;
-      }).join('');
+    function renderTicker(prices) {
+      const symbols = ['ETH', 'cbBTC', 'AERO', 'BRETT', 'DEGEN', 'WELL', 'VIRTUAL', 'HIGHER', 'TOSHI'];
+      const el = document.getElementById('ticker-items');
+      el.innerHTML = symbols.map(sym => {
+        const t = TOKENS[sym];
+        const p = prices[t?.coingeckoId];
+        if (!p) return '';
+        const color = p.change24h >= 0 ? 'text-emerald-400' : 'text-red-400';
+        const sign = p.change24h >= 0 ? '+' : '';
+        const priceStr = p.price < 0.01 ? p.price.toFixed(6) : p.price < 1 ? p.price.toFixed(4) : p.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return `<div class="flex items-center gap-2 whitespace-nowrap">
+          <span class="text-xs font-semibold text-white">${sym}</span>
+          <span class="text-xs text-slate-400 mono">$${priceStr}</span>
+          <span class="text-xs font-medium ${color} mono">${sign}${p.change24h.toFixed(1)}%</span>
+        </div>`;
+      }).join('<span class="text-slate-800">|</span>');
     }
 
-    function updateHoldings(balances, prices) {
-      const holdingsEl = document.getElementById('holdings');
-      let totalValue = 0;
+    function renderHoldings(balances, prices) {
       const holdings = [];
+      let totalValue = 0;
 
-      // Calculate USD values from Basescan
       for (const [symbol, balance] of Object.entries(balances)) {
-        if (balance < 0.0001) continue;
-
-        let price = 0;
-        let usdValue = 0;
-
-        if (symbol === 'USDC') {
-          price = 1;
-          usdValue = balance;
-        } else {
-          const token = TOKENS[symbol];
-          if (token && prices[token.coingeckoId]) {
-            price = prices[token.coingeckoId].price;
-            usdValue = balance * price;
-          }
-        }
+        const token = TOKENS[symbol];
+        let price = 0, usdValue = 0;
+        if (symbol === 'USDC') { price = 1; usdValue = balance; }
+        else if (token && prices[token.coingeckoId]) { price = prices[token.coingeckoId].price; usdValue = balance * price; }
 
         if (usdValue > 0.01) {
-          holdings.push({ symbol, balance, usdValue, price });
+          holdings.push({ symbol, balance, usdValue, price, sector: token?.sector || 'Other' });
           totalValue += usdValue;
         }
       }
 
-      // Also count WETH as ETH
-      if (balances.WETH && prices['ethereum']) {
-        const wethValue = balances.WETH * prices['ethereum'].price;
-        totalValue += wethValue;
-        const ethHolding = holdings.find(h => h.symbol === 'ETH');
-        if (ethHolding) {
-          ethHolding.balance += balances.WETH;
-          ethHolding.usdValue += wethValue;
-        } else {
-          holdings.push({ symbol: 'ETH (WETH)', balance: balances.WETH, usdValue: wethValue, price: prices['ethereum'].price });
-        }
-      }
-
-      // FALLBACK: If Basescan didn't return data, use trades.json values
-      if (totalValue < 1 && tradeData.currentValue) {
-        totalValue = tradeData.currentValue;
-
-        // Estimate holdings from trade history
-        const estimatedHoldings = {};
-        let remainingUSDC = 300; // You added ~$300 USDC
-
-        // Count successful trades
-        if (tradeData.trades) {
-          for (const trade of tradeData.trades) {
-            if (trade.success && trade.action === 'BUY') {
-              remainingUSDC -= trade.amountUSD;
-              if (!estimatedHoldings[trade.toToken]) {
-                estimatedHoldings[trade.toToken] = 0;
-              }
-              estimatedHoldings[trade.toToken] += trade.amountUSD;
-            }
-          }
-        }
-
-        // Add ETH (original holding)
-        estimatedHoldings['ETH'] = 74; // Original ~$74 in ETH
-
-        // Build holdings display
-        for (const [symbol, value] of Object.entries(estimatedHoldings)) {
-          if (value > 0) {
-            holdings.push({
-              symbol,
-              balance: 0, // Unknown exact balance
-              usdValue: value,
-              price: 0,
-              estimated: true
-            });
-          }
-        }
-
-        // Add remaining USDC
-        if (remainingUSDC > 0) {
-          holdings.push({ symbol: 'USDC', balance: remainingUSDC, usdValue: remainingUSDC, price: 1 });
-        }
-      }
-
-      // Sort by value descending
       holdings.sort((a, b) => b.usdValue - a.usdValue);
 
-      // Update display
+      const el = document.getElementById('holdings-list');
       if (holdings.length === 0) {
-        holdingsEl.innerHTML = '<p class="text-gray-500">Fetching wallet data...</p>';
-      } else {
-        holdingsEl.innerHTML = holdings.map(h => `
-          <div class="flex justify-between items-center">
-            <div>
-              <span class="font-medium">${h.symbol}</span>
-              ${h.estimated ? '<span class="text-yellow-500 text-xs ml-1">~est</span>' : ''}
-              ${!h.estimated && h.balance ? `<span class="text-gray-500 text-sm ml-2">${h.balance < 1 ? h.balance.toFixed(6) : h.balance.toFixed(4)}</span>` : ''}
-            </div>
-            <span class="font-medium ${h.estimated ? 'text-yellow-400' : ''}">$${h.usdValue.toFixed(2)}</span>
-          </div>
-        `).join('');
+        el.innerHTML = '<p class="text-sm text-slate-700">Fetching wallet data...</p>';
+        return { totalValue: 0, holdings: [] };
       }
 
-      // Update portfolio value
-      document.getElementById('portfolio-value').textContent = `$${totalValue.toFixed(2)}`;
+      el.innerHTML = holdings.map(h => {
+        const pct = totalValue > 0 ? (h.usdValue / totalValue * 100) : 0;
+        const sectorColor = SECTOR_COLORS[h.sector] || '#64748b';
+        return `<div class="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
+          <div class="flex items-center gap-3">
+            <div class="w-2 h-2 rounded-full" style="background: ${sectorColor}"></div>
+            <div>
+              <span class="text-sm font-semibold text-white">${h.symbol}</span>
+              <span class="text-xs text-slate-600 ml-2 mono">${h.balance < 0.001 ? h.balance.toFixed(6) : h.balance < 1 ? h.balance.toFixed(4) : h.balance.toFixed(2)}</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="text-sm font-semibold text-white mono">$${h.usdValue.toFixed(2)}</span>
+            <span class="text-xs text-slate-600 ml-2">${pct.toFixed(1)}%</span>
+          </div>
+        </div>`;
+      }).join('');
 
-      // P&L
-      const pnl = totalValue - INITIAL_VALUE;
-      const pnlPercent = (pnl / INITIAL_VALUE) * 100;
-      const changeEl = document.getElementById('portfolio-change');
-      changeEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)`;
-      changeEl.className = `text-sm mt-2 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
-
-      // Peak & drawdown
-      const peak = Math.max(tradeData.peakValue || INITIAL_VALUE, totalValue);
-      document.getElementById('peak-value').textContent = `$${peak.toFixed(2)}`;
-      const drawdown = ((peak - totalValue) / peak) * 100;
-      document.getElementById('drawdown').textContent = `Drawdown: ${drawdown.toFixed(1)}%`;
+      return { totalValue, holdings };
     }
 
-    function updateTradeHistory(data) {
+    function renderSectorChart(holdings, totalValue) {
+      const sectorValues = {};
+      for (const h of holdings) {
+        const s = h.sector || 'Other';
+        sectorValues[s] = (sectorValues[s] || 0) + h.usdValue;
+      }
+
+      const sectors = Object.keys(SECTOR_COLORS);
+      const values = sectors.map(s => sectorValues[s] || 0);
+      const colors = sectors.map(s => SECTOR_COLORS[s]);
+
+      if (sectorChart) {
+        sectorChart.data.datasets[0].data = values;
+        sectorChart.update('none');
+      } else {
+        const ctx = document.getElementById('sectorChart').getContext('2d');
+        sectorChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: sectors,
+            datasets: [{ data: values, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(10, 14, 26, 0.95)', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+                titleFont: { family: 'Inter', weight: '600' }, bodyFont: { family: 'JetBrains Mono' },
+                callbacks: { label: ctx => ` $${ctx.parsed.toFixed(2)}  (${totalValue > 0 ? (ctx.parsed/totalValue*100).toFixed(1) : 0}%)` }
+              }
+            }
+          }
+        });
+      }
+
+      // Legend
+      const legendEl = document.getElementById('sector-legend');
+      legendEl.innerHTML = sectors.filter(s => s !== 'Stablecoin').map(s => {
+        const val = sectorValues[s] || 0;
+        const pct = totalValue > 0 ? (val / totalValue * 100) : 0;
+        const target = (SECTOR_TARGETS[s] || 0) * 100;
+        const drift = pct - target;
+        const driftColor = Math.abs(drift) < 5 ? 'text-emerald-400' : drift > 0 ? 'text-amber-400' : 'text-red-400';
+        const driftIcon = Math.abs(drift) < 5 ? '\u2713' : drift > 0 ? '\u25B2' : '\u25BC';
+        return `<div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded-sm" style="background: ${SECTOR_COLORS[s]}"></div>
+            <span class="text-xs text-slate-400">${s}</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="text-xs mono text-slate-500">${pct.toFixed(0)}% / ${target}%</span>
+            <span class="text-xs mono ${driftColor}">${driftIcon} ${Math.abs(drift).toFixed(0)}%</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderTrades(data) {
       document.getElementById('total-trades').textContent = data.totalTrades || 0;
-      document.getElementById('success-rate').textContent = `${data.successfulTrades || 0}/${data.totalTrades || 0} successful`;
+      document.getElementById('success-rate').textContent = `${data.successfulTrades || 0} successful`;
       document.getElementById('trade-count').textContent = `${data.trades?.length || 0} trades`;
 
-      const historyEl = document.getElementById('trade-history');
-
-      if (data.trades && data.trades.length > 0) {
-        historyEl.innerHTML = data.trades.slice(-15).reverse().map(trade => `
-          <tr class="border-b border-gray-800 hover:bg-gray-800/30">
-            <td class="py-3 text-sm">${new Date(trade.timestamp).toLocaleString()}</td>
-            <td class="py-3">
-              <span class="px-2 py-1 rounded text-xs font-medium ${
-                trade.action === 'BUY' ? 'bg-green-900 text-green-300' :
-                trade.action === 'SELL' ? 'bg-red-900 text-red-300' :
-                'bg-gray-700 text-gray-300'
-              }">${trade.action}</span>
-            </td>
-            <td class="py-3">${trade.fromToken} → ${trade.toToken}</td>
-            <td class="py-3">$${trade.amountUSD?.toFixed(2) || '0.00'}</td>
-            <td class="py-3">
-              ${trade.success ?
-                `<a href="https://basescan.org/tx/${trade.txHash}" target="_blank" class="text-green-400 hover:text-green-300">✓ Success</a>` :
-                '<span class="text-red-400">✗ Failed</span>'}
-            </td>
-            <td class="py-3 text-sm text-gray-400 max-w-xs truncate" title="${trade.reasoning || ''}">${trade.reasoning || '-'}</td>
-          </tr>
-        `).join('');
-      } else {
-        historyEl.innerHTML = `
-          <tr>
-            <td colspan="6" class="py-8 text-center text-gray-500">
-              No trades recorded yet. Waiting for bot activity...
-            </td>
-          </tr>
-        `;
+      const tbody = document.getElementById('trade-body');
+      if (!data.trades || data.trades.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="py-12 text-center text-slate-700 text-sm">Waiting for trade data...</td></tr>';
+        return;
       }
+
+      tbody.innerHTML = data.trades.slice(-20).reverse().map(t => {
+        const actionColors = {
+          BUY: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+          SELL: 'bg-red-500/10 text-red-400 border-red-500/20',
+          HOLD: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+          REBALANCE: 'bg-brand-500/10 text-brand-400 border-brand-500/20'
+        };
+        const cls = actionColors[t.action] || actionColors.HOLD;
+        const time = new Date(t.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        return `<tr class="trade-row border-b border-white/5">
+          <td class="py-3 text-xs text-slate-500 mono">${time}</td>
+          <td class="py-3"><span class="px-2 py-0.5 rounded border text-xs font-semibold ${cls}">${t.action}</span></td>
+          <td class="py-3 text-sm text-white">${t.fromToken || '—'} <span class="text-slate-600">\u2192</span> ${t.toToken || '—'}</td>
+          <td class="py-3 text-sm text-right mono text-white">$${(t.amountUSD || 0).toFixed(2)}</td>
+          <td class="py-3">${t.success
+            ? `<a href="https://basescan.org/tx/${t.txHash}" target="_blank" class="text-xs text-emerald-400 hover:text-emerald-300">\u2713 Confirmed</a>`
+            : '<span class="text-xs text-red-400">\u2717 Failed</span>'
+          }</td>
+          <td class="py-3 text-xs text-slate-600 max-w-[280px] truncate" title="${(t.reasoning || '').replace(/"/g, '&quot;')}">${t.reasoning || '—'}</td>
+        </tr>`;
+      }).join('');
     }
 
-    // Initial load
-    refreshAll();
+    // ═══════════════════════════════════════════════════════════════
+    // MAIN REFRESH
+    // ═══════════════════════════════════════════════════════════════
 
-    // Auto-refresh every 30 seconds
+    async function refreshAll() {
+      const btn = document.getElementById('refresh-btn');
+      btn.classList.add('opacity-50');
+      document.getElementById('status-text').textContent = 'Syncing';
+
+      try {
+        const [fearGreed, prices, balances, trades] = await Promise.allSettled([
+          fetchFearGreed(),
+          fetchMarketData(),
+          fetchOnChainBalances(),
+          fetchTradeHistory()
+        ]);
+
+        const fg = fearGreed.status === 'fulfilled' ? fearGreed.value : { value: 50, label: 'Neutral' };
+        const priceData = prices.status === 'fulfilled' ? prices.value : {};
+        const balanceData = balances.status === 'fulfilled' ? balances.value : {};
+        const tradeData = trades.status === 'fulfilled' ? trades.value : { trades: [], totalTrades: 0, successfulTrades: 0, peakValue: INITIAL_VALUE };
+
+        marketPrices = priceData;
+
+        renderFearGreed(fg);
+        renderTicker(priceData);
+        const { totalValue, holdings } = renderHoldings(balanceData, priceData);
+        const peak = Math.max(tradeData.peakValue || INITIAL_VALUE, totalValue);
+        renderPortfolio(totalValue, peak);
+        renderSectorChart(holdings || [], totalValue);
+        renderTrades(tradeData);
+
+        document.getElementById('last-update').textContent = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        document.getElementById('status-text').textContent = 'Live';
+
+      } catch (e) {
+        console.error('Refresh error:', e);
+        document.getElementById('status-text').textContent = 'Error';
+      }
+
+      btn.classList.remove('opacity-50');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // INIT
+    // ═══════════════════════════════════════════════════════════════
+
+    refreshAll();
     setInterval(refreshAll, 30000);
   </script>
 </body>
