@@ -39,6 +39,42 @@ import { parseUnits, formatUnits, formatEther, type Address } from "viem";
 dotenv.config();
 
 // ============================================================================
+// GLOBAL ERROR HANDLERS — prevent TLS/Axios object dumps from crashing Railway
+// ============================================================================
+process.on('unhandledRejection', (reason: any) => {
+  const msg = reason?.message || reason?.toString?.() || 'Unknown rejection';
+  console.error(`[Unhandled Rejection] ${msg.substring(0, 300)}`);
+});
+
+process.on('uncaughtException', (error: any) => {
+  const msg = error?.message || error?.toString?.() || 'Unknown exception';
+  console.error(`[Uncaught Exception] ${msg.substring(0, 300)}`);
+  // Don't exit — let the bot keep running
+});
+
+// Override console.error to prevent massive object dumps that flood Railway logs
+const _origConsoleError = console.error.bind(console);
+console.error = (...args: any[]) => {
+  const safeArgs = args.map((arg) => {
+    if (typeof arg === 'string') return arg.substring(0, 1000);
+    if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+    if (typeof arg === 'object' && arg !== null) {
+      // Detect TLS/socket objects that crash Railway
+      if ('_tlsOptions' in arg || '_secureContext' in arg || 'authorizationError' in arg || '_closeAfterHandlingError' in arg) {
+        return '[Filtered: TLS/Socket object]';
+      }
+      try {
+        return JSON.stringify(arg).substring(0, 500);
+      } catch {
+        return '[Non-serializable object]';
+      }
+    }
+    return String(arg);
+  });
+  _origConsoleError(...safeArgs);
+};
+
+// ============================================================================
 // EXPANDED TOKEN UNIVERSE - V3.1
 // ============================================================================
 
