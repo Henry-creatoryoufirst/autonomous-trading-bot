@@ -1105,7 +1105,7 @@ async function main() {
       const SMART_ACCOUNT_OLD = "0x55509AA76E2769eCCa5B4293359e3001dA16dd0F";
       console.log(`[RECOVERY] Looking up smart account for owner ${account.address.slice(0, 10)}...`);
 
-      const smartAccount = await cdpClient.evm.getOrCreateSmartAccount({ owner: account });
+      const smartAccount = await cdpClient.evm.getOrCreateSmartAccount({ name: "henry-trading-bot", owner: account });
       console.log(`[RECOVERY] Smart Account resolved: ${smartAccount.address}`);
       console.log(`[RECOVERY] Expected old wallet: ${SMART_ACCOUNT_OLD}`);
       console.log(`[RECOVERY] Match: ${smartAccount.address.toLowerCase() === SMART_ACCOUNT_OLD.toLowerCase()}`);
