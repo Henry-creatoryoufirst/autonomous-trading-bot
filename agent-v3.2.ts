@@ -1097,6 +1097,128 @@ async function main() {
       console.log(`     Trades execute from CDP account. Balance reading uses WALLET_ADDRESS.`);
       console.log(`     To align: update WALLET_ADDRESS=${account.address} in Railway vars.`);
     }
+    // ====================================================================
+    // ONE-TIME FUND RECOVERY: Transfer from Smart Account to EOA Account
+    // Smart Account 0x5550... was created by old terminal bot, funds are stuck there.
+    // This runs ONCE — if smart account has tokens, batch-transfer them to the EOA.
+    // ====================================================================
+    try {
+      const SMART_ACCOUNT_OLD = "0x55509AA76E2769eCCa5B4293359e3001dA16dd0F";
+      console.log(`\n  🔄 Checking smart account ${SMART_ACCOUNT_OLD.slice(0, 10)}... for recoverable funds...`);
+
+      const smartAccount = await cdpClient.evm.getOrCreateSmartAccount({ owner: account });
+      console.log(`  Smart Account address: ${smartAccount.address}`);
+
+      if (smartAccount.address.toLowerCase() === SMART_ACCOUNT_OLD.toLowerCase()) {
+        console.log(`  ✅ Smart account matches — checking balances...`);
+
+        // Check ETH balance on smart account via RPC
+        const ethBalResp = await fetch("https://mainnet.base.org", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [SMART_ACCOUNT_OLD, "latest"] }),
+        });
+        const ethBalJson = await ethBalResp.json();
+        const ethBalance = BigInt(ethBalJson.result || "0x0");
+        const ethFormatted = Number(ethBalance) / 1e18;
+        console.log(`  ETH balance: ${ethFormatted} ETH`);
+
+        // Check a few key ERC-20 tokens
+        const tokensToRecover = [
+          { symbol: "USDC", address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", decimals: 6 },
+          { symbol: "WETH", address: "0x4200000000000000000000000000000000000006", decimals: 18 },
+          { symbol: "cbETH", address: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22", decimals: 18 },
+          { symbol: "AERO", address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631", decimals: 18 },
+          { symbol: "DEGEN", address: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed", decimals: 18 },
+          { symbol: "BRETT", address: "0x532f27101965dd16442E59d40670FaF5eBB142E4", decimals: 18 },
+          { symbol: "VIRTUAL", address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b", decimals: 18 },
+          { symbol: "GAME", address: "0x1C4CcA7C5DB003824208aDDA61Bd749e55F463a3", decimals: 18 },
+          { symbol: "AIXBT", address: "0x4F9Fd6Be4a90f2620B83C0cB7334D5F950A25B22", decimals: 18 },
+          { symbol: "MORPHO", address: "0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262988d8", decimals: 18 },
+          { symbol: "AAVE", address: "0xCfA3Ef56d303AE4fAabA0592388F19d7C3399FB4", decimals: 18 },
+        ];
+
+        const tokensWithBalance: { symbol: string; address: string; decimals: number; balance: bigint }[] = [];
+        for (const token of tokensToRecover) {
+          try {
+            const data = "0x70a08231" + SMART_ACCOUNT_OLD.slice(2).padStart(64, "0");
+            const resp = await fetch("https://mainnet.base.org", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: token.address, data }, "latest"] }),
+            });
+            const json = await resp.json();
+            if (json.result && json.result !== "0x" && json.result !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+              const balance = BigInt(json.result);
+              if (balance > 0n) {
+                tokensWithBalance.push({ ...token, balance });
+                console.log(`  ${token.symbol}: ${Number(balance) / Math.pow(10, token.decimals)}`);
+              }
+            }
+          } catch { /* skip failed balance checks */ }
+        }
+
+        // Build batch transfer calls if there's anything to recover
+        if (tokensWithBalance.length > 0 || ethBalance > BigInt("5000000000000000")) { // > 0.005 ETH
+          console.log(`\n  💰 Found recoverable funds! Building batch transfer...`);
+          const destination = CONFIG.walletAddress; // The EOA account (0xB7c5...)
+          const calls: { to: string; value: bigint; data: string }[] = [];
+
+          // ERC-20 transfers (encoded transfer(address,uint256))
+          for (const token of tokensWithBalance) {
+            const transferSelector = "0xa9059cbb"; // transfer(address,uint256)
+            const paddedAddr = destination.slice(2).padStart(64, "0");
+            const paddedAmt = token.balance.toString(16).padStart(64, "0");
+            calls.push({
+              to: token.address,
+              value: 0n,
+              data: transferSelector + paddedAddr + paddedAmt,
+            });
+            console.log(`  → Transfer ${Number(token.balance) / Math.pow(10, token.decimals)} ${token.symbol}`);
+          }
+
+          // ETH transfer (leave 0.005 for gas)
+          const gasReserve = BigInt("5000000000000000"); // 0.005 ETH
+          if (ethBalance > gasReserve) {
+            const ethToSend = ethBalance - gasReserve;
+            calls.push({ to: destination, value: ethToSend, data: "0x" });
+            console.log(`  → Transfer ${Number(ethToSend) / 1e18} ETH (keeping 0.005 for gas)`);
+          }
+
+          if (calls.length > 0) {
+            console.log(`\n  📤 Sending ${calls.length} operations via UserOperation...`);
+            const result = await cdpClient.evm.sendUserOperation({
+              smartAccount,
+              network: "base",
+              calls,
+            });
+            console.log(`  UserOp submitted! Hash: ${result.userOpHash}`);
+            console.log(`  Status: ${result.status}`);
+
+            // Wait for confirmation
+            console.log(`  ⏳ Waiting for confirmation...`);
+            const confirmed = await cdpClient.evm.waitForUserOperation({
+              smartAccountAddress: smartAccount.address,
+              userOpHash: result.userOpHash,
+            });
+
+            if (confirmed.status === "complete") {
+              console.log(`  ✅ FUND RECOVERY COMPLETE! Tx: https://basescan.org/tx/${confirmed.transactionHash}`);
+            } else {
+              console.log(`  ⚠️ UserOp status: ${confirmed.status}. May need manual recovery.`);
+            }
+          }
+        } else {
+          console.log(`  No significant funds to recover from smart account.`);
+        }
+      } else {
+        console.log(`  Smart account ${smartAccount.address} doesn't match old wallet. Skipping recovery.`);
+      }
+    } catch (recoveryError: any) {
+      console.error(`  ⚠️ Fund recovery attempt failed: ${recoveryError.message}`);
+      console.error(`  This is non-critical — bot will continue normally.`);
+    }
+
   } catch (error: any) {
     console.error(`\n❌ CDP initialization FAILED: ${error.message}`);
     if (error.stack) console.error(`   Stack: ${error.stack.split('\n').slice(0, 3).join('\n   ')}`);
