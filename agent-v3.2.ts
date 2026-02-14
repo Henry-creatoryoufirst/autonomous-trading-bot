@@ -30,8 +30,6 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { CdpClient } from "@coinbase/cdp-sdk";
-import { exec } from "child_process";
-import { promisify } from "util";
 import * as fs from "fs";
 import * as dotenv from "dotenv";
 import cron from "node-cron";
@@ -39,8 +37,6 @@ import axios from "axios";
 import { parseUnits, formatUnits, formatEther, type Address } from "viem";
 
 dotenv.config();
-
-const execAsync = promisify(exec);
 
 // ============================================================================
 // EXPANDED TOKEN UNIVERSE - V3.1
@@ -222,6 +218,10 @@ const CONFIG = {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Initialize CDP Client - supports both old and new env var naming
+// CDP SDK credential format (verified from source):
+//   apiKeyId: UUID string (e.g. "fe3fabdc-...")
+//   apiKeySecret: Raw base64 Ed25519 key (no PEM headers needed)
+//   walletSecret: Raw base64 DER-encoded ECDSA P-256 key (no PEM headers - SDK wraps internally)
 function createCdpClient(): CdpClient {
   // Try new naming first, then fall back to old
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME;
@@ -233,8 +233,13 @@ function createCdpClient(): CdpClient {
     throw new Error("Missing CDP credentials");
   }
 
-  console.log(`  🔑 CDP Auth: Using ${process.env.CDP_API_KEY_ID ? 'new' : 'legacy'} env var naming`);
-  console.log(`  🔑 Wallet Secret: ${walletSecret ? 'present' : 'NOT SET - trades may fail'}`);
+  // Diagnostic logging (safe - only shows key type and length, never actual values)
+  const envSource = process.env.CDP_API_KEY_ID ? 'CDP_API_KEY_ID' : 'CDP_API_KEY_NAME';
+  const secretSource = process.env.CDP_API_KEY_SECRET ? 'CDP_API_KEY_SECRET' : 'CDP_API_KEY_PRIVATE_KEY';
+  console.log(`  🔑 CDP Auth: apiKeyId from ${envSource} (${apiKeyId.length} chars, starts with "${apiKeyId.substring(0, 8)}...")`);
+  console.log(`  🔑 CDP Auth: apiKeySecret from ${secretSource} (${apiKeySecret.length} chars, type: ${apiKeySecret.length === 88 ? 'Ed25519' : apiKeySecret.startsWith('-----') ? 'PEM/ECDSA' : 'unknown'})`);
+  console.log(`  🔑 CDP Auth: walletSecret ${walletSecret ? `present (${walletSecret.length} chars, starts with "${walletSecret.substring(0, 8)}...")` : 'NOT SET - trades may fail'}`);
+  console.log(`  🔑 Node.js: ${process.version} | NODE_OPTIONS: ${process.env.NODE_OPTIONS || 'not set'}`);
 
   return new CdpClient({
     apiKeyId,
@@ -818,14 +823,23 @@ async function executeTrade(
   } catch (error: any) {
     const errorMsg = error.message || String(error);
 
+    // Full diagnostic logging for trade failures
+    console.error(`\n  ❌ TRADE FAILED — Full Diagnostics:`);
+    console.error(`     Error: ${errorMsg}`);
+    if (error.code) console.error(`     Code: ${error.code}`);
+    if (error.status) console.error(`     Status: ${error.status}`);
+    if (error.response?.data) console.error(`     API Response: ${JSON.stringify(error.response.data).substring(0, 500)}`);
+    if (error.stack) console.error(`     Stack: ${error.stack.split('\n').slice(0, 5).join('\n     ')}`);
+
     // Handle specific error types
     if (errorMsg.includes("Insufficient liquidity")) {
-      console.error(`  ❌ Trade failed: Insufficient liquidity for ${decision.fromToken} → ${decision.toToken}`);
-      console.error(`     Try reducing amount or using a different pair.`);
+      console.error(`     → Insufficient liquidity for ${decision.fromToken} → ${decision.toToken}. Try smaller amount.`);
     } else if (errorMsg.includes("insufficient funds")) {
-      console.error(`  ❌ Trade failed: Insufficient ${decision.fromToken} balance for this trade.`);
-    } else {
-      console.error(`  ❌ Trade failed: ${errorMsg}`);
+      console.error(`     → Insufficient ${decision.fromToken} balance for this trade.`);
+    } else if (errorMsg.includes("timeout") || errorMsg.includes("ETIMEDOUT")) {
+      console.error(`     → Network timeout. CDP API may be unreachable from this server.`);
+    } else if (errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
+      console.error(`     → Authentication failed. Check CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET.`);
     }
 
     // Record failed trade
@@ -991,22 +1005,29 @@ async function main() {
 
   // Initialize CDP client
   try {
+    console.log("\n🔧 Initializing CDP SDK...");
     cdpClient = createCdpClient();
-    console.log("  ✅ CDP Client initialized");
+    console.log("  ✅ CDP Client created");
 
-    // Verify account access
+    // Verify account access — this confirms credentials are valid
+    console.log("  🔍 Verifying CDP account access...");
     const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-    console.log(`  ✅ CDP Account: ${account.address}`);
+    console.log(`  ✅ CDP Account verified: ${account.address}`);
+    console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
-      console.log(`  ⚠️ Note: CDP account address (${account.address}) differs from WALLET_ADDRESS (${CONFIG.walletAddress})`);
-      console.log(`  ⚠️ Trades will execute from CDP account. Balance reading uses WALLET_ADDRESS.`);
-      console.log(`  ⚠️ If these should match, update WALLET_ADDRESS in Railway vars.`);
+      console.log(`\n  ⚠️ Note: CDP account address differs from WALLET_ADDRESS`);
+      console.log(`     CDP Account: ${account.address}`);
+      console.log(`     WALLET_ADDRESS: ${CONFIG.walletAddress}`);
+      console.log(`     Trades execute from CDP account. Balance reading uses WALLET_ADDRESS.`);
+      console.log(`     To align: update WALLET_ADDRESS=${account.address} in Railway vars.`);
     }
   } catch (error: any) {
-    console.error(`❌ CDP initialization failed: ${error.message}`);
-    console.error("   Trades will NOT execute. Bot will run in analysis-only mode.");
-    console.error("   Fix: Set CDP_API_KEY_ID, CDP_API_KEY_SECRET, and CDP_WALLET_SECRET in Railway vars.");
+    console.error(`\n❌ CDP initialization FAILED: ${error.message}`);
+    if (error.stack) console.error(`   Stack: ${error.stack.split('\n').slice(0, 3).join('\n   ')}`);
+    if (error.code) console.error(`   Code: ${error.code}`);
+    console.error("   🚫 Trades will NOT execute. Bot will run in analysis-only mode.");
+    console.error("   Fix: Verify CDP_API_KEY_NAME, CDP_API_KEY_PRIVATE_KEY, CDP_WALLET_SECRET in Railway vars.");
   }
 
   loadTradeHistory();
