@@ -1109,6 +1109,52 @@ async function main() {
       console.log(`[RECOVERY] Destination EOA: ${destination}`);
       console.log(`[RECOVERY] Owner (signer): ${account.address}`);
 
+      // Check if owner EOA actually owns the smart account on-chain
+      // isOwnerAddress(address) selector = first 4 bytes of keccak256("isOwnerAddress(address)")
+      const isOwnerSelector = "0xfec483a0";
+      const paddedOwner = account.address.slice(2).padStart(64, "0");
+      const isOwnerResp = await fetch("https://mainnet.base.org", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: SMART_ACCOUNT_OLD, data: isOwnerSelector + paddedOwner }, "latest"] }),
+      });
+      const isOwnerJson = await isOwnerResp.json();
+      const isOwner = isOwnerJson.result && isOwnerJson.result !== "0x" && isOwnerJson.result !== "0x0000000000000000000000000000000000000000000000000000000000000000";
+      console.log(`[RECOVERY] isOwnerAddress(${account.address.slice(0, 10)}...): ${isOwner} (raw: ${isOwnerJson.result?.slice(0, 20)})`);
+      await new Promise(r => setTimeout(r, 200));
+
+      // Check ETH balance on owner EOA (needed for gas)
+      const ownerEthResp = await fetch("https://mainnet.base.org", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [account.address, "latest"] }),
+      });
+      const ownerEthJson = await ownerEthResp.json();
+      const ownerEthBalance = BigInt(ownerEthJson.result || "0x0");
+      console.log(`[RECOVERY] Owner EOA ETH balance: ${Number(ownerEthBalance) / 1e18} ETH`);
+      await new Promise(r => setTimeout(r, 200));
+
+      // Also check ownerAtIndex(0) to see who the actual first owner is
+      // ownerAtIndex(uint256) — need to compute selector
+      // keccak256("ownerAtIndex(uint256)") = let's use the known selector
+      const ownerAtIndexResp = await fetch("https://mainnet.base.org", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: SMART_ACCOUNT_OLD, data: "0xb6bcad26" + "0".padStart(64, "0") }, "latest"] }),
+      });
+      const ownerAtIndexJson = await ownerAtIndexResp.json();
+      console.log(`[RECOVERY] ownerAtIndex(0) raw: ${ownerAtIndexJson.result?.slice(0, 130) || "null"}`);
+      await new Promise(r => setTimeout(r, 200));
+
+      if (!isOwner) {
+        console.log("[RECOVERY] OWNER MISMATCH: This EOA is NOT an owner of the smart account. Cannot execute recovery.");
+        console.log("[RECOVERY] The smart account was likely created by a different CDP project/key.");
+        console.log("[RECOVERY] === FUND RECOVERY CHECK DONE ===\n");
+        // Skip recovery — can't proceed without ownership
+      } else {
+        console.log("[RECOVERY] Owner confirmed on-chain! Proceeding with recovery...");
+      }
+
       // Check ETH balance via RPC
       const ethBalResp = await fetch("https://mainnet.base.org", {
         method: "POST",
@@ -1161,7 +1207,9 @@ async function main() {
       console.log(`[RECOVERY] Found ${tokensWithBalance.length} tokens with balances`);
 
       // Build batch calls for executeBatch on the CoinbaseSmartWallet
-      if (tokensWithBalance.length > 0 || ethBalance > BigInt("5000000000000000")) {
+      if (!isOwner) {
+        console.log("[RECOVERY] Skipping transfer — not owner. See diagnostics above.");
+      } else if (tokensWithBalance.length > 0 || ethBalance > BigInt("5000000000000000")) {
         console.log("[RECOVERY] Building executeBatch call from owner EOA...");
 
         // Build the inner calls array for the smart wallet's executeBatch
