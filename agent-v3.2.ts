@@ -1,7 +1,16 @@
 /**
- * Henry's Autonomous Trading Agent v3.3
+ * Henry's Autonomous Trading Agent v3.4
  *
- * MAJOR UPGRADE: Live Trade Execution via Coinbase CDP SDK + Permit2 Approvals
+ * MAJOR UPGRADE: Technical Indicators Engine + Advanced AI Trading Strategy
+ *
+ * CHANGES IN V3.4:
+ * - Technical Indicators Engine: RSI(14), MACD(12/26/9), Bollinger Bands(20,2), SMA(20/50)
+ * - Confluence scoring system: -100 to +100 aggregated signal strength
+ * - CoinGecko historical price data with 2-hour caching (free tier optimized)
+ * - AI prompt v3.4 with indicator-driven entry/exit/risk rules
+ * - Trade history memory: last 10 trades fed to AI for learning across cycles
+ * - Trend direction detection from price action + moving averages
+ * - Volume analysis: 24h volume vs 7-day average comparison
  *
  * CHANGES IN V3.3:
  * - Added Permit2 ERC-20 approval before swaps (fixes insufficient allowance error)
@@ -243,7 +252,7 @@ const CONFIG = {
   activeTokens: Object.keys(TOKEN_REGISTRY).filter(t => t !== "USDC"),
 
   // Logging
-  logFile: "./logs/trades-v3.3.json",
+  logFile: "./logs/trades-v3.4.json",
 };
 
 // ============================================================================
@@ -392,7 +401,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "3.3.1",
+      version: "3.4",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -420,6 +429,7 @@ interface MarketData {
   }[];
   fearGreed: { value: number; classification: string };
   trendingTokens: string[];
+  indicators: Record<string, TechnicalIndicators>;  // Technical indicators per token
 }
 
 async function getMarketData(): Promise<MarketData> {
@@ -459,14 +469,527 @@ async function getMarketData(): Promise<MarketData> {
       .slice(0, 5)
       .map((t: any) => t.symbol);
 
-    return { tokens, fearGreed, trendingTokens };
+    // Fetch technical indicators for all tokens
+    console.log("📐 Computing technical indicators (RSI, MACD, Bollinger)...");
+    const indicators = await getTokenIndicators(tokens);
+    const indicatorCount = Object.values(indicators).filter(i => i.rsi14 !== null).length;
+    console.log(`   ✅ Indicators computed for ${indicatorCount}/${Object.keys(indicators).length} tokens`);
+
+    return { tokens, fearGreed, trendingTokens, indicators };
   } catch (error: any) {
     const msg = error?.response?.status
       ? `HTTP ${error.response.status}: ${error.message}`
       : error?.message || String(error);
     console.error("Failed to fetch market data:", msg);
-    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [] };
+    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {} };
   }
+}
+
+// ============================================================================
+// TECHNICAL INDICATORS ENGINE (Phase 1 Upgrade)
+// ============================================================================
+
+interface TechnicalIndicators {
+  rsi14: number | null;          // Relative Strength Index (14-period)
+  macd: {                        // Moving Average Convergence Divergence
+    macdLine: number;
+    signalLine: number;
+    histogram: number;
+    signal: "BULLISH" | "BEARISH" | "NEUTRAL";
+  } | null;
+  bollingerBands: {              // Bollinger Bands (20-period, 2 std dev)
+    upper: number;
+    middle: number;
+    lower: number;
+    percentB: number;            // 0-1 where price sits in bands (>1 = above upper, <0 = below lower)
+    bandwidth: number;           // Band width as % of middle (volatility measure)
+    signal: "OVERBOUGHT" | "OVERSOLD" | "SQUEEZE" | "NORMAL";
+  } | null;
+  sma20: number | null;         // 20-period Simple Moving Average
+  sma50: number | null;         // 50-period Simple Moving Average (if enough data)
+  volumeChange24h: number | null; // Volume change vs 7-day average
+  trendDirection: "STRONG_UP" | "UP" | "SIDEWAYS" | "DOWN" | "STRONG_DOWN";
+  overallSignal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
+  confluenceScore: number;       // -100 to +100, aggregated signal strength
+}
+
+interface TokenWithIndicators {
+  symbol: string;
+  name: string;
+  price: number;
+  priceChange24h: number;
+  priceChange7d: number;
+  volume24h: number;
+  marketCap: number;
+  sector: string;
+  indicators: TechnicalIndicators;
+}
+
+// Cache for historical price data — refreshed every 2 hours
+const priceHistoryCache: Record<string, {
+  prices: number[];        // Hourly close prices (most recent last)
+  volumes: number[];       // Hourly volumes
+  timestamps: number[];    // Unix timestamps
+  lastFetched: number;     // Unix ms when last refreshed
+}> = {};
+
+const HISTORY_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours in ms
+
+/**
+ * Fetch hourly price history for a token from CoinGecko (30 days = hourly auto-granularity)
+ */
+async function fetchPriceHistory(coingeckoId: string): Promise<{ prices: number[]; volumes: number[]; timestamps: number[] }> {
+  try {
+    const response = await axios.get(
+      `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=30`,
+      { timeout: 15000 }
+    );
+
+    const prices = response.data.prices.map((p: [number, number]) => p[1]);
+    const volumes = response.data.total_volumes.map((v: [number, number]) => v[1]);
+    const timestamps = response.data.prices.map((p: [number, number]) => p[0]);
+
+    return { prices, volumes, timestamps };
+  } catch (error: any) {
+    const msg = error?.response?.status === 429 ? "Rate limited (429)" : error?.message || String(error);
+    console.error(`  ⚠️ Price history fetch failed for ${coingeckoId}: ${msg}`);
+    return { prices: [], volumes: [], timestamps: [] };
+  }
+}
+
+/**
+ * Get cached price history, refreshing if stale
+ */
+async function getCachedPriceHistory(coingeckoId: string): Promise<{ prices: number[]; volumes: number[]; timestamps: number[] }> {
+  const cached = priceHistoryCache[coingeckoId];
+  const now = Date.now();
+
+  if (cached && (now - cached.lastFetched) < HISTORY_CACHE_TTL && cached.prices.length > 0) {
+    return cached;
+  }
+
+  const data = await fetchPriceHistory(coingeckoId);
+  if (data.prices.length > 0) {
+    priceHistoryCache[coingeckoId] = { ...data, lastFetched: now };
+  }
+  return data;
+}
+
+/**
+ * Calculate RSI (Relative Strength Index) — 14-period
+ * RSI = 100 - (100 / (1 + RS))
+ * RS = Average Gain / Average Loss over N periods
+ */
+function calculateRSI(prices: number[], period: number = 14): number | null {
+  if (prices.length < period + 1) return null;
+
+  const changes: number[] = [];
+  for (let i = 1; i < prices.length; i++) {
+    changes.push(prices[i] - prices[i - 1]);
+  }
+
+  // Use the last (period + extra) changes for smoothed calculation
+  const recentChanges = changes.slice(-Math.min(changes.length, period * 3));
+
+  // Initial average gain/loss (first N periods)
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period && i < recentChanges.length; i++) {
+    if (recentChanges[i] > 0) avgGain += recentChanges[i];
+    else avgLoss += Math.abs(recentChanges[i]);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  // Smoothed RSI using Wilder's smoothing
+  for (let i = period; i < recentChanges.length; i++) {
+    const change = recentChanges[i];
+    avgGain = (avgGain * (period - 1) + (change > 0 ? change : 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + (change < 0 ? Math.abs(change) : 0)) / period;
+  }
+
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+/**
+ * Calculate EMA (Exponential Moving Average)
+ */
+function calculateEMA(prices: number[], period: number): number[] {
+  if (prices.length < period) return [];
+
+  const multiplier = 2 / (period + 1);
+  const ema: number[] = [];
+
+  // Start with SMA for the first value
+  let sum = 0;
+  for (let i = 0; i < period; i++) sum += prices[i];
+  ema.push(sum / period);
+
+  // Calculate EMA for remaining values
+  for (let i = period; i < prices.length; i++) {
+    ema.push((prices[i] - ema[ema.length - 1]) * multiplier + ema[ema.length - 1]);
+  }
+
+  return ema;
+}
+
+/**
+ * Calculate MACD (Moving Average Convergence Divergence)
+ * MACD Line = EMA(12) - EMA(26)
+ * Signal Line = EMA(9) of MACD Line
+ * Histogram = MACD Line - Signal Line
+ */
+function calculateMACD(prices: number[]): { macdLine: number; signalLine: number; histogram: number; signal: "BULLISH" | "BEARISH" | "NEUTRAL" } | null {
+  if (prices.length < 35) return null; // Need at least 26 + 9 periods
+
+  const ema12 = calculateEMA(prices, 12);
+  const ema26 = calculateEMA(prices, 26);
+
+  if (ema12.length === 0 || ema26.length === 0) return null;
+
+  // Align the arrays — EMA26 starts later, so MACD starts at EMA26's start
+  const offset = 26 - 12; // EMA12 has 14 more values at the front
+  const macdValues: number[] = [];
+  for (let i = 0; i < ema26.length; i++) {
+    macdValues.push(ema12[i + offset] - ema26[i]);
+  }
+
+  if (macdValues.length < 9) return null;
+
+  const signalLine = calculateEMA(macdValues, 9);
+  if (signalLine.length === 0) return null;
+
+  const macdLine = macdValues[macdValues.length - 1];
+  const signal = signalLine[signalLine.length - 1];
+  const histogram = macdLine - signal;
+
+  // Determine signal
+  let macdSignal: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
+  const prevHistogram = macdValues.length >= 2 && signalLine.length >= 2
+    ? macdValues[macdValues.length - 2] - signalLine[signalLine.length - 2]
+    : 0;
+
+  if (histogram > 0 && prevHistogram <= 0) macdSignal = "BULLISH"; // Crossover
+  else if (histogram < 0 && prevHistogram >= 0) macdSignal = "BEARISH"; // Crossunder
+  else if (histogram > 0) macdSignal = "BULLISH";
+  else if (histogram < 0) macdSignal = "BEARISH";
+
+  return { macdLine, signalLine: signal, histogram, signal: macdSignal };
+}
+
+/**
+ * Calculate Bollinger Bands (20-period, 2 standard deviations)
+ */
+function calculateBollingerBands(prices: number[], period: number = 20, stdDevMultiplier: number = 2): TechnicalIndicators["bollingerBands"] {
+  if (prices.length < period) return null;
+
+  const recentPrices = prices.slice(-period);
+
+  // Simple Moving Average
+  const sma = recentPrices.reduce((sum, p) => sum + p, 0) / period;
+
+  // Standard Deviation
+  const squaredDiffs = recentPrices.map(p => Math.pow(p - sma, 2));
+  const variance = squaredDiffs.reduce((sum, d) => sum + d, 0) / period;
+  const stdDev = Math.sqrt(variance);
+
+  const upper = sma + stdDevMultiplier * stdDev;
+  const lower = sma - stdDevMultiplier * stdDev;
+  const currentPrice = prices[prices.length - 1];
+
+  // %B = (Price - Lower) / (Upper - Lower)
+  const percentB = upper !== lower ? (currentPrice - lower) / (upper - lower) : 0.5;
+
+  // Bandwidth = (Upper - Lower) / Middle * 100
+  const bandwidth = sma !== 0 ? ((upper - lower) / sma) * 100 : 0;
+
+  // Signal
+  let signal: "OVERBOUGHT" | "OVERSOLD" | "SQUEEZE" | "NORMAL" = "NORMAL";
+  if (percentB > 1) signal = "OVERBOUGHT";
+  else if (percentB < 0) signal = "OVERSOLD";
+  else if (bandwidth < 2) signal = "SQUEEZE"; // Tight bands = incoming move
+
+  return { upper, middle: sma, lower, percentB, bandwidth, signal };
+}
+
+/**
+ * Calculate Simple Moving Average
+ */
+function calculateSMA(prices: number[], period: number): number | null {
+  if (prices.length < period) return null;
+  const recentPrices = prices.slice(-period);
+  return recentPrices.reduce((sum, p) => sum + p, 0) / period;
+}
+
+/**
+ * Determine trend direction from price action and moving averages
+ */
+function determineTrend(prices: number[], sma20: number | null, sma50: number | null): TechnicalIndicators["trendDirection"] {
+  if (prices.length < 5) return "SIDEWAYS";
+
+  const currentPrice = prices[prices.length - 1];
+  const priceWeekAgo = prices[Math.max(0, prices.length - 168)]; // ~7 days of hourly data
+  const priceDayAgo = prices[Math.max(0, prices.length - 24)];
+
+  const weeklyChange = ((currentPrice - priceWeekAgo) / priceWeekAgo) * 100;
+  const dailyChange = ((currentPrice - priceDayAgo) / priceDayAgo) * 100;
+
+  // Check moving average alignment
+  const aboveSMA20 = sma20 ? currentPrice > sma20 : null;
+  const aboveSMA50 = sma50 ? currentPrice > sma50 : null;
+
+  if (weeklyChange > 10 && dailyChange > 3 && aboveSMA20 !== false) return "STRONG_UP";
+  if (weeklyChange > 3 && dailyChange > 0 && aboveSMA20 !== false) return "UP";
+  if (weeklyChange < -10 && dailyChange < -3 && aboveSMA20 !== true) return "STRONG_DOWN";
+  if (weeklyChange < -3 && dailyChange < 0 && aboveSMA20 !== true) return "DOWN";
+  return "SIDEWAYS";
+}
+
+/**
+ * Calculate overall signal from confluence of indicators
+ * Returns a score from -100 (strong sell) to +100 (strong buy)
+ */
+function calculateConfluence(
+  rsi: number | null,
+  macd: TechnicalIndicators["macd"],
+  bb: TechnicalIndicators["bollingerBands"],
+  trend: TechnicalIndicators["trendDirection"],
+  priceChange24h: number,
+  priceChange7d: number
+): { score: number; signal: TechnicalIndicators["overallSignal"] } {
+  let score = 0;
+  let signals = 0;
+
+  // RSI (weight: 25)
+  if (rsi !== null) {
+    signals++;
+    if (rsi < 30) score += 25;       // Oversold — buy signal
+    else if (rsi < 40) score += 12;
+    else if (rsi > 70) score -= 25;  // Overbought — sell signal
+    else if (rsi > 60) score -= 12;
+    // 40-60 = neutral
+  }
+
+  // MACD (weight: 25)
+  if (macd) {
+    signals++;
+    if (macd.signal === "BULLISH") score += 25;
+    else if (macd.signal === "BEARISH") score -= 25;
+    // Histogram magnitude adds conviction
+    if (Math.abs(macd.histogram) > Math.abs(macd.macdLine) * 0.3) {
+      score += macd.histogram > 0 ? 5 : -5;
+    }
+  }
+
+  // Bollinger Bands (weight: 20)
+  if (bb) {
+    signals++;
+    if (bb.signal === "OVERSOLD") score += 20;
+    else if (bb.signal === "OVERBOUGHT") score -= 20;
+    else if (bb.signal === "SQUEEZE") score += 5; // Squeeze slightly bullish (potential breakout)
+    // %B nuance
+    if (bb.percentB > 0.8 && bb.percentB <= 1) score -= 5;
+    else if (bb.percentB < 0.2 && bb.percentB >= 0) score += 5;
+  }
+
+  // Trend (weight: 15)
+  signals++;
+  switch (trend) {
+    case "STRONG_UP": score += 15; break;
+    case "UP": score += 8; break;
+    case "STRONG_DOWN": score -= 15; break;
+    case "DOWN": score -= 8; break;
+    default: break; // SIDEWAYS = 0
+  }
+
+  // Price momentum (weight: 15)
+  signals++;
+  if (priceChange24h > 5) score += 8;
+  else if (priceChange24h > 2) score += 4;
+  else if (priceChange24h < -5) score -= 8;
+  else if (priceChange24h < -2) score -= 4;
+
+  if (priceChange7d > 10) score += 7;
+  else if (priceChange7d > 3) score += 3;
+  else if (priceChange7d < -10) score -= 7;
+  else if (priceChange7d < -3) score -= 3;
+
+  // Normalize to -100 to +100
+  const normalizedScore = Math.max(-100, Math.min(100, score));
+
+  // Determine signal
+  let signal: TechnicalIndicators["overallSignal"];
+  if (normalizedScore >= 40) signal = "STRONG_BUY";
+  else if (normalizedScore >= 15) signal = "BUY";
+  else if (normalizedScore <= -40) signal = "STRONG_SELL";
+  else if (normalizedScore <= -15) signal = "SELL";
+  else signal = "NEUTRAL";
+
+  return { score: normalizedScore, signal };
+}
+
+/**
+ * Compute all technical indicators for a single token
+ */
+async function computeIndicators(
+  coingeckoId: string,
+  currentPrice: number,
+  priceChange24h: number,
+  priceChange7d: number,
+  volume24h: number
+): Promise<TechnicalIndicators> {
+  const history = await getCachedPriceHistory(coingeckoId);
+
+  if (history.prices.length < 20) {
+    // Not enough data — return neutral indicators
+    return {
+      rsi14: null, macd: null, bollingerBands: null,
+      sma20: null, sma50: null, volumeChange24h: null,
+      trendDirection: "SIDEWAYS", overallSignal: "NEUTRAL", confluenceScore: 0,
+    };
+  }
+
+  const prices = history.prices;
+
+  const rsi14 = calculateRSI(prices, 14);
+  const macd = calculateMACD(prices);
+  const bollingerBands = calculateBollingerBands(prices, 20, 2);
+  const sma20 = calculateSMA(prices, 20);
+  const sma50 = calculateSMA(prices, 50);
+
+  // Volume analysis: compare current 24h volume to 7-day average
+  let volumeChange24hPct: number | null = null;
+  if (history.volumes.length >= 168) { // 7 days of hourly data
+    const recentVolumes = history.volumes.slice(-168);
+    const avgDailyVolume = recentVolumes.reduce((s, v) => s + v, 0) / 7;
+    if (avgDailyVolume > 0) {
+      volumeChange24hPct = ((volume24h - avgDailyVolume) / avgDailyVolume) * 100;
+    }
+  }
+
+  const trendDirection = determineTrend(prices, sma20, sma50);
+  const { score, signal } = calculateConfluence(rsi14, macd, bollingerBands, trendDirection, priceChange24h, priceChange7d);
+
+  return {
+    rsi14, macd, bollingerBands,
+    sma20, sma50,
+    volumeChange24h: volumeChange24hPct,
+    trendDirection,
+    overallSignal: signal,
+    confluenceScore: score,
+  };
+}
+
+/**
+ * Fetch technical indicators for all tokens — with rate limit awareness
+ * Staggers requests to stay within CoinGecko free tier limits
+ */
+async function getTokenIndicators(
+  tokens: MarketData["tokens"]
+): Promise<Record<string, TechnicalIndicators>> {
+  const indicators: Record<string, TechnicalIndicators> = {};
+
+  // Deduplicate by coingeckoId (ETH and WETH share same ID)
+  const uniqueTokens: { symbol: string; coingeckoId: string; price: number; change24h: number; change7d: number; volume: number }[] = [];
+  const seen = new Set<string>();
+
+  for (const token of tokens) {
+    const registry = TOKEN_REGISTRY[token.symbol];
+    if (!registry || token.symbol === "USDC") continue;
+
+    const cgId = registry.coingeckoId;
+    if (seen.has(cgId)) {
+      // Copy indicators from the first token with this ID
+      const firstToken = uniqueTokens.find(t => t.coingeckoId === cgId);
+      if (firstToken) {
+        // Will be copied after computation
+      }
+      continue;
+    }
+    seen.add(cgId);
+    uniqueTokens.push({
+      symbol: token.symbol, coingeckoId: cgId,
+      price: token.price, change24h: token.priceChange24h,
+      change7d: token.priceChange7d, volume: token.volume24h,
+    });
+  }
+
+  // Fetch in batches of 3 with 1s delay between batches
+  for (let i = 0; i < uniqueTokens.length; i += 3) {
+    const batch = uniqueTokens.slice(i, i + 3);
+    const results = await Promise.allSettled(
+      batch.map(t => computeIndicators(t.coingeckoId, t.price, t.change24h, t.change7d, t.volume))
+    );
+
+    for (let j = 0; j < batch.length; j++) {
+      const result = results[j];
+      if (result.status === "fulfilled") {
+        indicators[batch[j].symbol] = result.value;
+        // Copy to tokens sharing same coingeckoId
+        for (const token of tokens) {
+          const reg = TOKEN_REGISTRY[token.symbol];
+          if (reg && reg.coingeckoId === batch[j].coingeckoId && token.symbol !== batch[j].symbol) {
+            indicators[token.symbol] = result.value;
+          }
+        }
+      } else {
+        indicators[batch[j].symbol] = {
+          rsi14: null, macd: null, bollingerBands: null,
+          sma20: null, sma50: null, volumeChange24h: null,
+          trendDirection: "SIDEWAYS", overallSignal: "NEUTRAL", confluenceScore: 0,
+        };
+      }
+    }
+
+    // Rate limit delay between batches
+    if (i + 3 < uniqueTokens.length) {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+  }
+
+  return indicators;
+}
+
+/**
+ * Format technical indicators for the AI prompt — human-readable summary
+ */
+function formatIndicatorsForPrompt(indicators: Record<string, TechnicalIndicators>, tokens: MarketData["tokens"]): string {
+  const lines: string[] = [];
+
+  for (const token of tokens) {
+    if (token.symbol === "USDC") continue;
+    const ind = indicators[token.symbol];
+    if (!ind) continue;
+
+    const parts: string[] = [`${token.symbol}:`];
+
+    if (ind.rsi14 !== null) {
+      const rsiLabel = ind.rsi14 < 30 ? "OVERSOLD" : ind.rsi14 > 70 ? "OVERBOUGHT" : "neutral";
+      parts.push(`RSI=${ind.rsi14.toFixed(0)}(${rsiLabel})`);
+    }
+
+    if (ind.macd) {
+      parts.push(`MACD=${ind.macd.signal}`);
+    }
+
+    if (ind.bollingerBands) {
+      parts.push(`BB%B=${ind.bollingerBands.percentB.toFixed(2)}(${ind.bollingerBands.signal})`);
+    }
+
+    parts.push(`Trend=${ind.trendDirection}`);
+
+    if (ind.volumeChange24h !== null) {
+      parts.push(`Vol=${ind.volumeChange24h > 0 ? "+" : ""}${ind.volumeChange24h.toFixed(0)}%vs7dAvg`);
+    }
+
+    parts.push(`Signal=${ind.overallSignal}(${ind.confluenceScore > 0 ? "+" : ""}${ind.confluenceScore})`);
+
+    lines.push(`  ${parts.join(" | ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 // ============================================================================
@@ -641,67 +1164,98 @@ async function makeTradeDecision(
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
   const tradeableTokens = CONFIG.activeTokens.join(", ");
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v3.3 on Base network.
-IMPORTANT: Trade execution is LIVE via Coinbase CDP SDK. Your decisions WILL execute real swaps.
+  // Build technical indicators summary for the AI
+  const indicatorsSummary = formatIndicatorsForPrompt(marketData.indicators, marketData.tokens);
 
-PORTFOLIO OVERVIEW:
+  // Find tokens with strongest buy/sell signals
+  const strongBuySignals = Object.entries(marketData.indicators)
+    .filter(([_, ind]) => ind.confluenceScore >= 30)
+    .sort(([_, a], [__, b]) => b.confluenceScore - a.confluenceScore)
+    .slice(0, 3)
+    .map(([sym, ind]) => `${sym}(+${ind.confluenceScore})`);
+
+  const strongSellSignals = Object.entries(marketData.indicators)
+    .filter(([_, ind]) => ind.confluenceScore <= -30)
+    .sort(([_, a], [__, b]) => a.confluenceScore - b.confluenceScore)
+    .slice(0, 3)
+    .map(([sym, ind]) => `${sym}(${ind.confluenceScore})`);
+
+  // Build trade history summary for AI memory (last 10 trades)
+  const recentTrades = state.tradeHistory.slice(-10);
+  const tradeHistorySummary = recentTrades.length > 0
+    ? recentTrades.map(t =>
+        `  ${t.timestamp.slice(5, 16)} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"} ${t.reasoning?.substring(0, 60) || ""}`
+      ).join("\n")
+    : "  No trades yet";
+
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v3.4 on Base network.
+You are a TECHNICAL TRADER with access to real-time indicators. Your decisions execute LIVE swaps.
+
+═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}
-- Total Holdings: $${totalTokenValue.toFixed(2)}
-- Total Portfolio: $${totalPortfolioValue.toFixed(2)}
-- Initial Value: $${state.trading.initialValue}
-- Peak Value: $${state.trading.peakValue.toFixed(2)}
-- P&L: ${((totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue * 100).toFixed(1)}%
+- Token Holdings: $${totalTokenValue.toFixed(2)}
+- Total: $${totalPortfolioValue.toFixed(2)}
+- P&L: ${((totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue * 100).toFixed(1)}% from $${state.trading.initialValue}
+- Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%
 
-SECTOR ALLOCATIONS (Target vs Current):
+═══ SECTOR ALLOCATIONS ═══
 ${sectorAllocations.map(s =>
-  `- ${s.name}: Target ${s.targetPercent}% | Current ${s.currentPercent.toFixed(1)}% | Drift: ${s.drift >= 0 ? "+" : ""}${s.drift.toFixed(1)}%`
+  `${s.drift > 5 ? "⚠️OVER" : s.drift < -5 ? "⚠️UNDER" : "✅"} ${s.name}: ${s.currentPercent.toFixed(1)}% (target: ${s.targetPercent}%) drift: ${s.drift >= 0 ? "+" : ""}${s.drift.toFixed(1)}%`
 ).join("\n")}
 
-CURRENT HOLDINGS BY SECTOR:
+═══ HOLDINGS ═══
 ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
-  `${sector}:\n  ${holdings.length > 0 ? holdings.join("\n  ") : "No positions"}`
-).join("\n\n")}
+  `${sector}: ${holdings.length > 0 ? holdings.join(" | ") : "Empty"}`
+).join("\n")}
 
-MARKET CONDITIONS:
-- Fear & Greed: ${marketData.fearGreed.value} (${marketData.fearGreed.classification})
-- Trending (24h gainers): ${marketData.trendingTokens.join(", ") || "None"}
+═══ MARKET SENTIMENT ═══
+- Fear & Greed: ${marketData.fearGreed.value}/100 (${marketData.fearGreed.classification})
+- Trending: ${marketData.trendingTokens.join(", ") || "None"}
 
-TOKEN PRICES BY SECTOR:
+═══ TECHNICAL INDICATORS ═══
+${indicatorsSummary || "  No indicator data available"}
+
+${strongBuySignals.length > 0 ? `🟢 STRONGEST BUY SIGNALS: ${strongBuySignals.join(", ")}` : ""}
+${strongSellSignals.length > 0 ? `🔴 STRONGEST SELL SIGNALS: ${strongSellSignals.join(", ")}` : ""}
+
+═══ TOKEN PRICES ═══
 ${Object.entries(marketBySector).map(([sector, tokens]) =>
-  `${sector}:\n  ${tokens.slice(0, 5).join("\n  ")}`
-).join("\n\n")}
+  `${sector}: ${tokens.slice(0, 5).join(" | ")}`
+).join("\n")}
 
-REBALANCING NEEDS:
-${underweightSectors.length > 0
-  ? `- UNDERWEIGHT: ${underweightSectors.map(s => `${s.name} (${s.drift.toFixed(1)}%)`).join(", ")}`
-  : "- All sectors within target range"}
-${overweightSectors.length > 0
-  ? `- OVERWEIGHT: ${overweightSectors.map(s => `${s.name} (+${s.drift.toFixed(1)}%)`).join(", ")}`
-  : ""}
+═══ RECENT TRADE HISTORY ═══
+${tradeHistorySummary}
 
-TRADING LIMITS:
-- Max BUY: $${maxBuyAmount.toFixed(2)}
-- Max SELL: $${maxSellAmount.toFixed(2)} (${CONFIG.trading.maxSellPercent}% of holdings)
+═══ TRADING LIMITS ═══
+- Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
+- Available tokens: ${tradeableTokens}
 
-AVAILABLE TOKENS: ${tradeableTokens}
+═══ STRATEGY FRAMEWORK ═══
 
-IMPORTANT NOTES FOR SELLING:
-- When selling a token, use its ERC-20 address (fromToken = token address)
-- When selling to USDC, toToken = USDC address
-- For selling ETH, use WETH address (0x4200000000000000000000000000000000000006)
-- Amounts should be in USD value
+ENTRY RULES (when to BUY):
+1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
+2. FEAR AMPLIFIER: During extreme fear (<25), lower the bar — buy on 1 indicator signal
+3. SECTOR PRIORITY: Buy into the most underweight sector first
+4. VOLUME CONFIRMATION: Prefer tokens where volume is above 7-day average (strength behind the move)
+5. TREND ALIGNMENT: Prefer buying tokens in UP or STRONG_UP trends
 
-STRATEGY RULES:
-1. SECTOR BALANCE: Keep allocations near targets (Blue Chip 40%, AI 20%, Meme 20%, DeFi 20%)
-2. BUY on extreme fear (< 25) - DCA into underweight sectors
-3. SELL/TAKE PROFITS when:
-   - Any token up > 15% in 24h
-   - Sector becomes > 10% overweight
-   - Fear & Greed > 65
-4. REBALANCE: If a sector drifts > 10% from target
-5. DIVERSIFY: No single token > 25% of portfolio
-6. HOLD if uncertain or market is neutral
-7. MINIMUM TRADE: Only trade if amount >= $1.00
+EXIT RULES (when to SELL):
+1. TAKE PROFIT: Sell 25-50% of a position if token is up >15% in 24h AND RSI > 65
+2. OVERBOUGHT EXIT: Sell if RSI > 75 AND Bollinger %B > 0.95 AND MACD turning bearish
+3. STOP LOSS: Sell if token is down >20% in 7d and trend is STRONG_DOWN
+4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
+
+RISK RULES:
+1. No single token > 25% of portfolio
+2. HOLD if confluence score is between -15 and +15 (no clear signal)
+3. Never chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
+4. In extreme greed (>75), tighten sell rules — take profits more aggressively
+5. Minimum trade $1.00
+
+DECISION PRIORITY: Technical signals > Sector rebalancing > Sentiment
+
+For SELLING: fromToken = token symbol, toToken = USDC
+For BUYING: fromToken = USDC, toToken = token symbol
 
 Respond with ONLY valid JSON:
 {
@@ -709,7 +1263,7 @@ Respond with ONLY valid JSON:
   "fromToken": "USDC" or token symbol,
   "toToken": token symbol or "USDC",
   "amountUSD": <number>,
-  "reasoning": "<1-2 sentence explanation>",
+  "reasoning": "<1-2 sentences citing specific indicators that drove this decision>",
   "sector": "<sector name if relevant>"
 }`;
 
@@ -1039,6 +1593,24 @@ async function runTradingCycle() {
     console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${drawdown.toFixed(1)}%`);
     console.log(`   Fear & Greed: ${marketData.fearGreed.value} (${marketData.fearGreed.classification})`);
 
+    // Display technical indicators summary
+    if (Object.keys(marketData.indicators).length > 0) {
+      console.log(`\n📐 Technical Indicators:`);
+      const buySignals: string[] = [];
+      const sellSignals: string[] = [];
+      for (const [symbol, ind] of Object.entries(marketData.indicators)) {
+        const rsiStr = ind.rsi14 !== null ? `RSI=${ind.rsi14.toFixed(0)}` : "";
+        const macdStr = ind.macd ? `MACD=${ind.macd.signal}` : "";
+        const bbStr = ind.bollingerBands ? `BB=${ind.bollingerBands.signal}` : "";
+        const scoreStr = `Score=${ind.confluenceScore > 0 ? "+" : ""}${ind.confluenceScore}`;
+        console.log(`   ${symbol}: ${[rsiStr, macdStr, bbStr, `Trend=${ind.trendDirection}`, scoreStr].filter(Boolean).join(" | ")} → ${ind.overallSignal}`);
+        if (ind.confluenceScore >= 30) buySignals.push(`${symbol}(+${ind.confluenceScore})`);
+        if (ind.confluenceScore <= -30) sellSignals.push(`${symbol}(${ind.confluenceScore})`);
+      }
+      if (buySignals.length > 0) console.log(`   🟢 Buy signals: ${buySignals.join(", ")}`);
+      if (sellSignals.length > 0) console.log(`   🔴 Sell signals: ${sellSignals.join(", ")}`);
+    }
+
     console.log(`\n📊 Sector Allocations:`);
     for (const sector of sectorAllocations) {
       const status = Math.abs(sector.drift) > 5
@@ -1091,10 +1663,10 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.3.1                          ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.4                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   LIVE TRADING via Coinbase CDP SDK | Base Network                     ║
+║   LIVE TRADING + TECHNICAL INDICATORS | Base Network                   ║
 ║                                                                        ║
 ║   Sectors:                                                             ║
 ║   • Blue Chip (40%): ETH, cbBTC, cbETH                                ║
@@ -1108,6 +1680,8 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
+  console.log(`   Indicators: RSI(14), MACD(12/26/9), Bollinger(20,2), SMA(20/50)`);
+  console.log(`   AI Strategy: Confluence-based (indicators > sectors > sentiment)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
   console.log(`   Slippage: ${CONFIG.trading.slippageBps / 100}%`);
@@ -1189,7 +1763,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v3.3 running! Press Ctrl+C to stop.\n");
+  console.log("\n🚀 Agent v3.4 running! Technical indicators active. Press Ctrl+C to stop.\n");
 }
 
 main().catch((err) => {
@@ -1206,7 +1780,7 @@ const healthServer = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: "ok",
-      version: "3.3.1",
+      version: "3.4",
       uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
       portfolio: state.trading.totalPortfolioValue,
       trades: `${state.trading.successfulTrades}/${state.trading.totalTrades}`,
