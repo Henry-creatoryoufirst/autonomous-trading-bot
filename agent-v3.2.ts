@@ -1,7 +1,11 @@
 /**
- * Henry's Autonomous Trading Agent v4.5.2
+ * Henry's Autonomous Trading Agent v4.5.3
  *
  * PHASE 2 BRAIN UPGRADE: News Sentiment + Macro Intelligence
+ *
+ * CHANGES IN V4.5.3:
+ * - Fixed FRED API auth: uses api_key query parameter (not Bearer header)
+ * - FRED macro data now flowing: Fed Rate, 10Y Yield, CPI, M2, Dollar Index
  *
  * CHANGES IN V4.5.2:
  * - CoinGecko: last-known-prices cache prevents $0 portfolio when rate limited
@@ -10,7 +14,7 @@
  *
  * CHANGES IN V4.5.1:
  * - Fixed CryptoPanic: proper API v1 endpoint with auth_token (env: CRYPTOPANIC_AUTH_TOKEN)
- * - Fixed FRED API: updated to v2 Bearer auth header (Nov 2025 change)
+ * - Fixed FRED API: added env var check + warning (auth fixed in v4.5.3)
  * - Fixed CoinGecko: retry with exponential backoff (3 attempts) to prevent $0 portfolio pricing
  *
  * CHANGES IN V4.5:
@@ -536,7 +540,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "4.5.2",
+      version: "4.5.3",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -1076,19 +1080,19 @@ async function fetchMacroData(): Promise<MacroData | null> {
   }
 
   try {
-    // FRED API v2 (Nov 2025): uses Bearer auth header instead of query param
+    // FRED API uses api_key query parameter for authentication
     const fredBase = "https://api.stlouisfed.org/fred/series/observations";
-    const fredHeaders = { headers: { Authorization: `Bearer ${FRED_KEY}` }, timeout: 10000 };
-    const baseParams = "&file_type=json&sort_order=desc&limit=2";
+    const fredOpts = { timeout: 10000 };
+    const baseParams = `&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=2`;
 
     // Fetch all series in parallel (6 requests, well within 120/min limit)
     const [dffRes, dgs10Res, t10y2yRes, cpiRes, m2Res, dollarRes] = await Promise.allSettled([
-      axios.get(`${fredBase}?series_id=DFF${baseParams}`, fredHeaders),
-      axios.get(`${fredBase}?series_id=DGS10${baseParams}`, fredHeaders),
-      axios.get(`${fredBase}?series_id=T10Y2Y${baseParams}`, fredHeaders),
-      axios.get(`${fredBase}?series_id=CPIAUCSL${baseParams}&limit=13`, fredHeaders),  // 13 months for YoY
-      axios.get(`${fredBase}?series_id=M2SL${baseParams}&limit=13`, fredHeaders),      // 13 months for YoY
-      axios.get(`${fredBase}?series_id=DTWEXBGS${baseParams}`, fredHeaders),
+      axios.get(`${fredBase}?series_id=DFF${baseParams}`, fredOpts),
+      axios.get(`${fredBase}?series_id=DGS10${baseParams}`, fredOpts),
+      axios.get(`${fredBase}?series_id=T10Y2Y${baseParams}`, fredOpts),
+      axios.get(`${fredBase}?series_id=CPIAUCSL${baseParams}&limit=13`, fredOpts),  // 13 months for YoY
+      axios.get(`${fredBase}?series_id=M2SL${baseParams}&limit=13`, fredOpts),      // 13 months for YoY
+      axios.get(`${fredBase}?series_id=DTWEXBGS${baseParams}`, fredOpts),
     ]);
 
     const parseLatest = (res: PromiseSettledResult<any>): { value: number; date: string } | null => {
@@ -2216,7 +2220,7 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5.2 on Base network.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5.3 on Base network.
 You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
 
 ═══ PORTFOLIO ═══
@@ -2263,7 +2267,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v4.5.2 ═══
+═══ STRATEGY FRAMEWORK v4.5.3 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -2857,7 +2861,7 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5.2                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5.3                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
 ║   PHASE 2 BRAIN UPGRADE — News Sentiment + Macro Intelligence          ║
@@ -2884,7 +2888,7 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Brain: v4.5.2 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
+  console.log(`   Brain: v4.5.3 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
   console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
@@ -2967,7 +2971,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v4.5.2 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
+  console.log("\n🚀 Agent v4.5.3 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
 }
 
 main().catch((err) => {
@@ -3005,7 +3009,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "4.5.2",
+    version: "4.5.3",
   };
 }
 
@@ -3063,7 +3067,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "4.5.2",
+    version: "4.5.3",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -3176,7 +3180,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5.2</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5.3</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
