@@ -1,145 +1,154 @@
-# Henry's Autonomous Trading Agent v3.0 🤖
+# Henry's Autonomous Trading Agent v3.4 🤖📐
 
-**Multi-Strategy Trading Bot for Base Network + Polymarket**
+**AI-Powered Technical Trading Bot on Base Network — Live & Running 24/7 on Railway**
 
-Built Feb 2026 after analyzing X posts showing $134 → $56K profits on Polymarket's 5-minute crypto markets.
+Built Feb 2026. Currently managing ~$495 across 4 sectors with 15-minute trading cycles.
 
-## What's New in v3.0
+## Current Status
 
-### 🔥 Polymarket Arbitrage (The $500K Strategy)
-Based on analysis of successful traders making $40K-$500K:
-- Scans 5-minute and 15-minute BTC/ETH prediction markets
-- Detects when YES + NO prices sum to less than $1
-- Risk-free profit by buying both sides
-- Key insight: 29,256 trades → $500K (small gains compound)
+| Component | Status |
+|-----------|--------|
+| **Bot** | ✅ Live on Railway (v3.4) |
+| **Wallet** | `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1` (EOA) |
+| **Portfolio** | ~$483 USDC + ~$10 ETH + gas |
+| **Strategy** | Technical indicators + AI confluence scoring |
+| **Cycles** | Every 15 minutes, 24/7 |
+| **Network** | Base Mainnet |
+| **First Trade** | ✅ Feb 15, 2026 — $10 USDC → ETH |
 
-### 🧠 Improved AI Trading
-- Balance-aware decisions (fixes "insufficient balance" errors)
-- Won't attempt trades larger than available funds
-- Better risk management
+## Architecture
 
-### 📊 Multi-Strategy Architecture
 ```
-┌─────────────────────────────────────────────────┐
-│           TRADING AGENT v3.0                    │
-├─────────────────────────────────────────────────┤
-│  Strategy 1: Polymarket Arbitrage               │
-│  • 5-min BTC/ETH markets                        │
-│  • YES+NO < $1 detection                        │
-│  • Sub-second execution target                  │
-├─────────────────────────────────────────────────┤
-│  Strategy 2: Base DEX Trading                   │
-│  • AI-powered sentiment analysis                │
-│  • ETH, cbBTC, AERO, DEGEN, BRETT               │
-│  • Fear & Greed index signals                   │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│              TRADING AGENT v3.4                               │
+├──────────────────────────────────────────────────────────────┤
+│  📐 Technical Indicators Engine                               │
+│  • RSI (14-period, Wilder's smoothing)                        │
+│  • MACD (12/26/9 EMA crossover detection)                     │
+│  • Bollinger Bands (20-period, 2 std dev, %B, bandwidth)      │
+│  • SMA (20, 50)                                               │
+│  • Trend detection (STRONG_UP → STRONG_DOWN)                  │
+│  • Volume analysis (24h vs 7-day average)                     │
+│  • Confluence scoring (-100 to +100)                          │
+├──────────────────────────────────────────────────────────────┤
+│  🧠 AI Decision Engine (Claude claude-sonnet-4-20250514)                       │
+│  • Indicator-driven entry/exit rules                          │
+│  • Sector rebalancing across 4 sectors                        │
+│  • Trade history memory (last 10 trades)                      │
+│  • Fear & Greed sentiment overlay                             │
+│  • Risk rules (position limits, pump protection)              │
+├──────────────────────────────────────────────────────────────┤
+│  ⚡ Execution Layer                                           │
+│  • Coinbase CDP SDK (account.swap)                            │
+│  • Permit2 ERC-20 approvals                                   │
+│  • Retry logic for approval propagation delays                │
+│  • On-chain balance reading via Base RPC                      │
+├──────────────────────────────────────────────────────────────┤
+│  📊 Data Sources                                              │
+│  • CoinGecko (prices + 30-day hourly history, cached 2hr)     │
+│  • Alternative.me (Fear & Greed Index)                        │
+│  • Base RPC (on-chain balances)                               │
+└──────────────────────────────────────────────────────────────┘
 ```
+
+## Sectors & Tokens (18 tracked)
+
+| Sector | Target | Tokens |
+|--------|--------|--------|
+| **Blue Chip** | 40% | ETH, cbBTC, cbETH |
+| **AI Tokens** | 20% | VIRTUAL, AIXBT, GAME, HIGHER |
+| **Meme Coins** | 20% | BRETT, DEGEN, TOSHI, MOCHI, NORMIE |
+| **DeFi** | 20% | AERO, WELL, SEAM, EXTRA, BAL |
+
+## Trading Strategy (v3.4)
+
+**Entry Rules (BUY):**
+1. Confluence: 2+ indicators must agree (RSI oversold + MACD bullish, etc.)
+2. Extreme fear (<25): Lower the bar to 1 indicator signal
+3. Sector priority: Buy into most underweight sector first
+4. Volume confirmation: Prefer tokens with above-average volume
+5. Trend alignment: Prefer UP or STRONG_UP trends
+
+**Exit Rules (SELL):**
+1. Take profit: Sell 25-50% if token up >15% in 24h AND RSI > 65
+2. Overbought: Sell if RSI > 75 AND BB %B > 0.95 AND MACD bearish
+3. Stop loss: Sell if down >20% in 7d with STRONG_DOWN trend
+4. Sector trim: Sell from overweight sectors (>10% drift)
+
+**Risk Rules:**
+- No single token > 25% of portfolio
+- HOLD if confluence between -15 and +15
+- Never chase pumps (>20% in 24h with RSI >75)
+- Tighten sells in extreme greed (>75)
 
 ## Quick Start
 
-### 1. Install Dependencies
 ```bash
-cd autonomous-agent
 npm install
+npm start        # Run v3.4 (current)
+npm run dev      # Dev mode with hot reload
 ```
 
-### 2. Configure Environment
-```bash
-# Already configured, but review settings:
-cat .env
-```
+## Environment Variables (Railway)
 
-### 3. Run the Agent
-```bash
-# Start v3.0 (multi-strategy)
-npm start
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude API key for AI decisions |
+| `CDP_API_KEY_NAME` | Coinbase CDP API key name |
+| `CDP_API_KEY_PRIVATE_KEY` | CDP API private key (PKCS#8 PEM) |
+| `CDP_WALLET_SECRET` | CDP wallet encryption secret |
+| `WALLET_ADDRESS` | EOA wallet address for balance reading |
 
-# Or run v2.0 (original)
-npm run start:v2
-```
+## Configuration Defaults
 
-### 4. Quick Arbitrage Scan
-```bash
-# One-off scan for Polymarket opportunities
-npm run arb
-```
-
-## Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| **Base DEX** |||
-| `TRADING_ENABLED` | `true` | Enable live trading |
-| `MAX_TRADE_SIZE_USDC` | `10` | Max per trade |
-| `TRADING_INTERVAL_MINUTES` | `15` | Check frequency |
-| **Polymarket Arbitrage** |||
-| `POLYMARKET_ARB_ENABLED` | `true` | Enable arb scanning |
-| `POLYMARKET_MIN_SPREAD` | `0.02` | Min spread (2%) |
-| `POLYMARKET_MAX_TRADE` | `50` | Max per arb trade |
-| `POLYMARKET_TRADING_ENABLED` | `false` | Execute trades |
+| Setting | Value |
+|---------|-------|
+| Max buy per trade | $10.00 |
+| Max sell per trade | 25% of position |
+| Slippage tolerance | 1% (100 bps) |
+| Trading interval | 15 minutes |
+| Indicator cache TTL | 2 hours |
+| CoinGecko history | 30 days (hourly) |
 
 ## File Structure
 
 ```
-autonomous-agent/
-├── agent-v3.ts              # Main agent (v3.0)
-├── agent.ts                 # Original agent (v2.0)
-├── services/
-│   └── polymarket.ts        # Polymarket API client
-├── strategies/
-│   └── polymarket-arb.ts    # Arbitrage strategy
+autonomous-trading-bot/
+├── agent-v3.2.ts           # Main bot (v3.4 — this is the active file)
+├── package.json            # Dependencies & scripts
+├── railway.toml            # Railway deployment config
+├── Dockerfile              # Container build
+├── agent-v3.1.ts           # Previous version (sector allocation)
+├── agent-v3.ts             # v3.0 (Polymarket experiment)
+├── agent.ts                # v2.0 (original)
 ├── scripts/
-│   └── scan-arbitrage.ts    # Quick arb scanner
-├── logs/
-│   ├── agent.log            # Activity logs
-│   └── agent-error.log      # Error logs
-└── UPGRADE_ANALYSIS.md      # Strategy research
+│   ├── scan-arbitrage.ts   # Polymarket scanner (deprecated)
+│   └── status.ts           # Wallet status checker
+├── services/               # Service modules
+├── strategies/             # Strategy modules
+└── logs/                   # Trade history JSON
 ```
 
-## Your Wallet
+## Version History
 
-- **Address:** `0x55509AA76E2769eCCa5B4293359e3001dA16dd0F`
-- **Network:** Base (mainnet)
-- **View:** [Basescan](https://basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F)
+| Version | Date | Changes |
+|---------|------|---------|
+| **v3.4** | Feb 15, 2026 | Technical indicators engine, confluence scoring, upgraded AI prompt, trade history memory |
+| **v3.3.1** | Feb 15, 2026 | Cron fix, swap retry logic, Permit2 race condition fix |
+| **v3.3** | Feb 14, 2026 | Permit2 approvals, CDP SDK swap execution, live trading |
+| **v3.2** | Feb 14, 2026 | EOA wallet, on-chain balance reading, gas management |
+| **v3.1** | Feb 13, 2026 | Sector allocation (4 sectors, 18 tokens) |
+| **v3.0** | Feb 12, 2026 | Polymarket arbitrage experiment |
+| **v2.0** | Feb 11, 2026 | Original AI trading bot |
 
-## How Polymarket Arbitrage Works
+## Links
 
-From the X posts that inspired this upgrade:
-
-> "When temporary inefficiencies appear -- where YES + NO briefly price below $1 -- the system executes instantly. No prediction. No directional bias. Just structural arbitrage."
-> - @0x_Discover
-
-**Example:**
-- BTC 5-min market: "Will BTC be higher in 5 minutes?"
-- YES price: $0.48
-- NO price: $0.49
-- Total: $0.97 (3% below $1.00)
-- **Action:** Buy $50 YES + $50 NO = $100 spent
-- **Outcome:** One side pays $100, guaranteed $3 profit
-
-## Safety Features
-
-- ✅ Balance checking before trades
-- ✅ Max trade size limits
-- ✅ Dry-run mode for testing
-- ✅ Detailed logging
-- ✅ Error recovery
-
-## Next Steps (Roadmap)
-
-1. **Polymarket API Integration** - Get API keys for actual trading
-2. **Speed Optimization** - WebSocket connections, faster execution
-3. **Dashboard** - Real-time monitoring web UI
-4. **Telegram Alerts** - Trade notifications
+- **Railway Dashboard:** [railway.com/project/44a17190...](https://railway.com/project/44a17190-9c66-481d-bdaf-6ef93c3babe2)
+- **Wallet on BaseScan:** [basescan.org/address/0xB7c51b...](https://basescan.org/address/0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1)
+- **First Trade TX:** [basescan.org/tx/0xd9cc79fc...](https://basescan.org/tx/0xd9cc79fc01d50a3ed5946e4fb0b730d4bc44019a7cdda10145269fb5a512ffff)
 
 ---
 
-## Philosophy
+> "I consider the money in that wallet gone — all profit is a bonus."
 
-> "I consider the money in that wallet gone - all profit is a bonus."
-
-This agent is designed to run autonomously with money you're comfortable losing. The strategies are based on real success stories, but past performance doesn't guarantee future results.
-
----
-
-**Built on Coinbase Agentic Wallets + Polymarket | Feb 2026** 🚀
+**Built with Claude + Coinbase CDP SDK | Feb 2026** 🚀
