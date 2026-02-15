@@ -221,7 +221,7 @@ const TOKEN_REGISTRY: Record<string, {
   },
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
-    symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell",
+    symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
   },
   SEAM: {
