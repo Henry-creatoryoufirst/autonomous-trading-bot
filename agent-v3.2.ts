@@ -1,13 +1,21 @@
 /**
- * Henry's Autonomous Trading Agent v4.0
+ * Henry's Autonomous Trading Agent v4.5
  *
- * PHASE 1 BRAIN UPGRADE: Enhanced Market Intelligence + Smart Trade Logging
+ * PHASE 2 BRAIN UPGRADE: News Sentiment + Macro Intelligence
  *
- * CHANGES IN V4.0:
+ * CHANGES IN V4.5:
+ * - CryptoPanic news sentiment: bullish/bearish news classification, per-token mentions, headline tracking
+ * - FRED macro data: Fed Funds Rate, 10Y Treasury, yield curve, CPI, M2 money supply, dollar index
+ * - Macro signal engine: composite RISK_ON / RISK_OFF / NEUTRAL based on Fed policy + liquidity + dollar
+ * - News sentiment scoring: -100 to +100 composite, per-token bullish/bearish mention tracking
+ * - Macro-aware strategy: regime × macro cross-rules for position sizing and conviction
+ * - 8 data sources feeding every decision cycle
+ * - Upgraded AI prompt: 8-dimensional market awareness
+ *
+ * CHANGES IN V4.0 (Phase 1):
  * - DefiLlama integration: Base chain TVL, DEX volumes, protocol-level TVL changes
  * - Binance derivatives: BTC/ETH funding rates + open interest (leading indicators)
  * - Enhanced trade logging: full signal context, market regime, indicator snapshots
- * - Upgraded AI prompt: 6-dimensional market awareness (technicals + DeFi + derivatives + sentiment + macro context)
  * - Trade performance scoring: win rate, avg return, signal effectiveness tracking
  * - Market regime detection: trending/ranging/volatile based on multi-factor analysis
  *
@@ -518,7 +526,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "4.0",
+      version: "4.5",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -732,6 +740,28 @@ interface DerivativesData {
   ethOIChange24h: number;             // % change in ETH OI over 24h
 }
 
+interface NewsSentimentData {
+  overallSentiment: "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED";
+  bullishCount: number;                              // Number of bullish news items
+  bearishCount: number;                              // Number of bearish news items
+  totalCount: number;                                // Total news items analyzed
+  sentimentScore: number;                            // -100 to +100 composite score
+  topHeadlines: { title: string; sentiment: string; source: string }[];  // Top 5 headlines
+  tokenMentions: Record<string, { bullish: number; bearish: number; neutral: number }>;  // Per-token sentiment
+  lastUpdated: string;                               // ISO timestamp
+}
+
+interface MacroData {
+  fedFundsRate: { value: number; date: string } | null;           // DFF - Fed Funds Effective Rate
+  treasury10Y: { value: number; date: string } | null;            // DGS10 - 10-Year Treasury Yield
+  yieldCurve: { value: number; date: string } | null;             // T10Y2Y - 10Y minus 2Y spread
+  cpi: { value: number; date: string; yoyChange: number | null } | null;  // CPIAUCSL - Consumer Price Index
+  m2MoneySupply: { value: number; date: string; yoyChange: number | null } | null;  // M2SL - M2 Money Supply
+  dollarIndex: { value: number; date: string } | null;            // DTWEXBGS - Trade Weighted Dollar
+  macroSignal: "RISK_ON" | "RISK_OFF" | "NEUTRAL";               // Composite macro signal
+  rateDirection: "HIKING" | "CUTTING" | "PAUSED";                // Fed rate trajectory
+}
+
 type MarketRegime = "TRENDING_UP" | "TRENDING_DOWN" | "RANGING" | "VOLATILE" | "UNKNOWN";
 
 interface MarketData {
@@ -745,6 +775,8 @@ interface MarketData {
   indicators: Record<string, TechnicalIndicators>;  // Technical indicators per token
   defiLlama: DefiLlamaData | null;                   // DeFi intelligence layer
   derivatives: DerivativesData | null;                // Derivatives/funding rate layer
+  newsSentiment: NewsSentimentData | null;            // Phase 2: News sentiment layer
+  macroData: MacroData | null;                        // Phase 2: Macro economic data layer
   marketRegime: MarketRegime;                         // Overall market regime assessment
 }
 
@@ -877,6 +909,269 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
 // Cache for derivatives OI comparison
 const derivativesCache = { btcOI: 0, ethOI: 0 };
 
+// Cache for macro data (only fetch once per hour since most data is daily/monthly)
+let macroCache: { data: MacroData | null; lastFetch: number } = { data: null, lastFetch: 0 };
+const MACRO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+// Cache for news sentiment (fetch every cycle but with fallback)
+let newsCache: { data: NewsSentimentData | null; lastFetch: number } = { data: null, lastFetch: 0 };
+const NEWS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Fetch crypto news sentiment from CryptoPanic (free tier — uses filter-based classification)
+ * Falls back to basic headline analysis if CryptoPanic is unavailable
+ */
+async function fetchNewsSentiment(): Promise<NewsSentimentData | null> {
+  // Return cached data if fresh enough
+  if (newsCache.data && Date.now() - newsCache.lastFetch < NEWS_CACHE_TTL) {
+    return newsCache.data;
+  }
+
+  try {
+    // Fetch bullish and bearish news in parallel from CryptoPanic free tier
+    // Using filter=rising (trending/important news) + bullish + bearish
+    const [bullishRes, bearishRes, risingRes] = await Promise.allSettled([
+      axios.get("https://cryptopanic.com/api/free/v1/posts/?public=true&filter=bullish&kind=news&regions=en", { timeout: 10000 }),
+      axios.get("https://cryptopanic.com/api/free/v1/posts/?public=true&filter=bearish&kind=news&regions=en", { timeout: 10000 }),
+      axios.get("https://cryptopanic.com/api/free/v1/posts/?public=true&filter=rising&kind=news&regions=en", { timeout: 10000 }),
+    ]);
+
+    let bullishCount = 0;
+    let bearishCount = 0;
+    let totalCount = 0;
+    const topHeadlines: { title: string; sentiment: string; source: string }[] = [];
+    const tokenMentions: Record<string, { bullish: number; bearish: number; neutral: number }> = {};
+
+    // Our token symbols to track
+    const trackedSymbols = new Set(Object.keys(TOKEN_REGISTRY));
+
+    // Process bullish news
+    if (bullishRes.status === "fulfilled" && bullishRes.value?.data?.results) {
+      const results = bullishRes.value.data.results;
+      bullishCount = results.length;
+      for (const item of results.slice(0, 10)) {
+        if (topHeadlines.length < 5) {
+          topHeadlines.push({ title: item.title?.substring(0, 120) || "", sentiment: "bullish", source: item.source?.title || "unknown" });
+        }
+        // Track token mentions
+        if (item.currencies) {
+          for (const c of item.currencies) {
+            const sym = c.code?.toUpperCase();
+            if (sym && trackedSymbols.has(sym)) {
+              if (!tokenMentions[sym]) tokenMentions[sym] = { bullish: 0, bearish: 0, neutral: 0 };
+              tokenMentions[sym].bullish++;
+            }
+          }
+        }
+      }
+    }
+
+    // Process bearish news
+    if (bearishRes.status === "fulfilled" && bearishRes.value?.data?.results) {
+      const results = bearishRes.value.data.results;
+      bearishCount = results.length;
+      for (const item of results.slice(0, 10)) {
+        if (topHeadlines.length < 5) {
+          topHeadlines.push({ title: item.title?.substring(0, 120) || "", sentiment: "bearish", source: item.source?.title || "unknown" });
+        }
+        if (item.currencies) {
+          for (const c of item.currencies) {
+            const sym = c.code?.toUpperCase();
+            if (sym && trackedSymbols.has(sym)) {
+              if (!tokenMentions[sym]) tokenMentions[sym] = { bullish: 0, bearish: 0, neutral: 0 };
+              tokenMentions[sym].bearish++;
+            }
+          }
+        }
+      }
+    }
+
+    // Process rising/trending news as neutral signal strength indicator
+    if (risingRes.status === "fulfilled" && risingRes.value?.data?.results) {
+      const results = risingRes.value.data.results;
+      totalCount = bullishCount + bearishCount + results.length;
+      for (const item of results.slice(0, 10)) {
+        if (item.currencies) {
+          for (const c of item.currencies) {
+            const sym = c.code?.toUpperCase();
+            if (sym && trackedSymbols.has(sym)) {
+              if (!tokenMentions[sym]) tokenMentions[sym] = { bullish: 0, bearish: 0, neutral: 0 };
+              tokenMentions[sym].neutral++;
+            }
+          }
+        }
+      }
+    } else {
+      totalCount = bullishCount + bearishCount;
+    }
+
+    // Calculate sentiment score (-100 to +100)
+    const sentimentScore = totalCount > 0
+      ? Math.round(((bullishCount - bearishCount) / Math.max(totalCount, 1)) * 100)
+      : 0;
+
+    // Determine overall sentiment
+    let overallSentiment: "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED" = "NEUTRAL";
+    if (sentimentScore > 30) overallSentiment = "BULLISH";
+    else if (sentimentScore < -30) overallSentiment = "BEARISH";
+    else if (bullishCount > 3 && bearishCount > 3) overallSentiment = "MIXED";
+
+    const result: NewsSentimentData = {
+      overallSentiment,
+      bullishCount,
+      bearishCount,
+      totalCount,
+      sentimentScore,
+      topHeadlines,
+      tokenMentions,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    console.log(`  📰 News Sentiment: ${overallSentiment} (score: ${sentimentScore >= 0 ? "+" : ""}${sentimentScore}) | ${bullishCount} bullish, ${bearishCount} bearish`);
+    newsCache = { data: result, lastFetch: Date.now() };
+    return result;
+  } catch (error: any) {
+    console.warn(`  ⚠️ News sentiment fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    return newsCache.data; // Return stale cache if available
+  }
+}
+
+/**
+ * Fetch macro economic data from FRED API (Federal Reserve)
+ * Free tier: 120 requests/minute, API key required
+ * We fetch daily series each cycle but cache for 1 hour since most data updates daily
+ */
+async function fetchMacroData(): Promise<MacroData | null> {
+  // Return cached data if fresh enough
+  if (macroCache.data && Date.now() - macroCache.lastFetch < MACRO_CACHE_TTL) {
+    return macroCache.data;
+  }
+
+  const FRED_KEY = process.env.FRED_API_KEY;
+  if (!FRED_KEY) {
+    console.warn("  ⚠️ FRED_API_KEY not set — macro data unavailable. Get a free key at https://fred.stlouisfed.org/docs/api/api_key.html");
+    return macroCache.data; // Return stale cache if available
+  }
+
+  try {
+    const fredBase = "https://api.stlouisfed.org/fred/series/observations";
+    const baseParams = `&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=2`;
+
+    // Fetch all series in parallel (6 requests, well within 120/min limit)
+    const [dffRes, dgs10Res, t10y2yRes, cpiRes, m2Res, dollarRes] = await Promise.allSettled([
+      axios.get(`${fredBase}?series_id=DFF${baseParams}`, { timeout: 10000 }),
+      axios.get(`${fredBase}?series_id=DGS10${baseParams}`, { timeout: 10000 }),
+      axios.get(`${fredBase}?series_id=T10Y2Y${baseParams}`, { timeout: 10000 }),
+      axios.get(`${fredBase}?series_id=CPIAUCSL${baseParams}&limit=13`, { timeout: 10000 }),  // 13 months for YoY
+      axios.get(`${fredBase}?series_id=M2SL${baseParams}&limit=13`, { timeout: 10000 }),      // 13 months for YoY
+      axios.get(`${fredBase}?series_id=DTWEXBGS${baseParams}`, { timeout: 10000 }),
+    ]);
+
+    const parseLatest = (res: PromiseSettledResult<any>): { value: number; date: string } | null => {
+      if (res.status !== "fulfilled") return null;
+      const obs = res.value?.data?.observations;
+      if (!obs || obs.length === 0) return null;
+      // Find first valid (non-".") observation
+      for (const o of obs) {
+        if (o.value && o.value !== ".") {
+          return { value: parseFloat(o.value), date: o.date };
+        }
+      }
+      return null;
+    };
+
+    const parseYoY = (res: PromiseSettledResult<any>): { value: number; date: string; yoyChange: number | null } | null => {
+      if (res.status !== "fulfilled") return null;
+      const obs = res.value?.data?.observations?.filter((o: any) => o.value && o.value !== ".");
+      if (!obs || obs.length === 0) return null;
+      const latest = { value: parseFloat(obs[0].value), date: obs[0].date };
+      // Calculate YoY change if we have 12+ months of data
+      let yoyChange: number | null = null;
+      if (obs.length >= 12) {
+        const yearAgo = parseFloat(obs[11].value || obs[obs.length - 1].value);
+        if (yearAgo > 0) {
+          yoyChange = ((latest.value - yearAgo) / yearAgo) * 100;
+        }
+      }
+      return { ...latest, yoyChange };
+    };
+
+    const fedFundsRate = parseLatest(dffRes);
+    const treasury10Y = parseLatest(dgs10Res);
+    const yieldCurve = parseLatest(t10y2yRes);
+    const cpi = parseYoY(cpiRes);
+    const m2MoneySupply = parseYoY(m2Res);
+    const dollarIndex = parseLatest(dollarRes);
+
+    // Determine rate direction from Fed Funds Rate
+    let rateDirection: "HIKING" | "CUTTING" | "PAUSED" = "PAUSED";
+    if (dffRes.status === "fulfilled") {
+      const obs = dffRes.value?.data?.observations?.filter((o: any) => o.value && o.value !== ".");
+      if (obs && obs.length >= 2) {
+        const diff = parseFloat(obs[0].value) - parseFloat(obs[1].value);
+        if (diff > 0.1) rateDirection = "HIKING";
+        else if (diff < -0.1) rateDirection = "CUTTING";
+      }
+    }
+
+    // Determine composite macro signal
+    let macroSignal: "RISK_ON" | "RISK_OFF" | "NEUTRAL" = "NEUTRAL";
+    let riskOnPoints = 0;
+    let riskOffPoints = 0;
+
+    // Rate cutting = risk on for crypto
+    if (rateDirection === "CUTTING") riskOnPoints += 2;
+    if (rateDirection === "HIKING") riskOffPoints += 2;
+
+    // Yield curve inversion = recession risk = ultimately risk off
+    if (yieldCurve && yieldCurve.value < 0) riskOffPoints += 1;
+    if (yieldCurve && yieldCurve.value > 0.5) riskOnPoints += 1;
+
+    // Rising 10Y yields = competition for risk assets = risk off
+    if (treasury10Y && treasury10Y.value > 4.5) riskOffPoints += 1;
+    if (treasury10Y && treasury10Y.value < 3.5) riskOnPoints += 1;
+
+    // High CPI = Fed may tighten = risk off; falling CPI = room to cut = risk on
+    if (cpi?.yoyChange !== null && cpi?.yoyChange !== undefined) {
+      if (cpi.yoyChange > 4) riskOffPoints += 1;
+      if (cpi.yoyChange < 2.5) riskOnPoints += 1;
+    }
+
+    // Growing M2 = more liquidity = risk on
+    if (m2MoneySupply?.yoyChange !== null && m2MoneySupply?.yoyChange !== undefined) {
+      if (m2MoneySupply.yoyChange > 5) riskOnPoints += 1;
+      if (m2MoneySupply.yoyChange < 0) riskOffPoints += 1;
+    }
+
+    // Strong dollar = headwind for crypto
+    if (dollarIndex && dollarIndex.value > 110) riskOffPoints += 1;
+    if (dollarIndex && dollarIndex.value < 100) riskOnPoints += 1;
+
+    if (riskOnPoints >= riskOffPoints + 2) macroSignal = "RISK_ON";
+    else if (riskOffPoints >= riskOnPoints + 2) macroSignal = "RISK_OFF";
+
+    const result: MacroData = {
+      fedFundsRate,
+      treasury10Y,
+      yieldCurve,
+      cpi,
+      m2MoneySupply,
+      dollarIndex,
+      macroSignal,
+      rateDirection,
+    };
+
+    console.log(`  🏦 Macro Data: ${macroSignal} | Fed: ${fedFundsRate?.value ?? "N/A"}% (${rateDirection}) | 10Y: ${treasury10Y?.value ?? "N/A"}% | Curve: ${yieldCurve?.value ?? "N/A"}`);
+    if (cpi) console.log(`     CPI: ${cpi.value.toFixed(1)} (${cpi.yoyChange !== null ? `${cpi.yoyChange.toFixed(1)}% YoY` : "N/A"}) | M2: ${m2MoneySupply?.yoyChange !== null ? `${m2MoneySupply?.yoyChange?.toFixed(1)}% YoY` : "N/A"} | Dollar: ${dollarIndex?.value?.toFixed(1) ?? "N/A"}`);
+
+    macroCache = { data: result, lastFetch: Date.now() };
+    return result;
+  } catch (error: any) {
+    console.warn(`  ⚠️ Macro data fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    return macroCache.data; // Return stale cache if available
+  }
+}
+
 /**
  * Determine overall market regime from multiple factors
  */
@@ -915,7 +1210,13 @@ function determineMarketRegime(
 /**
  * Format DefiLlama + Derivatives data for the AI prompt
  */
-function formatIntelligenceForPrompt(defi: DefiLlamaData | null, derivatives: DerivativesData | null, regime: MarketRegime): string {
+function formatIntelligenceForPrompt(
+  defi: DefiLlamaData | null,
+  derivatives: DerivativesData | null,
+  regime: MarketRegime,
+  news: NewsSentimentData | null,
+  macro: MacroData | null,
+): string {
   const lines: string[] = [];
 
   if (defi) {
@@ -965,6 +1266,53 @@ function formatIntelligenceForPrompt(defi: DefiLlamaData | null, derivatives: De
     lines.push("");
   }
 
+  if (news) {
+    lines.push(`═══ NEWS SENTIMENT (CryptoPanic) ═══`);
+    lines.push(`Overall: ${news.overallSentiment} (Score: ${news.sentimentScore >= 0 ? "+" : ""}${news.sentimentScore}/100)`);
+    lines.push(`Bullish headlines: ${news.bullishCount} | Bearish headlines: ${news.bearishCount} | Total: ${news.totalCount}`);
+
+    if (news.topHeadlines.length > 0) {
+      lines.push(`Key Headlines:`);
+      for (const h of news.topHeadlines.slice(0, 4)) {
+        lines.push(`  [${h.sentiment.toUpperCase()}] ${h.title} (${h.source})`);
+      }
+    }
+
+    // Token-specific sentiment
+    const tokenSentimentEntries = Object.entries(news.tokenMentions).filter(([_, v]) => v.bullish + v.bearish > 0);
+    if (tokenSentimentEntries.length > 0) {
+      lines.push(`Token News Sentiment:`);
+      for (const [sym, counts] of tokenSentimentEntries) {
+        const net = counts.bullish - counts.bearish;
+        const signal = net > 0 ? "🟢 BULLISH" : net < 0 ? "🔴 BEARISH" : "⚪ NEUTRAL";
+        lines.push(`  ${sym}: ${signal} (${counts.bullish} bullish, ${counts.bearish} bearish mentions)`);
+      }
+    }
+
+    // Sentiment signal interpretation
+    if (news.sentimentScore > 40) lines.push(`🟢 NEWS SIGNAL: Strong bullish sentiment — market optimism, watch for FOMO tops`);
+    else if (news.sentimentScore < -40) lines.push(`🔴 NEWS SIGNAL: Strong bearish sentiment — market fear, contrarian buying opportunity?`);
+    else if (news.overallSentiment === "MIXED") lines.push(`⚠️ NEWS SIGNAL: Mixed sentiment — conflicting narratives, use other signals for direction`);
+    lines.push("");
+  }
+
+  if (macro) {
+    lines.push(`═══ MACRO INTELLIGENCE (Federal Reserve / FRED) ═══`);
+    if (macro.fedFundsRate) lines.push(`Fed Funds Rate: ${macro.fedFundsRate.value.toFixed(2)}% (${macro.rateDirection})`);
+    if (macro.treasury10Y) lines.push(`10-Year Treasury Yield: ${macro.treasury10Y.value.toFixed(2)}%`);
+    if (macro.yieldCurve) lines.push(`Yield Curve (10Y-2Y): ${macro.yieldCurve.value >= 0 ? "+" : ""}${macro.yieldCurve.value.toFixed(2)}% ${macro.yieldCurve.value < 0 ? "⚠️ INVERTED" : ""}`);
+    if (macro.cpi) lines.push(`CPI: ${macro.cpi.value.toFixed(1)} ${macro.cpi.yoyChange !== null ? `(${macro.cpi.yoyChange >= 0 ? "+" : ""}${macro.cpi.yoyChange.toFixed(1)}% YoY)` : ""}`);
+    if (macro.m2MoneySupply) lines.push(`M2 Money Supply: ${macro.m2MoneySupply.yoyChange !== null ? `${macro.m2MoneySupply.yoyChange >= 0 ? "+" : ""}${macro.m2MoneySupply.yoyChange.toFixed(1)}% YoY` : "N/A"} ${(macro.m2MoneySupply.yoyChange ?? 0) > 5 ? "🟢 LIQUIDITY EXPANDING" : (macro.m2MoneySupply.yoyChange ?? 0) < 0 ? "🔴 LIQUIDITY CONTRACTING" : ""}`);
+    if (macro.dollarIndex) lines.push(`US Dollar Index: ${macro.dollarIndex.value.toFixed(1)} ${macro.dollarIndex.value > 110 ? "🔴 STRONG (headwind)" : macro.dollarIndex.value < 100 ? "🟢 WEAK (tailwind)" : ""}`);
+    lines.push(`Macro Signal: ${macro.macroSignal}`);
+
+    // Macro signal interpretation
+    if (macro.macroSignal === "RISK_ON") lines.push(`🟢 MACRO SIGNAL: Conditions favor risk assets — looser policy, expanding liquidity, or weakening dollar`);
+    else if (macro.macroSignal === "RISK_OFF") lines.push(`🔴 MACRO SIGNAL: Conditions headwind for crypto — tightening policy, high yields, or strong dollar`);
+    else lines.push(`→ Macro environment neutral — no strong directional bias from macro factors`);
+    lines.push("");
+  }
+
   lines.push(`═══ MARKET REGIME ═══`);
   lines.push(`Current Regime: ${regime}`);
   switch (regime) {
@@ -996,6 +1344,12 @@ async function getMarketData(): Promise<MarketData> {
     const [defiResult, derivResult] = await Promise.allSettled([
       fetchDefiLlamaData(),
       fetchDerivativesData(),
+    ]);
+
+    // Phase 2: Fetch news sentiment + macro data (staggered after core intelligence)
+    const [newsResult, macroResult] = await Promise.allSettled([
+      fetchNewsSentiment(),
+      fetchMacroData(),
     ]);
 
     const fearGreed = fngResult.status === "fulfilled"
@@ -1038,18 +1392,20 @@ async function getMarketData(): Promise<MarketData> {
     // Extract new data layers
     const defiLlama = defiResult.status === "fulfilled" ? defiResult.value : null;
     const derivatives = derivResult.status === "fulfilled" ? derivResult.value : null;
+    const newsSentiment = newsResult.status === "fulfilled" ? newsResult.value : null;
+    const macroData = macroResult.status === "fulfilled" ? macroResult.value : null;
 
     // Determine market regime
     const marketRegime = determineMarketRegime(fearGreed.value, indicators, derivatives);
     console.log(`  🌐 Market Regime: ${marketRegime}`);
 
-    return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, marketRegime };
+    return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, newsSentiment, macroData, marketRegime };
   } catch (error: any) {
     const msg = error?.response?.status
       ? `HTTP ${error.response.status}: ${error.message}`
       : error?.message || String(error);
     console.error("Failed to fetch market data:", msg);
-    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {}, defiLlama: null, derivatives: null, marketRegime: "UNKNOWN" };
+    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {}, defiLlama: null, derivatives: null, newsSentiment: null, macroData: null, marketRegime: "UNKNOWN" };
   }
 }
 
@@ -1789,7 +2145,7 @@ async function makeTradeDecision(
     : "  No trades yet";
 
   // V4.0: Build intelligence layers
-  const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime);
+  const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData);
 
   // V4.0: Performance stats for self-awareness
   const perfStats = calculateTradePerformance();
@@ -1797,8 +2153,8 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.0 on Base network.
-You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), and market regime analysis. Your decisions execute LIVE swaps.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5 on Base network.
+You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
 
 ═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}
@@ -1844,7 +2200,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v4.0 ═══
+═══ STRATEGY FRAMEWORK v4.5 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -1855,6 +2211,9 @@ ENTRY RULES (when to BUY):
 6. DEFI FLOW: If Base TVL is rising (>+2% 24h), favor buying DeFi tokens. If falling, avoid new DeFi positions
 7. FUNDING RATE: If BTC/ETH shorts are CROWDED (negative funding), this is contrarian bullish — favor buying
 8. TVL MOMENTUM: If a specific protocol's TVL is rising while price hasn't followed, it's undervalued — buy opportunity
+9. NEWS CATALYST: If news sentiment is BULLISH (score >+30) and a token has bullish mentions, it's a buy signal amplifier
+10. MACRO TAILWIND: If macro signal is RISK_ON (rate cuts, expanding liquidity, weak dollar), be more aggressive on buys. Increase conviction on dip buys
+11. CONTRARIAN NEWS: If news sentiment is extremely BEARISH (score <-50) but technical indicators show oversold, this is a high-conviction contrarian buy — fear is priced in
 
 EXIT RULES (when to SELL):
 1. TAKE PROFIT: Sell 25-50% of a position if token is up >15% in 24h AND RSI > 65
@@ -1863,12 +2222,20 @@ EXIT RULES (when to SELL):
 4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
 5. FUNDING WARNING: If BTC/ETH longs are CROWDED (high positive funding), prepare to take profits — correction risk
 6. TVL OUTFLOW: If a DeFi protocol's TVL is dropping >5% while you hold its token, consider trimming
+7. MACRO HEADWIND: If macro signal is RISK_OFF (rate hikes, yield curve inverting, strong dollar), tighten profit-taking. Sell into strength rather than holding
+8. NEWS RISK: If a token has strong bearish news mentions AND technical indicators confirm (RSI dropping, MACD bearish), trim position proactively
 
 REGIME-ADAPTED STRATEGY:
 - TRENDING_UP: Be aggressive on dips. Favor momentum entries. Let winners run longer
 - TRENDING_DOWN: Be defensive. Tighter stops. Favor HOLD or sell rallies. Preserve capital
 - RANGING: Mean-revert. Buy oversold tokens, sell overbought. Keep positions smaller
 - VOLATILE: Reduce position sizes by 50%. Wait for clearer signals. Only trade strong confluence
+
+MACRO-AWARE ADJUSTMENTS:
+- RISK_ON macro + TRENDING_UP regime = Maximum aggression. Deploy capital on dips. This is the best environment for crypto
+- RISK_OFF macro + TRENDING_DOWN regime = Maximum defense. Preserve capital. Hold USDC. Only buy extreme oversold
+- RISK_ON macro + RANGING regime = Lean bullish. Buy oversold more aggressively, hold longer before selling
+- RISK_OFF macro + VOLATILE regime = Stay defensive. Smaller positions. Wait for clarity
 
 RISK RULES:
 1. No single token > 25% of portfolio
@@ -1877,8 +2244,9 @@ RISK RULES:
 4. In extreme greed (>75), tighten sell rules — take profits more aggressively
 5. Minimum trade $1.00
 6. LEARN FROM HISTORY: Review your past trades above. Avoid repeating strategies that lost money. Double down on patterns that worked
+7. NEWS NOISE FILTER: Ignore news sentiment if it contradicts strong technical + DeFi signals. Headlines lag price action
 
-DECISION PRIORITY: Market Regime > Technical signals + DeFi flows > Derivatives signals > Sector rebalancing > Sentiment
+DECISION PRIORITY: Market Regime > Macro Environment > Technical signals + DeFi flows > Derivatives signals > News sentiment > Sector rebalancing
 
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
@@ -1888,14 +2256,14 @@ If a token already holds >20% of portfolio, do NOT buy more — pick a different
 
 CRITICAL: Respond with ONLY a raw JSON object. NO prose, NO explanation outside JSON, NO markdown.
 Your ENTIRE response must be exactly one JSON object:
-{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover, Base TVL +3.2%, WELL protocol TVL rising, BTC shorts crowded","sector":"DEFI"}`;
+{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover, Base TVL +3.2%, WELL protocol TVL rising, BTC shorts crowded, macro RISK_ON, news bullish +45","sector":"DEFI"}`;
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 600,
+        max_tokens: 700,
         messages: [{ role: "user", content: systemPrompt }],
       });
 
@@ -2234,10 +2602,12 @@ async function runTradingCycle() {
     console.log("📈 Fetching market data for all tracked tokens...");
     const marketData = await getMarketData();
 
-    // V4.0: Store intelligence data for API endpoint
+    // V4.5: Store intelligence data for API endpoint (now includes news + macro)
     lastIntelligenceData = {
       defi: marketData.defiLlama,
       derivatives: marketData.derivatives,
+      news: marketData.newsSentiment,
+      macro: marketData.macroData,
       regime: marketData.marketRegime,
       performance: calculateTradePerformance(),
     };
@@ -2424,16 +2794,18 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.0                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   PHASE 1 BRAIN UPGRADE — Multi-Dimensional Intelligence               ║
-║   LIVE TRADING | Base Network | DefiLlama + Binance Derivatives        ║
+║   PHASE 2 BRAIN UPGRADE — News Sentiment + Macro Intelligence          ║
+║   LIVE TRADING | Base Network | 8 Data Sources Active                  ║
 ║                                                                        ║
 ║   Data Sources:                                                        ║
 ║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
 ║   • DeFi Intel: Base TVL, DEX Volume, Protocol TVL (DefiLlama)        ║
 ║   • Derivatives: BTC/ETH Funding Rates + Open Interest (Binance)      ║
+║   • News: Crypto news sentiment — bullish/bearish (CryptoPanic)       ║
+║   • Macro: Fed Rate, 10Y Yield, CPI, M2, Dollar Index (FRED)         ║
 ║   • Sentiment: Fear & Greed Index + Market Regime Detection           ║
 ║   • Self-Learning: Trade performance scoring + signal attribution     ║
 ║                                                                        ║
@@ -2449,8 +2821,8 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Brain: v4.0 — Technicals + DeFi + Derivatives + Regime + Self-Learning`);
-  console.log(`   AI Strategy: Regime-adapted (regime > technicals + DeFi flows > derivatives > sectors)`);
+  console.log(`   Brain: v4.5 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
+  console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
   console.log(`   Slippage: ${CONFIG.trading.slippageBps / 100}%`);
@@ -2532,7 +2904,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v4.0 running! Brain upgrade active: DefiLlama + Binance derivatives + regime detection + self-learning.\n");
+  console.log("\n🚀 Agent v4.5 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
 }
 
 main().catch((err) => {
@@ -2570,7 +2942,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "4.0",
+    version: "4.5",
   };
 }
 
@@ -2615,18 +2987,32 @@ function apiIndicators() {
   };
 }
 
-// V4.0: Intelligence API endpoint
-let lastIntelligenceData: { defi: DefiLlamaData | null; derivatives: DerivativesData | null; regime: MarketRegime; performance: TradePerformanceStats } | null = null;
+// V4.5: Intelligence API endpoint (Phase 2 — includes news + macro)
+let lastIntelligenceData: {
+  defi: DefiLlamaData | null;
+  derivatives: DerivativesData | null;
+  news: NewsSentimentData | null;
+  macro: MacroData | null;
+  regime: MarketRegime;
+  performance: TradePerformanceStats;
+} | null = null;
 
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "4.0",
+    version: "4.5",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
+    newsSentiment: lastIntelligenceData?.news || null,
+    macroData: lastIntelligenceData?.macro || null,
     marketRegime: lastIntelligenceData?.regime || "UNKNOWN",
     tradePerformance: perf,
-    dataSources: ["CoinGecko", "Fear & Greed Index", "DefiLlama (TVL/DEX/Protocols)", "Binance (Funding Rates/OI)", "Technical Indicators (RSI/MACD/BB/SMA)"],
+    dataSources: [
+      "CoinGecko", "Fear & Greed Index",
+      "DefiLlama (TVL/DEX/Protocols)", "Binance (Funding Rates/OI)",
+      "CryptoPanic (News Sentiment)", "FRED (Fed Rates/Yield Curve/CPI/M2/Dollar)",
+      "Technical Indicators (RSI/MACD/BB/SMA)",
+    ],
   };
 }
 
@@ -2727,7 +3113,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.0</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
