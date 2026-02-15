@@ -846,7 +846,41 @@ async function executeTrade(
       console.log(`     Proceeding with CDP-managed account...`);
     }
 
-    // Execute the swap - CDP SDK handles Permit2, approvals, and signing
+    // Approve Permit2 contract to spend the fromToken (one-time per token)
+    const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+    const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+    const APPROVE_SELECTOR = "0x095ea7b3"; // approve(address,uint256)
+
+    // Check current allowance first
+    const allowanceData = "0xdd62ed3e" +
+      account.address.slice(2).padStart(64, "0") +
+      PERMIT2_ADDRESS.slice(2).padStart(64, "0");
+
+    const currentAllowance = await rpcCall("eth_call", [{
+      to: fromTokenAddress,
+      data: allowanceData
+    }, "latest"]);
+
+    if (currentAllowance === "0x" || currentAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(currentAllowance) < fromAmount) {
+      console.log(`     🔓 Approving Permit2 to spend ${decision.fromToken}...`);
+      const approveData = APPROVE_SELECTOR +
+        PERMIT2_ADDRESS.slice(2).padStart(64, "0") +
+        MAX_UINT256.slice(2);
+
+      const approveTx = await account.sendTransaction({
+        network: "base",
+        transaction: {
+          to: fromTokenAddress,
+          data: approveData as `0x${string}`,
+          value: BigInt(0),
+        },
+      });
+      console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
+    } else {
+      console.log(`     ✅ Permit2 already approved for ${decision.fromToken}`);
+    }
+
+    // Execute the swap - CDP SDK handles Permit2 signature and signing
     const result = await account.swap({
       network: "base",
       fromToken: fromTokenAddress,
