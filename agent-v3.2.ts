@@ -1130,7 +1130,7 @@ async function main() {
     // Create or retrieve Smart Account (gas-sponsored via CDP Paymaster)
     console.log("  🔍 Creating/retrieving Smart Account...");
     smartAccount = await cdpClient.evm.getOrCreateSmartAccount({
-      name: "henry-trading-bot-smart",
+      name: "henry-trading-bot",
       owner: eoaAccount,
     });
     console.log(`  ✅ Smart Account: ${smartAccount.address}`);
