@@ -852,6 +852,7 @@ async function executeTrade(
       data: allowanceData
     }, "latest"]);
 
+    let justApproved = false;
     if (currentAllowance === "0x" || currentAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(currentAllowance) < fromAmount) {
       console.log(`     🔓 Approving Permit2 to spend ${decision.fromToken}...`);
       const approveData = APPROVE_SELECTOR +
@@ -867,18 +868,38 @@ async function executeTrade(
         },
       });
       console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
+      justApproved = true;
+      // Wait for the approval to propagate — CDP API needs time to see the on-chain state
+      console.log(`     ⏳ Waiting 10s for approval to propagate...`);
+      await new Promise(resolve => setTimeout(resolve, 10000));
     } else {
       console.log(`     ✅ Permit2 already approved for ${decision.fromToken}`);
     }
 
-    // Execute the swap - CDP SDK handles Permit2 signature and signing
-    const result = await account.swap({
-      network: "base",
-      fromToken: fromTokenAddress,
-      toToken: toTokenAddress,
-      fromAmount,
-      slippageBps: CONFIG.trading.slippageBps,
-    });
+    // Execute the swap with retry logic — CDP API may not see the approval immediately
+    let result: any;
+    const maxRetries = justApproved ? 3 : 1;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}...`);
+        result = await account.swap({
+          network: "base",
+          fromToken: fromTokenAddress,
+          toToken: toTokenAddress,
+          fromAmount,
+          slippageBps: CONFIG.trading.slippageBps,
+        });
+        break; // Success — exit retry loop
+      } catch (swapError: any) {
+        const swapMsg = swapError?.message || "";
+        if (swapMsg.includes("Insufficient token allowance") && attempt < maxRetries) {
+          console.log(`     ⏳ Allowance not yet visible to API, retrying in 15s... (attempt ${attempt}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, 15000));
+        } else {
+          throw swapError; // Re-throw for outer catch to handle
+        }
+      }
+    }
 
     const txHash = result.transactionHash;
 
