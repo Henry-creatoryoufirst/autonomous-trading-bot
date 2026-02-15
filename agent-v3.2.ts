@@ -1,7 +1,12 @@
 /**
- * Henry's Autonomous Trading Agent v4.5
+ * Henry's Autonomous Trading Agent v4.5.1.1
  *
  * PHASE 2 BRAIN UPGRADE: News Sentiment + Macro Intelligence
+ *
+ * CHANGES IN V4.5.1:
+ * - Fixed CryptoPanic: proper API v1 endpoint with auth_token (env: CRYPTOPANIC_AUTH_TOKEN)
+ * - Fixed FRED API: updated to v2 Bearer auth header (Nov 2025 change)
+ * - Fixed CoinGecko: retry with exponential backoff (3 attempts) to prevent $0 portfolio pricing
  *
  * CHANGES IN V4.5:
  * - CryptoPanic news sentiment: bullish/bearish news classification, per-token mentions, headline tracking
@@ -526,7 +531,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "4.5",
+      version: "4.5.1",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -918,8 +923,9 @@ let newsCache: { data: NewsSentimentData | null; lastFetch: number } = { data: n
 const NEWS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 /**
- * Fetch crypto news sentiment from CryptoPanic (free tier — uses filter-based classification)
- * Falls back to basic headline analysis if CryptoPanic is unavailable
+ * Fetch crypto news sentiment from CryptoPanic API
+ * Requires CRYPTOPANIC_AUTH_TOKEN env var (free signup at cryptopanic.com/developers/api/keys)
+ * Falls back to headline keyword analysis if CryptoPanic is unavailable
  */
 async function fetchNewsSentiment(): Promise<NewsSentimentData | null> {
   // Return cached data if fresh enough
@@ -927,13 +933,21 @@ async function fetchNewsSentiment(): Promise<NewsSentimentData | null> {
     return newsCache.data;
   }
 
+  const authToken = process.env.CRYPTOPANIC_AUTH_TOKEN;
+  if (!authToken) {
+    console.warn("  \u26a0\ufe0f CRYPTOPANIC_AUTH_TOKEN not set \u2014 news sentiment unavailable. Get a free key at https://cryptopanic.com/developers/api/keys");
+    return newsCache.data; // Return stale cache if available
+  }
+
   try {
-    // Fetch bullish and bearish news in parallel from CryptoPanic free tier
-    // Using filter=rising (trending/important news) + bullish + bearish
+    // CryptoPanic API v1: auth_token is required as query param (even on free tier)
+    const baseUrl = `https://cryptopanic.com/api/v1/posts/?auth_token=${authToken}&public=true&kind=news&regions=en`;
+
+    // Fetch bullish, bearish, and rising news in parallel
     const [bullishRes, bearishRes, risingRes] = await Promise.allSettled([
-      axios.get("https://cryptopanic.com/api/free/v1/posts/?public=true&filter=bullish&kind=news&regions=en", { timeout: 10000 }),
-      axios.get("https://cryptopanic.com/api/free/v1/posts/?public=true&filter=bearish&kind=news&regions=en", { timeout: 10000 }),
-      axios.get("https://cryptopanic.com/api/free/v1/posts/?public=true&filter=rising&kind=news&regions=en", { timeout: 10000 }),
+      axios.get(`${baseUrl}&filter=bullish`, { timeout: 10000 }),
+      axios.get(`${baseUrl}&filter=bearish`, { timeout: 10000 }),
+      axios.get(`${baseUrl}&filter=rising`, { timeout: 10000 }),
     ]);
 
     let bullishCount = 0;
@@ -1049,22 +1063,24 @@ async function fetchMacroData(): Promise<MacroData | null> {
 
   const FRED_KEY = process.env.FRED_API_KEY;
   if (!FRED_KEY) {
-    console.warn("  ⚠️ FRED_API_KEY not set — macro data unavailable. Get a free key at https://fred.stlouisfed.org/docs/api/api_key.html");
+    console.warn("  \u26a0\ufe0f FRED_API_KEY not set \u2014 macro data unavailable. Get a free key at https://fred.stlouisfed.org/docs/api/api_key.html");
     return macroCache.data; // Return stale cache if available
   }
 
   try {
+    // FRED API v2 (Nov 2025): uses Bearer auth header instead of query param
     const fredBase = "https://api.stlouisfed.org/fred/series/observations";
-    const baseParams = `&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=2`;
+    const fredHeaders = { headers: { Authorization: `Bearer ${FRED_KEY}` }, timeout: 10000 };
+    const baseParams = "&file_type=json&sort_order=desc&limit=2";
 
     // Fetch all series in parallel (6 requests, well within 120/min limit)
     const [dffRes, dgs10Res, t10y2yRes, cpiRes, m2Res, dollarRes] = await Promise.allSettled([
-      axios.get(`${fredBase}?series_id=DFF${baseParams}`, { timeout: 10000 }),
-      axios.get(`${fredBase}?series_id=DGS10${baseParams}`, { timeout: 10000 }),
-      axios.get(`${fredBase}?series_id=T10Y2Y${baseParams}`, { timeout: 10000 }),
-      axios.get(`${fredBase}?series_id=CPIAUCSL${baseParams}&limit=13`, { timeout: 10000 }),  // 13 months for YoY
-      axios.get(`${fredBase}?series_id=M2SL${baseParams}&limit=13`, { timeout: 10000 }),      // 13 months for YoY
-      axios.get(`${fredBase}?series_id=DTWEXBGS${baseParams}`, { timeout: 10000 }),
+      axios.get(`${fredBase}?series_id=DFF${baseParams}`, fredHeaders),
+      axios.get(`${fredBase}?series_id=DGS10${baseParams}`, fredHeaders),
+      axios.get(`${fredBase}?series_id=T10Y2Y${baseParams}`, fredHeaders),
+      axios.get(`${fredBase}?series_id=CPIAUCSL${baseParams}&limit=13`, fredHeaders),  // 13 months for YoY
+      axios.get(`${fredBase}?series_id=M2SL${baseParams}&limit=13`, fredHeaders),      // 13 months for YoY
+      axios.get(`${fredBase}?series_id=DTWEXBGS${baseParams}`, fredHeaders),
     ]);
 
     const parseLatest = (res: PromiseSettledResult<any>): { value: number; date: string } | null => {
@@ -1334,11 +1350,30 @@ async function getMarketData(): Promise<MarketData> {
     )].join(",");
     const coingeckoUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
 
-    // Fetch core price data first (Fear & Greed + CoinGecko)
-    const [fngResult, marketResult] = await Promise.allSettled([
+    // Fetch Fear & Greed first (lightweight)
+    const fngResult = await Promise.allSettled([
       axios.get("https://api.alternative.me/fng/", { timeout: 10000 }),
-      axios.get(coingeckoUrl, { timeout: 15000 }),
-    ]);
+    ]).then(r => r[0]);
+
+    // CoinGecko with retry — this is the most critical data source for portfolio pricing
+    let marketResult: PromiseSettledResult<any> = { status: "rejected", reason: new Error("No attempt") } as PromiseRejectedResult;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await axios.get(coingeckoUrl, { timeout: 15000 });
+        if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+          marketResult = { status: "fulfilled", value: res };
+          break;
+        } else {
+          console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}: empty response (${res.data?.length || 0} tokens), retrying in ${attempt * 3}s...`);
+          if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 3000));
+        }
+      } catch (err: any) {
+        const status = err?.response?.status;
+        console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}: ${status === 429 ? "rate limited (429)" : err?.message?.substring(0, 80) || err}`);
+        if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 4000)); // longer wait on error
+        if (attempt === 3) marketResult = { status: "rejected", reason: err } as PromiseRejectedResult;
+      }
+    }
 
     // Then fetch intelligence layers (don't compete with price data for connections)
     const [defiResult, derivResult] = await Promise.allSettled([
@@ -2153,7 +2188,7 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5 on Base network.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5.1 on Base network.
 You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
 
 ═══ PORTFOLIO ═══
@@ -2200,7 +2235,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v4.5 ═══
+═══ STRATEGY FRAMEWORK v4.5.1 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -2794,7 +2829,7 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5.1                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
 ║   PHASE 2 BRAIN UPGRADE — News Sentiment + Macro Intelligence          ║
@@ -2821,7 +2856,7 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Brain: v4.5 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
+  console.log(`   Brain: v4.5.1 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
   console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
@@ -2904,7 +2939,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v4.5 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
+  console.log("\n🚀 Agent v4.5.1 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
 }
 
 main().catch((err) => {
@@ -2942,7 +2977,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "4.5",
+    version: "4.5.1",
   };
 }
 
@@ -3000,7 +3035,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "4.5",
+    version: "4.5.1",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -3113,7 +3148,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5.1</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
