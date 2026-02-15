@@ -409,8 +409,8 @@ let state: AgentState = {
     successfulTrades: 0,
     balances: [],
     totalPortfolioValue: 0,
-    initialValue: 230,
-    peakValue: 374,
+    initialValue: 494,
+    peakValue: 494,
     sectorAllocations: [],
   },
   tradeHistory: [],
@@ -432,7 +432,7 @@ function loadTradeHistory() {
         const data = fs.readFileSync(file, "utf-8");
         const parsed = JSON.parse(data);
         state.tradeHistory = parsed.trades || [];
-        state.trading.initialValue = parsed.initialValue || 230;
+        state.trading.initialValue = parsed.initialValue || 494;
         state.trading.peakValue = parsed.peakValue || 374;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
@@ -1263,31 +1263,65 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
 
   console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
 
-  // Build list of tokens to query (deferred — promises created per batch to avoid RPC rate limits)
   const tokenEntries = Object.entries(TOKEN_REGISTRY);
-
   const results: { symbol: string; balance: number }[] = [];
-  const batchSize = 4; // Smaller batches for public RPC
-  for (let i = 0; i < tokenEntries.length; i += batchSize) {
-    const batch = tokenEntries.slice(i, i + batchSize);
-    const batchResults = await Promise.allSettled(
-      batch.map(async ([symbol, token]) => {
+  const failedTokens: string[] = [];
+
+  // Read balances one at a time with delay — public RPC rate-limits batch calls
+  for (let i = 0; i < tokenEntries.length; i++) {
+    const [symbol, token] = tokenEntries[i];
+    let balance = 0;
+    let success = false;
+
+    // Try up to 3 times per token
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        balance = token.address === "native"
+          ? await getETHBalance(walletAddress)
+          : await getERC20Balance(token.address, walletAddress, token.decimals);
+        success = true;
+        break;
+      } catch (err: any) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        } else {
+          console.warn(`  ⚠️ Failed to read ${symbol} after 3 attempts: ${err?.message || err}`);
+          failedTokens.push(symbol);
+        }
+      }
+    }
+
+    if (success) {
+      results.push({ symbol, balance });
+    }
+
+    // Delay between each token read to avoid RPC rate limits
+    if (i < tokenEntries.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  }
+
+  // If any tokens failed, retry them after a longer pause
+  if (failedTokens.length > 0) {
+    console.log(`  🔄 Retrying ${failedTokens.length} failed tokens after cooldown...`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    for (const symbol of failedTokens) {
+      const token = TOKEN_REGISTRY[symbol];
+      try {
         const balance = token.address === "native"
           ? await getETHBalance(walletAddress)
           : await getERC20Balance(token.address, walletAddress, token.decimals);
-        return { symbol, balance };
-      })
-    );
-    for (const result of batchResults) {
-      if (result.status === "fulfilled") {
-        results.push(result.value);
-      } else {
-        const failedSymbol = batch[batchResults.indexOf(result)]?.[0] || "unknown";
-        console.warn(`  ⚠️ Failed to fetch balance for ${failedSymbol}: ${result.reason}`);
+        results.push({ symbol, balance });
+        console.log(`  ✅ Retry succeeded for ${symbol}: ${balance}`);
+      } catch (err: any) {
+        console.warn(`  ❌ Final retry failed for ${symbol}: ${err?.message || err}`);
+        // Use last known balance from state if available
+        const lastKnown = state.trading.balances?.find(b => b.symbol === symbol);
+        if (lastKnown && lastKnown.balance > 0) {
+          results.push({ symbol, balance: lastKnown.balance });
+          console.log(`  📎 Using last known balance for ${symbol}: ${lastKnown.balance}`);
+        }
       }
-    }
-    // Stagger between batches to respect public RPC rate limits
-    if (i + batchSize < tokenEntries.length) {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
@@ -1808,10 +1842,30 @@ async function runTradingCycle() {
     // Update USD values
     for (const balance of balances) {
       if (balance.symbol !== "USDC") {
-        const tokenData = marketData.tokens.find(t => t.symbol === balance.symbol);
+        let tokenData = marketData.tokens.find(t => t.symbol === balance.symbol);
+        // WETH uses same price as ETH (1 WETH = 1 ETH)
+        if (!tokenData && balance.symbol === "WETH") {
+          tokenData = marketData.tokens.find(t => t.symbol === "ETH");
+        }
+        // Fallback: try matching by coingeckoId if symbol match fails
+        if (!tokenData) {
+          const registryToken = TOKEN_REGISTRY[balance.symbol];
+          if (registryToken?.coingeckoId) {
+            const cgMatch = marketData.tokens.find(t => {
+              const regEntry = Object.entries(TOKEN_REGISTRY).find(([s]) => s === t.symbol);
+              return regEntry && regEntry[1].coingeckoId === registryToken.coingeckoId;
+            });
+            if (cgMatch) {
+              tokenData = cgMatch;
+              console.log(`   📎 Pricing ${balance.symbol} via shared coingeckoId (${registryToken.coingeckoId}) at $${cgMatch.price}`);
+            }
+          }
+        }
         if (tokenData) {
           balance.usdValue = balance.balance * tokenData.price;
           balance.price = tokenData.price;
+        } else if (balance.balance > 0) {
+          console.warn(`   ⚠️ No price data for ${balance.symbol} — showing $0`);
         }
       }
       balance.sector = TOKEN_REGISTRY[balance.symbol]?.sector;
