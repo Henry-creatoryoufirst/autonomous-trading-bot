@@ -392,7 +392,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "3.3",
+      version: "3.3.1",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -1070,7 +1070,7 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.3                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.3.1                          ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
 ║   LIVE TRADING via Coinbase CDP SDK | Base Network                     ║
@@ -1153,9 +1153,20 @@ async function main() {
   // Run immediately
   await runTradingCycle();
 
-  // Schedule recurring cycles
+  // Schedule recurring cycles with robust error handling
   const cronExpression = `*/${CONFIG.trading.intervalMinutes} * * * *`;
-  cron.schedule(cronExpression, runTradingCycle);
+  cron.schedule(cronExpression, async () => {
+    try {
+      await runTradingCycle();
+    } catch (cronError: any) {
+      console.error(`[Cron Error] Cycle failed: ${cronError?.message?.substring(0, 300) || cronError}`);
+    }
+  });
+
+  // Heartbeat every 5 minutes to confirm process is alive
+  setInterval(() => {
+    console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
+  }, 5 * 60 * 1000);
 
   console.log("\n🚀 Agent v3.3 running! Press Ctrl+C to stop.\n");
 }
@@ -1174,7 +1185,7 @@ const healthServer = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: "ok",
-      version: "3.3",
+      version: "3.3.1",
       uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
       portfolio: state.trading.totalPortfolioValue,
       trades: `${state.trading.successfulTrades}/${state.trading.totalTrades}`,
