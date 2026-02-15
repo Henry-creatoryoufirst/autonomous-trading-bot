@@ -1,7 +1,12 @@
 /**
- * Henry's Autonomous Trading Agent v4.5.1.1
+ * Henry's Autonomous Trading Agent v4.5.2
  *
  * PHASE 2 BRAIN UPGRADE: News Sentiment + Macro Intelligence
+ *
+ * CHANGES IN V4.5.2:
+ * - CoinGecko: last-known-prices cache prevents $0 portfolio when rate limited
+ * - CoinGecko: longer retry delays (15s, 45s) to survive 60s rate limit windows
+ * - Intelligence fetches run in parallel with CoinGecko retries (faster cycles)
  *
  * CHANGES IN V4.5.1:
  * - Fixed CryptoPanic: proper API v1 endpoint with auth_token (env: CRYPTOPANIC_AUTH_TOKEN)
@@ -531,7 +536,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "4.5.1",
+      version: "4.5.2",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -913,6 +918,9 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
 
 // Cache for derivatives OI comparison
 const derivativesCache = { btcOI: 0, ethOI: 0 };
+
+// Cache for CoinGecko last-known prices — prevents $0 portfolio when rate limited
+let lastKnownPrices: Record<string, { price: number; change24h: number; change7d: number; volume: number; marketCap: number; name: string; sector: string }> = {};
 
 // Cache for macro data (only fetch once per hour since most data is daily/monthly)
 let macroCache: { data: MacroData | null; lastFetch: number } = { data: null, lastFetch: 0 };
@@ -1350,42 +1358,52 @@ async function getMarketData(): Promise<MarketData> {
     )].join(",");
     const coingeckoUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
 
-    // Fetch Fear & Greed first (lightweight)
-    const fngResult = await Promise.allSettled([
-      axios.get("https://api.alternative.me/fng/", { timeout: 10000 }),
-    ]).then(r => r[0]);
+    // Launch all non-CoinGecko fetches in parallel (they use different APIs)
+    const intelligencePromise = (async () => {
+      const fng = await Promise.allSettled([axios.get("https://api.alternative.me/fng/", { timeout: 10000 })]).then(r => r[0]);
+      const [defi, deriv] = await Promise.allSettled([fetchDefiLlamaData(), fetchDerivativesData()]);
+      const [news, macro] = await Promise.allSettled([fetchNewsSentiment(), fetchMacroData()]);
+      return { fng, defi, deriv, news, macro };
+    })();
 
     // CoinGecko with retry — this is the most critical data source for portfolio pricing
+    // Free tier rate limit window is ~60s, so retries need substantial delays
+    const retryDelays = [15000, 45000]; // 15s after 1st fail, 45s after 2nd fail
     let marketResult: PromiseSettledResult<any> = { status: "rejected", reason: new Error("No attempt") } as PromiseRejectedResult;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const res = await axios.get(coingeckoUrl, { timeout: 15000 });
         if (res.data && Array.isArray(res.data) && res.data.length > 0) {
           marketResult = { status: "fulfilled", value: res };
+          // Update last-known-prices cache on success
+          for (const coin of res.data) {
+            const registryEntry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.coingeckoId === coin.id);
+            const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
+            const sector = registryEntry ? registryEntry[1].sector : "UNKNOWN";
+            lastKnownPrices[symbol] = {
+              price: coin.current_price, change24h: coin.price_change_percentage_24h || 0,
+              change7d: coin.price_change_percentage_7d_in_currency || 0,
+              volume: coin.total_volume, marketCap: coin.market_cap, name: coin.name, sector,
+            };
+          }
           break;
         } else {
-          console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}: empty response (${res.data?.length || 0} tokens), retrying in ${attempt * 3}s...`);
-          if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 3000));
+          console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}/3: empty response, retrying in ${(retryDelays[attempt - 1] || 0) / 1000}s...`);
+          if (attempt < 3) await new Promise(r => setTimeout(r, retryDelays[attempt - 1]));
         }
       } catch (err: any) {
         const status = err?.response?.status;
-        console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}: ${status === 429 ? "rate limited (429)" : err?.message?.substring(0, 80) || err}`);
-        if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 4000)); // longer wait on error
+        console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}/3: ${status === 429 ? "rate limited (429)" : err?.message?.substring(0, 80) || err}`);
+        if (attempt < 3) {
+          console.log(`     Waiting ${retryDelays[attempt - 1] / 1000}s before retry...`);
+          await new Promise(r => setTimeout(r, retryDelays[attempt - 1]));
+        }
         if (attempt === 3) marketResult = { status: "rejected", reason: err } as PromiseRejectedResult;
       }
     }
 
-    // Then fetch intelligence layers (don't compete with price data for connections)
-    const [defiResult, derivResult] = await Promise.allSettled([
-      fetchDefiLlamaData(),
-      fetchDerivativesData(),
-    ]);
-
-    // Phase 2: Fetch news sentiment + macro data (staggered after core intelligence)
-    const [newsResult, macroResult] = await Promise.allSettled([
-      fetchNewsSentiment(),
-      fetchMacroData(),
-    ]);
+    // Await intelligence data (likely already resolved during CoinGecko retries)
+    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult } = await intelligencePromise;
 
     const fearGreed = fngResult.status === "fulfilled"
       ? { value: parseInt(fngResult.value.data.data[0].value), classification: fngResult.value.data.data[0].value_classification }
@@ -1409,7 +1427,17 @@ async function getMarketData(): Promise<MarketData> {
       console.log(`  ✅ CoinGecko: ${tokens.length} tokens priced`);
     } else {
       const reason = (marketResult as PromiseRejectedResult).reason;
-      console.error(`  ❌ CoinGecko FAILED: ${reason?.response?.status || ""} ${reason?.message || reason}`);
+      console.error(`  \u274c CoinGecko FAILED: ${reason?.response?.status || ""} ${reason?.message || reason}`);
+      // Fallback: use last-known-prices cache to prevent $0 portfolio
+      const cachedCount = Object.keys(lastKnownPrices).length;
+      if (cachedCount > 0) {
+        console.log(`  \u267b\ufe0f Using ${cachedCount} cached prices from last successful CoinGecko fetch`);
+        tokens = Object.entries(lastKnownPrices).map(([symbol, data]) => ({
+          symbol, name: data.name, price: data.price,
+          priceChange24h: data.change24h, priceChange7d: data.change7d,
+          volume24h: data.volume, marketCap: data.marketCap, sector: data.sector,
+        }));
+      }
     }
 
     const trendingTokens = tokens
@@ -2188,7 +2216,7 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5.1 on Base network.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5.2 on Base network.
 You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
 
 ═══ PORTFOLIO ═══
@@ -2235,7 +2263,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v4.5.1 ═══
+═══ STRATEGY FRAMEWORK v4.5.2 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -2829,7 +2857,7 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5.1                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5.2                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
 ║   PHASE 2 BRAIN UPGRADE — News Sentiment + Macro Intelligence          ║
@@ -2856,7 +2884,7 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Brain: v4.5.1 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
+  console.log(`   Brain: v4.5.2 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
   console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
@@ -2939,7 +2967,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v4.5.1 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
+  console.log("\n🚀 Agent v4.5.2 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
 }
 
 main().catch((err) => {
@@ -2977,7 +3005,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "4.5.1",
+    version: "4.5.2",
   };
 }
 
@@ -3035,7 +3063,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "4.5.1",
+    version: "4.5.2",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -3148,7 +3176,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5.1</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5.2</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
