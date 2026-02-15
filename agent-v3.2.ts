@@ -980,13 +980,20 @@ function formatIntelligenceForPrompt(defi: DefiLlamaData | null, derivatives: De
 
 async function getMarketData(): Promise<MarketData> {
   try {
-    // Fetch all data sources in parallel for speed
-    const [fngResult, marketResult, defiResult, derivResult] = await Promise.allSettled([
+    // Build CoinGecko URL before parallel call
+    const coingeckoIds = [...new Set(
+      Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean)
+    )].join(",");
+    const coingeckoUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
+
+    // Fetch core price data first (Fear & Greed + CoinGecko)
+    const [fngResult, marketResult] = await Promise.allSettled([
       axios.get("https://api.alternative.me/fng/", { timeout: 10000 }),
-      axios.get(
-        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${[...new Set(Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean))].join(",")}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
-        { timeout: 15000 }
-      ),
+      axios.get(coingeckoUrl, { timeout: 15000 }),
+    ]);
+
+    // Then fetch intelligence layers (don't compete with price data for connections)
+    const [defiResult, derivResult] = await Promise.allSettled([
       fetchDefiLlamaData(),
       fetchDerivativesData(),
     ]);
@@ -1010,6 +1017,10 @@ async function getMarketData(): Promise<MarketData> {
           volume24h: coin.total_volume, marketCap: coin.market_cap, sector,
         };
       });
+      console.log(`  ✅ CoinGecko: ${tokens.length} tokens priced`);
+    } else {
+      const reason = (marketResult as PromiseRejectedResult).reason;
+      console.error(`  ❌ CoinGecko FAILED: ${reason?.response?.status || ""} ${reason?.message || reason}`);
     }
 
     const trendingTokens = tokens
