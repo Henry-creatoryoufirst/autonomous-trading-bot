@@ -1,7 +1,13 @@
 /**
- * Henry's Autonomous Trading Agent v3.4
+ * Henry's Autonomous Trading Agent v3.4.1
  *
  * MAJOR UPGRADE: Technical Indicators Engine + Advanced AI Trading Strategy
+ *
+ * CHANGES IN V3.4.1:
+ * - Fix AI JSON parsing: extract JSON from prose-wrapped responses
+ * - Position size guard: hard block BUY if token > 25% of portfolio
+ * - Diversification guard: block buying same token 3+ consecutive times
+ * - Stronger AI prompt: explicit JSON-only instruction + diversification rule
  *
  * CHANGES IN V3.4:
  * - Technical Indicators Engine: RSI(14), MACD(12/26/9), Bollinger Bands(20,2), SMA(20/50)
@@ -401,7 +407,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "3.4",
+      version: "3.4.1",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -1255,15 +1261,12 @@ DECISION PRIORITY: Technical signals > Sector rebalancing > Sentiment
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
 
-Respond with ONLY valid JSON:
-{
-  "action": "BUY" | "SELL" | "HOLD" | "REBALANCE",
-  "fromToken": "USDC" or token symbol,
-  "toToken": token symbol or "USDC",
-  "amountUSD": <number>,
-  "reasoning": "<1-2 sentences citing specific indicators that drove this decision>",
-  "sector": "<sector name if relevant>"
-}`;
+DIVERSIFICATION RULE: NEVER buy the same token more than 2 cycles in a row. Rotate across sectors and tokens.
+If a token already holds >20% of portfolio, do NOT buy more — pick a different underweight token or HOLD.
+
+CRITICAL: Respond with ONLY a raw JSON object. NO prose, NO explanation outside JSON, NO markdown.
+Your ENTIRE response must be exactly one JSON object:
+{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover","sector":"DEFI"}`;
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1277,8 +1280,20 @@ Respond with ONLY valid JSON:
       const content = response.content[0];
       if (content.type === "text") {
         let text = content.text.trim();
+        // Strip markdown code fences
         if (text.startsWith("```")) {
           text = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+        }
+        // If AI wrapped JSON in prose, extract the JSON object
+        if (!text.startsWith("{")) {
+          const jsonMatch = text.match(/\{[\s\S]*"action"[\s\S]*\}/);
+          if (jsonMatch) {
+            console.log(`   ⚠️ AI returned prose wrapper — extracted JSON from response`);
+            text = jsonMatch[0];
+          } else {
+            console.log(`   ⚠️ AI returned non-JSON response: "${text.substring(0, 80)}..."`);
+            return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "AI returned prose instead of JSON — HOLD" };
+          }
         }
         const decision = JSON.parse(text);
 
@@ -1632,6 +1647,33 @@ async function runTradingCycle() {
     }
     console.log(`   Reasoning: ${decision.reasoning}`);
 
+    // === POSITION SIZE GUARD ===
+    // Hard enforcement: block BUY if target token already exceeds maxPositionPercent
+    if (decision.action === "BUY" && decision.toToken !== "USDC" && state.trading.totalPortfolioValue > 0) {
+      const targetHolding = balances.find(b => b.symbol === decision.toToken);
+      const currentValue = targetHolding?.usdValue || 0;
+      const afterBuyValue = currentValue + decision.amountUSD;
+      const afterBuyPercent = (afterBuyValue / state.trading.totalPortfolioValue) * 100;
+
+      if (afterBuyPercent > CONFIG.trading.maxPositionPercent) {
+        console.log(`   🚫 POSITION GUARD: ${decision.toToken} would be ${afterBuyPercent.toFixed(1)}% of portfolio (max ${CONFIG.trading.maxPositionPercent}%). Current: $${currentValue.toFixed(2)}. Blocked.`);
+        decision.action = "HOLD";
+        decision.reasoning = `Position guard: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — too concentrated. Holding.`;
+      }
+    }
+
+    // === DIVERSIFICATION GUARD ===
+    // If we've bought the same token in the last 3 consecutive trades, force diversification
+    const last3Trades = state.tradeHistory.slice(-3);
+    if (decision.action === "BUY" && last3Trades.length >= 3) {
+      const allSameToken = last3Trades.every(t => t.action === "BUY" && t.toToken === decision.toToken);
+      if (allSameToken) {
+        console.log(`   🔄 DIVERSITY GUARD: Bought ${decision.toToken} 3x in a row. Forcing HOLD to avoid concentration.`);
+        decision.action = "HOLD";
+        decision.reasoning = `Diversity guard: ${decision.toToken} bought 3 consecutive times. Cooling off.`;
+      }
+    }
+
     // Execute if needed
     if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
       await executeTrade(decision, marketData);
@@ -1761,7 +1803,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v3.4 running! Technical indicators active. Press Ctrl+C to stop.\n");
+  console.log("\n🚀 Agent v3.4.1 running! Position guards + JSON parsing fix active. Press Ctrl+C to stop.\n");
 }
 
 main().catch((err) => {
@@ -1778,7 +1820,7 @@ const healthServer = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: "ok",
-      version: "3.4",
+      version: "3.4.1",
       uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
       portfolio: state.trading.totalPortfolioValue,
       trades: `${state.trading.successfulTrades}/${state.trading.totalTrades}`,
