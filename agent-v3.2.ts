@@ -1,19 +1,23 @@
 /**
- * Henry's Autonomous Trading Agent v3.2
+ * Henry's Autonomous Trading Agent v3.3
  *
- * MAJOR UPGRADE: Live Trade Execution via Coinbase CDP SDK
+ * MAJOR UPGRADE: CDP Smart Account with Gas Sponsorship
  *
- * CHANGES IN V3.2:
- * - REPLACED broken awal CLI trade execution with Coinbase CDP SDK
- * - Uses account.swap() for one-call trade execution on Base network
- * - Handles Permit2 approvals automatically
+ * CHANGES IN V3.3:
+ * - SWITCHED from EOA to CDP Smart Account for gas-free transactions
+ * - Smart Account uses CDP Paymaster for gas sponsorship (no ETH needed for gas!)
+ * - Uses sendUserOperation() for Permit2 approvals (gas-sponsored)
+ * - Maintains account.swap() for one-call trade execution on Base network
+ * - Auto-creates Smart Account owned by existing EOA on first run
+ * - Logs Smart Account address for WALLET_ADDRESS env var update
+ *
+ * RETAINED FROM V3.2:
+ * - Coinbase CDP SDK for trade execution
  * - CDP-managed wallet signing via CDP_WALLET_SECRET
  * - Supports both old env vars (CDP_API_KEY_NAME/PRIVATE_KEY) and new (CDP_API_KEY_ID/SECRET)
- * - Added swap quote preview logging before execution
+ * - Swap quote preview logging before execution
  * - Improved error handling for insufficient liquidity
- * - Added viem for transaction monitoring and token allowance checks
- *
- * FIX IN V3.1.1 (retained):
+ * - viem for transaction monitoring and token allowance checks
  * - Balance reading via direct on-chain RPC calls to Base network
  * - All ERC-20 token balances read via eth_call (balanceOf)
  * - ETH balance read via eth_getBalance
@@ -244,7 +248,7 @@ const CONFIG = {
   activeTokens: Object.keys(TOKEN_REGISTRY).filter(t => t !== "USDC"),
 
   // Logging
-  logFile: "./logs/trades-v3.2.json",
+  logFile: "./logs/trades-v3.3.json",
 };
 
 // ============================================================================
@@ -290,6 +294,7 @@ function createCdpClient(): CdpClient {
 }
 
 let cdpClient: CdpClient;
+let smartAccount: any; // CDP Smart Account instance (set during init)
 
 // ============================================================================
 // STATE
@@ -366,7 +371,7 @@ let state: AgentState = {
 
 function loadTradeHistory() {
   try {
-    // Try v3.2 log first, then v3.1
+    // Try v3.3 log first, then v3.1
     const logFiles = [CONFIG.logFile, "./logs/trades-v3.1.json"];
     for (const file of logFiles) {
       if (fs.existsSync(file)) {
@@ -393,7 +398,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "3.2",
+      version: "3.3",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -642,7 +647,7 @@ async function makeTradeDecision(
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
   const tradeableTokens = CONFIG.activeTokens.join(", ");
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v3.2 on Base network.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v3.3 on Base network.
 IMPORTANT: Trade execution is LIVE via Coinbase CDP SDK. Your decisions WILL execute real swaps.
 
 PORTFOLIO OVERVIEW:
@@ -831,29 +836,21 @@ async function executeTrade(
     console.log(`     Slippage: ${CONFIG.trading.slippageBps / 100}%`);
     console.log(`     Network: Base Mainnet`);
 
-    // Get or create the CDP-managed account
-    const account = await cdpClient.evm.getOrCreateAccount({
-      name: "henry-trading-bot",
-    });
-
-    console.log(`     Account: ${account.address}`);
-
-    // Verify this is the right wallet
-    if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
-      console.log(`     ⚠️ CDP account address differs from configured wallet!`);
-      console.log(`     CDP: ${account.address}`);
-      console.log(`     Config: ${CONFIG.walletAddress}`);
-      console.log(`     Proceeding with CDP-managed account...`);
+    // Use the Smart Account (gas-sponsored, no ETH needed for gas)
+    if (!smartAccount) {
+      throw new Error("Smart Account not initialized. Check CDP credentials.");
     }
+
+    console.log(`     Smart Account: ${smartAccount.address}`);
 
     // Approve Permit2 contract to spend the fromToken (one-time per token)
     const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
     const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
     const APPROVE_SELECTOR = "0x095ea7b3"; // approve(address,uint256)
 
-    // Check current allowance first
+    // Check current allowance for the SMART ACCOUNT (not EOA)
     const allowanceData = "0xdd62ed3e" +
-      account.address.slice(2).padStart(64, "0") +
+      smartAccount.address.slice(2).padStart(64, "0") +
       PERMIT2_ADDRESS.slice(2).padStart(64, "0");
 
     const currentAllowance = await rpcCall("eth_call", [{
@@ -862,26 +859,31 @@ async function executeTrade(
     }, "latest"]);
 
     if (currentAllowance === "0x" || currentAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(currentAllowance) < fromAmount) {
-      console.log(`     🔓 Approving Permit2 to spend ${decision.fromToken}...`);
+      console.log(`     🔓 Approving Permit2 to spend ${decision.fromToken} (via Smart Account UserOp)...`);
       const approveData = APPROVE_SELECTOR +
         PERMIT2_ADDRESS.slice(2).padStart(64, "0") +
         MAX_UINT256.slice(2);
 
-      const approveTx = await account.sendTransaction({
+      // Use sendUserOperation — gas-sponsored by CDP Paymaster!
+      const approveOp = await smartAccount.sendUserOperation({
         network: "base",
-        transaction: {
+        calls: [{
           to: fromTokenAddress,
           data: approveData as `0x${string}`,
           value: BigInt(0),
-        },
+        }],
       });
-      console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
+      console.log(`     ⏳ Waiting for Permit2 approval to confirm...`);
+      const approveReceipt = await smartAccount.waitForUserOperation({
+        userOpHash: approveOp.userOpHash,
+      });
+      console.log(`     ✅ Permit2 approved! UserOp: ${approveOp.userOpHash}`);
     } else {
       console.log(`     ✅ Permit2 already approved for ${decision.fromToken}`);
     }
 
     // Execute the swap - CDP SDK handles Permit2 signature and signing
-    const result = await account.swap({
+    const result = await smartAccount.swap({
       network: "base",
       fromToken: fromTokenAddress,
       toToken: toTokenAddress,
@@ -889,7 +891,8 @@ async function executeTrade(
       slippageBps: CONFIG.trading.slippageBps,
     });
 
-    const txHash = result.transactionHash;
+    // Smart account swaps return userOpHash
+    const txHash = result.transactionHash || result.userOpHash;
 
     console.log(`\n  ✅ TRADE EXECUTED SUCCESSFULLY!`);
     console.log(`     TX Hash: ${txHash}`);
@@ -1079,10 +1082,10 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.2                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.3                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   LIVE TRADING via Coinbase CDP SDK | Base Network                     ║
+║   LIVE TRADING via CDP Smart Account | Base Network | Gas-Sponsored   ║
 ║                                                                        ║
 ║   Sectors:                                                             ║
 ║   • Blue Chip (40%): ETH, cbBTC, cbETH                                ║
@@ -1095,7 +1098,8 @@ function displayBanner() {
   console.log("📍 Configuration:");
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
-  console.log(`   Execution: Coinbase CDP SDK (account.swap)`);
+  console.log(`   Execution: CDP Smart Account (gas-sponsored swaps)`);
+  console.log(`   Smart Account: ${smartAccount?.address || 'not initialized'}`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
   console.log(`   Slippage: ${CONFIG.trading.slippageBps / 100}%`);
@@ -1112,28 +1116,80 @@ async function main() {
     process.exit(1);
   }
 
-  // Initialize CDP client
+  // Initialize CDP client with Smart Account
   try {
     console.log("\n🔧 Initializing CDP SDK...");
     cdpClient = createCdpClient();
     console.log("  ✅ CDP Client created");
 
-    // Verify account access — this confirms credentials are valid
-    console.log("  🔍 Verifying CDP account access...");
-    const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-    console.log(`  ✅ CDP Account verified: ${account.address}`);
+    // Get the EOA (owner of the smart account)
+    console.log("  🔍 Getting CDP EOA account...");
+    const eoaAccount = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+    console.log(`  ✅ EOA Account: ${eoaAccount.address}`);
+
+    // Create or retrieve Smart Account (gas-sponsored via CDP Paymaster)
+    console.log("  🔍 Creating/retrieving Smart Account...");
+    smartAccount = await cdpClient.evm.getOrCreateSmartAccount({
+      name: "henry-trading-bot-smart",
+      owner: eoaAccount,
+    });
+    console.log(`  ✅ Smart Account: ${smartAccount.address}`);
+    console.log(`  ✅ Gas sponsorship enabled — no ETH needed for gas!`);
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
-    if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
-      console.log(`\n  ⚠️ Note: CDP account address differs from WALLET_ADDRESS`);
-      console.log(`     CDP Account: ${account.address}`);
-      console.log(`     WALLET_ADDRESS: ${CONFIG.walletAddress}`);
-      console.log(`     Trades execute from CDP account. Balance reading uses WALLET_ADDRESS.`);
-      console.log(`     To align: update WALLET_ADDRESS=${account.address} in Railway vars.`);
+    // Check if WALLET_ADDRESS needs updating to point to smart account
+    if (smartAccount.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
+      console.log(`\n  ⚠️ IMPORTANT: Update WALLET_ADDRESS in Railway to match Smart Account!`);
+      console.log(`     Smart Account: ${smartAccount.address}`);
+      console.log(`     Current WALLET_ADDRESS: ${CONFIG.walletAddress}`);
+      console.log(`     → Set WALLET_ADDRESS=${smartAccount.address} in Railway vars`);
     }
-    // NOTE: Old smart account 0x5550...dd0F has ~$576 in tokens (USDC, AERO, DEGEN) + 0.045 ETH
-    // but was created by a different CDP API key/project. Recovery requires original credentials.
-    // Current CDP project only has access to EOA 0xB7c5...a7C1 (henry-trading-bot).
+
+    // Auto-transfer: Check if EOA has USDC that should be moved to Smart Account
+    try {
+      const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+      const eoaUsdcBalance = await getERC20Balance(USDC_ADDRESS, eoaAccount.address, 6);
+      const smartUsdcBalance = await getERC20Balance(USDC_ADDRESS, smartAccount.address, 6);
+      console.log(`\n  💰 Fund Status:`);
+      console.log(`     EOA USDC: $${eoaUsdcBalance.toFixed(2)}`);
+      console.log(`     Smart Account USDC: $${smartUsdcBalance.toFixed(2)}`);
+
+      if (eoaUsdcBalance > 1) {
+        // Check if EOA has ETH for gas to transfer
+        const eoaEthBalance = await getETHBalance(eoaAccount.address);
+        console.log(`     EOA ETH (for gas): ${eoaEthBalance.toFixed(6)} ETH`);
+
+        if (eoaEthBalance > 0.0001) {
+          // EOA has gas — auto-transfer USDC to Smart Account
+          const transferAmount = parseUnits(eoaUsdcBalance.toFixed(2), 6);
+          const transferData = "0xa9059cbb" +  // transfer(address,uint256)
+            smartAccount.address.slice(2).padStart(64, "0") +
+            transferAmount.toString(16).padStart(64, "0");
+
+          console.log(`     📤 Auto-transferring $${eoaUsdcBalance.toFixed(2)} USDC to Smart Account...`);
+          const transferTx = await eoaAccount.sendTransaction({
+            network: "base",
+            transaction: {
+              to: USDC_ADDRESS as `0x${string}`,
+              data: transferData as `0x${string}`,
+              value: BigInt(0),
+            },
+          });
+          console.log(`     ✅ USDC transferred! TX: ${transferTx.transactionHash}`);
+        } else {
+          console.log(`\n  ⚠️ EOA has $${eoaUsdcBalance.toFixed(2)} USDC but no ETH for gas to transfer.`);
+          console.log(`     To move funds, send ~0.0002 ETH ($0.50) to: ${eoaAccount.address}`);
+          console.log(`     Or manually send USDC from any wallet to Smart Account: ${smartAccount.address}`);
+        }
+      } else if (smartUsdcBalance > 1) {
+        console.log(`     ✅ Smart Account is funded and ready to trade!`);
+      } else {
+        console.log(`     ⚠️ Neither EOA nor Smart Account has significant USDC.`);
+        console.log(`     Send USDC to Smart Account: ${smartAccount.address}`);
+      }
+    } catch (fundError: any) {
+      console.log(`  ⚠️ Fund check/transfer failed: ${fundError.message?.substring(0, 200)}`);
+    }
 
   } catch (error: any) {
     console.error(`\n❌ CDP initialization FAILED: ${error.message}`);
@@ -1152,7 +1208,7 @@ async function main() {
   const cronExpression = `*/${CONFIG.trading.intervalMinutes} * * * *`;
   cron.schedule(cronExpression, runTradingCycle);
 
-  console.log("\n🚀 Agent v3.2 running! Press Ctrl+C to stop.\n");
+  console.log("\n🚀 Agent v3.3 (Smart Account + Gas Sponsorship) running! Press Ctrl+C to stop.\n");
 }
 
 main().catch((err) => {
@@ -1169,7 +1225,7 @@ const healthServer = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: "ok",
-      version: "3.2",
+      version: "3.3",
       uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
       portfolio: state.trading.totalPortfolioValue,
       trades: `${state.trading.successfulTrades}/${state.trading.totalTrades}`,
