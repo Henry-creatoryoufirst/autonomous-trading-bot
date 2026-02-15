@@ -1010,7 +1010,9 @@ async function rpcCall(method: string, params: any[]): Promise<any> {
       return response.data.result;
     } catch (error: any) {
       const status = error?.response?.status;
-      if (status === 429 && attempt < 3) {
+      const isRetryable = status === 429 || status === 502 || status === 503 ||
+        error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT' || error?.code === 'ENOTFOUND';
+      if (isRetryable && attempt < 3) {
         await new Promise(resolve => setTimeout(resolve, attempt * 2000));
         continue;
       }
@@ -1036,27 +1038,18 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
 
   console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
 
-  const balancePromises: { symbol: string; promise: Promise<number> }[] = [];
+  // Build list of tokens to query (deferred — promises created per batch to avoid RPC rate limits)
+  const tokenEntries = Object.entries(TOKEN_REGISTRY);
 
-  for (const [symbol, token] of Object.entries(TOKEN_REGISTRY)) {
-    if (token.address === "native") {
-      balancePromises.push({ symbol, promise: getETHBalance(walletAddress) });
-    } else {
-      balancePromises.push({
-        symbol,
-        promise: getERC20Balance(token.address, walletAddress, token.decimals),
-      });
-    }
-  }
-
-  // Add small stagger to avoid 429 rate limits
   const results: { symbol: string; balance: number }[] = [];
-  const batchSize = 5;
-  for (let i = 0; i < balancePromises.length; i += batchSize) {
-    const batch = balancePromises.slice(i, i + batchSize);
+  const batchSize = 4; // Smaller batches for public RPC
+  for (let i = 0; i < tokenEntries.length; i += batchSize) {
+    const batch = tokenEntries.slice(i, i + batchSize);
     const batchResults = await Promise.allSettled(
-      batch.map(async ({ symbol, promise }) => {
-        const balance = await promise;
+      batch.map(async ([symbol, token]) => {
+        const balance = token.address === "native"
+          ? await getETHBalance(walletAddress)
+          : await getERC20Balance(token.address, walletAddress, token.decimals);
         return { symbol, balance };
       })
     );
@@ -1064,12 +1057,13 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
       if (result.status === "fulfilled") {
         results.push(result.value);
       } else {
-        console.warn(`  ⚠️ Failed to fetch balance for a token: ${result.reason}`);
+        const failedSymbol = batch[batchResults.indexOf(result)]?.[0] || "unknown";
+        console.warn(`  ⚠️ Failed to fetch balance for ${failedSymbol}: ${result.reason}`);
       }
     }
-    // Small delay between batches to respect rate limits
-    if (i + batchSize < balancePromises.length) {
-      await new Promise(resolve => setTimeout(resolve, 200));
+    // Stagger between batches to respect public RPC rate limits
+    if (i + batchSize < tokenEntries.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
 
@@ -1084,7 +1078,11 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
     }
   }
 
-  console.log(`  ✅ Found ${balances.filter(b => b.balance > 0).length} tokens with balances`);
+  const nonZero = balances.filter(b => b.balance > 0);
+  console.log(`  ✅ Found ${nonZero.length} tokens with balances`);
+  for (const b of nonZero) {
+    console.log(`     ${b.symbol}: ${b.balance < 0.001 ? b.balance.toFixed(8) : b.balance.toFixed(4)} (${b.symbol === "USDC" ? `$${b.usdValue.toFixed(2)}` : "pending price"})`);
+  }
   return balances;
 }
 
