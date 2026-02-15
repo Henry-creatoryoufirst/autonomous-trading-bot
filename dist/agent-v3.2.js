@@ -1,8 +1,18 @@
 "use strict";
 /**
- * Henry's Autonomous Trading Agent v4.5.3
+ * Henry's Autonomous Trading Agent v5.0
  *
- * PHASE 2 BRAIN UPGRADE: News Sentiment + Macro Intelligence
+ * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE
+ *
+ * CHANGES IN V5.0:
+ * - Strategy Pattern Memory: auto-classifies trades into strategy buckets, tracks win/loss rates
+ * - Performance Review Cycle: structured analysis every 10 trades or 24h with actionable insights
+ * - Adaptive Threshold Engine: RSI, confluence, profit-take, stop-loss thresholds self-tune based on performance
+ * - Confidence-Weighted Position Sizing: proven patterns get full size, unproven get smaller exploratory sizes
+ * - Anti-Stagnation / Exploration: triggers $3 exploration trades after 48h inactivity
+ * - Self-improvement prompt injection: AI sees its own patterns, insights, and threshold changes
+ * - New API endpoints: /api/patterns, /api/reviews, /api/thresholds
+ * - Dashboard: Intelligence section showing top patterns, adaptive thresholds, latest insights
  *
  * CHANGES IN V4.5.3:
  * - Fixed FRED API auth: uses api_key query parameter (not Bearer header)
@@ -398,6 +408,432 @@ function calculateTradePerformance() {
         winsByRegime: winsByRegime,
     };
 }
+const THRESHOLD_BOUNDS = {
+    rsiOversold: { min: 20, max: 40, maxStep: 2 },
+    rsiOverbought: { min: 60, max: 80, maxStep: 2 },
+    confluenceBuy: { min: 5, max: 30, maxStep: 2 },
+    confluenceSell: { min: -30, max: -5, maxStep: 2 },
+    confluenceStrongBuy: { min: 25, max: 60, maxStep: 3 },
+    confluenceStrongSell: { min: -60, max: -25, maxStep: 3 },
+    profitTakeTarget: { min: 10, max: 40, maxStep: 2 },
+    profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
+    stopLossPercent: { min: -40, max: -10, maxStep: 2 },
+    trailingStopPercent: { min: -35, max: -10, maxStep: 2 },
+};
+const DEFAULT_ADAPTIVE_THRESHOLDS = {
+    rsiOversold: 30,
+    rsiOverbought: 70,
+    confluenceBuy: 15,
+    confluenceSell: -15,
+    confluenceStrongBuy: 40,
+    confluenceStrongSell: -40,
+    profitTakeTarget: 20,
+    profitTakeSellPercent: 30,
+    stopLossPercent: -25,
+    trailingStopPercent: -20,
+    regimeMultipliers: {
+        TRENDING_UP: 1.2,
+        TRENDING_DOWN: 0.6,
+        RANGING: 1.0,
+        VOLATILE: 0.5,
+        UNKNOWN: 0.7,
+    },
+    history: [],
+    lastAdapted: null,
+    adaptationCount: 0,
+};
+const DEFAULT_EXPLORATION_STATE = {
+    totalExplorationTrades: 0,
+    totalExploitationTrades: 0,
+    consecutiveHolds: 0,
+    lastTradeTimestamp: null,
+    stagnationAlerts: 0,
+};
+/**
+ * Classify a trade into a strategy pattern bucket based on its signal context
+ */
+function classifyTradePattern(trade) {
+    if (!trade.signalContext)
+        return "UNKNOWN_UNKNOWN_UNKNOWN_UNKNOWN";
+    const { marketRegime, confluenceScore, rsi } = trade.signalContext;
+    const action = trade.action === "BUY" || trade.action === "SELL" ? trade.action : "BUY";
+    // RSI bucket
+    let rsiBucket = "UNKNOWN";
+    if (rsi !== null && rsi !== undefined) {
+        if (rsi < state.adaptiveThresholds.rsiOversold)
+            rsiBucket = "OVERSOLD";
+        else if (rsi > state.adaptiveThresholds.rsiOverbought)
+            rsiBucket = "OVERBOUGHT";
+        else
+            rsiBucket = "NEUTRAL";
+    }
+    // Confluence bucket
+    let confBucket = "NEUTRAL";
+    if (confluenceScore >= state.adaptiveThresholds.confluenceStrongBuy)
+        confBucket = "STRONG_BUY";
+    else if (confluenceScore >= state.adaptiveThresholds.confluenceBuy)
+        confBucket = "BUY";
+    else if (confluenceScore <= state.adaptiveThresholds.confluenceStrongSell)
+        confBucket = "STRONG_SELL";
+    else if (confluenceScore <= state.adaptiveThresholds.confluenceSell)
+        confBucket = "SELL";
+    return `${action}_${rsiBucket}_${marketRegime}_${confBucket}`;
+}
+/**
+ * Build pattern description from pattern ID
+ */
+function describePattern(patternId) {
+    const parts = patternId.split("_");
+    if (parts.length < 4)
+        return patternId;
+    const [action, rsi, ...rest] = parts;
+    const regime = rest.slice(0, -1).join("_") || "UNKNOWN";
+    const conf = rest[rest.length - 1] || "NEUTRAL";
+    const rsiLabel = rsi === "OVERSOLD" ? "RSI oversold" : rsi === "OVERBOUGHT" ? "RSI overbought" : "RSI neutral";
+    const confLabel = conf.replace("_", " ").toLowerCase();
+    return `${action} when ${rsiLabel} in ${regime} regime (${confLabel} confluence)`;
+}
+/**
+ * Analyze all trade history to build strategy pattern memory
+ */
+function analyzeStrategyPatterns() {
+    const patterns = {};
+    // Process each non-HOLD successful trade
+    for (const trade of state.tradeHistory) {
+        if (!trade.success || trade.action === "HOLD" || trade.action === "REBALANCE")
+            continue;
+        const patternId = classifyTradePattern(trade);
+        if (!patterns[patternId]) {
+            const parts = patternId.split("_");
+            const action = (parts[0] === "BUY" || parts[0] === "SELL") ? parts[0] : "BUY";
+            const rsiBucket = parts[1] || "UNKNOWN";
+            const regime = parts.slice(2, -1).join("_") || "UNKNOWN";
+            const confBucket = parts[parts.length - 1] || "NEUTRAL";
+            patterns[patternId] = {
+                patternId,
+                description: describePattern(patternId),
+                conditions: { action, regime: regime, rsiBucket, confluenceBucket: confBucket },
+                stats: { wins: 0, losses: 0, pending: 0, avgReturnPercent: 0, totalReturnUSD: 0, sampleSize: 0, lastTriggered: trade.timestamp },
+                confidence: 0.3,
+            };
+        }
+        patterns[patternId].stats.lastTriggered = trade.timestamp;
+        // For BUY trades, find the matching SELL to compute return
+        if (trade.action === "BUY") {
+            const buyTime = new Date(trade.timestamp).getTime();
+            const matchingSell = state.tradeHistory.find(t => t.action === "SELL" && t.fromToken === trade.toToken && t.success &&
+                new Date(t.timestamp).getTime() > buyTime);
+            if (matchingSell) {
+                const cb = state.costBasis[trade.toToken];
+                if (cb && cb.averageCostBasis > 0) {
+                    const returnPct = matchingSell.amountUSD > 0 && trade.amountUSD > 0
+                        ? ((matchingSell.amountUSD / trade.amountUSD) - 1) * 100
+                        : 0;
+                    patterns[patternId].stats.sampleSize++;
+                    if (returnPct > 0)
+                        patterns[patternId].stats.wins++;
+                    else
+                        patterns[patternId].stats.losses++;
+                    patterns[patternId].stats.totalReturnUSD += (matchingSell.amountUSD - trade.amountUSD);
+                }
+            }
+            else {
+                patterns[patternId].stats.pending++;
+            }
+        }
+        // For SELL trades, look back for the BUY
+        if (trade.action === "SELL") {
+            const sellTime = new Date(trade.timestamp).getTime();
+            const matchingBuy = [...state.tradeHistory].reverse().find(t => t.action === "BUY" && t.toToken === trade.fromToken && t.success &&
+                new Date(t.timestamp).getTime() < sellTime);
+            if (matchingBuy && matchingBuy.amountUSD > 0) {
+                const returnPct = ((trade.amountUSD / matchingBuy.amountUSD) - 1) * 100;
+                patterns[patternId].stats.sampleSize++;
+                if (returnPct > 0)
+                    patterns[patternId].stats.wins++;
+                else
+                    patterns[patternId].stats.losses++;
+                patterns[patternId].stats.totalReturnUSD += (trade.amountUSD - matchingBuy.amountUSD);
+            }
+            else {
+                patterns[patternId].stats.pending++;
+            }
+        }
+    }
+    // Calculate avg returns and confidence for each pattern
+    for (const p of Object.values(patterns)) {
+        p.stats.avgReturnPercent = p.stats.sampleSize > 0
+            ? (p.stats.totalReturnUSD / Math.max(1, p.stats.sampleSize))
+            : 0;
+        // Confidence: based on sample size + win rate
+        const winRate = p.stats.sampleSize > 0 ? p.stats.wins / p.stats.sampleSize : 0;
+        let conf = 0.3; // base
+        if (p.stats.sampleSize >= 3)
+            conf = 0.4;
+        if (p.stats.sampleSize >= 5)
+            conf = 0.55;
+        if (p.stats.sampleSize >= 10)
+            conf = 0.7;
+        if (p.stats.sampleSize >= 20)
+            conf = 0.85;
+        conf *= (0.5 + winRate * 0.5); // weight by win rate
+        if (p.stats.avgReturnPercent < 0)
+            conf *= 0.7; // penalty for negative avg
+        p.confidence = Math.max(0.2, Math.min(1.0, conf));
+    }
+    state.strategyPatterns = patterns;
+    console.log(`  🧠 Strategy patterns analyzed: ${Object.keys(patterns).length} patterns from ${state.tradeHistory.length} trades`);
+}
+/**
+ * Run performance review — generates insights and recommendations
+ */
+function runPerformanceReview(reason) {
+    const startIdx = state.lastReviewTradeIndex || 0;
+    const recentTrades = state.tradeHistory.slice(startIdx);
+    const successTrades = recentTrades.filter(t => t.success && t.action !== "HOLD");
+    const insights = [];
+    const recommendations = [];
+    // Win rate analysis
+    const sellTrades = successTrades.filter(t => t.action === "SELL");
+    let wins = 0, losses = 0;
+    for (const sell of sellTrades) {
+        const cb = state.costBasis[sell.fromToken];
+        if (cb && cb.averageCostBasis > 0 && sell.amountUSD > 0) {
+            const tokensSold = sell.tokenAmount || (sell.amountUSD / cb.averageCostBasis);
+            const pnl = sell.amountUSD - (tokensSold * cb.averageCostBasis);
+            if (pnl > 0)
+                wins++;
+            else
+                losses++;
+        }
+    }
+    const winRate = (wins + losses) > 0 ? wins / (wins + losses) : 0;
+    const avgReturn = sellTrades.length > 0
+        ? sellTrades.reduce((sum, t) => sum + (t.portfolioValueAfter || t.portfolioValueBefore) - t.portfolioValueBefore, 0) / sellTrades.length
+        : 0;
+    // Regime analysis
+    const regimeCounts = {};
+    for (const t of successTrades) {
+        const r = t.signalContext?.marketRegime || "UNKNOWN";
+        regimeCounts[r] = (regimeCounts[r] || 0) + 1;
+    }
+    const dominantRegime = Object.entries(regimeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+    // Pattern analysis
+    const patternArr = Object.values(state.strategyPatterns)
+        .filter(p => p.stats.sampleSize >= 2)
+        .sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent);
+    const bestPattern = patternArr[0] || null;
+    const worstPattern = patternArr[patternArr.length - 1] || null;
+    // Generate insights
+    if (winRate < 0.35 && (wins + losses) >= 3) {
+        insights.push({ category: "PATTERN", severity: "WARNING",
+            message: `Win rate dropped to ${(winRate * 100).toFixed(0)}% over last ${wins + losses} resolved trades. Consider tightening entry criteria.` });
+        recommendations.push({ type: "THRESHOLD_CHANGE", description: "Raise confluence buy threshold to be more selective", applied: false });
+    }
+    if (winRate > 0.65 && (wins + losses) >= 3) {
+        insights.push({ category: "PATTERN", severity: "INFO",
+            message: `Strong ${(winRate * 100).toFixed(0)}% win rate over last ${wins + losses} trades. Strategy is working well.` });
+        recommendations.push({ type: "THRESHOLD_CHANGE", description: "Can slightly lower confluence buy threshold to capture more opportunities", applied: false });
+    }
+    if (bestPattern && bestPattern.stats.sampleSize >= 3 && bestPattern.stats.avgReturnPercent > 0) {
+        insights.push({ category: "PATTERN", severity: "INFO",
+            message: `Best pattern: "${bestPattern.description}" — ${bestPattern.stats.wins}/${bestPattern.stats.sampleSize} wins, avg $${bestPattern.stats.avgReturnPercent.toFixed(2)} return` });
+        recommendations.push({ type: "PATTERN_FAVOR", description: `Favor ${bestPattern.patternId} — proven profitable`, applied: false });
+    }
+    if (worstPattern && worstPattern.stats.sampleSize >= 3 && worstPattern.stats.avgReturnPercent < 0) {
+        insights.push({ category: "PATTERN", severity: "WARNING",
+            message: `Worst pattern: "${worstPattern.description}" — ${worstPattern.stats.losses}/${worstPattern.stats.sampleSize} losses, avg $${worstPattern.stats.avgReturnPercent.toFixed(2)} return` });
+        recommendations.push({ type: "PATTERN_AVOID", description: `Avoid ${worstPattern.patternId} — consistent losses`, applied: false });
+    }
+    // Regime-specific insights
+    for (const [regime, count] of Object.entries(regimeCounts)) {
+        const regimePatterns = Object.values(state.strategyPatterns).filter(p => p.conditions.regime === regime && p.stats.sampleSize >= 2);
+        const regimeWinRate = regimePatterns.length > 0
+            ? regimePatterns.reduce((s, p) => s + p.stats.wins, 0) / Math.max(1, regimePatterns.reduce((s, p) => s + p.stats.sampleSize, 0))
+            : 0;
+        if (regimeWinRate < 0.3 && count >= 3) {
+            insights.push({ category: "REGIME", severity: "ACTION",
+                message: `${regime} regime trades have only ${(regimeWinRate * 100).toFixed(0)}% win rate. Consider reducing position sizes in this regime.` });
+            recommendations.push({ type: "POSITION_SIZE", description: `Reduce regime multiplier for ${regime}`, applied: false });
+        }
+    }
+    // Stagnation check
+    const hoursSinceLastTrade = state.trading.lastTrade
+        ? (Date.now() - state.trading.lastTrade.getTime()) / (1000 * 60 * 60)
+        : Infinity;
+    if (hoursSinceLastTrade > 48) {
+        insights.push({ category: "ACTIVITY", severity: "WARNING",
+            message: `No trades in ${(hoursSinceLastTrade / 24).toFixed(1)} days. Bot may be too selective.` });
+        recommendations.push({ type: "THRESHOLD_CHANGE", description: "Consider lowering confluence thresholds to increase trade frequency", applied: false });
+    }
+    const review = {
+        timestamp: new Date().toISOString(),
+        triggerReason: reason,
+        tradesSinceLastReview: recentTrades.length,
+        insights,
+        recommendations,
+        periodStats: {
+            winRate, avgReturn, totalTrades: successTrades.length,
+            bestPattern: bestPattern?.patternId || null,
+            worstPattern: worstPattern?.patternId || null,
+            dominantRegime,
+        },
+    };
+    console.log(`  📊 Performance Review: ${insights.length} insights, ${recommendations.length} recommendations`);
+    for (const i of insights)
+        console.log(`     [${i.severity}] ${i.message}`);
+    return review;
+}
+/**
+ * Adapt thresholds based on performance review — bounded, gradual, audited
+ */
+function adaptThresholds(review) {
+    const t = state.adaptiveThresholds;
+    const { winRate, totalTrades } = review.periodStats;
+    if (totalTrades < 3)
+        return; // Not enough data to adapt
+    const applyAdaptation = (field, delta, reason) => {
+        const bounds = THRESHOLD_BOUNDS[field];
+        if (!bounds)
+            return;
+        const currentVal = t[field];
+        const cappedDelta = Math.sign(delta) * Math.min(Math.abs(delta), bounds.maxStep);
+        const newVal = Math.max(bounds.min, Math.min(bounds.max, currentVal + cappedDelta));
+        if (newVal !== currentVal) {
+            t.history.push({ timestamp: new Date().toISOString(), field, oldValue: currentVal, newValue: newVal, reason });
+            t[field] = newVal;
+            console.log(`     🔧 ${field}: ${currentVal} → ${newVal} (${reason})`);
+        }
+    };
+    // Low win rate → be more selective
+    if (winRate < 0.35) {
+        applyAdaptation("confluenceBuy", 2, `Low win rate ${(winRate * 100).toFixed(0)}%`);
+        applyAdaptation("confluenceStrongBuy", 2, `Low win rate ${(winRate * 100).toFixed(0)}%`);
+        applyAdaptation("stopLossPercent", 2, `Tighten stops: win rate ${(winRate * 100).toFixed(0)}%`);
+    }
+    // High win rate → can be slightly more aggressive
+    if (winRate > 0.65) {
+        applyAdaptation("confluenceBuy", -1, `High win rate ${(winRate * 100).toFixed(0)}%`);
+    }
+    // Negative avg return → tighten risk management
+    if (review.periodStats.avgReturn < -2) {
+        applyAdaptation("stopLossPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+        applyAdaptation("trailingStopPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+    }
+    // Strong avg return → let winners run longer
+    if (review.periodStats.avgReturn > 5) {
+        applyAdaptation("profitTakeTarget", 2, `Strong avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+    }
+    // Trim audit trail to last 100 entries
+    if (t.history.length > 100)
+        t.history = t.history.slice(-100);
+    t.lastAdapted = new Date().toISOString();
+    t.adaptationCount++;
+}
+/**
+ * Calculate confidence for a specific pattern in the current regime
+ */
+function calculatePatternConfidence(patternId, regime) {
+    const pattern = state.strategyPatterns[patternId];
+    if (!pattern || pattern.stats.sampleSize < 2)
+        return 0.3; // Unproven → low confidence
+    let conf = pattern.confidence;
+    // Regime multiplier from adaptive thresholds
+    const regimeMult = state.adaptiveThresholds.regimeMultipliers[regime] || 1.0;
+    conf *= regimeMult;
+    // Decay if stale (not triggered in 14+ days)
+    if (pattern.stats.lastTriggered) {
+        const daysSince = (Date.now() - new Date(pattern.stats.lastTriggered).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince > 14)
+            conf *= 0.9;
+        if (daysSince > 30)
+            conf *= 0.8;
+    }
+    return Math.max(0.2, Math.min(1.0, conf));
+}
+/**
+ * Check for stagnation and generate exploration trade if needed
+ * Returns a trade-like object or null
+ */
+function checkStagnation(availableUSDC, tokenData) {
+    const exploration = state.explorationState;
+    const hoursSinceLastTrade = state.trading.lastTrade
+        ? (Date.now() - state.trading.lastTrade.getTime()) / (1000 * 60 * 60)
+        : Infinity;
+    // No exploration if insufficient capital
+    if (availableUSDC < 3)
+        return null;
+    // Trigger exploration if no trade in 48+ hours
+    if (hoursSinceLastTrade < 48) {
+        exploration.consecutiveHolds = 0;
+        return null;
+    }
+    exploration.stagnationAlerts++;
+    console.log(`  🔬 Stagnation detected: ${(hoursSinceLastTrade / 24).toFixed(1)} days since last trade (alert #${exploration.stagnationAlerts})`);
+    // Pick the token with best confluence that we haven't traded recently
+    const recentTokens = new Set(state.tradeHistory.slice(-10).map(t => t.toToken));
+    const candidates = tokenData
+        .filter(t => t.symbol !== "USDC" && !recentTokens.has(t.symbol))
+        .sort((a, b) => (b.priceChange24h || 0) - (a.priceChange24h || 0));
+    if (candidates.length === 0)
+        return null;
+    const target = candidates[0];
+    const explorationAmount = Math.min(3, availableUSDC); // $3 max for exploration
+    return {
+        toToken: target.symbol,
+        amountUSD: explorationAmount,
+        reasoning: `Exploration: No trade in ${(hoursSinceLastTrade / 24).toFixed(1)} days. Testing ${target.symbol} with small $${explorationAmount.toFixed(2)} position to gather data.`,
+    };
+}
+/**
+ * Format self-improvement data for AI prompt injection
+ * Replaces the generic "LEARN FROM HISTORY" instruction with structured analysis
+ */
+function formatSelfImprovementPrompt() {
+    const patterns = Object.values(state.strategyPatterns)
+        .filter(p => p.stats.sampleSize >= 1)
+        .sort((a, b) => b.confidence - a.confidence);
+    const topPatterns = patterns.filter(p => p.stats.avgReturnPercent > 0).slice(0, 5);
+    const bottomPatterns = patterns.filter(p => p.stats.avgReturnPercent < 0).slice(-3);
+    const recentReview = state.performanceReviews.length > 0
+        ? state.performanceReviews[state.performanceReviews.length - 1]
+        : null;
+    const t = state.adaptiveThresholds;
+    let prompt = `\n=== SELF-IMPROVEMENT ENGINE (Phase 3) ===\n`;
+    prompt += `Adaptive Thresholds: RSI oversold=${t.rsiOversold} overbought=${t.rsiOverbought} | `;
+    prompt += `Confluence buy=${t.confluenceBuy} sell=${t.confluenceSell} strongBuy=${t.confluenceStrongBuy} strongSell=${t.confluenceStrongSell} | `;
+    prompt += `Profit-take=${t.profitTakeTarget}% | Stop-loss=${t.stopLossPercent}% trailing=${t.trailingStopPercent}%\n`;
+    prompt += `Regime multipliers: TRENDING_UP=${t.regimeMultipliers.TRENDING_UP}x TRENDING_DOWN=${t.regimeMultipliers.TRENDING_DOWN}x RANGING=${t.regimeMultipliers.RANGING}x VOLATILE=${t.regimeMultipliers.VOLATILE}x\n`;
+    prompt += `Adaptations applied: ${t.adaptationCount} total\n\n`;
+    if (topPatterns.length > 0) {
+        prompt += `PROVEN WINNING PATTERNS (favor these):\n`;
+        for (const p of topPatterns) {
+            const wr = p.stats.sampleSize > 0 ? ((p.stats.wins / p.stats.sampleSize) * 100).toFixed(0) : "?";
+            prompt += `  ✅ ${p.description} — ${p.stats.wins}/${p.stats.sampleSize} wins (${wr}%), avg $${p.stats.avgReturnPercent.toFixed(2)}, confidence ${(p.confidence * 100).toFixed(0)}%\n`;
+        }
+        prompt += `\n`;
+    }
+    if (bottomPatterns.length > 0) {
+        prompt += `LOSING PATTERNS (avoid these):\n`;
+        for (const p of bottomPatterns) {
+            const wr = p.stats.sampleSize > 0 ? ((p.stats.wins / p.stats.sampleSize) * 100).toFixed(0) : "?";
+            prompt += `  ❌ ${p.description} — ${p.stats.losses}/${p.stats.sampleSize} losses (${wr}% win), avg $${p.stats.avgReturnPercent.toFixed(2)}\n`;
+        }
+        prompt += `\n`;
+    }
+    if (recentReview && recentReview.insights.length > 0) {
+        prompt += `LATEST PERFORMANCE REVIEW (${recentReview.timestamp.slice(0, 10)}):\n`;
+        for (const i of recentReview.insights) {
+            prompt += `  [${i.severity}] ${i.message}\n`;
+        }
+        for (const r of recentReview.recommendations) {
+            prompt += `  → ${r.description}\n`;
+        }
+        prompt += `\n`;
+    }
+    prompt += `USE THIS DATA: Favor proven patterns, avoid losing ones. Adjust position conviction by pattern confidence. The thresholds above are adaptive — they have been tuned by your performance history.\n`;
+    return prompt;
+}
 let state = {
     startTime: new Date(),
     totalCycles: 0,
@@ -416,6 +852,13 @@ let state = {
     costBasis: {},
     profitTakeCooldowns: {},
     stopLossCooldowns: {},
+    // Phase 3: Self-Improvement Engine
+    strategyPatterns: {},
+    adaptiveThresholds: { ...DEFAULT_ADAPTIVE_THRESHOLDS },
+    performanceReviews: [],
+    explorationState: { ...DEFAULT_EXPLORATION_STATE },
+    lastReviewTradeIndex: 0,
+    lastReviewTimestamp: null,
 };
 // ============================================================================
 // HELPER FUNCTIONS
@@ -436,7 +879,17 @@ function loadTradeHistory() {
                 state.costBasis = parsed.costBasis || {};
                 state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
                 state.stopLossCooldowns = parsed.stopLossCooldowns || {};
+                // Phase 3 fields
+                state.strategyPatterns = parsed.strategyPatterns || {};
+                if (parsed.adaptiveThresholds) {
+                    state.adaptiveThresholds = { ...DEFAULT_ADAPTIVE_THRESHOLDS, ...parsed.adaptiveThresholds };
+                }
+                state.performanceReviews = (parsed.performanceReviews || []).slice(-30);
+                state.explorationState = parsed.explorationState || { ...DEFAULT_EXPLORATION_STATE };
+                state.lastReviewTradeIndex = parsed.lastReviewTradeIndex || 0;
+                state.lastReviewTimestamp = parsed.lastReviewTimestamp || null;
                 console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
+                console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
                 return;
             }
         }
@@ -452,7 +905,7 @@ function saveTradeHistory() {
             fs.mkdirSync("./logs", { recursive: true });
         }
         const data = {
-            version: "4.5.3",
+            version: "5.0",
             lastUpdated: new Date().toISOString(),
             initialValue: state.trading.initialValue,
             peakValue: state.trading.peakValue,
@@ -460,10 +913,17 @@ function saveTradeHistory() {
             totalTrades: state.trading.totalTrades,
             successfulTrades: state.trading.successfulTrades,
             sectorAllocations: state.trading.sectorAllocations,
-            trades: state.tradeHistory,
+            trades: state.tradeHistory.slice(-200), // Cap at 200 trades
             costBasis: state.costBasis,
             profitTakeCooldowns: state.profitTakeCooldowns,
             stopLossCooldowns: state.stopLossCooldowns,
+            // Phase 3: Self-Improvement Engine
+            strategyPatterns: state.strategyPatterns,
+            adaptiveThresholds: state.adaptiveThresholds,
+            performanceReviews: state.performanceReviews.slice(-30),
+            explorationState: state.explorationState,
+            lastReviewTradeIndex: state.lastReviewTradeIndex,
+            lastReviewTimestamp: state.lastReviewTimestamp,
         };
         fs.writeFileSync(CONFIG.logFile, JSON.stringify(data, null, 2));
     }
@@ -548,7 +1008,10 @@ function checkProfitTaking(balances) {
             continue;
         const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
         const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
-        if (gainPercent >= cfg.targetPercent) {
+        // Use adaptive thresholds (Phase 3) instead of static config
+        const adaptiveTarget = state.adaptiveThresholds.profitTakeTarget;
+        const adaptiveSellPct = state.adaptiveThresholds.profitTakeSellPercent;
+        if (gainPercent >= adaptiveTarget) {
             // Check cooldown
             const lastTrigger = state.profitTakeCooldowns[b.symbol];
             if (lastTrigger) {
@@ -556,11 +1019,11 @@ function checkProfitTaking(balances) {
                 if (hoursSince < cfg.cooldownHours)
                     continue;
             }
-            const sellUSD = b.usdValue * (cfg.sellPercent / 100);
-            const tokenAmount = b.balance * (cfg.sellPercent / 100);
-            console.log(`\n  🎯 PROFIT-TAKE: ${b.symbol} is UP +${gainPercent.toFixed(1)}% (target: ${cfg.targetPercent}%)`);
+            const sellUSD = b.usdValue * (adaptiveSellPct / 100);
+            const tokenAmount = b.balance * (adaptiveSellPct / 100);
+            console.log(`\n  🎯 PROFIT-TAKE: ${b.symbol} is UP +${gainPercent.toFixed(1)}% (adaptive target: ${adaptiveTarget}%)`);
             console.log(`     Avg cost: $${cb.averageCostBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
-            console.log(`     Selling ${cfg.sellPercent}% = ~$${sellUSD.toFixed(2)}`);
+            console.log(`     Selling ${adaptiveSellPct}% = ~$${sellUSD.toFixed(2)}`);
             state.profitTakeCooldowns[b.symbol] = now.toISOString();
             return {
                 action: "SELL",
@@ -568,7 +1031,7 @@ function checkProfitTaking(balances) {
                 toToken: "USDC",
                 amountUSD: sellUSD,
                 tokenAmount,
-                reasoning: `Profit-take: ${b.symbol} +${gainPercent.toFixed(1)}% from avg cost $${cb.averageCostBasis.toFixed(4)}. Selling ${cfg.sellPercent}%.`,
+                reasoning: `Profit-take: ${b.symbol} +${gainPercent.toFixed(1)}% from avg cost $${cb.averageCostBasis.toFixed(4)}. Selling ${adaptiveSellPct}% (adaptive target: ${adaptiveTarget}%).`,
                 sector: b.sector,
             };
         }
@@ -594,15 +1057,18 @@ function checkStopLoss(balances) {
         if (cfg.trailingEnabled && cb.peakPrice > 0) {
             trailingLoss = ((currentPrice - cb.peakPrice) / cb.peakPrice) * 100;
         }
-        const triggered = lossFromCost <= cfg.percentThreshold ||
-            (cfg.trailingEnabled && trailingLoss <= cfg.trailingPercent);
+        // Use adaptive thresholds (Phase 3) instead of static config
+        const adaptiveSL = state.adaptiveThresholds.stopLossPercent;
+        const adaptiveTrailing = state.adaptiveThresholds.trailingStopPercent;
+        const triggered = lossFromCost <= adaptiveSL ||
+            (cfg.trailingEnabled && trailingLoss <= adaptiveTrailing);
         if (triggered && lossFromCost < worstLoss) {
             worstLoss = lossFromCost;
             const sellUSD = b.usdValue * (cfg.sellPercent / 100);
             const tokenAmount = b.balance * (cfg.sellPercent / 100);
-            const reason = lossFromCost <= cfg.percentThreshold
-                ? `Stop-loss: ${b.symbol} ${lossFromCost.toFixed(1)}% from cost basis $${cb.averageCostBasis.toFixed(4)}`
-                : `Trailing stop: ${b.symbol} ${trailingLoss.toFixed(1)}% from peak $${cb.peakPrice.toFixed(4)}`;
+            const reason = lossFromCost <= adaptiveSL
+                ? `Stop-loss: ${b.symbol} ${lossFromCost.toFixed(1)}% from cost basis $${cb.averageCostBasis.toFixed(4)} (adaptive: ${adaptiveSL}%)`
+                : `Trailing stop: ${b.symbol} ${trailingLoss.toFixed(1)}% from peak $${cb.peakPrice.toFixed(4)} (adaptive: ${adaptiveTrailing}%)`;
             worstDecision = {
                 action: "SELL",
                 fromToken: b.symbol,
@@ -1475,18 +1941,19 @@ function determineTrend(prices, sma20, sma50) {
 function calculateConfluence(rsi, macd, bb, trend, priceChange24h, priceChange7d) {
     let score = 0;
     let signals = 0;
-    // RSI (weight: 25)
+    // RSI (weight: 25) — uses adaptive thresholds
     if (rsi !== null) {
         signals++;
-        if (rsi < 30)
+        const oversold = state.adaptiveThresholds.rsiOversold;
+        const overbought = state.adaptiveThresholds.rsiOverbought;
+        if (rsi < oversold)
             score += 25; // Oversold — buy signal
-        else if (rsi < 40)
+        else if (rsi < oversold + 10)
             score += 12;
-        else if (rsi > 70)
+        else if (rsi > overbought)
             score -= 25; // Overbought — sell signal
-        else if (rsi > 60)
+        else if (rsi > overbought - 10)
             score -= 12;
-        // 40-60 = neutral
     }
     // MACD (weight: 25)
     if (macd) {
@@ -1552,15 +2019,16 @@ function calculateConfluence(rsi, macd, bb, trend, priceChange24h, priceChange7d
         score -= 3;
     // Normalize to -100 to +100
     const normalizedScore = Math.max(-100, Math.min(100, score));
-    // Determine signal
+    // Determine signal — uses adaptive thresholds
+    const at = state.adaptiveThresholds;
     let signal;
-    if (normalizedScore >= 40)
+    if (normalizedScore >= at.confluenceStrongBuy)
         signal = "STRONG_BUY";
-    else if (normalizedScore >= 15)
+    else if (normalizedScore >= at.confluenceBuy)
         signal = "BUY";
-    else if (normalizedScore <= -40)
+    else if (normalizedScore <= at.confluenceStrongSell)
         signal = "STRONG_SELL";
-    else if (normalizedScore <= -15)
+    else if (normalizedScore <= at.confluenceSell)
         signal = "SELL";
     else
         signal = "NEUTRAL";
@@ -1880,7 +2348,7 @@ async function makeTradeDecision(balances, marketData, totalPortfolioValue, sect
     const perfSummary = perfStats.totalTrades > 0
         ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
         : "No completed sell trades yet — performance tracking will begin after first sell";
-    const systemPrompt = `You are Henry's autonomous crypto trading agent v4.5.3 on Base network.
+    const systemPrompt = `You are Henry's autonomous crypto trading agent v5.0 on Base network.
 You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
 
 ═══ PORTFOLIO ═══
@@ -1921,7 +2389,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v4.5.3 ═══
+═══ STRATEGY FRAMEWORK v5.0 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -1964,7 +2432,7 @@ RISK RULES:
 3. Never chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
 4. In extreme greed (>75), tighten sell rules — take profits more aggressively
 5. Minimum trade $1.00
-6. LEARN FROM HISTORY: Review your past trades above. Avoid repeating strategies that lost money. Double down on patterns that worked
+6. SELF-IMPROVEMENT: Your strategy patterns, adaptive thresholds, and performance insights are provided below. FAVOR proven winning patterns and AVOID known losing patterns. Trust the confidence-weighted sizing
 7. NEWS NOISE FILTER: Ignore news sentiment if it contradicts strong technical + DeFi signals. Headlines lag price action
 
 DECISION PRIORITY: Market Regime > Macro Environment > Technical signals + DeFi flows > Derivatives signals > News sentiment > Sector rebalancing
@@ -1977,7 +2445,7 @@ If a token already holds >20% of portfolio, do NOT buy more — pick a different
 
 CRITICAL: Respond with ONLY a raw JSON object. NO prose, NO explanation outside JSON, NO markdown.
 Your ENTIRE response must be exactly one JSON object:
-{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover, Base TVL +3.2%, WELL protocol TVL rising, BTC shorts crowded, macro RISK_ON, news bullish +45","sector":"DEFI"}`;
+{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover, Base TVL +3.2%, WELL protocol TVL rising, BTC shorts crowded, macro RISK_ON, news bullish +45","sector":"DEFI"}` + formatSelfImprovementPrompt();
     // Retry up to 3 times with exponential backoff for rate limits
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
@@ -2211,7 +2679,8 @@ async function executeTrade(decision, marketData) {
                 ethFundingRate: marketData.derivatives?.ethFundingRate || null,
                 baseTVLChange24h: marketData.defiLlama?.baseTVLChange24h || null,
                 baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
-                triggeredBy: "AI",
+                triggeredBy: decision.isExploration ? "EXPLORATION" : "AI",
+                isExploration: decision.isExploration || false,
             },
         };
         state.tradeHistory.push(record);
@@ -2310,6 +2779,28 @@ async function runTradingCycle() {
             regime: marketData.marketRegime,
             performance: calculateTradePerformance(),
         };
+        // === PHASE 3: PERFORMANCE REVIEW TRIGGER ===
+        // Run review every 10 trades or every 24 hours
+        const tradesSinceReview = state.tradeHistory.length - state.lastReviewTradeIndex;
+        const hoursSinceReview = state.lastReviewTimestamp
+            ? (Date.now() - new Date(state.lastReviewTimestamp).getTime()) / (1000 * 60 * 60)
+            : 999;
+        if (tradesSinceReview >= 10 || hoursSinceReview >= 24) {
+            const reason = tradesSinceReview >= 10 ? "TRADE_COUNT" : "TIME_ELAPSED";
+            console.log(`\n🧪 SELF-IMPROVEMENT: Running performance review (${reason})...`);
+            const review = runPerformanceReview(reason);
+            console.log(`   Generated ${review.insights.length} insights, ${review.recommendations.length} recommendations`);
+            // Adapt thresholds based on review findings
+            adaptThresholds(review);
+            console.log(`   Thresholds adapted (${state.adaptiveThresholds.adaptationCount} total adaptations)`);
+        }
+        // === PHASE 3: ANALYZE STRATEGY PATTERNS (retroactive on startup, incremental after) ===
+        if (Object.keys(state.strategyPatterns).length === 0 && state.tradeHistory.length > 0) {
+            console.log(`\n🧬 SELF-IMPROVEMENT: Building initial strategy pattern memory from ${state.tradeHistory.length} trades...`);
+            analyzeStrategyPatterns();
+            console.log(`   Identified ${Object.keys(state.strategyPatterns).length} unique patterns`);
+            saveTradeHistory();
+        }
         // Update USD values
         for (const balance of balances) {
             if (balance.symbol !== "USDC") {
@@ -2417,6 +2908,27 @@ async function runTradingCycle() {
             state.trading.lastCheck = new Date();
             return; // Skip AI decision this cycle
         }
+        // === PHASE 3: STAGNATION CHECK ===
+        const usdcBal = balances.find(b => b.symbol === "USDC");
+        const availableUSDCForExplore = usdcBal?.balance || 0;
+        const explorationTrade = checkStagnation(availableUSDCForExplore, marketData.tokens);
+        if (explorationTrade) {
+            console.log(`\n🔬 EXPLORATION TRADE: ${explorationTrade.reasoning}`);
+            const exploreDecision = {
+                action: "BUY",
+                fromToken: "USDC",
+                toToken: explorationTrade.toToken,
+                amountUSD: explorationTrade.amountUSD,
+                reasoning: explorationTrade.reasoning,
+                isExploration: true,
+            };
+            await executeTrade(exploreDecision, marketData);
+            // Update pattern memory after exploration trade
+            analyzeStrategyPatterns();
+            saveTradeHistory();
+            state.trading.lastCheck = new Date();
+            return;
+        }
         // AI decision
         console.log("\n🧠 AI analyzing portfolio & market...");
         const decision = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations);
@@ -2427,6 +2939,23 @@ async function runTradingCycle() {
                 console.log(`   Sector: ${decision.sector}`);
         }
         console.log(`   Reasoning: ${decision.reasoning}`);
+        // === PHASE 3: CONFIDENCE-WEIGHTED POSITION SIZING ===
+        if (decision.action === "BUY" && decision.amountUSD > 0) {
+            const tradePatternId = [
+                "BUY",
+                marketData.indicators[decision.toToken]?.rsi14 !== undefined
+                    ? (marketData.indicators[decision.toToken].rsi14 < state.adaptiveThresholds.rsiOversold ? "OVERSOLD"
+                        : marketData.indicators[decision.toToken].rsi14 > state.adaptiveThresholds.rsiOverbought ? "OVERBOUGHT" : "NEUTRAL")
+                    : "UNKNOWN",
+                marketData.marketRegime,
+                marketData.indicators[decision.toToken]?.overallSignal || "NEUTRAL",
+            ].join("_");
+            const confidence = calculatePatternConfidence(tradePatternId, marketData.marketRegime);
+            const originalAmount = decision.amountUSD;
+            decision.amountUSD = Math.max(2, Math.round(decision.amountUSD * confidence * 100) / 100);
+            const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
+            console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
+        }
         // === POSITION SIZE GUARD ===
         // Hard enforcement: block BUY if target token already exceeds maxPositionPercent
         if (decision.action === "BUY" && decision.toToken !== "USDC" && state.trading.totalPortfolioValue > 0) {
@@ -2454,6 +2983,17 @@ async function runTradingCycle() {
         // Execute if needed
         if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
             await executeTrade(decision, marketData);
+            // === PHASE 3: UPDATE PATTERN MEMORY AFTER TRADE ===
+            analyzeStrategyPatterns();
+            // Update exploration state
+            state.explorationState.lastTradeTimestamp = new Date().toISOString();
+            state.explorationState.consecutiveHolds = 0;
+            state.explorationState.totalExploitationTrades++;
+            saveTradeHistory();
+        }
+        else if (decision.action === "HOLD") {
+            // Track consecutive holds for stagnation detection
+            state.explorationState.consecutiveHolds++;
         }
         state.trading.lastCheck = new Date();
     }
@@ -2476,13 +3016,13 @@ function displayBanner() {
     console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.5.3                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.0                              ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   PHASE 2 BRAIN UPGRADE — News Sentiment + Macro Intelligence          ║
-║   LIVE TRADING | Base Network | 8 Data Sources Active                  ║
+║   PHASE 3 SELF-IMPROVEMENT ENGINE — Recursive Learning Active          ║
+║   LIVE TRADING | Base Network | 8 Data Sources + Self-Tuning           ║
 ║                                                                        ║
-║   Data Sources:                                                        ║
+║   Intelligence Stack:                                                  ║
 ║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
 ║   • DeFi Intel: Base TVL, DEX Volume, Protocol TVL (DefiLlama)        ║
 ║   • Derivatives: BTC/ETH Funding Rates + Open Interest (Binance)      ║
@@ -2491,11 +3031,12 @@ function displayBanner() {
 ║   • Sentiment: Fear & Greed Index + Market Regime Detection           ║
 ║   • Self-Learning: Trade performance scoring + signal attribution     ║
 ║                                                                        ║
-║   Sectors:                                                             ║
-║   • Blue Chip (40%): ETH, cbBTC, cbETH                                ║
-║   • AI Tokens (20%): VIRTUAL, AIXBT, GAME, HIGHER                     ║
-║   • Meme Coins (20%): BRETT, DEGEN, TOSHI, MOCHI, NORMIE              ║
-║   • DeFi (20%): AERO, WELL, SEAM, EXTRA, BAL                         ║
+║   Phase 3 — Self-Improvement:                                          ║
+║   • Strategy Pattern Memory: classify + track win rates per pattern   ║
+║   • Adaptive Thresholds: RSI/confluence/PnL bounds self-tune          ║
+║   • Confidence Sizing: proven patterns get full size, new get small   ║
+║   • Performance Reviews: structured analysis every 10 trades / 24h   ║
+║   • Anti-Stagnation: exploration trades when inactive 48h+            ║
 ║                                                                        ║
 ╚══════════════════════════════════════════════════════════════════════════╝
   `);
@@ -2503,7 +3044,7 @@ function displayBanner() {
     console.log(`   Wallet: ${CONFIG.walletAddress}`);
     console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
     console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-    console.log(`   Brain: v4.5.3 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Learning`);
+    console.log(`   Brain: v5.0 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Improvement Engine`);
     console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
     console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
     console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
@@ -2579,7 +3120,7 @@ async function main() {
     setInterval(() => {
         console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
     }, 5 * 60 * 1000);
-    console.log("\n🚀 Agent v4.5.3 running! Phase 2 active: DefiLlama + Binance derivatives + CryptoPanic news + FRED macro + regime detection + self-learning.\n");
+    console.log("\n🚀 Agent v5.0 running! Phase 3 active: Self-Improvement Engine + Adaptive Thresholds + Pattern Memory + Confidence Sizing + Exploration.\n");
 }
 main().catch((err) => {
     console.error("Fatal error:", err?.message || String(err));
@@ -2614,7 +3155,7 @@ function apiPortfolio() {
         uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
         lastCycle: state.trading.lastCheck.toISOString(),
         tradingEnabled: CONFIG.trading.enabled,
-        version: "4.5.3",
+        version: "5.0",
     };
 }
 function apiBalances() {
@@ -2659,7 +3200,7 @@ let lastIntelligenceData = null;
 function apiIntelligence() {
     const perf = calculateTradePerformance();
     return {
-        version: "4.5.3",
+        version: "5.0",
         defiLlama: lastIntelligenceData?.defi || null,
         derivatives: lastIntelligenceData?.derivatives || null,
         newsSentiment: lastIntelligenceData?.news || null,
@@ -2672,6 +3213,43 @@ function apiIntelligence() {
             "CryptoPanic (News Sentiment)", "FRED (Fed Rates/Yield Curve/CPI/M2/Dollar)",
             "Technical Indicators (RSI/MACD/BB/SMA)",
         ],
+    };
+}
+// === PHASE 3 API ENDPOINTS ===
+function apiPatterns() {
+    const patterns = Object.values(state.strategyPatterns);
+    const sorted = patterns.sort((a, b) => b.stats.sampleSize - a.stats.sampleSize);
+    const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
+    const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
+    return {
+        version: "5.0",
+        totalPatterns: patterns.length,
+        patternsWithData: patterns.filter(p => p.stats.sampleSize >= 3).length,
+        topPerformers,
+        worstPerformers,
+        allPatterns: sorted,
+    };
+}
+function apiReviews() {
+    const reviews = state.performanceReviews.slice(-10);
+    return {
+        version: "5.0",
+        totalReviews: state.performanceReviews.length,
+        latestReview: reviews.length > 0 ? reviews[reviews.length - 1] : null,
+        recentReviews: reviews,
+        lastReviewTimestamp: state.lastReviewTimestamp,
+        tradesSinceLastReview: state.tradeHistory.length - state.lastReviewTradeIndex,
+    };
+}
+function apiThresholds() {
+    return {
+        version: "5.0",
+        currentThresholds: state.adaptiveThresholds,
+        bounds: THRESHOLD_BOUNDS,
+        defaults: DEFAULT_ADAPTIVE_THRESHOLDS,
+        adaptationCount: state.adaptiveThresholds.adaptationCount,
+        recentHistory: state.adaptiveThresholds.history.slice(-20),
+        explorationState: state.explorationState,
     };
 }
 function getDashboardHTML() {
@@ -2715,6 +3293,15 @@ const healthServer = http_1.default.createServer((req, res) => {
                 break;
             case '/api/intelligence':
                 sendJSON(res, 200, apiIntelligence());
+                break;
+            case '/api/patterns':
+                sendJSON(res, 200, apiPatterns());
+                break;
+            case '/api/reviews':
+                sendJSON(res, 200, apiReviews());
+                break;
+            case '/api/thresholds':
+                sendJSON(res, 200, apiThresholds());
                 break;
             default:
                 sendJSON(res, 404, { error: 'Not found' });
@@ -2772,7 +3359,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.5.3</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.0</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -2888,6 +3475,36 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   </div>
 </div>
 
+<!-- Phase 3: Self-Improvement Intelligence -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <!-- Top Patterns -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-1">Top Patterns</h2>
+      <p class="text-[10px] text-slate-500 mb-3">Winning strategies by return</p>
+      <div id="top-patterns" class="space-y-2">
+        <p class="text-xs text-slate-600">Loading...</p>
+      </div>
+    </div>
+    <!-- Adaptive Thresholds -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-1">Adaptive Thresholds</h2>
+      <p class="text-[10px] text-slate-500 mb-3">Self-tuning parameters</p>
+      <div id="thresholds-display" class="space-y-2">
+        <p class="text-xs text-slate-600">Loading...</p>
+      </div>
+    </div>
+    <!-- Latest Insights -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-1">Latest Insights</h2>
+      <p class="text-[10px] text-slate-500 mb-3">Self-improvement engine</p>
+      <div id="latest-insights" class="space-y-2">
+        <p class="text-xs text-slate-600">Loading...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Footer -->
 <div class="border-t border-white/5 px-4 sm:px-6 py-4 text-center">
   <p class="text-[10px] text-slate-600">Schertzinger Company Limited — Auto-refreshes every 30s</p>
@@ -2904,21 +3521,30 @@ function pnlBg(n) { return n >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'; }
 
 async function fetchData() {
   try {
-    const [pRes, bRes, sRes, tRes] = await Promise.allSettled([
+    const [pRes, bRes, sRes, tRes, patRes, thrRes, revRes] = await Promise.allSettled([
       fetch('/api/portfolio').then(r => r.json()),
       fetch('/api/balances').then(r => r.json()),
       fetch('/api/sectors').then(r => r.json()),
       fetch('/api/trades?limit=30').then(r => r.json()),
+      fetch('/api/patterns').then(r => r.json()),
+      fetch('/api/thresholds').then(r => r.json()),
+      fetch('/api/reviews').then(r => r.json()),
     ]);
     const p = pRes.status === 'fulfilled' ? pRes.value : null;
     const b = bRes.status === 'fulfilled' ? bRes.value : null;
     const s = sRes.status === 'fulfilled' ? sRes.value : null;
     const t = tRes.status === 'fulfilled' ? tRes.value : null;
+    const pat = patRes.status === 'fulfilled' ? patRes.value : null;
+    const thr = thrRes.status === 'fulfilled' ? thrRes.value : null;
+    const rev = revRes.status === 'fulfilled' ? revRes.value : null;
 
     if (p) renderPortfolio(p);
     if (b) renderHoldings(b);
     if (s) renderSectors(s);
     if (t) renderTrades(t);
+    if (pat) renderPatterns(pat);
+    if (thr) renderThresholds(thr);
+    if (rev) renderInsights(rev);
     $('last-update').textContent = new Date().toLocaleTimeString();
   } catch (e) {
     console.error('Fetch error:', e);
@@ -3020,6 +3646,68 @@ function renderTrades(t) {
       '<td class="py-2 text-center">' + statusIcon + '</td>' +
       '<td class="py-2 text-slate-500 truncate max-w-[200px] hidden sm:table-cell">' + reason + '</td></tr>';
   }).join('');
+}
+
+function renderPatterns(pat) {
+  const el = $('top-patterns');
+  if (!pat.topPerformers || pat.topPerformers.length === 0) {
+    el.innerHTML = '<p class="text-xs text-slate-600">No patterns with enough data yet (' + pat.totalPatterns + ' tracked)</p>';
+    return;
+  }
+  el.innerHTML = pat.topPerformers.map(p => {
+    const winRate = p.stats.sampleSize > 0 ? ((p.stats.wins / p.stats.sampleSize) * 100).toFixed(0) : '0';
+    const retColor = p.stats.avgReturnPercent >= 0 ? 'text-emerald-400' : 'text-red-400';
+    const confColor = p.confidence >= 0.7 ? 'text-emerald-400' : p.confidence >= 0.4 ? 'text-amber-400' : 'text-red-400';
+    return '<div class="flex items-center justify-between py-1.5 border-b border-white/5">' +
+      '<div class="flex-1 min-w-0"><p class="text-[11px] text-slate-300 truncate">' + p.description + '</p>' +
+      '<p class="text-[10px] text-slate-500">' + p.stats.sampleSize + ' trades | ' + winRate + '% win</p></div>' +
+      '<div class="text-right ml-2"><span class="text-xs mono font-semibold ' + retColor + '">' + (p.stats.avgReturnPercent >= 0 ? '+' : '') + p.stats.avgReturnPercent.toFixed(1) + '%</span>' +
+      '<p class="text-[10px] ' + confColor + '">' + (p.confidence * 100).toFixed(0) + '% conf</p></div></div>';
+  }).join('');
+}
+
+function renderThresholds(thr) {
+  const el = $('thresholds-display');
+  const t = thr.currentThresholds;
+  const d = thr.defaults;
+  const rows = [
+    ['RSI Oversold', t.rsiOversold, d.rsiOversold],
+    ['RSI Overbought', t.rsiOverbought, d.rsiOverbought],
+    ['Buy Signal', t.confluenceBuy, d.confluenceBuy],
+    ['Sell Signal', t.confluenceSell, d.confluenceSell],
+    ['Profit Take', t.profitTakeTarget + '%', d.profitTakeTarget + '%'],
+    ['Stop Loss', t.stopLossPercent + '%', d.stopLossPercent + '%'],
+  ];
+  const changed = rows.filter(r => String(r[1]) !== String(r[2])).length;
+  el.innerHTML = '<p class="text-[10px] text-slate-500 mb-2">' + thr.adaptationCount + ' adaptations | ' + changed + ' modified</p>' +
+    rows.map(r => {
+      const isModified = String(r[1]) !== String(r[2]);
+      const valColor = isModified ? 'text-amber-400' : 'text-slate-300';
+      return '<div class="flex justify-between py-1 border-b border-white/5">' +
+        '<span class="text-[11px] text-slate-400">' + r[0] + '</span>' +
+        '<span class="text-[11px] mono font-medium ' + valColor + '">' + r[1] + (isModified ? ' (was ' + r[2] + ')' : '') + '</span></div>';
+    }).join('');
+  if (thr.explorationState) {
+    el.innerHTML += '<div class="mt-2 pt-2 border-t border-white/5"><p class="text-[10px] text-slate-500">Exploration: ' +
+      thr.explorationState.totalExplorationTrades + ' trades | ' + thr.explorationState.consecutiveHolds + ' consecutive holds</p></div>';
+  }
+}
+
+function renderInsights(rev) {
+  const el = $('latest-insights');
+  if (!rev.latestReview) {
+    el.innerHTML = '<p class="text-xs text-slate-600">No reviews yet (' + rev.tradesSinceLastReview + ' trades until next)</p>';
+    return;
+  }
+  const r = rev.latestReview;
+  const sevIcon = { INFO: '💡', WARNING: '⚠️', ACTION: '🎯' };
+  el.innerHTML = '<p class="text-[10px] text-slate-500 mb-2">Review ' + rev.totalReviews + ' | ' + new Date(r.timestamp).toLocaleDateString() + ' | Win rate: ' + (r.periodStats.winRate * 100).toFixed(0) + '%</p>' +
+    r.insights.slice(0, 5).map(i => {
+      const icon = sevIcon[i.severity] || '📊';
+      return '<div class="py-1.5 border-b border-white/5"><p class="text-[11px] text-slate-300">' + icon + ' ' + i.message + '</p></div>';
+    }).join('') +
+    (r.recommendations.length > 0 ? '<div class="mt-2 pt-1"><p class="text-[10px] text-slate-500 mb-1">Recommendations:</p>' +
+      r.recommendations.slice(0, 3).map(rec => '<p class="text-[10px] text-amber-400/80 py-0.5">→ ' + rec.description + '</p>').join('') + '</div>' : '');
 }
 
 // Initial load + auto-refresh every 30s
