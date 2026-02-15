@@ -1,7 +1,15 @@
 /**
- * Henry's Autonomous Trading Agent v3.5
+ * Henry's Autonomous Trading Agent v4.0
  *
- * MAJOR UPGRADE: Technical Indicators Engine + Advanced AI Trading Strategy
+ * PHASE 1 BRAIN UPGRADE: Enhanced Market Intelligence + Smart Trade Logging
+ *
+ * CHANGES IN V4.0:
+ * - DefiLlama integration: Base chain TVL, DEX volumes, protocol-level TVL changes
+ * - Binance derivatives: BTC/ETH funding rates + open interest (leading indicators)
+ * - Enhanced trade logging: full signal context, market regime, indicator snapshots
+ * - Upgraded AI prompt: 6-dimensional market awareness (technicals + DeFi + derivatives + sentiment + macro context)
+ * - Trade performance scoring: win rate, avg return, signal effectiveness tracking
+ * - Market regime detection: trending/ranging/volatile based on multi-factor analysis
  *
  * CHANGES IN V3.5:
  * - Cost basis tracking: avg purchase price, realized/unrealized P&L per token
@@ -9,45 +17,12 @@
  * - Stop-loss guard: auto-sell 50% when token down 25%+ (or 20% trailing from peak)
  * - Live dashboard: real-time web UI at / with portfolio, P&L, holdings, trades
  * - API endpoints: /api/portfolio, /api/balances, /api/sectors, /api/trades, /api/indicators
- * - Cost basis persists across restarts via trades JSON
- *
- * CHANGES IN V3.4.1:
- * - Fix AI JSON parsing: extract JSON from prose-wrapped responses
- * - Position size guard: hard block BUY if token > 25% of portfolio
- * - Diversification guard: block buying same token 3+ consecutive times
- * - Stronger AI prompt: explicit JSON-only instruction + diversification rule
- *
- * CHANGES IN V3.4:
- * - Technical Indicators Engine: RSI(14), MACD(12/26/9), Bollinger Bands(20,2), SMA(20/50)
- * - Confluence scoring system: -100 to +100 aggregated signal strength
- * - CoinGecko historical price data with 2-hour caching (free tier optimized)
- * - AI prompt v3.4 with indicator-driven entry/exit/risk rules
- * - Trade history memory: last 10 trades fed to AI for learning across cycles
- * - Trend direction detection from price action + moving averages
- * - Volume analysis: 24h volume vs 7-day average comparison
- *
- * CHANGES IN V3.3:
- * - Added Permit2 ERC-20 approval before swaps (fixes insufficient allowance error)
- * - Checks current allowance via eth_call before approving
- * - Gas status check on startup — warns if ETH needed for approvals
- * - Coinbase CDP SDK for trade execution
- * - CDP-managed wallet signing via CDP_WALLET_SECRET
- * - Supports both old env vars (CDP_API_KEY_NAME/PRIVATE_KEY) and new (CDP_API_KEY_ID/SECRET)
- * - Swap quote preview logging before execution
- * - Improved error handling for insufficient liquidity
- * - viem for transaction monitoring and token allowance checks
- * - Balance reading via direct on-chain RPC calls to Base network
- * - All ERC-20 token balances read via eth_call (balanceOf)
- * - ETH balance read via eth_getBalance
- * - Parallel balance fetching for all tokens
  *
  * Sectors:
- * - BLUE_CHIP (40%): ETH, cbBTC, cbETH - Safe, liquid assets
- * - AI_TOKENS (20%): VIRTUAL, AIXBT, GAME, HIGHER - High growth AI sector
- * - MEME_COINS (20%): BRETT, DEGEN, TOSHI, MOCHI, NORMIE - High risk/reward
- * - DEFI (20%): AERO, WELL, SEAM, EXTRA, BAL - DeFi protocols on Base
- *
- * Your wallet: 0x55509AA76E2769eCCa5B4293359e3001dA16dd0F
+ * - BLUE_CHIP (40%): ETH, cbBTC, cbETH
+ * - AI_TOKENS (20%): VIRTUAL, AIXBT, GAME, HIGHER
+ * - MEME_COINS (20%): BRETT, DEGEN, TOSHI, MOCHI, NORMIE
+ * - DEFI (20%): AERO, WELL, SEAM, EXTRA, BAL
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -354,6 +329,94 @@ interface TradeRecord {
     ethPrice: number;
     btcPrice: number;
   };
+  // V4.0: Enhanced signal context for self-learning
+  signalContext?: {
+    marketRegime: MarketRegime;
+    confluenceScore: number;             // Score at time of trade
+    rsi: number | null;                  // RSI of traded token
+    macdSignal: string | null;           // MACD signal of traded token
+    btcFundingRate: number | null;       // BTC funding rate at time of trade
+    ethFundingRate: number | null;       // ETH funding rate at time of trade
+    baseTVLChange24h: number | null;     // Base chain TVL change
+    baseDEXVolume24h: number | null;     // Base DEX volume
+    triggeredBy: "AI" | "STOP_LOSS" | "PROFIT_TAKE";  // What initiated the trade
+  };
+}
+
+// V4.0: Trade performance tracking
+interface TradePerformanceStats {
+  totalTrades: number;
+  winRate: number;               // % of trades with positive outcome
+  avgReturnPercent: number;      // Average return per trade
+  bestTrade: { symbol: string; returnPercent: number } | null;
+  worstTrade: { symbol: string; returnPercent: number } | null;
+  avgHoldingPeriod: string;      // Average time between buy and sell
+  profitFactor: number;          // Gross profit / Gross loss
+  winsByRegime: Record<MarketRegime, { wins: number; total: number }>;
+}
+
+/**
+ * Calculate trade performance stats from history (for AI context)
+ */
+function calculateTradePerformance(): TradePerformanceStats {
+  const completedTrades = state.tradeHistory.filter(t => t.success && t.action !== "HOLD");
+  const totalTrades = completedTrades.length;
+
+  if (totalTrades === 0) {
+    return {
+      totalTrades: 0, winRate: 0, avgReturnPercent: 0,
+      bestTrade: null, worstTrade: null, avgHoldingPeriod: "N/A",
+      profitFactor: 0, winsByRegime: {} as any,
+    };
+  }
+
+  // Calculate wins based on realized P&L from cost basis
+  let grossProfit = 0;
+  let grossLoss = 0;
+  const tradeReturns: { symbol: string; returnPercent: number }[] = [];
+
+  for (const trade of completedTrades) {
+    if (trade.action === "SELL") {
+      const cb = state.costBasis[trade.fromToken];
+      if (cb && cb.averageCostBasis > 0 && trade.amountUSD > 0) {
+        const tokensSold = trade.tokenAmount || (trade.amountUSD / (cb.averageCostBasis || 1));
+        const costOfSold = tokensSold * cb.averageCostBasis;
+        const pnl = trade.amountUSD - costOfSold;
+        const returnPct = costOfSold > 0 ? (pnl / costOfSold) * 100 : 0;
+        tradeReturns.push({ symbol: trade.fromToken, returnPercent: returnPct });
+        if (pnl > 0) grossProfit += pnl;
+        else grossLoss += Math.abs(pnl);
+      }
+    }
+  }
+
+  const wins = tradeReturns.filter(t => t.returnPercent > 0).length;
+  const winRate = tradeReturns.length > 0 ? (wins / tradeReturns.length) * 100 : 0;
+  const avgReturn = tradeReturns.length > 0 ? tradeReturns.reduce((s, t) => s + t.returnPercent, 0) / tradeReturns.length : 0;
+  const best = tradeReturns.length > 0 ? tradeReturns.reduce((a, b) => a.returnPercent > b.returnPercent ? a : b) : null;
+  const worst = tradeReturns.length > 0 ? tradeReturns.reduce((a, b) => a.returnPercent < b.returnPercent ? a : b) : null;
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Infinity : 0;
+
+  // Win rate by market regime
+  const winsByRegime: Record<string, { wins: number; total: number }> = {};
+  for (const trade of completedTrades) {
+    const regime = trade.signalContext?.marketRegime || "UNKNOWN";
+    if (!winsByRegime[regime]) winsByRegime[regime] = { wins: 0, total: 0 };
+    winsByRegime[regime].total++;
+    // Approximate: if trade was a sell with positive reasoning
+    if (trade.action === "SELL") {
+      const ret = tradeReturns.find(r => r.symbol === trade.fromToken);
+      if (ret && ret.returnPercent > 0) winsByRegime[regime].wins++;
+    }
+  }
+
+  return {
+    totalTrades, winRate, avgReturnPercent: avgReturn,
+    bestTrade: best, worstTrade: worst,
+    avgHoldingPeriod: "tracked per token via costBasis",
+    profitFactor,
+    winsByRegime: winsByRegime as any,
+  };
 }
 
 interface SectorAllocation {
@@ -455,7 +518,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "3.5",
+      version: "4.0",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -646,6 +709,31 @@ function checkStopLoss(
 // MARKET DATA
 // ============================================================================
 
+// ============================================================================
+// DEFI INTELLIGENCE — DefiLlama + Derivatives (Phase 1 Brain Upgrade)
+// ============================================================================
+
+interface DefiLlamaData {
+  baseTVL: number;                    // Total TVL on Base chain in USD
+  baseTVLChange24h: number;           // % change in Base TVL over 24h
+  baseDEXVolume24h: number;           // Total DEX volume on Base in 24h
+  topProtocols: { name: string; tvl: number; change24h: number }[];  // Top Base protocols by TVL
+  protocolTVLByToken: Record<string, { tvl: number; change24h: number }>;  // TVL for tokens we track
+}
+
+interface DerivativesData {
+  btcFundingRate: number;             // BTC perp funding rate (% per 8h)
+  ethFundingRate: number;             // ETH perp funding rate (% per 8h)
+  btcOpenInterest: number;            // BTC total open interest in USD
+  ethOpenInterest: number;            // ETH total open interest in USD
+  btcFundingSignal: "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL";
+  ethFundingSignal: "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL";
+  btcOIChange24h: number;             // % change in BTC OI over 24h
+  ethOIChange24h: number;             // % change in ETH OI over 24h
+}
+
+type MarketRegime = "TRENDING_UP" | "TRENDING_DOWN" | "RANGING" | "VOLATILE" | "UNKNOWN";
+
 interface MarketData {
   tokens: {
     symbol: string; name: string; price: number;
@@ -655,38 +743,274 @@ interface MarketData {
   fearGreed: { value: number; classification: string };
   trendingTokens: string[];
   indicators: Record<string, TechnicalIndicators>;  // Technical indicators per token
+  defiLlama: DefiLlamaData | null;                   // DeFi intelligence layer
+  derivatives: DerivativesData | null;                // Derivatives/funding rate layer
+  marketRegime: MarketRegime;                         // Overall market regime assessment
+}
+
+/**
+ * Fetch Base chain DeFi data from DefiLlama (free, no API key needed)
+ */
+async function fetchDefiLlamaData(): Promise<DefiLlamaData | null> {
+  try {
+    // Fetch Base chain TVL + historical for 24h change
+    const [chainRes, protocolsRes, dexVolumeRes] = await Promise.allSettled([
+      axios.get("https://api.llama.fi/v2/historicalChainTvl/Base", { timeout: 10000 }),
+      axios.get("https://api.llama.fi/v2/protocols", { timeout: 15000 }),
+      axios.get("https://api.llama.fi/overview/dexs/base?excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true&dataType=dailyVolume", { timeout: 10000 }),
+    ]);
+
+    let baseTVL = 0;
+    let baseTVLChange24h = 0;
+
+    if (chainRes.status === "fulfilled" && chainRes.value.data?.length > 1) {
+      const tvlData = chainRes.value.data;
+      baseTVL = tvlData[tvlData.length - 1]?.tvl || 0;
+      const prevTVL = tvlData[tvlData.length - 2]?.tvl || baseTVL;
+      baseTVLChange24h = prevTVL > 0 ? ((baseTVL - prevTVL) / prevTVL) * 100 : 0;
+    }
+
+    let baseDEXVolume24h = 0;
+    if (dexVolumeRes.status === "fulfilled") {
+      baseDEXVolume24h = dexVolumeRes.value.data?.total24h || 0;
+    }
+
+    // Map protocol names to our token symbols for matching
+    const tokenProtocolMap: Record<string, string[]> = {
+      AERO: ["aerodrome"],
+      WELL: ["moonwell"],
+      SEAM: ["seamless-protocol", "seamless"],
+      EXTRA: ["extra-finance"],
+      BAL: ["balancer"],
+    };
+
+    const topProtocols: { name: string; tvl: number; change24h: number }[] = [];
+    const protocolTVLByToken: Record<string, { tvl: number; change24h: number }> = {};
+
+    if (protocolsRes.status === "fulfilled") {
+      const baseProtocols = protocolsRes.value.data
+        .filter((p: any) => p.chains?.includes("Base") && p.tvl > 0)
+        .sort((a: any, b: any) => (b.tvl || 0) - (a.tvl || 0))
+        .slice(0, 15);
+
+      for (const protocol of baseProtocols) {
+        const tvl = protocol.tvl || 0;
+        const change24h = protocol.change_1d || 0;
+        topProtocols.push({ name: protocol.name, tvl, change24h });
+
+        // Match to our tokens
+        for (const [symbol, slugs] of Object.entries(tokenProtocolMap)) {
+          if (slugs.some(slug => protocol.slug?.includes(slug) || protocol.name?.toLowerCase().includes(slug))) {
+            protocolTVLByToken[symbol] = { tvl, change24h };
+          }
+        }
+      }
+    }
+
+    console.log(`  📊 DefiLlama: Base TVL $${(baseTVL / 1e9).toFixed(2)}B (${baseTVLChange24h >= 0 ? "+" : ""}${baseTVLChange24h.toFixed(1)}%) | DEX Vol $${(baseDEXVolume24h / 1e6).toFixed(0)}M`);
+    return { baseTVL, baseTVLChange24h, baseDEXVolume24h, topProtocols, protocolTVLByToken };
+  } catch (error: any) {
+    console.warn(`  ⚠️ DefiLlama fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch BTC/ETH funding rates and open interest from Binance (free, no API key needed)
+ */
+async function fetchDerivativesData(): Promise<DerivativesData | null> {
+  try {
+    const [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes] = await Promise.allSettled([
+      axios.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=2", { timeout: 8000 }),
+      axios.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=ETHUSDT&limit=2", { timeout: 8000 }),
+      axios.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", { timeout: 8000 }),
+      axios.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=ETHUSDT", { timeout: 8000 }),
+    ]);
+
+    let btcFundingRate = 0;
+    let ethFundingRate = 0;
+    let btcOpenInterest = 0;
+    let ethOpenInterest = 0;
+
+    if (btcFundingRes.status === "fulfilled" && btcFundingRes.value.data?.length > 0) {
+      btcFundingRate = parseFloat(btcFundingRes.value.data[btcFundingRes.value.data.length - 1].fundingRate) * 100;
+    }
+    if (ethFundingRes.status === "fulfilled" && ethFundingRes.value.data?.length > 0) {
+      ethFundingRate = parseFloat(ethFundingRes.value.data[ethFundingRes.value.data.length - 1].fundingRate) * 100;
+    }
+    if (btcOIRes.status === "fulfilled") {
+      btcOpenInterest = parseFloat(btcOIRes.value.data?.openInterest || "0");
+    }
+    if (ethOIRes.status === "fulfilled") {
+      ethOpenInterest = parseFloat(ethOIRes.value.data?.openInterest || "0");
+    }
+
+    // Interpret funding rates — extreme values indicate crowded positions
+    // Typical neutral range: -0.01% to +0.01% (per 8h)
+    const interpretFunding = (rate: number): "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL" => {
+      if (rate > 0.03) return "LONG_CROWDED";      // Longs paying shorts heavily — potential for long squeeze
+      if (rate < -0.03) return "SHORT_CROWDED";     // Shorts paying longs heavily — potential for short squeeze
+      return "NEUTRAL";
+    };
+
+    const btcFundingSignal = interpretFunding(btcFundingRate);
+    const ethFundingSignal = interpretFunding(ethFundingRate);
+
+    // Calculate OI change (we'll store previous values in cache)
+    const btcOIChange24h = derivativesCache.btcOI > 0 ? ((btcOpenInterest - derivativesCache.btcOI) / derivativesCache.btcOI) * 100 : 0;
+    const ethOIChange24h = derivativesCache.ethOI > 0 ? ((ethOpenInterest - derivativesCache.ethOI) / derivativesCache.ethOI) * 100 : 0;
+
+    // Update cache
+    derivativesCache.btcOI = btcOpenInterest;
+    derivativesCache.ethOI = ethOpenInterest;
+
+    console.log(`  📈 Derivatives: BTC funding ${btcFundingRate >= 0 ? "+" : ""}${btcFundingRate.toFixed(4)}% (${btcFundingSignal}) | ETH funding ${ethFundingRate >= 0 ? "+" : ""}${ethFundingRate.toFixed(4)}% (${ethFundingSignal})`);
+    console.log(`     BTC OI: ${btcOpenInterest.toFixed(0)} BTC | ETH OI: ${ethOpenInterest.toFixed(0)} ETH`);
+
+    return { btcFundingRate, ethFundingRate, btcOpenInterest, ethOpenInterest, btcFundingSignal, ethFundingSignal, btcOIChange24h, ethOIChange24h };
+  } catch (error: any) {
+    console.warn(`  ⚠️ Derivatives fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    return null;
+  }
+}
+
+// Cache for derivatives OI comparison
+const derivativesCache = { btcOI: 0, ethOI: 0 };
+
+/**
+ * Determine overall market regime from multiple factors
+ */
+function determineMarketRegime(
+  fearGreed: number,
+  indicators: Record<string, TechnicalIndicators>,
+  derivatives: DerivativesData | null
+): MarketRegime {
+  // Count directional signals
+  let upSignals = 0;
+  let downSignals = 0;
+  let totalSignals = 0;
+
+  for (const ind of Object.values(indicators)) {
+    totalSignals++;
+    if (ind.trendDirection === "STRONG_UP" || ind.trendDirection === "UP") upSignals++;
+    if (ind.trendDirection === "STRONG_DOWN" || ind.trendDirection === "DOWN") downSignals++;
+  }
+
+  const upRatio = totalSignals > 0 ? upSignals / totalSignals : 0;
+  const downRatio = totalSignals > 0 ? downSignals / totalSignals : 0;
+
+  // Check for high volatility regime
+  const avgBandwidth = Object.values(indicators)
+    .filter(i => i.bollingerBands)
+    .reduce((sum, i) => sum + (i.bollingerBands?.bandwidth || 0), 0) / Math.max(1, Object.values(indicators).filter(i => i.bollingerBands).length);
+
+  if (avgBandwidth > 15) return "VOLATILE";
+  if (upRatio > 0.6 && fearGreed > 40) return "TRENDING_UP";
+  if (downRatio > 0.6 && fearGreed < 40) return "TRENDING_DOWN";
+  if (upRatio < 0.4 && downRatio < 0.4) return "RANGING";
+
+  return "UNKNOWN";
+}
+
+/**
+ * Format DefiLlama + Derivatives data for the AI prompt
+ */
+function formatIntelligenceForPrompt(defi: DefiLlamaData | null, derivatives: DerivativesData | null, regime: MarketRegime): string {
+  const lines: string[] = [];
+
+  if (defi) {
+    lines.push(`═══ DEFI INTELLIGENCE (DefiLlama) ═══`);
+    lines.push(`Base Chain TVL: $${(defi.baseTVL / 1e9).toFixed(2)}B (${defi.baseTVLChange24h >= 0 ? "+" : ""}${defi.baseTVLChange24h.toFixed(1)}% 24h)`);
+    lines.push(`Base DEX Volume (24h): $${(defi.baseDEXVolume24h / 1e6).toFixed(0)}M`);
+
+    if (defi.topProtocols.length > 0) {
+      lines.push(`Top Base Protocols by TVL:`);
+      for (const p of defi.topProtocols.slice(0, 8)) {
+        lines.push(`  ${p.name}: $${p.tvl > 1e9 ? (p.tvl / 1e9).toFixed(2) + "B" : (p.tvl / 1e6).toFixed(0) + "M"} (${p.change24h >= 0 ? "+" : ""}${p.change24h.toFixed(1)}%)`);
+      }
+    }
+
+    if (Object.keys(defi.protocolTVLByToken).length > 0) {
+      lines.push(`Our DeFi token protocol TVL:`);
+      for (const [symbol, data] of Object.entries(defi.protocolTVLByToken)) {
+        const tvlStr = data.tvl > 1e9 ? (data.tvl / 1e9).toFixed(2) + "B" : (data.tvl / 1e6).toFixed(0) + "M";
+        lines.push(`  ${symbol}: TVL $${tvlStr} (${data.change24h >= 0 ? "+" : ""}${data.change24h.toFixed(1)}% 24h)`);
+      }
+    }
+
+    // Signal interpretation
+    if (defi.baseTVLChange24h > 3) lines.push(`🟢 TVL SIGNAL: Capital flowing INTO Base (+${defi.baseTVLChange24h.toFixed(1)}%) — bullish for Base tokens`);
+    else if (defi.baseTVLChange24h < -3) lines.push(`🔴 TVL SIGNAL: Capital flowing OUT of Base (${defi.baseTVLChange24h.toFixed(1)}%) — bearish for Base tokens`);
+    lines.push("");
+  }
+
+  if (derivatives) {
+    lines.push(`═══ DERIVATIVES INTELLIGENCE (Binance) ═══`);
+    lines.push(`BTC Funding Rate: ${derivatives.btcFundingRate >= 0 ? "+" : ""}${derivatives.btcFundingRate.toFixed(4)}%/8h → ${derivatives.btcFundingSignal}`);
+    lines.push(`ETH Funding Rate: ${derivatives.ethFundingRate >= 0 ? "+" : ""}${derivatives.ethFundingRate.toFixed(4)}%/8h → ${derivatives.ethFundingSignal}`);
+    lines.push(`BTC Open Interest: ${derivatives.btcOpenInterest.toFixed(0)} BTC ${derivatives.btcOIChange24h !== 0 ? `(${derivatives.btcOIChange24h >= 0 ? "+" : ""}${derivatives.btcOIChange24h.toFixed(1)}% change)` : ""}`);
+    lines.push(`ETH Open Interest: ${derivatives.ethOpenInterest.toFixed(0)} ETH ${derivatives.ethOIChange24h !== 0 ? `(${derivatives.ethOIChange24h >= 0 ? "+" : ""}${derivatives.ethOIChange24h.toFixed(1)}% change)` : ""}`);
+
+    // Funding rate interpretation
+    if (derivatives.btcFundingSignal === "LONG_CROWDED") {
+      lines.push(`⚠️ FUNDING SIGNAL: BTC longs crowded — risk of long squeeze / correction`);
+    } else if (derivatives.btcFundingSignal === "SHORT_CROWDED") {
+      lines.push(`🟢 FUNDING SIGNAL: BTC shorts crowded — potential short squeeze / rally`);
+    }
+    if (derivatives.ethFundingSignal === "LONG_CROWDED") {
+      lines.push(`⚠️ FUNDING SIGNAL: ETH longs crowded — risk of long squeeze / correction`);
+    } else if (derivatives.ethFundingSignal === "SHORT_CROWDED") {
+      lines.push(`🟢 FUNDING SIGNAL: ETH shorts crowded — potential short squeeze / rally`);
+    }
+    lines.push("");
+  }
+
+  lines.push(`═══ MARKET REGIME ═══`);
+  lines.push(`Current Regime: ${regime}`);
+  switch (regime) {
+    case "TRENDING_UP": lines.push(`→ Favor buying dips, ride momentum, widen stops`); break;
+    case "TRENDING_DOWN": lines.push(`→ Favor selling rallies, tighten stops, preserve capital`); break;
+    case "RANGING": lines.push(`→ Mean-revert: buy oversold, sell overbought, smaller positions`); break;
+    case "VOLATILE": lines.push(`→ Reduce position sizes, widen stops, wait for clarity`); break;
+    default: lines.push(`→ Mixed signals — use standard rules, stay disciplined`); break;
+  }
+
+  return lines.join("\n");
 }
 
 async function getMarketData(): Promise<MarketData> {
   try {
-    const fngResponse = await axios.get("https://api.alternative.me/fng/", { timeout: 10000 });
-    const fearGreed = {
-      value: parseInt(fngResponse.data.data[0].value),
-      classification: fngResponse.data.data[0].value_classification,
-    };
+    // Fetch all data sources in parallel for speed
+    const [fngResult, marketResult, defiResult, derivResult] = await Promise.allSettled([
+      axios.get("https://api.alternative.me/fng/", { timeout: 10000 }),
+      axios.get(
+        `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${[...new Set(Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean))].join(",")}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
+        { timeout: 15000 }
+      ),
+      fetchDefiLlamaData(),
+      fetchDerivativesData(),
+    ]);
 
-    const coingeckoIds = [...new Set(
-      Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean)
-    )].join(",");
+    const fearGreed = fngResult.status === "fulfilled"
+      ? { value: parseInt(fngResult.value.data.data[0].value), classification: fngResult.value.data.data[0].value_classification }
+      : { value: 50, classification: "Neutral" };
 
-    const marketResponse = await axios.get(
-      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`,
-      { timeout: 15000 }
-    );
-
-    const tokens = marketResponse.data.map((coin: any) => {
-      const registryEntry = Object.entries(TOKEN_REGISTRY).find(
-        ([_, t]) => t.coingeckoId === coin.id
-      );
-      const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
-      const sector = registryEntry ? registryEntry[1].sector : "UNKNOWN";
-      return {
-        symbol, name: coin.name, price: coin.current_price,
-        priceChange24h: coin.price_change_percentage_24h || 0,
-        priceChange7d: coin.price_change_percentage_7d_in_currency || 0,
-        volume24h: coin.total_volume, marketCap: coin.market_cap, sector,
-      };
-    });
+    let tokens: MarketData["tokens"] = [];
+    if (marketResult.status === "fulfilled") {
+      tokens = marketResult.value.data.map((coin: any) => {
+        const registryEntry = Object.entries(TOKEN_REGISTRY).find(
+          ([_, t]) => t.coingeckoId === coin.id
+        );
+        const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
+        const sector = registryEntry ? registryEntry[1].sector : "UNKNOWN";
+        return {
+          symbol, name: coin.name, price: coin.current_price,
+          priceChange24h: coin.price_change_percentage_24h || 0,
+          priceChange7d: coin.price_change_percentage_7d_in_currency || 0,
+          volume24h: coin.total_volume, marketCap: coin.market_cap, sector,
+        };
+      });
+    }
 
     const trendingTokens = tokens
       .filter((t: any) => t.priceChange24h > 5)
@@ -700,13 +1024,21 @@ async function getMarketData(): Promise<MarketData> {
     const indicatorCount = Object.values(indicators).filter(i => i.rsi14 !== null).length;
     console.log(`   ✅ Indicators computed for ${indicatorCount}/${Object.keys(indicators).length} tokens`);
 
-    return { tokens, fearGreed, trendingTokens, indicators };
+    // Extract new data layers
+    const defiLlama = defiResult.status === "fulfilled" ? defiResult.value : null;
+    const derivatives = derivResult.status === "fulfilled" ? derivResult.value : null;
+
+    // Determine market regime
+    const marketRegime = determineMarketRegime(fearGreed.value, indicators, derivatives);
+    console.log(`  🌐 Market Regime: ${marketRegime}`);
+
+    return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, marketRegime };
   } catch (error: any) {
     const msg = error?.response?.status
       ? `HTTP ${error.response.status}: ${error.message}`
       : error?.message || String(error);
     console.error("Failed to fetch market data:", msg);
-    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {} };
+    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {}, defiLlama: null, derivatives: null, marketRegime: "UNKNOWN" };
   }
 }
 
@@ -1441,12 +1773,21 @@ async function makeTradeDecision(
   const recentTrades = state.tradeHistory.slice(-10);
   const tradeHistorySummary = recentTrades.length > 0
     ? recentTrades.map(t =>
-        `  ${t.timestamp.slice(5, 16)} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"} ${t.reasoning?.substring(0, 60) || ""}`
+        `  ${t.timestamp.slice(5, 16)} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"} regime=${t.signalContext?.marketRegime || "?"} ${t.reasoning?.substring(0, 60) || ""}`
       ).join("\n")
     : "  No trades yet";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v3.4 on Base network.
-You are a TECHNICAL TRADER with access to real-time indicators. Your decisions execute LIVE swaps.
+  // V4.0: Build intelligence layers
+  const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime);
+
+  // V4.0: Performance stats for self-awareness
+  const perfStats = calculateTradePerformance();
+  const perfSummary = perfStats.totalTrades > 0
+    ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
+    : "No completed sell trades yet — performance tracking will begin after first sell";
+
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v4.0 on Base network.
+You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), and market regime analysis. Your decisions execute LIVE swaps.
 
 ═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}
@@ -1454,6 +1795,9 @@ You are a TECHNICAL TRADER with access to real-time indicators. Your decisions e
 - Total: $${totalPortfolioValue.toFixed(2)}
 - P&L: ${((totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue * 100).toFixed(1)}% from $${state.trading.initialValue}
 - Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%
+
+═══ YOUR TRADE PERFORMANCE ═══
+${perfSummary}
 
 ═══ SECTOR ALLOCATIONS ═══
 ${sectorAllocations.map(s =>
@@ -1475,6 +1819,8 @@ ${indicatorsSummary || "  No indicator data available"}
 ${strongBuySignals.length > 0 ? `🟢 STRONGEST BUY SIGNALS: ${strongBuySignals.join(", ")}` : ""}
 ${strongSellSignals.length > 0 ? `🔴 STRONGEST SELL SIGNALS: ${strongSellSignals.join(", ")}` : ""}
 
+${intelligenceSummary}
+
 ═══ TOKEN PRICES ═══
 ${Object.entries(marketBySector).map(([sector, tokens]) =>
   `${sector}: ${tokens.slice(0, 5).join(" | ")}`
@@ -1487,7 +1833,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK ═══
+═══ STRATEGY FRAMEWORK v4.0 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -1495,12 +1841,23 @@ ENTRY RULES (when to BUY):
 3. SECTOR PRIORITY: Buy into the most underweight sector first
 4. VOLUME CONFIRMATION: Prefer tokens where volume is above 7-day average (strength behind the move)
 5. TREND ALIGNMENT: Prefer buying tokens in UP or STRONG_UP trends
+6. DEFI FLOW: If Base TVL is rising (>+2% 24h), favor buying DeFi tokens. If falling, avoid new DeFi positions
+7. FUNDING RATE: If BTC/ETH shorts are CROWDED (negative funding), this is contrarian bullish — favor buying
+8. TVL MOMENTUM: If a specific protocol's TVL is rising while price hasn't followed, it's undervalued — buy opportunity
 
 EXIT RULES (when to SELL):
 1. TAKE PROFIT: Sell 25-50% of a position if token is up >15% in 24h AND RSI > 65
 2. OVERBOUGHT EXIT: Sell if RSI > 75 AND Bollinger %B > 0.95 AND MACD turning bearish
 3. STOP LOSS: Sell if token is down >20% in 7d and trend is STRONG_DOWN
 4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
+5. FUNDING WARNING: If BTC/ETH longs are CROWDED (high positive funding), prepare to take profits — correction risk
+6. TVL OUTFLOW: If a DeFi protocol's TVL is dropping >5% while you hold its token, consider trimming
+
+REGIME-ADAPTED STRATEGY:
+- TRENDING_UP: Be aggressive on dips. Favor momentum entries. Let winners run longer
+- TRENDING_DOWN: Be defensive. Tighter stops. Favor HOLD or sell rallies. Preserve capital
+- RANGING: Mean-revert. Buy oversold tokens, sell overbought. Keep positions smaller
+- VOLATILE: Reduce position sizes by 50%. Wait for clearer signals. Only trade strong confluence
 
 RISK RULES:
 1. No single token > 25% of portfolio
@@ -1508,8 +1865,9 @@ RISK RULES:
 3. Never chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
 4. In extreme greed (>75), tighten sell rules — take profits more aggressively
 5. Minimum trade $1.00
+6. LEARN FROM HISTORY: Review your past trades above. Avoid repeating strategies that lost money. Double down on patterns that worked
 
-DECISION PRIORITY: Technical signals > Sector rebalancing > Sentiment
+DECISION PRIORITY: Market Regime > Technical signals + DeFi flows > Derivatives signals > Sector rebalancing > Sentiment
 
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
@@ -1519,14 +1877,14 @@ If a token already holds >20% of portfolio, do NOT buy more — pick a different
 
 CRITICAL: Respond with ONLY a raw JSON object. NO prose, NO explanation outside JSON, NO markdown.
 Your ENTIRE response must be exactly one JSON object:
-{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover","sector":"DEFI"}`;
+{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover, Base TVL +3.2%, WELL protocol TVL rising, BTC shorts crowded","sector":"DEFI"}`;
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 500,
+        max_tokens: 600,
         messages: [{ role: "user", content: systemPrompt }],
       });
 
@@ -1744,7 +2102,9 @@ async function executeTrade(
       updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, estimatedTokensSold);
     }
 
-    // Record trade
+    // Record trade with full signal context (V4.0)
+    const tradedToken = decision.action === "BUY" ? decision.toToken : decision.fromToken;
+    const tradedIndicators = marketData.indicators[tradedToken];
     const record: TradeRecord = {
       timestamp: new Date().toISOString(),
       cycle: state.totalCycles,
@@ -1762,6 +2122,17 @@ async function executeTrade(
         fearGreed: marketData.fearGreed.value,
         ethPrice: marketData.tokens.find(t => t.symbol === "ETH")?.price || 0,
         btcPrice: marketData.tokens.find(t => t.symbol === "cbBTC")?.price || 0,
+      },
+      signalContext: {
+        marketRegime: marketData.marketRegime,
+        confluenceScore: tradedIndicators?.confluenceScore || 0,
+        rsi: tradedIndicators?.rsi14 || null,
+        macdSignal: tradedIndicators?.macd?.signal || null,
+        btcFundingRate: marketData.derivatives?.btcFundingRate || null,
+        ethFundingRate: marketData.derivatives?.ethFundingRate || null,
+        baseTVLChange24h: marketData.defiLlama?.baseTVLChange24h || null,
+        baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
+        triggeredBy: "AI",
       },
     };
     state.tradeHistory.push(record);
@@ -1795,7 +2166,9 @@ async function executeTrade(
       console.error(`     → Authentication failed. Check CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET.`);
     }
 
-    // Record failed trade
+    // Record failed trade with signal context (V4.0)
+    const failedToken = decision.action === "BUY" ? decision.toToken : decision.fromToken;
+    const failedIndicators = marketData.indicators[failedToken];
     const record: TradeRecord = {
       timestamp: new Date().toISOString(),
       cycle: state.totalCycles,
@@ -1812,6 +2185,17 @@ async function executeTrade(
         fearGreed: marketData.fearGreed.value,
         ethPrice: marketData.tokens.find(t => t.symbol === "ETH")?.price || 0,
         btcPrice: marketData.tokens.find(t => t.symbol === "cbBTC")?.price || 0,
+      },
+      signalContext: {
+        marketRegime: marketData.marketRegime,
+        confluenceScore: failedIndicators?.confluenceScore || 0,
+        rsi: failedIndicators?.rsi14 || null,
+        macdSignal: failedIndicators?.macd?.signal || null,
+        btcFundingRate: marketData.derivatives?.btcFundingRate || null,
+        ethFundingRate: marketData.derivatives?.ethFundingRate || null,
+        baseTVLChange24h: marketData.defiLlama?.baseTVLChange24h || null,
+        baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
+        triggeredBy: "AI",
       },
     };
     state.tradeHistory.push(record);
@@ -1838,6 +2222,14 @@ async function runTradingCycle() {
 
     console.log("📈 Fetching market data for all tracked tokens...");
     const marketData = await getMarketData();
+
+    // V4.0: Store intelligence data for API endpoint
+    lastIntelligenceData = {
+      defi: marketData.defiLlama,
+      derivatives: marketData.derivatives,
+      regime: marketData.marketRegime,
+      performance: calculateTradePerformance(),
+    };
 
     // Update USD values
     for (const balance of balances) {
@@ -2021,10 +2413,18 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v3.4                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v4.0                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   LIVE TRADING + TECHNICAL INDICATORS | Base Network                   ║
+║   PHASE 1 BRAIN UPGRADE — Multi-Dimensional Intelligence               ║
+║   LIVE TRADING | Base Network | DefiLlama + Binance Derivatives        ║
+║                                                                        ║
+║   Data Sources:                                                        ║
+║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
+║   • DeFi Intel: Base TVL, DEX Volume, Protocol TVL (DefiLlama)        ║
+║   • Derivatives: BTC/ETH Funding Rates + Open Interest (Binance)      ║
+║   • Sentiment: Fear & Greed Index + Market Regime Detection           ║
+║   • Self-Learning: Trade performance scoring + signal attribution     ║
 ║                                                                        ║
 ║   Sectors:                                                             ║
 ║   • Blue Chip (40%): ETH, cbBTC, cbETH                                ║
@@ -2038,8 +2438,8 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Indicators: RSI(14), MACD(12/26/9), Bollinger(20,2), SMA(20/50)`);
-  console.log(`   AI Strategy: Confluence-based (indicators > sectors > sentiment)`);
+  console.log(`   Brain: v4.0 — Technicals + DeFi + Derivatives + Regime + Self-Learning`);
+  console.log(`   AI Strategy: Regime-adapted (regime > technicals + DeFi flows > derivatives > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
   console.log(`   Slippage: ${CONFIG.trading.slippageBps / 100}%`);
@@ -2121,7 +2521,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v3.5 running! Cost basis + profit-taking + stop-loss + live dashboard active.\n");
+  console.log("\n🚀 Agent v4.0 running! Brain upgrade active: DefiLlama + Binance derivatives + regime detection + self-learning.\n");
 }
 
 main().catch((err) => {
@@ -2159,7 +2559,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "3.5",
+    version: "4.0",
   };
 }
 
@@ -2204,6 +2604,21 @@ function apiIndicators() {
   };
 }
 
+// V4.0: Intelligence API endpoint
+let lastIntelligenceData: { defi: DefiLlamaData | null; derivatives: DerivativesData | null; regime: MarketRegime; performance: TradePerformanceStats } | null = null;
+
+function apiIntelligence() {
+  const perf = calculateTradePerformance();
+  return {
+    version: "4.0",
+    defiLlama: lastIntelligenceData?.defi || null,
+    derivatives: lastIntelligenceData?.derivatives || null,
+    marketRegime: lastIntelligenceData?.regime || "UNKNOWN",
+    tradePerformance: perf,
+    dataSources: ["CoinGecko", "Fear & Greed Index", "DefiLlama (TVL/DEX/Protocols)", "Binance (Funding Rates/OI)", "Technical Indicators (RSI/MACD/BB/SMA)"],
+  };
+}
+
 function getDashboardHTML(): string {
   // Always use embedded dashboard (connected to bot API)
   // Old dashboard/index.html reads from blockchain directly — not useful
@@ -2241,6 +2656,9 @@ const healthServer = http.createServer((req, res) => {
         break;
       case '/api/indicators':
         sendJSON(res, 200, apiIndicators());
+        break;
+      case '/api/intelligence':
+        sendJSON(res, 200, apiIntelligence());
         break;
       default:
         sendJSON(res, 404, { error: 'Not found' });
@@ -2298,7 +2716,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v3.5</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v4.0</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
