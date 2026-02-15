@@ -2151,10 +2151,8 @@ function apiIndicators() {
 }
 
 function getDashboardHTML(): string {
-  try {
-    const dashPath = "./dashboard/index.html";
-    if (fs.existsSync(dashPath)) return fs.readFileSync(dashPath, "utf-8");
-  } catch {}
+  // Always use embedded dashboard (connected to bot API)
+  // Old dashboard/index.html reads from blockchain directly — not useful
   return EMBEDDED_DASHBOARD;
 }
 
