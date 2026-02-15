@@ -1,7 +1,15 @@
 /**
- * Henry's Autonomous Trading Agent v3.4.1
+ * Henry's Autonomous Trading Agent v3.5
  *
  * MAJOR UPGRADE: Technical Indicators Engine + Advanced AI Trading Strategy
+ *
+ * CHANGES IN V3.5:
+ * - Cost basis tracking: avg purchase price, realized/unrealized P&L per token
+ * - Profit-taking guard: auto-sell 30% when token up 20%+ from avg cost
+ * - Stop-loss guard: auto-sell 50% when token down 25%+ (or 20% trailing from peak)
+ * - Live dashboard: real-time web UI at / with portfolio, P&L, holdings, trades
+ * - API endpoints: /api/portfolio, /api/balances, /api/sectors, /api/trades, /api/indicators
+ * - Cost basis persists across restarts via trades JSON
  *
  * CHANGES IN V3.4.1:
  * - Fix AI JSON parsing: extract JSON from prose-wrapped responses
@@ -252,6 +260,23 @@ const CONFIG = {
     minPositionUSD: 5,       // Minimum position size
     rebalanceThreshold: 10,  // Rebalance if sector drift > 10%
     slippageBps: 100,        // 1% slippage tolerance for swaps
+    // V3.5: Profit-Taking
+    profitTaking: {
+      enabled: true,
+      targetPercent: 20,        // Trigger at 20% unrealized gain
+      sellPercent: 30,          // Sell 30% of the winning position
+      minHoldingUSD: 10,        // Don't trigger if holding < $10
+      cooldownHours: 24,        // Cooldown per token between triggers
+    },
+    // V3.5: Stop-Loss
+    stopLoss: {
+      enabled: true,
+      percentThreshold: -25,    // Trigger at -25% from avg cost
+      sellPercent: 50,          // Sell 50% of the losing position
+      minHoldingUSD: 5,         // Don't trigger if holding < $5
+      trailingEnabled: true,    // Also use trailing stop from peak
+      trailingPercent: -20,     // Trigger at -20% from token's peak
+    },
   },
 
   // Active tokens (all tradeable tokens)
@@ -340,6 +365,20 @@ interface SectorAllocation {
   tokens: { symbol: string; usdValue: number; percent: number }[];
 }
 
+interface TokenCostBasis {
+  symbol: string;
+  totalInvestedUSD: number;       // Total USD spent buying this token
+  totalTokensAcquired: number;    // Total tokens bought (gross, before sells reduce it)
+  averageCostBasis: number;       // Weighted avg price paid per token
+  currentHolding: number;         // Tokens held right now (synced from on-chain)
+  realizedPnL: number;            // Cumulative profit/loss from sells
+  unrealizedPnL: number;          // (currentPrice - avgCost) * currentHolding
+  peakPrice: number;              // Highest price seen since first purchase
+  peakPriceDate: string;          // When peak occurred
+  firstBuyDate: string;
+  lastTradeDate: string;
+}
+
 interface AgentState {
   startTime: Date;
   totalCycles: number;
@@ -355,6 +394,9 @@ interface AgentState {
     sectorAllocations: SectorAllocation[];
   };
   tradeHistory: TradeRecord[];
+  costBasis: Record<string, TokenCostBasis>;
+  profitTakeCooldowns: Record<string, string>;  // symbol → ISO date of last trigger
+  stopLossCooldowns: Record<string, string>;     // symbol → ISO date of last trigger
 }
 
 let state: AgentState = {
@@ -372,6 +414,9 @@ let state: AgentState = {
     sectorAllocations: [],
   },
   tradeHistory: [],
+  costBasis: {},
+  profitTakeCooldowns: {},
+  stopLossCooldowns: {},
 };
 
 // ============================================================================
@@ -391,7 +436,10 @@ function loadTradeHistory() {
         state.trading.peakValue = parsed.peakValue || 374;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
-        console.log(`  📂 Loaded ${state.tradeHistory.length} historical trades from ${file}`);
+        state.costBasis = parsed.costBasis || {};
+        state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
+        state.stopLossCooldowns = parsed.stopLossCooldowns || {};
+        console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         return;
       }
     }
@@ -407,7 +455,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "3.4.1",
+      version: "3.5",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -416,11 +464,182 @@ function saveTradeHistory() {
       successfulTrades: state.trading.successfulTrades,
       sectorAllocations: state.trading.sectorAllocations,
       trades: state.tradeHistory,
+      costBasis: state.costBasis,
+      profitTakeCooldowns: state.profitTakeCooldowns,
+      stopLossCooldowns: state.stopLossCooldowns,
     };
     fs.writeFileSync(CONFIG.logFile, JSON.stringify(data, null, 2));
   } catch (e: any) {
     console.error("Failed to save trade history:", e.message);
   }
+}
+
+// ============================================================================
+// COST BASIS TRACKING
+// ============================================================================
+
+function getOrCreateCostBasis(symbol: string): TokenCostBasis {
+  if (!state.costBasis[symbol]) {
+    state.costBasis[symbol] = {
+      symbol,
+      totalInvestedUSD: 0,
+      totalTokensAcquired: 0,
+      averageCostBasis: 0,
+      currentHolding: 0,
+      realizedPnL: 0,
+      unrealizedPnL: 0,
+      peakPrice: 0,
+      peakPriceDate: new Date().toISOString(),
+      firstBuyDate: new Date().toISOString(),
+      lastTradeDate: new Date().toISOString(),
+    };
+  }
+  return state.costBasis[symbol];
+}
+
+function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceived: number): void {
+  const cb = getOrCreateCostBasis(symbol);
+  if (cb.totalTokensAcquired === 0) cb.firstBuyDate = new Date().toISOString();
+  cb.totalInvestedUSD += amountUSD;
+  cb.totalTokensAcquired += tokensReceived;
+  // Weighted average: new avg = total invested / total tokens
+  cb.averageCostBasis = cb.totalInvestedUSD / cb.totalTokensAcquired;
+  cb.lastTradeDate = new Date().toISOString();
+  console.log(`     📊 Cost basis updated: ${symbol} avg=$${cb.averageCostBasis.toFixed(6)} invested=$${cb.totalInvestedUSD.toFixed(2)}`);
+}
+
+function updateCostBasisAfterSell(symbol: string, amountUSD: number, tokensSold: number): number {
+  const cb = getOrCreateCostBasis(symbol);
+  // Realized P&L = (sell price per token - avg cost) * tokens sold
+  const sellPricePerToken = tokensSold > 0 ? amountUSD / tokensSold : 0;
+  const realizedPnL = (sellPricePerToken - cb.averageCostBasis) * tokensSold;
+  cb.realizedPnL += realizedPnL;
+  // Reduce invested proportionally (cost basis stays same for remaining tokens)
+  const proportionSold = cb.totalTokensAcquired > 0 ? tokensSold / cb.totalTokensAcquired : 0;
+  cb.totalInvestedUSD = Math.max(0, cb.totalInvestedUSD * (1 - proportionSold));
+  cb.totalTokensAcquired = Math.max(0, cb.totalTokensAcquired - tokensSold);
+  cb.lastTradeDate = new Date().toISOString();
+  console.log(`     📊 Sell P&L: ${realizedPnL >= 0 ? "+" : ""}$${realizedPnL.toFixed(2)} on ${symbol} (avg cost $${cb.averageCostBasis.toFixed(6)})`);
+  return realizedPnL;
+}
+
+function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdValue: number; price?: number }[]): void {
+  for (const b of balances) {
+    if (b.symbol === "USDC" || !state.costBasis[b.symbol]) continue;
+    const cb = state.costBasis[b.symbol];
+    cb.currentHolding = b.balance;
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    cb.unrealizedPnL = cb.averageCostBasis > 0 ? (currentPrice - cb.averageCostBasis) * b.balance : 0;
+    // Update peak price for trailing stop
+    if (currentPrice > cb.peakPrice) {
+      cb.peakPrice = currentPrice;
+      cb.peakPriceDate = new Date().toISOString();
+    }
+  }
+}
+
+// ============================================================================
+// PROFIT-TAKING & STOP-LOSS GUARDS
+// ============================================================================
+
+function checkProfitTaking(
+  balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
+): TradeDecision | null {
+  if (!CONFIG.trading.profitTaking.enabled) return null;
+
+  const cfg = CONFIG.trading.profitTaking;
+  const now = new Date();
+
+  for (const b of balances) {
+    if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
+    const cb = state.costBasis[b.symbol];
+    if (!cb || cb.averageCostBasis <= 0) continue;
+
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+
+    if (gainPercent >= cfg.targetPercent) {
+      // Check cooldown
+      const lastTrigger = state.profitTakeCooldowns[b.symbol];
+      if (lastTrigger) {
+        const hoursSince = (now.getTime() - new Date(lastTrigger).getTime()) / (1000 * 60 * 60);
+        if (hoursSince < cfg.cooldownHours) continue;
+      }
+
+      const sellUSD = b.usdValue * (cfg.sellPercent / 100);
+      const tokenAmount = b.balance * (cfg.sellPercent / 100);
+      console.log(`\n  🎯 PROFIT-TAKE: ${b.symbol} is UP +${gainPercent.toFixed(1)}% (target: ${cfg.targetPercent}%)`);
+      console.log(`     Avg cost: $${cb.averageCostBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
+      console.log(`     Selling ${cfg.sellPercent}% = ~$${sellUSD.toFixed(2)}`);
+
+      state.profitTakeCooldowns[b.symbol] = now.toISOString();
+
+      return {
+        action: "SELL",
+        fromToken: b.symbol,
+        toToken: "USDC",
+        amountUSD: sellUSD,
+        tokenAmount,
+        reasoning: `Profit-take: ${b.symbol} +${gainPercent.toFixed(1)}% from avg cost $${cb.averageCostBasis.toFixed(4)}. Selling ${cfg.sellPercent}%.`,
+        sector: b.sector,
+      };
+    }
+  }
+  return null;
+}
+
+function checkStopLoss(
+  balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
+): TradeDecision | null {
+  if (!CONFIG.trading.stopLoss.enabled) return null;
+
+  const cfg = CONFIG.trading.stopLoss;
+  let worstLoss = 0;
+  let worstDecision: TradeDecision | null = null;
+
+  for (const b of balances) {
+    if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
+    const cb = state.costBasis[b.symbol];
+    if (!cb || cb.averageCostBasis <= 0) continue;
+
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    const lossFromCost = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+
+    // Check trailing stop (loss from peak)
+    let trailingLoss = 0;
+    if (cfg.trailingEnabled && cb.peakPrice > 0) {
+      trailingLoss = ((currentPrice - cb.peakPrice) / cb.peakPrice) * 100;
+    }
+
+    const triggered = lossFromCost <= cfg.percentThreshold ||
+      (cfg.trailingEnabled && trailingLoss <= cfg.trailingPercent);
+
+    if (triggered && lossFromCost < worstLoss) {
+      worstLoss = lossFromCost;
+      const sellUSD = b.usdValue * (cfg.sellPercent / 100);
+      const tokenAmount = b.balance * (cfg.sellPercent / 100);
+      const reason = lossFromCost <= cfg.percentThreshold
+        ? `Stop-loss: ${b.symbol} ${lossFromCost.toFixed(1)}% from cost basis $${cb.averageCostBasis.toFixed(4)}`
+        : `Trailing stop: ${b.symbol} ${trailingLoss.toFixed(1)}% from peak $${cb.peakPrice.toFixed(4)}`;
+
+      worstDecision = {
+        action: "SELL",
+        fromToken: b.symbol,
+        toToken: "USDC",
+        amountUSD: sellUSD,
+        tokenAmount,
+        reasoning: `${reason}. Selling ${cfg.sellPercent}%.`,
+        sector: b.sector,
+      };
+    }
+  }
+
+  if (worstDecision) {
+    console.log(`\n  🛑 STOP-LOSS: ${worstDecision.fromToken} is DOWN ${worstLoss.toFixed(1)}%`);
+    console.log(`     Selling ${cfg.sellPercent}% = ~$${worstDecision.amountUSD.toFixed(2)}`);
+  }
+
+  return worstDecision;
 }
 
 // ============================================================================
@@ -1479,6 +1698,18 @@ async function executeTrade(
     state.trading.totalTrades++;
     state.trading.successfulTrades++;
 
+    // Update cost basis
+    if (decision.action === "BUY" && decision.toToken !== "USDC") {
+      // Estimate tokens received: amountUSD / current price
+      const tokenPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price || 1;
+      const estimatedTokens = decision.amountUSD / tokenPrice;
+      updateCostBasisAfterBuy(decision.toToken, decision.amountUSD, estimatedTokens);
+    } else if (decision.action === "SELL" && decision.fromToken !== "USDC") {
+      const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
+      const estimatedTokensSold = decision.tokenAmount || (decision.amountUSD / tokenPrice);
+      updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, estimatedTokensSold);
+    }
+
     // Record trade
     const record: TradeRecord = {
       timestamp: new Date().toISOString(),
@@ -1634,6 +1865,39 @@ async function runTradingCycle() {
 
     if (marketData.trendingTokens.length > 0) {
       console.log(`\n🔥 Trending: ${marketData.trendingTokens.join(", ")}`);
+    }
+
+    // Update unrealized P&L and peak prices for all holdings
+    updateUnrealizedPnL(balances);
+
+    // Display cost basis summary
+    const activeCB = Object.values(state.costBasis).filter(cb => cb.currentHolding > 0 && cb.averageCostBasis > 0);
+    if (activeCB.length > 0) {
+      const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
+      const totalUnrealized = activeCB.reduce((s, cb) => s + cb.unrealizedPnL, 0);
+      console.log(`\n💹 Cost Basis P&L: Realized ${totalRealized >= 0 ? "+" : ""}$${totalRealized.toFixed(2)} | Unrealized ${totalUnrealized >= 0 ? "+" : ""}$${totalUnrealized.toFixed(2)}`);
+      for (const cb of activeCB) {
+        const pct = cb.averageCostBasis > 0 ? ((cb.unrealizedPnL / (cb.averageCostBasis * cb.currentHolding)) * 100) : 0;
+        console.log(`   ${cb.unrealizedPnL >= 0 ? "🟢" : "🔴"} ${cb.symbol}: avg $${cb.averageCostBasis.toFixed(4)} | P&L ${cb.unrealizedPnL >= 0 ? "+" : ""}$${cb.unrealizedPnL.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`);
+      }
+    }
+
+    // === STOP-LOSS CHECK (highest priority) ===
+    const stopLossDecision = checkStopLoss(balances);
+    if (stopLossDecision) {
+      console.log(`\n  🛑 STOP-LOSS GUARD executing sell...`);
+      await executeTrade(stopLossDecision, marketData);
+      state.trading.lastCheck = new Date();
+      return; // Skip AI decision this cycle
+    }
+
+    // === PROFIT-TAKING CHECK ===
+    const profitTakeDecision = checkProfitTaking(balances);
+    if (profitTakeDecision) {
+      console.log(`\n  🎯 PROFIT-TAKE GUARD executing sell...`);
+      await executeTrade(profitTakeDecision, marketData);
+      state.trading.lastCheck = new Date();
+      return; // Skip AI decision this cycle
     }
 
     // AI decision
@@ -1803,7 +2067,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v3.4.1 running! Position guards + JSON parsing fix active. Press Ctrl+C to stop.\n");
+  console.log("\n🚀 Agent v3.5 running! Cost basis + profit-taking + stop-loss + live dashboard active.\n");
 }
 
 main().catch((err) => {
@@ -1812,23 +2076,430 @@ main().catch((err) => {
   process.exit(1);
 });
 
-// Simple HTTP health check server for Railway
+// ============================================================================
+// HTTP SERVER — Dashboard + API Endpoints
+// ============================================================================
 import http from 'http';
+
+function sendJSON(res: http.ServerResponse, status: number, data: any) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(JSON.stringify(data));
+}
+
+function apiPortfolio() {
+  const uptime = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
+  const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
+  const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
+  return {
+    totalValue: state.trading.totalPortfolioValue,
+    initialValue: state.trading.initialValue,
+    peakValue: state.trading.peakValue,
+    pnl: state.trading.totalPortfolioValue - state.trading.initialValue,
+    pnlPercent: state.trading.initialValue > 0 ? ((state.trading.totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue) * 100 : 0,
+    drawdown: state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0,
+    realizedPnL: totalRealized,
+    unrealizedPnL: totalUnrealized,
+    totalTrades: state.trading.totalTrades,
+    successfulTrades: state.trading.successfulTrades,
+    totalCycles: state.totalCycles,
+    uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
+    lastCycle: state.trading.lastCheck.toISOString(),
+    tradingEnabled: CONFIG.trading.enabled,
+    version: "3.5",
+  };
+}
+
+function apiBalances() {
+  return {
+    balances: state.trading.balances.map(b => ({
+      symbol: b.symbol,
+      balance: b.balance,
+      usdValue: b.usdValue,
+      price: b.price,
+      sector: b.sector,
+      costBasis: state.costBasis[b.symbol]?.averageCostBasis || null,
+      unrealizedPnL: state.costBasis[b.symbol]?.unrealizedPnL || 0,
+      totalInvested: state.costBasis[b.symbol]?.totalInvestedUSD || 0,
+      realizedPnL: state.costBasis[b.symbol]?.realizedPnL || 0,
+    })),
+    totalValue: state.trading.totalPortfolioValue,
+    lastUpdate: state.trading.lastCheck.toISOString(),
+  };
+}
+
+function apiSectors() {
+  return {
+    allocations: state.trading.sectorAllocations,
+    totalValue: state.trading.totalPortfolioValue,
+  };
+}
+
+function apiTrades(limit: number) {
+  return {
+    trades: state.tradeHistory.slice(-limit).reverse(),
+    totalTrades: state.trading.totalTrades,
+    successfulTrades: state.trading.successfulTrades,
+  };
+}
+
+function apiIndicators() {
+  // Return last known indicator data from state if we store it
+  return {
+    message: "Indicators computed each cycle — see /api/portfolio for latest summary",
+    costBasis: Object.values(state.costBasis).filter(cb => cb.currentHolding > 0),
+  };
+}
+
+function getDashboardHTML(): string {
+  try {
+    const dashPath = "./dashboard/index.html";
+    if (fs.existsSync(dashPath)) return fs.readFileSync(dashPath, "utf-8");
+  } catch {}
+  return EMBEDDED_DASHBOARD;
+}
+
 const healthServer = http.createServer((req, res) => {
-  if (req.url === '/' || req.url === '/health') {
-    const uptime = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: "ok",
-      version: "3.4.1",
-      uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
-      portfolio: state.trading.totalPortfolioValue,
-      trades: `${state.trading.successfulTrades}/${state.trading.totalTrades}`,
-      lastCycle: state.trading.lastCheck.toISOString(),
-      tradingEnabled: CONFIG.trading.enabled,
-    }));
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  try {
+    switch (url.pathname) {
+      case '/':
+      case '/dashboard':
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(getDashboardHTML());
+        break;
+      case '/health':
+        sendJSON(res, 200, { status: "ok", ...apiPortfolio() });
+        break;
+      case '/api/portfolio':
+        sendJSON(res, 200, apiPortfolio());
+        break;
+      case '/api/balances':
+        sendJSON(res, 200, apiBalances());
+        break;
+      case '/api/sectors':
+        sendJSON(res, 200, apiSectors());
+        break;
+      case '/api/trades':
+        sendJSON(res, 200, apiTrades(parseInt(url.searchParams.get('limit') || '50')));
+        break;
+      case '/api/indicators':
+        sendJSON(res, 200, apiIndicators());
+        break;
+      default:
+        sendJSON(res, 404, { error: 'Not found' });
+    }
+  } catch (err: any) {
+    console.error('HTTP error:', err.message);
+    sendJSON(res, 500, { error: 'Internal server error' });
   }
 });
 healthServer.listen(process.env.PORT || 3000, () => {
-  console.log('Health check server running on port', process.env.PORT || 3000);
+  console.log('Dashboard + API server running on port', process.env.PORT || 3000);
 });
+
+// ============================================================================
+// EMBEDDED DASHBOARD (fallback if dashboard/index.html not found)
+// ============================================================================
+const EMBEDDED_DASHBOARD = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schertzinger Trading Command</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = { theme: { extend: {
+  fontFamily: { sans: ['Inter', 'system-ui'], mono: ['JetBrains Mono', 'monospace'] },
+  colors: {
+    surface: { 900: '#0a0e1a', 800: '#0f1629', 700: '#151d35', 600: '#1c2541' },
+    accent: { gold: '#f0b429', emerald: '#10b981', crimson: '#ef4444', sky: '#38bdf8' }
+  }
+}}}
+</script>
+<style>
+body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+.glass { background: rgba(15,22,41,0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.06); }
+.glow-green { box-shadow: 0 0 20px rgba(16,185,129,0.15); }
+.glow-red { box-shadow: 0 0 20px rgba(239,68,68,0.15); }
+.mesh-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(76,110,245,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(16,185,129,0.06) 0%, transparent 50%),
+    linear-gradient(180deg, #060a14 0%, #0a0e1a 100%);
+}
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+</style>
+</head>
+<body class="mesh-bg min-h-screen">
+
+<!-- Header -->
+<div class="border-b border-white/5 px-4 sm:px-6 py-4">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v3.5</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span class="text-xs text-emerald-400 font-medium" id="bot-status">Online</span>
+      <span class="text-xs text-slate-600 mono" id="last-update"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Hero Metrics -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+    <div class="glass rounded-xl p-4">
+      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Portfolio</p>
+      <p class="text-xl sm:text-2xl font-bold text-white mono" id="portfolio-value">--</p>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Total P&L</p>
+      <p class="text-xl sm:text-2xl font-bold mono" id="total-pnl">--</p>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Realized</p>
+      <p class="text-lg font-semibold mono" id="realized-pnl">--</p>
+    </div>
+    <div class="glass rounded-xl p-4">
+      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Unrealized</p>
+      <p class="text-lg font-semibold mono" id="unrealized-pnl">--</p>
+    </div>
+  </div>
+
+  <!-- Sub metrics -->
+  <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
+    <div class="glass rounded-lg p-3 text-center">
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Trades</p>
+      <p class="text-sm font-semibold text-white mono" id="trade-count">--</p>
+    </div>
+    <div class="glass rounded-lg p-3 text-center">
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Success</p>
+      <p class="text-sm font-semibold text-emerald-400 mono" id="success-rate">--</p>
+    </div>
+    <div class="glass rounded-lg p-3 text-center">
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Cycles</p>
+      <p class="text-sm font-semibold text-white mono" id="cycle-count">--</p>
+    </div>
+    <div class="glass rounded-lg p-3 text-center">
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Uptime</p>
+      <p class="text-sm font-semibold text-white mono" id="uptime">--</p>
+    </div>
+    <div class="glass rounded-lg p-3 text-center">
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Peak</p>
+      <p class="text-sm font-semibold text-accent-gold mono" id="peak-value">--</p>
+    </div>
+    <div class="glass rounded-lg p-3 text-center">
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Drawdown</p>
+      <p class="text-sm font-semibold text-slate-400 mono" id="drawdown">--</p>
+    </div>
+  </div>
+</div>
+
+<!-- Holdings + Sectors Grid -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-6">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Holdings -->
+    <div class="lg:col-span-2 glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-4">Holdings & P&L</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+              <th class="pb-2 text-left">Token</th>
+              <th class="pb-2 text-right">Value</th>
+              <th class="pb-2 text-right hidden sm:table-cell">Avg Cost</th>
+              <th class="pb-2 text-right">P&L</th>
+              <th class="pb-2 text-right hidden sm:table-cell">Sector</th>
+            </tr>
+          </thead>
+          <tbody id="holdings-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sector Allocation -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-4">Sector Allocation</h2>
+      <div class="flex justify-center mb-4" style="height: 200px;">
+        <canvas id="sector-chart"></canvas>
+      </div>
+      <div id="sector-list" class="space-y-2"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Trade Log -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  <div class="glass rounded-xl p-5">
+    <h2 class="text-sm font-semibold text-white mb-4">Recent Trades</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead>
+          <tr class="text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+            <th class="pb-2 text-left">Time</th>
+            <th class="pb-2 text-left">Action</th>
+            <th class="pb-2 text-left">Pair</th>
+            <th class="pb-2 text-right">Amount</th>
+            <th class="pb-2 text-center">Status</th>
+            <th class="pb-2 text-left hidden sm:table-cell">Reasoning</th>
+          </tr>
+        </thead>
+        <tbody id="trades-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="border-t border-white/5 px-4 sm:px-6 py-4 text-center">
+  <p class="text-[10px] text-slate-600">Schertzinger Company Limited — Auto-refreshes every 30s</p>
+</div>
+
+<script>
+let sectorChart = null;
+const $ = id => document.getElementById(id);
+
+function fmt(n, d=2) { return n != null ? '$' + Number(n).toFixed(d) : '--'; }
+function pnlColor(n) { return n >= 0 ? 'text-emerald-400' : 'text-red-400'; }
+function pnlSign(n) { return n >= 0 ? '+' : ''; }
+function pnlBg(n) { return n >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'; }
+
+async function fetchData() {
+  try {
+    const [pRes, bRes, sRes, tRes] = await Promise.allSettled([
+      fetch('/api/portfolio').then(r => r.json()),
+      fetch('/api/balances').then(r => r.json()),
+      fetch('/api/sectors').then(r => r.json()),
+      fetch('/api/trades?limit=30').then(r => r.json()),
+    ]);
+    const p = pRes.status === 'fulfilled' ? pRes.value : null;
+    const b = bRes.status === 'fulfilled' ? bRes.value : null;
+    const s = sRes.status === 'fulfilled' ? sRes.value : null;
+    const t = tRes.status === 'fulfilled' ? tRes.value : null;
+
+    if (p) renderPortfolio(p);
+    if (b) renderHoldings(b);
+    if (s) renderSectors(s);
+    if (t) renderTrades(t);
+    $('last-update').textContent = new Date().toLocaleTimeString();
+  } catch (e) {
+    console.error('Fetch error:', e);
+    $('bot-status').textContent = 'Connection Error';
+    $('bot-status').className = 'text-xs text-red-400 font-medium';
+  }
+}
+
+function renderPortfolio(p) {
+  $('portfolio-value').textContent = fmt(p.totalValue);
+  const pnlEl = $('total-pnl');
+  pnlEl.textContent = pnlSign(p.pnl) + fmt(p.pnl) + ' (' + pnlSign(p.pnlPercent) + p.pnlPercent.toFixed(1) + '%)';
+  pnlEl.className = 'text-xl sm:text-2xl font-bold mono ' + pnlColor(p.pnl);
+
+  const rEl = $('realized-pnl');
+  rEl.textContent = pnlSign(p.realizedPnL) + fmt(p.realizedPnL);
+  rEl.className = 'text-lg font-semibold mono ' + pnlColor(p.realizedPnL);
+
+  const uEl = $('unrealized-pnl');
+  uEl.textContent = pnlSign(p.unrealizedPnL) + fmt(p.unrealizedPnL);
+  uEl.className = 'text-lg font-semibold mono ' + pnlColor(p.unrealizedPnL);
+
+  $('trade-count').textContent = p.totalTrades;
+  $('success-rate').textContent = p.totalTrades > 0 ? ((p.successfulTrades/p.totalTrades)*100).toFixed(0) + '%' : '--';
+  $('cycle-count').textContent = p.totalCycles;
+  $('uptime').textContent = p.uptime;
+  $('peak-value').textContent = fmt(p.peakValue);
+  $('drawdown').textContent = p.drawdown.toFixed(1) + '%';
+  $('bot-status').textContent = 'Online';
+  $('bot-status').className = 'text-xs text-emerald-400 font-medium';
+}
+
+function renderHoldings(b) {
+  const rows = b.balances
+    .filter(h => h.usdValue > 0.01)
+    .sort((a, b) => b.usdValue - a.usdValue)
+    .map(h => {
+      const pnl = h.unrealizedPnL || 0;
+      const pnlPct = h.totalInvested > 0 ? (pnl / h.totalInvested * 100) : 0;
+      const costStr = h.costBasis ? '$' + (h.costBasis < 0.01 ? h.costBasis.toFixed(6) : h.costBasis.toFixed(4)) : '-';
+      return '<tr class="border-b border-white/5 hover:bg-white/[0.02]">' +
+        '<td class="py-2.5 font-semibold text-white">' + h.symbol + '</td>' +
+        '<td class="py-2.5 text-right mono text-slate-300">' + fmt(h.usdValue) + '</td>' +
+        '<td class="py-2.5 text-right mono text-slate-500 hidden sm:table-cell">' + costStr + '</td>' +
+        '<td class="py-2.5 text-right"><span class="px-1.5 py-0.5 rounded ' + pnlBg(pnl) + ' ' + pnlColor(pnl) + ' mono text-[11px]">' +
+          pnlSign(pnl) + '$' + Math.abs(pnl).toFixed(2) + (h.totalInvested > 0 ? ' (' + pnlSign(pnlPct) + pnlPct.toFixed(1) + '%)' : '') +
+        '</span></td>' +
+        '<td class="py-2.5 text-right text-slate-600 hidden sm:table-cell">' + (h.sector || '-') + '</td>' +
+      '</tr>';
+    }).join('');
+  $('holdings-table').innerHTML = rows || '<tr><td colspan="5" class="py-6 text-center text-slate-600">No holdings yet</td></tr>';
+}
+
+function renderSectors(s) {
+  if (!s.allocations || s.allocations.length === 0) return;
+  const colors = ['#4c6ef5', '#10b981', '#f0b429', '#ef4444', '#38bdf8', '#a78bfa'];
+  const labels = s.allocations.map(a => a.name);
+  const data = s.allocations.map(a => a.currentUSD);
+
+  if (sectorChart) sectorChart.destroy();
+  sectorChart = new Chart($('sector-chart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      cutout: '65%',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  $('sector-list').innerHTML = s.allocations.map((a, i) => {
+    const drift = a.drift;
+    const driftColor = Math.abs(drift) > 5 ? (drift > 0 ? 'text-amber-400' : 'text-sky-400') : 'text-slate-400';
+    return '<div class="flex items-center justify-between text-xs">' +
+      '<div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full" style="background:' + colors[i] + '"></span>' +
+      '<span class="text-slate-300">' + a.name + '</span></div>' +
+      '<div class="mono"><span class="text-white">' + a.currentPercent.toFixed(0) + '%</span>' +
+      '<span class="text-slate-600 mx-1">/</span><span class="text-slate-500">' + a.targetPercent + '%</span>' +
+      '<span class="ml-2 ' + driftColor + '">' + (drift >= 0 ? '+' : '') + drift.toFixed(1) + '</span></div></div>';
+  }).join('');
+}
+
+function renderTrades(t) {
+  if (!t.trades || t.trades.length === 0) {
+    $('trades-table').innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-600">No trades yet</td></tr>';
+    return;
+  }
+  $('trades-table').innerHTML = t.trades.map(tr => {
+    const time = new Date(tr.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const actionColor = tr.action === 'BUY' ? 'text-emerald-400 bg-emerald-500/10' : tr.action === 'SELL' ? 'text-red-400 bg-red-500/10' : 'text-slate-400 bg-slate-500/10';
+    const pair = tr.fromToken + ' → ' + tr.toToken;
+    const statusIcon = tr.success ? '<span class="text-emerald-400">✓</span>' : '<span class="text-red-400">✗</span>';
+    const reason = (tr.reasoning || '').substring(0, 60);
+    return '<tr class="border-b border-white/5 hover:bg-white/[0.02]">' +
+      '<td class="py-2 text-slate-400 mono">' + time + '</td>' +
+      '<td class="py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ' + actionColor + '">' + tr.action + '</span></td>' +
+      '<td class="py-2 text-slate-300 mono">' + pair + '</td>' +
+      '<td class="py-2 text-right mono text-white">$' + (tr.amountUSD || 0).toFixed(2) + '</td>' +
+      '<td class="py-2 text-center">' + statusIcon + '</td>' +
+      '<td class="py-2 text-slate-500 truncate max-w-[200px] hidden sm:table-cell">' + reason + '</td></tr>';
+  }).join('');
+}
+
+// Initial load + auto-refresh every 30s
+fetchData();
+setInterval(fetchData, 30000);
+</script>
+</body>
+</html>`;
+
