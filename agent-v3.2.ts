@@ -1,7 +1,16 @@
 /**
- * Henry's Autonomous Trading Agent v5.1
+ * Henry's Autonomous Trading Agent v5.1.1
  *
  * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE + v5.1 INTELLIGENCE UPGRADE
+ *
+ * CHANGES IN V5.1.1:
+ * - NEW: Tiered Profit Harvesting — scale out of winners in 4 tranches (+8%, +15%, +25%, +40%)
+ * - NEW: Time-based rebalancing — positions held 72h+ with +5% gain get a 10% trim
+ * - NEW: Per-tier cooldowns — each harvest tier has independent 6h cooldowns
+ * - NEW: Harvested profits tracking — dashboard shows total banked profits + harvest history
+ * - NEW: "Harvested" metric card on dashboard with harvest count + last harvest details
+ * - UPGRADED: AI prompt teaches profit harvesting philosophy and smart money exit signals
+ * - LOWERED: minHoldingUSD from $10 to $5, cooldown from 24h to 6h for faster harvesting cycles
  *
  * CHANGES IN V5.1:
  * - NEW: Binance Long/Short Ratios — global retail vs top trader (smart money) positioning
@@ -285,13 +294,20 @@ const CONFIG = {
     minPositionUSD: 5,       // Minimum position size
     rebalanceThreshold: 10,  // Rebalance if sector drift > 10%
     slippageBps: 100,        // 1% slippage tolerance for swaps
-    // V3.5: Profit-Taking
+    // V5.1.1: Tiered Profit Harvesting — scale out in tranches, bank small wins consistently
     profitTaking: {
       enabled: true,
-      targetPercent: 20,        // Trigger at 20% unrealized gain
-      sellPercent: 30,          // Sell 30% of the winning position
-      minHoldingUSD: 10,        // Don't trigger if holding < $10
-      cooldownHours: 24,        // Cooldown per token between triggers
+      targetPercent: 20,        // Legacy: original trigger (used by adaptive thresholds as base)
+      sellPercent: 30,          // Legacy: original sell amount
+      minHoldingUSD: 5,         // Don't trigger if holding < $5
+      cooldownHours: 6,         // Reduced: faster harvesting cycles (was 24h)
+      // Tiered harvesting: sell progressively more as gains increase
+      tiers: [
+        { gainPercent: 8,  sellPercent: 15, label: "EARLY_HARVEST" },    // Small win: skim 15%
+        { gainPercent: 15, sellPercent: 20, label: "MID_HARVEST" },      // Moderate win: take 20%
+        { gainPercent: 25, sellPercent: 30, label: "STRONG_HARVEST" },   // Strong win: take 30%
+        { gainPercent: 40, sellPercent: 40, label: "MAJOR_HARVEST" },    // Major win: take 40%
+      ],
     },
     // V3.5: Stop-Loss
     stopLoss: {
@@ -1130,8 +1146,14 @@ interface AgentState {
   };
   tradeHistory: TradeRecord[];
   costBasis: Record<string, TokenCostBasis>;
-  profitTakeCooldowns: Record<string, string>;  // symbol → ISO date of last trigger
+  profitTakeCooldowns: Record<string, string>;  // symbol:tier → ISO date of last trigger
   stopLossCooldowns: Record<string, string>;     // symbol → ISO date of last trigger
+  // v5.1.1: Profit harvesting tracking
+  harvestedProfits?: {
+    totalHarvested: number;
+    harvestCount: number;
+    harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
+  };
   // Phase 3: Self-Improvement Engine
   strategyPatterns: Record<string, StrategyPattern>;
   adaptiveThresholds: AdaptiveThresholds;
@@ -1159,6 +1181,7 @@ let state: AgentState = {
   costBasis: {},
   profitTakeCooldowns: {},
   stopLossCooldowns: {},
+  harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
   // Phase 3: Self-Improvement Engine
   strategyPatterns: {},
   adaptiveThresholds: { ...DEFAULT_ADAPTIVE_THRESHOLDS },
@@ -1188,6 +1211,7 @@ function loadTradeHistory() {
         state.costBasis = parsed.costBasis || {};
         state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
         state.stopLossCooldowns = parsed.stopLossCooldowns || {};
+        state.harvestedProfits = parsed.harvestedProfits || { totalHarvested: 0, harvestCount: 0, harvests: [] };
         // Phase 3 fields
         state.strategyPatterns = parsed.strategyPatterns || {};
         if (parsed.adaptiveThresholds) {
@@ -1226,6 +1250,7 @@ function saveTradeHistory() {
       costBasis: state.costBasis,
       profitTakeCooldowns: state.profitTakeCooldowns,
       stopLossCooldowns: state.stopLossCooldowns,
+      harvestedProfits: state.harvestedProfits,
       // Phase 3: Self-Improvement Engine
       strategyPatterns: state.strategyPatterns,
       adaptiveThresholds: state.adaptiveThresholds,
@@ -1308,13 +1333,51 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
 // PROFIT-TAKING & STOP-LOSS GUARDS
 // ============================================================================
 
+/**
+ * v5.1.1: TIERED PROFIT HARVESTING — scale out of winners in tranches
+ *
+ * Philosophy: Don't ride everything to the moon and back. When the market gives you
+ * something, take a piece. Bank small wins consistently. The remaining position still
+ * rides for the bigger move, but you've already locked in profit.
+ *
+ * Tiers:
+ *   +8%  → sell 15% (early harvest — skim the cream)
+ *   +15% → sell 20% (moderate win — bank a real gain)
+ *   +25% → sell 30% (strong win — significant profit lock)
+ *   +40% → sell 40% (major win — protect the bag)
+ *
+ * Each tier has its own cooldown tracking per token. A token can trigger tier 1,
+ * then later trigger tier 2 as it keeps climbing — harvesting along the way.
+ *
+ * Time-based rebalancing: If a position has been held for 72+ hours without any
+ * profit trigger and is up at least 5%, take a small 10% harvest. Patient capital,
+ * but not passive capital.
+ */
 function checkProfitTaking(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
 ): TradeDecision | null {
   if (!CONFIG.trading.profitTaking.enabled) return null;
 
   const cfg = CONFIG.trading.profitTaking;
+  const tiers = (cfg as any).tiers || [
+    { gainPercent: 8,  sellPercent: 15, label: "EARLY_HARVEST" },
+    { gainPercent: 15, sellPercent: 20, label: "MID_HARVEST" },
+    { gainPercent: 25, sellPercent: 30, label: "STRONG_HARVEST" },
+    { gainPercent: 40, sellPercent: 40, label: "MAJOR_HARVEST" },
+  ];
   const now = new Date();
+
+  // Track the best opportunity across all holdings (highest tier hit wins)
+  let bestCandidate: {
+    symbol: string;
+    balance: number;
+    usdValue: number;
+    gainPercent: number;
+    tier: { gainPercent: number; sellPercent: number; label: string };
+    costBasis: number;
+    currentPrice: number;
+    sector?: string;
+  } | null = null;
 
   for (const b of balances) {
     if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
@@ -1324,38 +1387,116 @@ function checkProfitTaking(
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
 
-    // Use adaptive thresholds (Phase 3) instead of static config
-    const adaptiveTarget = state.adaptiveThresholds.profitTakeTarget;
-    const adaptiveSellPct = state.adaptiveThresholds.profitTakeSellPercent;
+    if (gainPercent <= 0) continue; // No profit to take
 
-    if (gainPercent >= adaptiveTarget) {
-      // Check cooldown
-      const lastTrigger = state.profitTakeCooldowns[b.symbol];
-      if (lastTrigger) {
-        const hoursSince = (now.getTime() - new Date(lastTrigger).getTime()) / (1000 * 60 * 60);
-        if (hoursSince < cfg.cooldownHours) continue;
+    // Find the highest tier this position qualifies for
+    // Walk tiers from highest to lowest — take the best available
+    const sortedTiers = [...tiers].sort((a: any, b: any) => b.gainPercent - a.gainPercent);
+    for (const tier of sortedTiers) {
+      if (gainPercent >= tier.gainPercent) {
+        // Check per-tier cooldown: key is "symbol:tierLabel"
+        const cooldownKey = `${b.symbol}:${tier.label}`;
+        const lastTrigger = state.profitTakeCooldowns[cooldownKey];
+        if (lastTrigger) {
+          const hoursSince = (now.getTime() - new Date(lastTrigger).getTime()) / (1000 * 60 * 60);
+          if (hoursSince < cfg.cooldownHours) continue; // This tier is on cooldown
+        }
+
+        // This tier is available — is it better than our current best?
+        if (!bestCandidate || tier.gainPercent > bestCandidate.tier.gainPercent) {
+          bestCandidate = {
+            symbol: b.symbol,
+            balance: b.balance,
+            usdValue: b.usdValue,
+            gainPercent,
+            tier,
+            costBasis: cb.averageCostBasis,
+            currentPrice,
+            sector: b.sector,
+          };
+        }
+        break; // Found highest qualifying tier for this token, move to next token
       }
+    }
 
-      const sellUSD = b.usdValue * (adaptiveSellPct / 100);
-      const tokenAmount = b.balance * (adaptiveSellPct / 100);
-      console.log(`\n  🎯 PROFIT-TAKE: ${b.symbol} is UP +${gainPercent.toFixed(1)}% (adaptive target: ${adaptiveTarget}%)`);
-      console.log(`     Avg cost: $${cb.averageCostBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
-      console.log(`     Selling ${adaptiveSellPct}% = ~$${sellUSD.toFixed(2)}`);
-
-      state.profitTakeCooldowns[b.symbol] = now.toISOString();
-
-      return {
-        action: "SELL",
-        fromToken: b.symbol,
-        toToken: "USDC",
-        amountUSD: sellUSD,
-        tokenAmount,
-        reasoning: `Profit-take: ${b.symbol} +${gainPercent.toFixed(1)}% from avg cost $${cb.averageCostBasis.toFixed(4)}. Selling ${adaptiveSellPct}% (adaptive target: ${adaptiveTarget}%).`,
-        sector: b.sector,
-      };
+    // Time-based rebalancing: 72+ hours held, up at least 5%, no recent harvest
+    if (!bestCandidate && gainPercent >= 5 && cb.totalInvestedUSD > 0) {
+      const holdingAge = cb.firstBuyDate
+        ? (now.getTime() - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
+        : 0;
+      if (holdingAge >= 72) {
+        const timeKey = `${b.symbol}:TIME_REBALANCE`;
+        const lastTimeHarvest = state.profitTakeCooldowns[timeKey];
+        if (!lastTimeHarvest || (now.getTime() - new Date(lastTimeHarvest).getTime()) / (1000 * 60 * 60) >= 48) {
+          bestCandidate = {
+            symbol: b.symbol,
+            balance: b.balance,
+            usdValue: b.usdValue,
+            gainPercent,
+            tier: { gainPercent: 5, sellPercent: 10, label: "TIME_REBALANCE" },
+            costBasis: cb.averageCostBasis,
+            currentPrice,
+            sector: b.sector,
+          };
+        }
+      }
     }
   }
-  return null;
+
+  if (!bestCandidate) return null;
+
+  const { symbol, balance, usdValue, gainPercent, tier, costBasis, currentPrice, sector } = bestCandidate;
+  const sellPct = tier.sellPercent;
+  const sellUSD = usdValue * (sellPct / 100);
+  const tokenAmount = balance * (sellPct / 100);
+
+  // Don't sell less than $2 — not worth the gas
+  if (sellUSD < 2) return null;
+
+  const tierEmoji = tier.label === "EARLY_HARVEST" ? "🌱" :
+                    tier.label === "MID_HARVEST" ? "🌿" :
+                    tier.label === "STRONG_HARVEST" ? "🎯" :
+                    tier.label === "MAJOR_HARVEST" ? "💰" :
+                    tier.label === "TIME_REBALANCE" ? "⏰" : "📊";
+
+  console.log(`\n  ${tierEmoji} ${tier.label}: ${symbol} is UP +${gainPercent.toFixed(1)}% (tier threshold: +${tier.gainPercent}%)`);
+  console.log(`     Avg cost: $${costBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
+  console.log(`     Harvesting ${sellPct}% = ~$${sellUSD.toFixed(2)} → USDC (banking profit)`);
+
+  // Record cooldown for this specific tier
+  const cooldownKey = `${symbol}:${tier.label}`;
+  state.profitTakeCooldowns[cooldownKey] = now.toISOString();
+
+  // Track cumulative harvested profits for dashboard
+  if (!state.harvestedProfits) {
+    state.harvestedProfits = { totalHarvested: 0, harvestCount: 0, harvests: [] };
+  }
+  const profitPortion = sellUSD - (sellUSD / (1 + gainPercent / 100)); // Approximate profit from this sell
+  state.harvestedProfits.totalHarvested += profitPortion;
+  state.harvestedProfits.harvestCount++;
+  state.harvestedProfits.harvests.push({
+    timestamp: now.toISOString(),
+    symbol,
+    tier: tier.label,
+    gainPercent: Math.round(gainPercent * 10) / 10,
+    sellPercent: sellPct,
+    amountUSD: Math.round(sellUSD * 100) / 100,
+    profitUSD: Math.round(profitPortion * 100) / 100,
+  });
+  // Keep last 50 harvests
+  if (state.harvestedProfits.harvests.length > 50) {
+    state.harvestedProfits.harvests = state.harvestedProfits.harvests.slice(-50);
+  }
+
+  return {
+    action: "SELL" as const,
+    fromToken: symbol,
+    toToken: "USDC",
+    amountUSD: sellUSD,
+    tokenAmount,
+    reasoning: `${tier.label}: ${symbol} +${gainPercent.toFixed(1)}% from avg cost $${costBasis.toFixed(4)}. Harvesting ${sellPct}% (~$${sellUSD.toFixed(2)}) to lock in profit. Remaining ${100 - sellPct}% continues to ride.`,
+    sector,
+  };
 }
 
 function checkStopLoss(
@@ -3237,7 +3378,7 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v5.1 on Base network.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v5.1.1 on Base network.
 You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + OI + long/short ratios + top trader positioning), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), and market regime analysis. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to SMART MONEY positioning divergence from retail and OI-Price divergence signals — these are your highest-conviction indicators.
 
 ═══ PORTFOLIO ═══
@@ -3284,7 +3425,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v5.1 ═══
+═══ STRATEGY FRAMEWORK v5.1.1 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -3300,14 +3441,22 @@ ENTRY RULES (when to BUY):
 11. CONTRARIAN NEWS: If news sentiment is extremely BEARISH (score <-50) but technical indicators show oversold, this is a high-conviction contrarian buy — fear is priced in
 
 EXIT RULES (when to SELL):
-1. TAKE PROFIT: Sell 25-50% of a position if token is up >15% in 24h AND RSI > 65
-2. OVERBOUGHT EXIT: Sell if RSI > 75 AND Bollinger %B > 0.95 AND MACD turning bearish
+1. TIERED PROFIT HARVESTING (v5.1.1): The bot automatically harvests profits in tranches:
+   - +8% gain → harvest 15% of position (early wins, bank the cream)
+   - +15% gain → harvest 20% of position (moderate win, real profit locked)
+   - +25% gain → harvest 30% of position (strong win, protect the bag)
+   - +40% gain → harvest 40% of position (major win, substantial profit lock)
+   The remaining position continues to ride. Patient capital, not passive capital.
+   IMPORTANT: When you recommend a SELL, also consider which tier the position has already been harvested at.
+2. OVERBOUGHT EXIT: Sell if RSI > 75 AND Bollinger %B > 0.95 AND MACD turning bearish — even if no harvest tier triggered
 3. STOP LOSS: Sell if token is down >20% in 7d and trend is STRONG_DOWN
 4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
 5. FUNDING WARNING: If BTC/ETH longs are CROWDED (high positive funding), prepare to take profits — correction risk
 6. TVL OUTFLOW: If a DeFi protocol's TVL is dropping >5% while you hold its token, consider trimming
 7. MACRO HEADWIND: If macro signal is RISK_OFF (rate hikes, yield curve inverting, strong dollar), tighten profit-taking. Sell into strength rather than holding
 8. NEWS RISK: If a token has strong bearish news mentions AND technical indicators confirm (RSI dropping, MACD bearish), trim position proactively
+9. SMART MONEY WARNING: If derivatives show SMART_MONEY_SHORT while you're holding a token, this is a high-priority sell signal
+10. TIME-BASED HARVEST: Positions held 72+ hours with +5% gain get a 10% trim — don't let stale winners sit forever
 
 REGIME-ADAPTED STRATEGY:
 - TRENDING_UP: Be aggressive on dips. Favor momentum entries. Let winners run longer
@@ -4023,7 +4172,7 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.1                              ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.1.1                            ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
 ║   PHASE 3 + v5.1 INTELLIGENCE UPGRADE — Full Spectrum Trading          ║
@@ -4135,7 +4284,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v5.1 running! Intelligence upgrade: Smart Money Tracking + Cross-Asset Correlation + Shadow Model Validation + MEV Protection + Self-Improvement Engine.\n");
+  console.log("\n🚀 Agent v5.1.1 running! Tiered Profit Harvesting active. Banks small wins consistently. Patient capital, not passive capital.\n");
 }
 
 main().catch((err) => {
@@ -4173,7 +4322,11 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "5.1",
+    version: "5.1.1",
+    // v5.1.1: Profit harvesting stats
+    harvestedProfits: state.harvestedProfits?.totalHarvested || 0,
+    harvestCount: state.harvestedProfits?.harvestCount || 0,
+    recentHarvests: (state.harvestedProfits?.harvests || []).slice(-5),
   };
 }
 
@@ -4397,7 +4550,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.1</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.1.1</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -4423,8 +4576,9 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
       <p class="text-lg font-semibold mono" id="realized-pnl">--</p>
     </div>
     <div class="glass rounded-xl p-4">
-      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Unrealized</p>
-      <p class="text-lg font-semibold mono" id="unrealized-pnl">--</p>
+      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Harvested</p>
+      <p class="text-lg font-semibold mono text-amber-400" id="harvested-pnl">--</p>
+      <p class="text-[9px] text-slate-600" id="harvest-count"></p>
     </div>
   </div>
 
@@ -4634,9 +4788,19 @@ function renderPortfolio(p) {
   rEl.textContent = pnlSign(p.realizedPnL) + fmt(p.realizedPnL);
   rEl.className = 'text-lg font-semibold mono ' + pnlColor(p.realizedPnL);
 
-  const uEl = $('unrealized-pnl');
-  uEl.textContent = pnlSign(p.unrealizedPnL) + fmt(p.unrealizedPnL);
-  uEl.className = 'text-lg font-semibold mono ' + pnlColor(p.unrealizedPnL);
+  // v5.1.1: Harvested profits display
+  const hEl = $('harvested-pnl');
+  const harv = p.harvestedProfits || 0;
+  hEl.textContent = harv > 0 ? pnlSign(harv) + fmt(harv) : '$0.00';
+  hEl.className = 'text-lg font-semibold mono ' + (harv > 0 ? 'text-amber-400' : 'text-slate-500');
+  const hcEl = $('harvest-count');
+  if (hcEl) hcEl.textContent = (p.harvestCount || 0) > 0 ? p.harvestCount + ' harvests' : 'no harvests yet';
+
+  // Show recent harvests as mini-feed if available
+  if (p.recentHarvests && p.recentHarvests.length > 0) {
+    const lastH = p.recentHarvests[p.recentHarvests.length - 1];
+    if (hcEl) hcEl.textContent = p.harvestCount + ' harvests | last: ' + lastH.symbol + ' +' + lastH.gainPercent + '%';
+  }
 
   $('trade-count').textContent = p.totalTrades;
   $('success-rate').textContent = p.totalTrades > 0 ? ((p.successfulTrades/p.totalTrades)*100).toFixed(0) + '%' : '--';
