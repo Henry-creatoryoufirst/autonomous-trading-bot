@@ -1,7 +1,14 @@
 /**
- * Henry's Autonomous Trading Agent v5.0
+ * Henry's Autonomous Trading Agent v5.0.1.1
  *
  * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE
+ *
+ * CHANGES IN V5.0.1:
+ * - BUGFIX: Performance reviews now properly stored (were computed but discarded)
+ * - BUGFIX: lastReviewTradeIndex and lastReviewTimestamp now persist after each review
+ * - BUGFIX: Dashboard "trades until next" now shows remaining trades, not elapsed trades
+ * - BUGFIX: Pattern analysis rebuilds on deploy to pick up new v5.0 trades with signalContext
+ * - NEW: Circuit breakers — hard halt at 20% drawdown, caution mode (half positions) at 12%
  *
  * CHANGES IN V5.0:
  * - Strategy Pattern Memory: auto-classifies trades into strategy buckets, tracks win/loss rates
@@ -1111,7 +1118,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "5.0",
+      version: "5.0.1",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -2809,7 +2816,7 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v5.0 on Base network.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v5.0.1 on Base network.
 You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
 
 ═══ PORTFOLIO ═══
@@ -2856,7 +2863,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v5.0 ═══
+═══ STRATEGY FRAMEWORK v5.0.1 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -3281,16 +3288,31 @@ async function runTradingCycle() {
       const review = runPerformanceReview(reason);
       console.log(`   Generated ${review.insights.length} insights, ${review.recommendations.length} recommendations`);
 
+      // Store the review
+      state.performanceReviews.push(review);
+      if (state.performanceReviews.length > 30) {
+        state.performanceReviews = state.performanceReviews.slice(-30);
+      }
+
+      // Update review tracking state
+      state.lastReviewTradeIndex = state.tradeHistory.length;
+      state.lastReviewTimestamp = new Date().toISOString();
+
       // Adapt thresholds based on review findings
       adaptThresholds(review);
       console.log(`   Thresholds adapted (${state.adaptiveThresholds.adaptationCount} total adaptations)`);
+
+      // Persist everything
+      saveTradeHistory();
+      console.log(`   Review #${state.performanceReviews.length} stored | Next review after ${state.lastReviewTradeIndex + 10} trades or 24h`);
     }
 
-    // === PHASE 3: ANALYZE STRATEGY PATTERNS (retroactive on startup, incremental after) ===
-    if (Object.keys(state.strategyPatterns).length === 0 && state.tradeHistory.length > 0) {
-      console.log(`\n🧬 SELF-IMPROVEMENT: Building initial strategy pattern memory from ${state.tradeHistory.length} trades...`);
+    // === PHASE 3: ANALYZE STRATEGY PATTERNS (rebuild every cycle for accuracy) ===
+    if (state.tradeHistory.length > 0 && state.totalCycles <= 1) {
+      console.log(`\n🧬 SELF-IMPROVEMENT: Building strategy pattern memory from ${state.tradeHistory.length} trades...`);
       analyzeStrategyPatterns();
-      console.log(`   Identified ${Object.keys(state.strategyPatterns).length} unique patterns`);
+      const validPatterns = Object.values(state.strategyPatterns).filter(p => !p.patternId.startsWith("UNKNOWN"));
+      console.log(`   Identified ${Object.keys(state.strategyPatterns).length} patterns (${validPatterns.length} with signal data)`);
       saveTradeHistory();
     }
 
@@ -3340,6 +3362,20 @@ async function runTradingCycle() {
     const pnl = state.trading.totalPortfolioValue - state.trading.initialValue;
     const pnlPercent = (pnl / state.trading.initialValue) * 100;
     const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
+
+    // === CIRCUIT BREAKERS ===
+    // Hard halt: if drawdown exceeds 20% from peak, stop all trading this cycle
+    if (drawdown >= 20) {
+      console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% exceeds 20% threshold. Halting trading this cycle.`);
+      console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Current: $${state.trading.totalPortfolioValue.toFixed(2)}`);
+      state.trading.lastCheck = new Date();
+      return;
+    }
+    // Caution zone: if drawdown exceeds 12%, reduce max position size by 50%
+    const circuitBreakerActive = drawdown >= 12;
+    if (circuitBreakerActive) {
+      console.log(`\n⚠️ CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% — caution mode active, position sizes halved`);
+    }
 
     console.log(`\n💰 Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
     console.log(`   P&L: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(1)}%)`);
@@ -3458,6 +3494,12 @@ async function runTradingCycle() {
       decision.amountUSD = Math.max(2, Math.round(decision.amountUSD * confidence * 100) / 100);
       const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
       console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
+
+      // Circuit breaker: halve position size in caution zone
+      if (circuitBreakerActive) {
+        decision.amountUSD = Math.max(2, Math.round(decision.amountUSD * 0.5 * 100) / 100);
+        console.log(`   🚨 Circuit breaker applied: size reduced to $${decision.amountUSD.toFixed(2)}`);
+      }
     }
 
     // === POSITION SIZE GUARD ===
@@ -3527,7 +3569,7 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.0                              ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.0.1                              ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
 ║   PHASE 3 SELF-IMPROVEMENT ENGINE — Recursive Learning Active          ║
@@ -3555,7 +3597,7 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Brain: v5.0 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Improvement Engine`);
+  console.log(`   Brain: v5.0.1 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Improvement Engine`);
   console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
@@ -3638,7 +3680,7 @@ async function main() {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v5.0 running! Phase 3 active: Self-Improvement Engine + Adaptive Thresholds + Pattern Memory + Confidence Sizing + Exploration.\n");
+  console.log("\n🚀 Agent v5.0.1.1 running! Phase 3 active: Self-Improvement Engine + Adaptive Thresholds + Pattern Memory + Confidence Sizing + Exploration.\n");
 }
 
 main().catch((err) => {
@@ -3676,7 +3718,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "5.0",
+    version: "5.0.1",
   };
 }
 
@@ -3734,7 +3776,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "5.0",
+    version: "5.0.1",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -3757,7 +3799,7 @@ function apiPatterns() {
   const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
   const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
   return {
-    version: "5.0",
+    version: "5.0.1",
     totalPatterns: patterns.length,
     patternsWithData: patterns.filter(p => p.stats.sampleSize >= 3).length,
     topPerformers,
@@ -3769,7 +3811,7 @@ function apiPatterns() {
 function apiReviews() {
   const reviews = state.performanceReviews.slice(-10);
   return {
-    version: "5.0",
+    version: "5.0.1",
     totalReviews: state.performanceReviews.length,
     latestReview: reviews.length > 0 ? reviews[reviews.length - 1] : null,
     recentReviews: reviews,
@@ -3780,7 +3822,7 @@ function apiReviews() {
 
 function apiThresholds() {
   return {
-    version: "5.0",
+    version: "5.0.1",
     currentThresholds: state.adaptiveThresholds,
     bounds: THRESHOLD_BOUNDS,
     defaults: DEFAULT_ADAPTIVE_THRESHOLDS,
@@ -3896,7 +3938,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.0</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.0.1</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -4233,7 +4275,8 @@ function renderThresholds(thr) {
 function renderInsights(rev) {
   const el = $('latest-insights');
   if (!rev.latestReview) {
-    el.innerHTML = '<p class="text-xs text-slate-600">No reviews yet (' + rev.tradesSinceLastReview + ' trades until next)</p>';
+    const remaining = Math.max(0, 10 - rev.tradesSinceLastReview);
+    el.innerHTML = '<p class="text-xs text-slate-600">No reviews yet (' + remaining + ' trades until first review)</p>';
     return;
   }
   const r = rev.latestReview;
