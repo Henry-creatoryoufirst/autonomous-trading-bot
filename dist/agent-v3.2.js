@@ -1,8 +1,19 @@
 "use strict";
 /**
- * Henry's Autonomous Trading Agent v5.0.1.1
+ * Henry's Autonomous Trading Agent v5.1
  *
- * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE
+ * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE + v5.1 INTELLIGENCE UPGRADE
+ *
+ * CHANGES IN V5.1:
+ * - NEW: Binance Long/Short Ratios — global retail vs top trader (smart money) positioning
+ * - NEW: Composite Positioning Signals — SMART_MONEY_LONG/SHORT, OVERLEVERAGED detection
+ * - NEW: OI-Price Divergence Detection — identifies squeeze setups before they trigger
+ * - NEW: Cross-Asset Correlation — Gold (PAXG real-time), Oil, VIX, S&P 500 as direct signals
+ * - NEW: Cross-Asset Signal Engine — RISK_ON/RISK_OFF/FLIGHT_TO_SAFETY from traditional markets
+ * - NEW: Shadow Model Validation — threshold changes require 3+ statistical confirmations before promoting
+ * - NEW: MEV Protection — adaptive slippage based on trade size + market conditions
+ * - NEW: Dashboard panels for Derivatives Positioning, Cross-Asset Intelligence, Shadow Proposals
+ * - UPGRADED: AI prompt now receives positioning intelligence + cross-asset signals
  *
  * CHANGES IN V5.0.1:
  * - BUGFIX: Performance reviews now properly stored (were computed but discarded)
@@ -691,46 +702,95 @@ function runPerformanceReview(reason) {
         console.log(`     [${i.severity}] ${i.message}`);
     return review;
 }
-/**
- * Adapt thresholds based on performance review — bounded, gradual, audited
- */
+// In-memory shadow proposal queue (persisted via state)
+let shadowProposals = [];
 function adaptThresholds(review) {
     const t = state.adaptiveThresholds;
     const { winRate, totalTrades } = review.periodStats;
     if (totalTrades < 3)
         return; // Not enough data to adapt
-    const applyAdaptation = (field, delta, reason) => {
+    // v5.1: Shadow model validation constants
+    const MIN_CONFIRMING_REVIEWS = 3; // Need 3 consecutive confirmations
+    const MIN_SAMPLE_SIZE = 5; // Need at least 5 trades in review period
+    const MAX_CONTRADICTION_RATIO = 0.3; // Reject if >30% contradictions
+    const proposeAdaptation = (field, delta, reason) => {
         const bounds = THRESHOLD_BOUNDS[field];
         if (!bounds)
             return;
-        const currentVal = t[field];
-        const cappedDelta = Math.sign(delta) * Math.min(Math.abs(delta), bounds.maxStep);
-        const newVal = Math.max(bounds.min, Math.min(bounds.max, currentVal + cappedDelta));
-        if (newVal !== currentVal) {
-            t.history.push({ timestamp: new Date().toISOString(), field, oldValue: currentVal, newValue: newVal, reason });
-            t[field] = newVal;
-            console.log(`     🔧 ${field}: ${currentVal} → ${newVal} (${reason})`);
+        // Check if there's already a pending proposal for this field in the same direction
+        const existing = shadowProposals.find(p => p.field === field && p.status === "PENDING" && Math.sign(p.proposedDelta) === Math.sign(delta));
+        if (existing) {
+            // Confirm existing proposal
+            existing.confirmingReviews++;
+            console.log(`     🔬 Shadow: ${field} proposal confirmed (${existing.confirmingReviews}/${MIN_CONFIRMING_REVIEWS} confirmations)`);
+            // Check if ready for promotion
+            const totalReviews = existing.confirmingReviews + existing.contradictingReviews;
+            const contradictionRatio = totalReviews > 0 ? existing.contradictingReviews / totalReviews : 0;
+            if (existing.confirmingReviews >= MIN_CONFIRMING_REVIEWS && contradictionRatio <= MAX_CONTRADICTION_RATIO && totalTrades >= MIN_SAMPLE_SIZE) {
+                // PROMOTE — apply the change
+                const currentVal = t[field];
+                const cappedDelta = Math.sign(existing.proposedDelta) * Math.min(Math.abs(existing.proposedDelta), bounds.maxStep);
+                const newVal = Math.max(bounds.min, Math.min(bounds.max, currentVal + cappedDelta));
+                if (newVal !== currentVal) {
+                    t.history.push({
+                        timestamp: new Date().toISOString(),
+                        field,
+                        oldValue: currentVal,
+                        newValue: newVal,
+                        reason: `SHADOW VALIDATED: ${existing.reason} (${existing.confirmingReviews} confirmations, ${existing.contradictingReviews} contradictions, ${totalTrades} trades)`,
+                    });
+                    t[field] = newVal;
+                    existing.status = "PROMOTED";
+                    console.log(`     ✅ Shadow PROMOTED: ${field}: ${currentVal} → ${newVal} (${existing.confirmingReviews} confirmations over ${totalReviews} reviews)`);
+                }
+            }
+        }
+        else {
+            // Check for contradicting proposals (same field, opposite direction)
+            const contradicted = shadowProposals.find(p => p.field === field && p.status === "PENDING" && Math.sign(p.proposedDelta) !== Math.sign(delta));
+            if (contradicted) {
+                contradicted.contradictingReviews++;
+                const totalReviews = contradicted.confirmingReviews + contradicted.contradictingReviews;
+                const contradictionRatio = totalReviews > 0 ? contradicted.contradictingReviews / totalReviews : 0;
+                if (contradictionRatio > MAX_CONTRADICTION_RATIO && totalReviews >= 3) {
+                    contradicted.status = "REJECTED";
+                    console.log(`     ❌ Shadow REJECTED: ${field} (${contradicted.contradictingReviews}/${totalReviews} contradictions)`);
+                }
+            }
+            // Create new shadow proposal
+            shadowProposals.push({
+                field,
+                proposedDelta: delta,
+                reason,
+                proposedAt: new Date().toISOString(),
+                confirmingReviews: 1,
+                contradictingReviews: 0,
+                status: "PENDING",
+            });
+            console.log(`     🔬 Shadow: New proposal for ${field} (delta: ${delta > 0 ? "+" : ""}${delta}) — needs ${MIN_CONFIRMING_REVIEWS} confirmations`);
         }
     };
-    // Low win rate → be more selective
+    // Low win rate → propose being more selective
     if (winRate < 0.35) {
-        applyAdaptation("confluenceBuy", 2, `Low win rate ${(winRate * 100).toFixed(0)}%`);
-        applyAdaptation("confluenceStrongBuy", 2, `Low win rate ${(winRate * 100).toFixed(0)}%`);
-        applyAdaptation("stopLossPercent", 2, `Tighten stops: win rate ${(winRate * 100).toFixed(0)}%`);
+        proposeAdaptation("confluenceBuy", 2, `Low win rate ${(winRate * 100).toFixed(0)}%`);
+        proposeAdaptation("confluenceStrongBuy", 2, `Low win rate ${(winRate * 100).toFixed(0)}%`);
+        proposeAdaptation("stopLossPercent", 2, `Tighten stops: win rate ${(winRate * 100).toFixed(0)}%`);
     }
-    // High win rate → can be slightly more aggressive
+    // High win rate → propose slightly more aggressive
     if (winRate > 0.65) {
-        applyAdaptation("confluenceBuy", -1, `High win rate ${(winRate * 100).toFixed(0)}%`);
+        proposeAdaptation("confluenceBuy", -1, `High win rate ${(winRate * 100).toFixed(0)}%`);
     }
-    // Negative avg return → tighten risk management
+    // Negative avg return → propose tighter risk management
     if (review.periodStats.avgReturn < -2) {
-        applyAdaptation("stopLossPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
-        applyAdaptation("trailingStopPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+        proposeAdaptation("stopLossPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+        proposeAdaptation("trailingStopPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
     }
-    // Strong avg return → let winners run longer
+    // Strong avg return → propose letting winners run longer
     if (review.periodStats.avgReturn > 5) {
-        applyAdaptation("profitTakeTarget", 2, `Strong avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+        proposeAdaptation("profitTakeTarget", 2, `Strong avg return $${review.periodStats.avgReturn.toFixed(2)}`);
     }
+    // Clean up old completed/rejected proposals (keep last 50)
+    shadowProposals = shadowProposals.filter(p => p.status === "PENDING").concat(shadowProposals.filter(p => p.status !== "PENDING").slice(-20));
     // Trim audit trail to last 100 entries
     if (t.history.length > 100)
         t.history = t.history.slice(-100);
@@ -912,7 +972,7 @@ function saveTradeHistory() {
             fs.mkdirSync("./logs", { recursive: true });
         }
         const data = {
-            version: "5.0.1",
+            version: "5.1",
             lastUpdated: new Date().toISOString(),
             initialValue: state.trading.initialValue,
             peakValue: state.trading.peakValue,
@@ -1156,11 +1216,22 @@ async function fetchDefiLlamaData() {
  */
 async function fetchDerivativesData() {
     try {
-        const [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes] = await Promise.allSettled([
+        // v5.1: Expanded Binance derivatives intelligence — funding, OI, long/short ratios, top trader sentiment
+        const [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes, btcLSRes, ethLSRes, btcTopLSRes, ethTopLSRes, btcTopPosRes, ethTopPosRes] = await Promise.allSettled([
+            // Original: Funding rates + Open Interest
             axios_1.default.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=2", { timeout: 8000 }),
             axios_1.default.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=ETHUSDT&limit=2", { timeout: 8000 }),
             axios_1.default.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", { timeout: 8000 }),
             axios_1.default.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=ETHUSDT", { timeout: 8000 }),
+            // v5.1: Global Long/Short Account Ratio (retail sentiment)
+            axios_1.default.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1", { timeout: 8000 }),
+            axios_1.default.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
+            // v5.1: Top Trader Long/Short Account Ratio (smart money)
+            axios_1.default.get("https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1", { timeout: 8000 }),
+            axios_1.default.get("https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
+            // v5.1: Top Trader Long/Short Position Ratio (smart money position sizing)
+            axios_1.default.get("https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=BTCUSDT&period=1h&limit=1", { timeout: 8000 }),
+            axios_1.default.get("https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
         ]);
         let btcFundingRate = 0;
         let ethFundingRate = 0;
@@ -1178,13 +1249,24 @@ async function fetchDerivativesData() {
         if (ethOIRes.status === "fulfilled") {
             ethOpenInterest = parseFloat(ethOIRes.value.data?.openInterest || "0");
         }
+        // v5.1: Parse long/short ratios — value > 1 means more longs than shorts
+        const parseLSRatio = (res) => {
+            if (res.status !== "fulfilled" || !res.value.data?.length)
+                return null;
+            return parseFloat(res.value.data[0].longShortRatio);
+        };
+        const btcLongShortRatio = parseLSRatio(btcLSRes);
+        const ethLongShortRatio = parseLSRatio(ethLSRes);
+        const btcTopTraderLSRatio = parseLSRatio(btcTopLSRes);
+        const ethTopTraderLSRatio = parseLSRatio(ethTopLSRes);
+        const btcTopTraderPositionRatio = parseLSRatio(btcTopPosRes);
+        const ethTopTraderPositionRatio = parseLSRatio(ethTopPosRes);
         // Interpret funding rates — extreme values indicate crowded positions
-        // Typical neutral range: -0.01% to +0.01% (per 8h)
         const interpretFunding = (rate) => {
             if (rate > 0.03)
-                return "LONG_CROWDED"; // Longs paying shorts heavily — potential for long squeeze
+                return "LONG_CROWDED";
             if (rate < -0.03)
-                return "SHORT_CROWDED"; // Shorts paying longs heavily — potential for short squeeze
+                return "SHORT_CROWDED";
             return "NEUTRAL";
         };
         const btcFundingSignal = interpretFunding(btcFundingRate);
@@ -1192,20 +1274,63 @@ async function fetchDerivativesData() {
         // Calculate OI change (we'll store previous values in cache)
         const btcOIChange24h = derivativesCache.btcOI > 0 ? ((btcOpenInterest - derivativesCache.btcOI) / derivativesCache.btcOI) * 100 : 0;
         const ethOIChange24h = derivativesCache.ethOI > 0 ? ((ethOpenInterest - derivativesCache.ethOI) / derivativesCache.ethOI) * 100 : 0;
+        // v5.1: Composite Positioning Signal — combines funding, global L/S, and top trader L/S
+        const interpretPositioning = (fundingSignal, globalLS, topTraderLS, topTraderPos) => {
+            // Smart money divergence from retail = highest conviction signal
+            if (topTraderLS !== null && globalLS !== null) {
+                // Top traders long while retail short = smart money accumulation
+                if (topTraderLS > 1.3 && globalLS < 0.8)
+                    return "SMART_MONEY_LONG";
+                // Top traders short while retail long = smart money distribution
+                if (topTraderLS < 0.7 && globalLS > 1.3)
+                    return "SMART_MONEY_SHORT";
+            }
+            // Extreme crowding — everyone on same side = danger
+            if (fundingSignal === "LONG_CROWDED" && (globalLS ?? 1) > 1.5)
+                return "OVERLEVERAGED_LONG";
+            if (fundingSignal === "SHORT_CROWDED" && (globalLS ?? 1) < 0.5)
+                return "OVERLEVERAGED_SHORT";
+            return "NEUTRAL";
+        };
+        const btcPositioningSignal = interpretPositioning(btcFundingSignal, btcLongShortRatio, btcTopTraderLSRatio, btcTopTraderPositionRatio);
+        const ethPositioningSignal = interpretPositioning(ethFundingSignal, ethLongShortRatio, ethTopTraderLSRatio, ethTopTraderPositionRatio);
+        // v5.1: OI + Price Divergence Detection — OI rising while price falls = potential squeeze
+        const interpretOIPriceDivergence = (oiChange, priceChange) => {
+            if (Math.abs(oiChange) < 1 || Math.abs(priceChange) < 1)
+                return "NEUTRAL"; // Not enough movement
+            if (oiChange > 3 && priceChange < -2)
+                return "OI_UP_PRICE_DOWN"; // Shorts piling in OR longs averaging down = squeeze incoming
+            if (oiChange < -3 && priceChange > 2)
+                return "OI_DOWN_PRICE_UP"; // Short squeeze happening — OI drops as shorts close
+            return "ALIGNED";
+        };
+        // Use cached price changes from derivativesCache
+        const btcOIPriceDivergence = interpretOIPriceDivergence(btcOIChange24h, derivativesCache.btcPriceChange ?? 0);
+        const ethOIPriceDivergence = interpretOIPriceDivergence(ethOIChange24h, derivativesCache.ethPriceChange ?? 0);
         // Update cache
         derivativesCache.btcOI = btcOpenInterest;
         derivativesCache.ethOI = ethOpenInterest;
         console.log(`  📈 Derivatives: BTC funding ${btcFundingRate >= 0 ? "+" : ""}${btcFundingRate.toFixed(4)}% (${btcFundingSignal}) | ETH funding ${ethFundingRate >= 0 ? "+" : ""}${ethFundingRate.toFixed(4)}% (${ethFundingSignal})`);
         console.log(`     BTC OI: ${btcOpenInterest.toFixed(0)} BTC | ETH OI: ${ethOpenInterest.toFixed(0)} ETH`);
-        return { btcFundingRate, ethFundingRate, btcOpenInterest, ethOpenInterest, btcFundingSignal, ethFundingSignal, btcOIChange24h, ethOIChange24h };
+        console.log(`     BTC L/S: Global ${btcLongShortRatio?.toFixed(2) ?? "N/A"} | TopTrader ${btcTopTraderLSRatio?.toFixed(2) ?? "N/A"} → ${btcPositioningSignal}`);
+        console.log(`     ETH L/S: Global ${ethLongShortRatio?.toFixed(2) ?? "N/A"} | TopTrader ${ethTopTraderLSRatio?.toFixed(2) ?? "N/A"} → ${ethPositioningSignal}`);
+        return {
+            btcFundingRate, ethFundingRate, btcOpenInterest, ethOpenInterest,
+            btcFundingSignal, ethFundingSignal, btcOIChange24h, ethOIChange24h,
+            btcLongShortRatio, ethLongShortRatio,
+            btcTopTraderLSRatio, ethTopTraderLSRatio,
+            btcTopTraderPositionRatio, ethTopTraderPositionRatio,
+            btcPositioningSignal, ethPositioningSignal,
+            btcOIPriceDivergence, ethOIPriceDivergence,
+        };
     }
     catch (error) {
         console.warn(`  ⚠️ Derivatives fetch failed: ${error?.message?.substring(0, 100) || error}`);
         return null;
     }
 }
-// Cache for derivatives OI comparison
-const derivativesCache = { btcOI: 0, ethOI: 0 };
+// Cache for derivatives OI comparison + price change tracking for divergence detection
+const derivativesCache = { btcOI: 0, ethOI: 0, btcPriceChange: 0, ethPriceChange: 0 };
 // Cache for CoinGecko last-known prices — prevents $0 portfolio when rate limited
 let lastKnownPrices = {};
 // Cache for macro data (only fetch once per hour since most data is daily/monthly)
@@ -1342,6 +1467,118 @@ async function fetchNewsSentiment() {
  * Free tier: 120 requests/minute, API key required
  * We fetch daily series each cycle but cache for 1 hour since most data updates daily
  */
+/**
+ * v5.1: Fetch cross-asset correlation data (Gold, Oil, DXY, S&P 500, VIX)
+ * Uses free FRED series for daily data — supplements with Binance PAXG for real-time gold proxy
+ */
+async function fetchCrossAssetData(fredKey) {
+    try {
+        const fetches = [];
+        // FRED series for Gold (GOLDPMGBD228NLBM), Oil WTI (DCOILWTICO), VIX (VIXCLS)
+        // S&P 500 daily close (SP500) — limited to 2 most recent for change calc
+        if (fredKey) {
+            const fredBase = "https://api.stlouisfed.org/fred/series/observations";
+            const baseParams = `&api_key=${fredKey}&file_type=json&sort_order=desc&limit=3`;
+            fetches.push(axios_1.default.get(`${fredBase}?series_id=GOLDPMGBD228NLBM${baseParams}`, { timeout: 10000 }).catch(() => null), // Gold
+            axios_1.default.get(`${fredBase}?series_id=DCOILWTICO${baseParams}`, { timeout: 10000 }).catch(() => null), // Oil WTI
+            axios_1.default.get(`${fredBase}?series_id=VIXCLS${baseParams}`, { timeout: 10000 }).catch(() => null), // VIX
+            axios_1.default.get(`${fredBase}?series_id=SP500${baseParams}`, { timeout: 10000 }).catch(() => null));
+        }
+        else {
+            fetches.push(Promise.resolve(null), Promise.resolve(null), Promise.resolve(null), Promise.resolve(null));
+        }
+        // Real-time DXY proxy via Binance USDC/USDT (inverse correlation approximation)
+        // Plus PAXG/USDT for real-time gold price
+        fetches.push(axios_1.default.get("https://api.binance.com/api/v3/ticker/24hr?symbol=PAXGUSDT", { timeout: 8000 }).catch(() => null));
+        const [goldRes, oilRes, vixRes, sp500Res, paxgRes] = await Promise.all(fetches);
+        const parseFred = (res) => {
+            if (!res?.data?.observations)
+                return null;
+            const valid = res.data.observations.filter((o) => o.value && o.value !== ".");
+            if (valid.length < 1)
+                return null;
+            return {
+                latest: parseFloat(valid[0].value),
+                prev: valid.length >= 2 ? parseFloat(valid[1].value) : parseFloat(valid[0].value),
+            };
+        };
+        const gold = parseFred(goldRes);
+        const oil = parseFred(oilRes);
+        const vix = parseFred(vixRes);
+        const sp500 = parseFred(sp500Res);
+        // Real-time gold via PAXG (Pax Gold on Binance — 1 PAXG = 1 troy oz gold)
+        let goldPrice = gold?.latest ?? null;
+        let goldChange24h = null;
+        if (paxgRes?.data) {
+            goldPrice = parseFloat(paxgRes.data.lastPrice);
+            goldChange24h = parseFloat(paxgRes.data.priceChangePercent);
+        }
+        else if (gold) {
+            goldChange24h = gold.prev > 0 ? ((gold.latest - gold.prev) / gold.prev) * 100 : null;
+        }
+        const oilPrice = oil?.latest ?? null;
+        const oilChange24h = oil && oil.prev > 0 ? ((oil.latest - oil.prev) / oil.prev) * 100 : null;
+        const vixLevel = vix?.latest ?? null;
+        const sp500Change = sp500 && sp500.prev > 0 ? ((sp500.latest - sp500.prev) / sp500.prev) * 100 : null;
+        // DXY — use FRED DTWEXBGS as real-time proxy (already fetched in main macro function)
+        const dxyRealtime = null; // Will be filled from main macro's dollarIndex
+        const dxyChange24h = null;
+        // Cross-asset correlation signal:
+        // Gold up + Dollar down + VIX low = RISK_ON for crypto
+        // Gold up + Dollar up + VIX high = FLIGHT_TO_SAFETY (bad for crypto)
+        // Dollar down + Oil stable + VIX low = RISK_ON
+        let riskOnPts = 0;
+        let riskOffPts = 0;
+        let flightToSafety = false;
+        if (goldChange24h !== null) {
+            if (goldChange24h > 1)
+                riskOffPts += 1; // Gold surging = uncertainty
+            if (goldChange24h < -1)
+                riskOnPts += 1; // Gold dropping = risk appetite
+        }
+        if (vixLevel !== null) {
+            if (vixLevel > 25) {
+                riskOffPts += 2;
+            } // High fear
+            if (vixLevel > 35) {
+                flightToSafety = true;
+            }
+            if (vixLevel < 15)
+                riskOnPts += 1; // Complacency/risk appetite
+        }
+        if (sp500Change !== null) {
+            if (sp500Change > 1)
+                riskOnPts += 1; // Stocks rallying = risk on
+            if (sp500Change < -1)
+                riskOffPts += 1; // Stocks selling = risk off
+            if (sp500Change < -3)
+                riskOffPts += 1; // Big selloff = extra risk off
+        }
+        if (oilChange24h !== null) {
+            if (oilChange24h > 5)
+                riskOffPts += 1; // Oil spike = inflation fear
+            if (oilChange24h < -5)
+                riskOnPts += 1; // Oil crash = deflation/demand concerns but good for margins
+        }
+        let crossAssetSignal = "NEUTRAL";
+        if (flightToSafety && (goldChange24h ?? 0) > 1)
+            crossAssetSignal = "FLIGHT_TO_SAFETY";
+        else if (riskOnPts >= riskOffPts + 2)
+            crossAssetSignal = "RISK_ON";
+        else if (riskOffPts >= riskOnPts + 2)
+            crossAssetSignal = "RISK_OFF";
+        console.log(`  🌍 Cross-Assets: Gold $${goldPrice?.toFixed(0) ?? "N/A"} (${goldChange24h !== null ? (goldChange24h >= 0 ? "+" : "") + goldChange24h.toFixed(1) + "%" : "N/A"}) | Oil $${oilPrice?.toFixed(1) ?? "N/A"} | VIX ${vixLevel?.toFixed(1) ?? "N/A"} | S&P ${sp500Change !== null ? (sp500Change >= 0 ? "+" : "") + sp500Change.toFixed(1) + "%" : "N/A"} → ${crossAssetSignal}`);
+        return {
+            goldPrice, goldChange24h, oilPrice, oilChange24h,
+            dxyRealtime, dxyChange24h, sp500Change, vixLevel,
+            crossAssetSignal,
+        };
+    }
+    catch (error) {
+        console.warn(`  ⚠️ Cross-asset fetch failed: ${error?.message?.substring(0, 100) || error}`);
+        return null;
+    }
+}
 async function fetchMacroData() {
     // Return cached data if fresh enough
     if (macroCache.data && Date.now() - macroCache.lastFetch < MACRO_CACHE_TTL) {
@@ -1457,6 +1694,28 @@ async function fetchMacroData() {
             macroSignal = "RISK_ON";
         else if (riskOffPoints >= riskOnPoints + 2)
             macroSignal = "RISK_OFF";
+        // v5.1: Fetch cross-asset data in parallel with FRED processing
+        const crossAssets = await fetchCrossAssetData(FRED_KEY);
+        // v5.1: Feed cross-asset signals into composite macro signal
+        if (crossAssets) {
+            if (crossAssets.crossAssetSignal === "RISK_ON")
+                riskOnPoints += 1;
+            if (crossAssets.crossAssetSignal === "RISK_OFF")
+                riskOffPoints += 1;
+            if (crossAssets.crossAssetSignal === "FLIGHT_TO_SAFETY")
+                riskOffPoints += 2;
+            // Recalculate
+            if (riskOnPoints >= riskOffPoints + 2)
+                macroSignal = "RISK_ON";
+            else if (riskOffPoints >= riskOnPoints + 2)
+                macroSignal = "RISK_OFF";
+            else
+                macroSignal = "NEUTRAL";
+            // Feed DXY back from FRED if available
+            if (dollarIndex && crossAssets.dxyRealtime === null) {
+                crossAssets.dxyRealtime = dollarIndex.value;
+            }
+        }
         const result = {
             fedFundsRate,
             treasury10Y,
@@ -1466,6 +1725,7 @@ async function fetchMacroData() {
             dollarIndex,
             macroSignal,
             rateDirection,
+            crossAssets,
         };
         console.log(`  🏦 Macro Data: ${macroSignal} | Fed: ${fedFundsRate?.value ?? "N/A"}% (${rateDirection}) | 10Y: ${treasury10Y?.value ?? "N/A"}% | Curve: ${yieldCurve?.value ?? "N/A"}`);
         if (cpi)
@@ -1544,6 +1804,23 @@ function formatIntelligenceForPrompt(defi, derivatives, regime, news, macro) {
         lines.push(`ETH Funding Rate: ${derivatives.ethFundingRate >= 0 ? "+" : ""}${derivatives.ethFundingRate.toFixed(4)}%/8h → ${derivatives.ethFundingSignal}`);
         lines.push(`BTC Open Interest: ${derivatives.btcOpenInterest.toFixed(0)} BTC ${derivatives.btcOIChange24h !== 0 ? `(${derivatives.btcOIChange24h >= 0 ? "+" : ""}${derivatives.btcOIChange24h.toFixed(1)}% change)` : ""}`);
         lines.push(`ETH Open Interest: ${derivatives.ethOpenInterest.toFixed(0)} ETH ${derivatives.ethOIChange24h !== 0 ? `(${derivatives.ethOIChange24h >= 0 ? "+" : ""}${derivatives.ethOIChange24h.toFixed(1)}% change)` : ""}`);
+        // v5.1: Long/Short Ratios — retail vs smart money positioning
+        lines.push(`--- Positioning Intelligence ---`);
+        if (derivatives.btcLongShortRatio !== null) {
+            lines.push(`BTC Global L/S Ratio: ${derivatives.btcLongShortRatio.toFixed(2)} (${derivatives.btcLongShortRatio > 1 ? "retail net long" : "retail net short"})`);
+        }
+        if (derivatives.btcTopTraderLSRatio !== null) {
+            lines.push(`BTC Top Trader L/S: ${derivatives.btcTopTraderLSRatio.toFixed(2)} (${derivatives.btcTopTraderLSRatio > 1 ? "smart money long" : "smart money short"})`);
+        }
+        if (derivatives.ethLongShortRatio !== null) {
+            lines.push(`ETH Global L/S Ratio: ${derivatives.ethLongShortRatio.toFixed(2)} (${derivatives.ethLongShortRatio > 1 ? "retail net long" : "retail net short"})`);
+        }
+        if (derivatives.ethTopTraderLSRatio !== null) {
+            lines.push(`ETH Top Trader L/S: ${derivatives.ethTopTraderLSRatio.toFixed(2)} (${derivatives.ethTopTraderLSRatio > 1 ? "smart money long" : "smart money short"})`);
+        }
+        // v5.1: Composite Positioning Signals
+        lines.push(`BTC Positioning: ${derivatives.btcPositioningSignal}`);
+        lines.push(`ETH Positioning: ${derivatives.ethPositioningSignal}`);
         // Funding rate interpretation
         if (derivatives.btcFundingSignal === "LONG_CROWDED") {
             lines.push(`⚠️ FUNDING SIGNAL: BTC longs crowded — risk of long squeeze / correction`);
@@ -1556,6 +1833,44 @@ function formatIntelligenceForPrompt(defi, derivatives, regime, news, macro) {
         }
         else if (derivatives.ethFundingSignal === "SHORT_CROWDED") {
             lines.push(`🟢 FUNDING SIGNAL: ETH shorts crowded — potential short squeeze / rally`);
+        }
+        // v5.1: Positioning signal interpretation
+        const posSignals = [
+            { asset: "BTC", signal: derivatives.btcPositioningSignal },
+            { asset: "ETH", signal: derivatives.ethPositioningSignal },
+        ];
+        for (const { asset, signal } of posSignals) {
+            switch (signal) {
+                case "SMART_MONEY_LONG":
+                    lines.push(`🟢 POSITIONING: ${asset} — Top traders accumulating longs while retail is short. High-conviction BUY signal.`);
+                    break;
+                case "SMART_MONEY_SHORT":
+                    lines.push(`🔴 POSITIONING: ${asset} — Top traders going short while retail is long. Distribution phase — caution.`);
+                    break;
+                case "OVERLEVERAGED_LONG":
+                    lines.push(`⚠️ POSITIONING: ${asset} — Extreme long crowding across all participants. Long squeeze risk elevated.`);
+                    break;
+                case "OVERLEVERAGED_SHORT":
+                    lines.push(`⚠️ POSITIONING: ${asset} — Extreme short crowding. Short squeeze potential.`);
+                    break;
+            }
+        }
+        // v5.1: OI-Price Divergence interpretation
+        if (derivatives.btcOIPriceDivergence !== "NEUTRAL" && derivatives.btcOIPriceDivergence !== "ALIGNED") {
+            if (derivatives.btcOIPriceDivergence === "OI_UP_PRICE_DOWN") {
+                lines.push(`⚡ DIVERGENCE: BTC OI rising while price falling — new shorts entering OR longs averaging down. Squeeze potential building.`);
+            }
+            else {
+                lines.push(`⚡ DIVERGENCE: BTC OI falling while price rising — short squeeze in progress, shorts capitulating.`);
+            }
+        }
+        if (derivatives.ethOIPriceDivergence !== "NEUTRAL" && derivatives.ethOIPriceDivergence !== "ALIGNED") {
+            if (derivatives.ethOIPriceDivergence === "OI_UP_PRICE_DOWN") {
+                lines.push(`⚡ DIVERGENCE: ETH OI rising while price falling — squeeze potential building.`);
+            }
+            else {
+                lines.push(`⚡ DIVERGENCE: ETH OI falling while price rising — short squeeze in progress.`);
+            }
         }
         lines.push("");
     }
@@ -1610,6 +1925,39 @@ function formatIntelligenceForPrompt(defi, derivatives, regime, news, macro) {
             lines.push(`🔴 MACRO SIGNAL: Conditions headwind for crypto — tightening policy, high yields, or strong dollar`);
         else
             lines.push(`→ Macro environment neutral — no strong directional bias from macro factors`);
+        // v5.1: Cross-Asset Correlation Intelligence
+        if (macro.crossAssets) {
+            const ca = macro.crossAssets;
+            lines.push("");
+            lines.push(`═══ CROSS-ASSET CORRELATION (v5.1) ═══`);
+            if (ca.goldPrice !== null) {
+                lines.push(`Gold (XAU): $${ca.goldPrice.toFixed(0)} ${ca.goldChange24h !== null ? `(${ca.goldChange24h >= 0 ? "+" : ""}${ca.goldChange24h.toFixed(1)}% 24h)` : ""}`);
+            }
+            if (ca.oilPrice !== null) {
+                lines.push(`Oil (WTI): $${ca.oilPrice.toFixed(2)} ${ca.oilChange24h !== null ? `(${ca.oilChange24h >= 0 ? "+" : ""}${ca.oilChange24h.toFixed(1)}% 24h)` : ""}`);
+            }
+            if (ca.vixLevel !== null) {
+                lines.push(`VIX: ${ca.vixLevel.toFixed(1)} ${ca.vixLevel > 30 ? "⚠️ HIGH FEAR" : ca.vixLevel > 20 ? "↑ Elevated" : ca.vixLevel < 15 ? "🟢 Low (complacent)" : ""}`);
+            }
+            if (ca.sp500Change !== null) {
+                lines.push(`S&P 500: ${ca.sp500Change >= 0 ? "+" : ""}${ca.sp500Change.toFixed(1)}% ${ca.sp500Change > 2 ? "🟢 Risk-On Rally" : ca.sp500Change < -2 ? "🔴 Risk-Off Selloff" : ""}`);
+            }
+            lines.push(`Cross-Asset Signal: ${ca.crossAssetSignal}`);
+            // Interpretation for AI
+            switch (ca.crossAssetSignal) {
+                case "RISK_ON":
+                    lines.push(`🟢 CROSS-ASSET: Traditional risk assets support crypto upside — gold retreating, equities strong, VIX low`);
+                    break;
+                case "RISK_OFF":
+                    lines.push(`🔴 CROSS-ASSET: Risk-off environment in traditional markets — headwind for crypto`);
+                    break;
+                case "FLIGHT_TO_SAFETY":
+                    lines.push(`🚨 CROSS-ASSET: Flight to safety — gold surging, VIX spiking. Reduce exposure, protect capital.`);
+                    break;
+                default:
+                    lines.push(`→ Cross-asset signals mixed — no strong directional bias from traditional markets`);
+            }
+        }
         lines.push("");
     }
     lines.push(`═══ MARKET REGIME ═══`);
@@ -1728,6 +2076,12 @@ async function getMarketData() {
         const indicators = await getTokenIndicators(tokens);
         const indicatorCount = Object.values(indicators).filter(i => i.rsi14 !== null).length;
         console.log(`   ✅ Indicators computed for ${indicatorCount}/${Object.keys(indicators).length} tokens`);
+        // v5.1: Feed BTC/ETH price changes into derivatives cache for OI-price divergence detection
+        const btcToken = tokens.find(t => t.symbol === "WETH" || t.symbol === "cbBTC");
+        const ethToken = tokens.find(t => t.symbol === "WETH");
+        const btcPriceToken = tokens.find(t => t.symbol === "cbBTC");
+        derivativesCache.btcPriceChange = btcPriceToken?.priceChange24h ?? 0;
+        derivativesCache.ethPriceChange = ethToken?.priceChange24h ?? 0;
         // Extract new data layers
         const defiLlama = defiResult.status === "fulfilled" ? defiResult.value : null;
         const derivatives = derivResult.status === "fulfilled" ? derivResult.value : null;
@@ -2355,8 +2709,8 @@ async function makeTradeDecision(balances, marketData, totalPortfolioValue, sect
     const perfSummary = perfStats.totalTrades > 0
         ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
         : "No completed sell trades yet — performance tracking will begin after first sell";
-    const systemPrompt = `You are Henry's autonomous crypto trading agent v5.0.1 on Base network.
-You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + open interest), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), and market regime analysis. Your decisions execute LIVE swaps. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment.
+    const systemPrompt = `You are Henry's autonomous crypto trading agent v5.1 on Base network.
+You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + OI + long/short ratios + top trader positioning), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), and market regime analysis. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to SMART MONEY positioning divergence from retail and OI-Price divergence signals — these are your highest-conviction indicators.
 
 ═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}
@@ -2396,7 +2750,7 @@ ${tradeHistorySummary}
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v5.0.1 ═══
+═══ STRATEGY FRAMEWORK v5.1 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -2610,6 +2964,26 @@ async function executeTrade(decision, marketData) {
         else {
             console.log(`     ✅ Permit2 already approved for ${decision.fromToken}`);
         }
+        // v5.1: MEV Protection — Adaptive Slippage Based on Trade Size & Conditions
+        // Larger trades need tighter slippage to avoid sandwich attacks
+        // High-volume periods can tolerate more; volatile periods need less
+        let adaptiveSlippage = CONFIG.trading.slippageBps; // Default base slippage
+        const tradeValueUSD = decision.amountUSD;
+        // Tighten slippage for larger trades (more attractive to MEV bots)
+        if (tradeValueUSD > 50) {
+            adaptiveSlippage = Math.min(adaptiveSlippage, 100); // Cap at 1% for trades > $50
+        }
+        if (tradeValueUSD > 100) {
+            adaptiveSlippage = Math.min(adaptiveSlippage, 75); // Cap at 0.75% for trades > $100
+        }
+        if (tradeValueUSD > 500) {
+            adaptiveSlippage = Math.min(adaptiveSlippage, 50); // Cap at 0.5% for trades > $500
+        }
+        // In volatile market regime, tighten slippage further (more MEV activity during volatility)
+        if (marketData.marketRegime === "VOLATILE") {
+            adaptiveSlippage = Math.min(adaptiveSlippage, Math.floor(adaptiveSlippage * 0.75));
+        }
+        console.log(`     🛡️ MEV Protection: Adaptive slippage ${adaptiveSlippage}bps (${(adaptiveSlippage / 100).toFixed(2)}%) for $${tradeValueUSD.toFixed(2)} trade`);
         // Execute the swap with retry logic — CDP API may not see the approval immediately
         let result;
         const maxRetries = justApproved ? 3 : 1;
@@ -2621,7 +2995,7 @@ async function executeTrade(decision, marketData) {
                     fromToken: fromTokenAddress,
                     toToken: toTokenAddress,
                     fromAmount,
-                    slippageBps: CONFIG.trading.slippageBps,
+                    slippageBps: adaptiveSlippage,
                 });
                 break; // Success — exit retry loop
             }
@@ -2630,6 +3004,11 @@ async function executeTrade(decision, marketData) {
                 if (swapMsg.includes("Insufficient token allowance") && attempt < maxRetries) {
                     console.log(`     ⏳ Allowance not yet visible to API, retrying in 15s... (attempt ${attempt}/${maxRetries})`);
                     await new Promise(resolve => setTimeout(resolve, 15000));
+                }
+                else if (swapMsg.includes("slippage") && adaptiveSlippage < CONFIG.trading.slippageBps && attempt < maxRetries) {
+                    // v5.1: If slippage too tight, relax slightly and retry (but never above base config)
+                    adaptiveSlippage = Math.min(adaptiveSlippage + 25, CONFIG.trading.slippageBps);
+                    console.log(`     ⚠️ Slippage too tight, relaxing to ${adaptiveSlippage}bps and retrying...`);
                 }
                 else {
                     throw swapError; // Re-throw for outer catch to handle
@@ -2688,6 +3067,11 @@ async function executeTrade(decision, marketData) {
                 baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
                 triggeredBy: decision.isExploration ? "EXPLORATION" : "AI",
                 isExploration: decision.isExploration || false,
+                // v5.1: Enhanced signal context
+                btcPositioning: marketData.derivatives?.btcPositioningSignal || null,
+                ethPositioning: marketData.derivatives?.ethPositioningSignal || null,
+                crossAssetSignal: marketData.macroData?.crossAssets?.crossAssetSignal || null,
+                adaptiveSlippage: adaptiveSlippage,
             },
         };
         state.tradeHistory.push(record);
@@ -3053,27 +3437,28 @@ function displayBanner() {
     console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.0.1                              ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.1                              ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   PHASE 3 SELF-IMPROVEMENT ENGINE — Recursive Learning Active          ║
-║   LIVE TRADING | Base Network | 8 Data Sources + Self-Tuning           ║
+║   PHASE 3 + v5.1 INTELLIGENCE UPGRADE — Full Spectrum Trading          ║
+║   LIVE TRADING | Base Network | 12 Data Sources + Self-Tuning          ║
 ║                                                                        ║
 ║   Intelligence Stack:                                                  ║
 ║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
 ║   • DeFi Intel: Base TVL, DEX Volume, Protocol TVL (DefiLlama)        ║
-║   • Derivatives: BTC/ETH Funding Rates + Open Interest (Binance)      ║
+║   • Derivatives: Funding + OI + Long/Short Ratios + Top Traders       ║
+║   • Positioning: Smart Money vs Retail + OI-Price Divergence           ║
 ║   • News: Crypto news sentiment — bullish/bearish (CryptoPanic)       ║
 ║   • Macro: Fed Rate, 10Y Yield, CPI, M2, Dollar Index (FRED)         ║
+║   • Cross-Asset: Gold, Oil, VIX, S&P 500 correlation signals         ║
 ║   • Sentiment: Fear & Greed Index + Market Regime Detection           ║
 ║   • Self-Learning: Trade performance scoring + signal attribution     ║
 ║                                                                        ║
-║   Phase 3 — Self-Improvement:                                          ║
-║   • Strategy Pattern Memory: classify + track win rates per pattern   ║
-║   • Adaptive Thresholds: RSI/confluence/PnL bounds self-tune          ║
-║   • Confidence Sizing: proven patterns get full size, new get small   ║
-║   • Performance Reviews: structured analysis every 10 trades / 24h   ║
-║   • Anti-Stagnation: exploration trades when inactive 48h+            ║
+║   v5.1 Upgrades:                                                       ║
+║   • Shadow Model Validation: changes need 3+ confirmations to go live ║
+║   • MEV Protection: adaptive slippage by trade size + conditions      ║
+║   • Cross-Asset Engine: RISK_ON/OFF/FLIGHT_TO_SAFETY from TradFi     ║
+║   • Smart Money Tracking: top trader positioning vs retail divergence ║
 ║                                                                        ║
 ╚══════════════════════════════════════════════════════════════════════════╝
   `);
@@ -3081,7 +3466,7 @@ function displayBanner() {
     console.log(`   Wallet: ${CONFIG.walletAddress}`);
     console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
     console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-    console.log(`   Brain: v5.0.1 — Technicals + DeFi + Derivatives + News + Macro + Regime + Self-Improvement Engine`);
+    console.log(`   Brain: v5.1 — Technicals + DeFi + Derivatives + Positioning + News + Macro + Cross-Asset + Regime + Self-Improvement + Shadow Validation`);
     console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
     console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
     console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
@@ -3157,7 +3542,7 @@ async function main() {
     setInterval(() => {
         console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
     }, 5 * 60 * 1000);
-    console.log("\n🚀 Agent v5.0.1.1 running! Phase 3 active: Self-Improvement Engine + Adaptive Thresholds + Pattern Memory + Confidence Sizing + Exploration.\n");
+    console.log("\n🚀 Agent v5.1 running! Intelligence upgrade: Smart Money Tracking + Cross-Asset Correlation + Shadow Model Validation + MEV Protection + Self-Improvement Engine.\n");
 }
 main().catch((err) => {
     console.error("Fatal error:", err?.message || String(err));
@@ -3192,7 +3577,7 @@ function apiPortfolio() {
         uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
         lastCycle: state.trading.lastCheck.toISOString(),
         tradingEnabled: CONFIG.trading.enabled,
-        version: "5.0.1",
+        version: "5.1",
     };
 }
 function apiBalances() {
@@ -3237,17 +3622,21 @@ let lastIntelligenceData = null;
 function apiIntelligence() {
     const perf = calculateTradePerformance();
     return {
-        version: "5.0.1",
+        version: "5.1",
         defiLlama: lastIntelligenceData?.defi || null,
         derivatives: lastIntelligenceData?.derivatives || null,
         newsSentiment: lastIntelligenceData?.news || null,
         macroData: lastIntelligenceData?.macro || null,
         marketRegime: lastIntelligenceData?.regime || "UNKNOWN",
         tradePerformance: perf,
+        shadowProposals: shadowProposals,
         dataSources: [
             "CoinGecko", "Fear & Greed Index",
-            "DefiLlama (TVL/DEX/Protocols)", "Binance (Funding Rates/OI)",
-            "CryptoPanic (News Sentiment)", "FRED (Fed Rates/Yield Curve/CPI/M2/Dollar)",
+            "DefiLlama (TVL/DEX/Protocols)",
+            "Binance (Funding/OI/Long-Short Ratios/Top Trader Positioning)",
+            "Binance (PAXG for real-time Gold)",
+            "CryptoPanic (News Sentiment)",
+            "FRED (Fed Rates/Yield Curve/CPI/M2/Dollar/Gold/Oil/VIX/S&P 500)",
             "Technical Indicators (RSI/MACD/BB/SMA)",
         ],
     };
@@ -3259,7 +3648,7 @@ function apiPatterns() {
     const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
     const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
     return {
-        version: "5.0.1",
+        version: "5.1",
         totalPatterns: patterns.length,
         patternsWithData: patterns.filter(p => p.stats.sampleSize >= 3).length,
         topPerformers,
@@ -3270,7 +3659,7 @@ function apiPatterns() {
 function apiReviews() {
     const reviews = state.performanceReviews.slice(-10);
     return {
-        version: "5.0.1",
+        version: "5.1",
         totalReviews: state.performanceReviews.length,
         latestReview: reviews.length > 0 ? reviews[reviews.length - 1] : null,
         recentReviews: reviews,
@@ -3280,7 +3669,7 @@ function apiReviews() {
 }
 function apiThresholds() {
     return {
-        version: "5.0.1",
+        version: "5.1",
         currentThresholds: state.adaptiveThresholds,
         bounds: THRESHOLD_BOUNDS,
         defaults: DEFAULT_ADAPTIVE_THRESHOLDS,
@@ -3396,7 +3785,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
       <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.0.1</p>
+      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.1</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -3542,6 +3931,36 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
   </div>
 </div>
 
+<!-- v5.1: Market Intelligence Dashboard -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <!-- Derivatives Positioning -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-1">Derivatives Positioning</h2>
+      <p class="text-[10px] text-slate-500 mb-3">Smart money vs retail sentiment</p>
+      <div id="derivatives-intel" class="space-y-2">
+        <p class="text-xs text-slate-600">Loading...</p>
+      </div>
+    </div>
+    <!-- Cross-Asset Correlation -->
+    <div class="glass rounded-xl p-5">
+      <h2 class="text-sm font-semibold text-white mb-1">Cross-Asset Intelligence</h2>
+      <p class="text-[10px] text-slate-500 mb-3">Gold, Oil, VIX, S&P 500</p>
+      <div id="cross-asset-intel" class="space-y-2">
+        <p class="text-xs text-slate-600">Loading...</p>
+      </div>
+    </div>
+  </div>
+  <!-- Shadow Model Proposals -->
+  <div class="glass rounded-xl p-5 mt-4">
+    <h2 class="text-sm font-semibold text-white mb-1">Shadow Model Validation</h2>
+    <p class="text-[10px] text-slate-500 mb-3">Proposed threshold changes awaiting statistical confirmation</p>
+    <div id="shadow-proposals" class="space-y-2">
+      <p class="text-xs text-slate-600">Loading...</p>
+    </div>
+  </div>
+</div>
+
 <!-- Footer -->
 <div class="border-t border-white/5 px-4 sm:px-6 py-4 text-center">
   <p class="text-[10px] text-slate-600">Schertzinger Company Limited — Auto-refreshes every 30s</p>
@@ -3558,7 +3977,7 @@ function pnlBg(n) { return n >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'; }
 
 async function fetchData() {
   try {
-    const [pRes, bRes, sRes, tRes, patRes, thrRes, revRes] = await Promise.allSettled([
+    const [pRes, bRes, sRes, tRes, patRes, thrRes, revRes, intRes] = await Promise.allSettled([
       fetch('/api/portfolio').then(r => r.json()),
       fetch('/api/balances').then(r => r.json()),
       fetch('/api/sectors').then(r => r.json()),
@@ -3566,6 +3985,7 @@ async function fetchData() {
       fetch('/api/patterns').then(r => r.json()),
       fetch('/api/thresholds').then(r => r.json()),
       fetch('/api/reviews').then(r => r.json()),
+      fetch('/api/intelligence').then(r => r.json()),
     ]);
     const p = pRes.status === 'fulfilled' ? pRes.value : null;
     const b = bRes.status === 'fulfilled' ? bRes.value : null;
@@ -3574,6 +3994,7 @@ async function fetchData() {
     const pat = patRes.status === 'fulfilled' ? patRes.value : null;
     const thr = thrRes.status === 'fulfilled' ? thrRes.value : null;
     const rev = revRes.status === 'fulfilled' ? revRes.value : null;
+    const intel = intRes.status === 'fulfilled' ? intRes.value : null;
 
     if (p) renderPortfolio(p);
     if (b) renderHoldings(b);
@@ -3582,6 +4003,7 @@ async function fetchData() {
     if (pat) renderPatterns(pat);
     if (thr) renderThresholds(thr);
     if (rev) renderInsights(rev);
+    if (intel) renderIntelligence(intel);
     $('last-update').textContent = new Date().toLocaleTimeString();
   } catch (e) {
     console.error('Fetch error:', e);
@@ -3746,6 +4168,91 @@ function renderInsights(rev) {
     }).join('') +
     (r.recommendations.length > 0 ? '<div class="mt-2 pt-1"><p class="text-[10px] text-slate-500 mb-1">Recommendations:</p>' +
       r.recommendations.slice(0, 3).map(rec => '<p class="text-[10px] text-amber-400/80 py-0.5">→ ' + rec.description + '</p>').join('') + '</div>' : '');
+}
+
+// v5.1: Render derivatives positioning + cross-asset intelligence
+function renderIntelligence(intel) {
+  // Derivatives positioning
+  const derivEl = $('derivatives-intel');
+  const d = intel.derivatives;
+  if (d) {
+    const posColor = (sig) => {
+      if (sig === 'SMART_MONEY_LONG') return 'text-emerald-400';
+      if (sig === 'SMART_MONEY_SHORT' || sig === 'OVERLEVERAGED_LONG') return 'text-red-400';
+      if (sig === 'OVERLEVERAGED_SHORT') return 'text-amber-400';
+      return 'text-slate-400';
+    };
+    const posIcon = (sig) => {
+      if (sig === 'SMART_MONEY_LONG') return '🟢';
+      if (sig === 'SMART_MONEY_SHORT') return '🔴';
+      if (sig === 'OVERLEVERAGED_LONG') return '⚠️';
+      if (sig === 'OVERLEVERAGED_SHORT') return '⚠️';
+      return '⚪';
+    };
+    derivEl.innerHTML =
+      '<div class="grid grid-cols-2 gap-3">' +
+      '<div><p class="text-[10px] text-slate-500 mb-1">BTC Positioning</p>' +
+      '<p class="text-xs font-medium ' + posColor(d.btcPositioningSignal) + '">' + posIcon(d.btcPositioningSignal) + ' ' + (d.btcPositioningSignal || 'N/A').replace(/_/g, ' ') + '</p>' +
+      '<p class="text-[10px] text-slate-500 mt-1">L/S: ' + (d.btcLongShortRatio != null ? d.btcLongShortRatio.toFixed(2) : 'N/A') + ' | Top: ' + (d.btcTopTraderLSRatio != null ? d.btcTopTraderLSRatio.toFixed(2) : 'N/A') + '</p>' +
+      '<p class="text-[10px] text-slate-500">Funding: ' + (d.btcFundingRate >= 0 ? '+' : '') + d.btcFundingRate.toFixed(4) + '%</p></div>' +
+      '<div><p class="text-[10px] text-slate-500 mb-1">ETH Positioning</p>' +
+      '<p class="text-xs font-medium ' + posColor(d.ethPositioningSignal) + '">' + posIcon(d.ethPositioningSignal) + ' ' + (d.ethPositioningSignal || 'N/A').replace(/_/g, ' ') + '</p>' +
+      '<p class="text-[10px] text-slate-500 mt-1">L/S: ' + (d.ethLongShortRatio != null ? d.ethLongShortRatio.toFixed(2) : 'N/A') + ' | Top: ' + (d.ethTopTraderLSRatio != null ? d.ethTopTraderLSRatio.toFixed(2) : 'N/A') + '</p>' +
+      '<p class="text-[10px] text-slate-500">Funding: ' + (d.ethFundingRate >= 0 ? '+' : '') + d.ethFundingRate.toFixed(4) + '%</p></div>' +
+      '</div>';
+    // OI-Price Divergence
+    if (d.btcOIPriceDivergence && d.btcOIPriceDivergence !== 'NEUTRAL' && d.btcOIPriceDivergence !== 'ALIGNED') {
+      derivEl.innerHTML += '<div class="mt-2 pt-2 border-t border-white/5"><p class="text-[10px] text-amber-400">⚡ BTC: ' + d.btcOIPriceDivergence.replace(/_/g, ' ') + '</p></div>';
+    }
+    if (d.ethOIPriceDivergence && d.ethOIPriceDivergence !== 'NEUTRAL' && d.ethOIPriceDivergence !== 'ALIGNED') {
+      derivEl.innerHTML += '<p class="text-[10px] text-amber-400">⚡ ETH: ' + d.ethOIPriceDivergence.replace(/_/g, ' ') + '</p>';
+    }
+  } else {
+    derivEl.innerHTML = '<p class="text-xs text-slate-600">Derivatives data not yet available</p>';
+  }
+
+  // Cross-asset intelligence
+  const caEl = $('cross-asset-intel');
+  const m = intel.macroData;
+  if (m && m.crossAssets) {
+    const ca = m.crossAssets;
+    const sigColor = ca.crossAssetSignal === 'RISK_ON' ? 'text-emerald-400' : ca.crossAssetSignal === 'RISK_OFF' ? 'text-red-400' : ca.crossAssetSignal === 'FLIGHT_TO_SAFETY' ? 'text-red-500' : 'text-slate-400';
+    const sigIcon = ca.crossAssetSignal === 'RISK_ON' ? '🟢' : ca.crossAssetSignal === 'RISK_OFF' ? '🔴' : ca.crossAssetSignal === 'FLIGHT_TO_SAFETY' ? '🚨' : '⚪';
+    const pctFmt = (n) => n != null ? (n >= 0 ? '+' : '') + n.toFixed(1) + '%' : 'N/A';
+    caEl.innerHTML =
+      '<div class="grid grid-cols-2 gap-x-4 gap-y-2">' +
+      '<div class="flex justify-between"><span class="text-[11px] text-slate-400">Gold</span><span class="text-[11px] mono ' + (ca.goldChange24h >= 0 ? 'text-emerald-400' : 'text-red-400') + '">$' + (ca.goldPrice != null ? ca.goldPrice.toFixed(0) : 'N/A') + ' ' + pctFmt(ca.goldChange24h) + '</span></div>' +
+      '<div class="flex justify-between"><span class="text-[11px] text-slate-400">Oil (WTI)</span><span class="text-[11px] mono text-slate-300">$' + (ca.oilPrice != null ? ca.oilPrice.toFixed(1) : 'N/A') + ' ' + pctFmt(ca.oilChange24h) + '</span></div>' +
+      '<div class="flex justify-between"><span class="text-[11px] text-slate-400">VIX</span><span class="text-[11px] mono ' + (ca.vixLevel > 25 ? 'text-red-400' : ca.vixLevel < 15 ? 'text-emerald-400' : 'text-slate-300') + '">' + (ca.vixLevel != null ? ca.vixLevel.toFixed(1) : 'N/A') + '</span></div>' +
+      '<div class="flex justify-between"><span class="text-[11px] text-slate-400">S&P 500</span><span class="text-[11px] mono ' + ((ca.sp500Change || 0) >= 0 ? 'text-emerald-400' : 'text-red-400') + '">' + pctFmt(ca.sp500Change) + '</span></div>' +
+      '</div>' +
+      '<div class="mt-2 pt-2 border-t border-white/5"><p class="text-xs font-medium ' + sigColor + '">' + sigIcon + ' ' + ca.crossAssetSignal.replace(/_/g, ' ') + '</p></div>';
+  } else {
+    caEl.innerHTML = '<p class="text-xs text-slate-600">Cross-asset data not yet available</p>';
+  }
+
+  // Shadow Model Proposals
+  const shadowEl = $('shadow-proposals');
+  if (intel.shadowProposals && intel.shadowProposals.length > 0) {
+    const pending = intel.shadowProposals.filter(p => p.status === 'PENDING');
+    const recent = intel.shadowProposals.filter(p => p.status !== 'PENDING').slice(-3);
+    shadowEl.innerHTML = '<p class="text-[10px] text-slate-500 mb-2">' + pending.length + ' pending proposals</p>' +
+      pending.map(p => {
+        const pct = p.confirmingReviews + '/' + 3;
+        const barWidth = Math.min(100, (p.confirmingReviews / 3) * 100);
+        return '<div class="py-1.5 border-b border-white/5">' +
+          '<div class="flex justify-between"><span class="text-[11px] text-slate-300">' + p.field + ' ' + (p.proposedDelta > 0 ? '↑' : '↓') + Math.abs(p.proposedDelta) + '</span>' +
+          '<span class="text-[10px] text-slate-500">' + pct + ' confirmations</span></div>' +
+          '<div class="w-full bg-white/5 rounded-full h-1 mt-1"><div class="bg-amber-500/60 h-1 rounded-full" style="width:' + barWidth + '%"></div></div>' +
+          '<p class="text-[10px] text-slate-600 mt-0.5">' + p.reason + '</p></div>';
+      }).join('') +
+      (recent.length > 0 ? '<div class="mt-2 pt-1">' + recent.map(p => {
+        const icon = p.status === 'PROMOTED' ? '✅' : '❌';
+        return '<p class="text-[10px] ' + (p.status === 'PROMOTED' ? 'text-emerald-400/70' : 'text-red-400/70') + '">' + icon + ' ' + p.field + ' — ' + p.status + '</p>';
+      }).join('') + '</div>' : '');
+  } else {
+    shadowEl.innerHTML = '<p class="text-xs text-slate-600">No active proposals — thresholds at defaults</p>';
+  }
 }
 
 // Initial load + auto-refresh every 30s
