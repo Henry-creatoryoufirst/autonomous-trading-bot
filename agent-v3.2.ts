@@ -1,5 +1,5 @@
 /**
- * Henry's Autonomous Trading Agent v5.1.1
+ * Henry's Autonomous Trading Agent v5.2.0
  *
  * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE + v5.1 INTELLIGENCE UPGRADE
  *
@@ -286,7 +286,7 @@ const CONFIG = {
   // Trading Parameters
   trading: {
     enabled: process.env.TRADING_ENABLED === "true",
-    maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "10"),
+    maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "25"),
     maxSellPercent: parseFloat(process.env.MAX_SELL_PERCENT || "50"),
     intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || "15"),
     // V3.1: Risk-adjusted position sizing
@@ -324,7 +324,7 @@ const CONFIG = {
   activeTokens: Object.keys(TOKEN_REGISTRY).filter(t => t !== "USDC"),
 
   // Logging
-  logFile: "./logs/trades-v3.4.json",
+  logFile: process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/trades-v3.4.json` : "./logs/trades-v3.4.json",
 };
 
 // ============================================================================
@@ -598,7 +598,7 @@ const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   regimeMultipliers: {
     TRENDING_UP: 1.2,
     TRENDING_DOWN: 0.6,
-    RANGING: 1.0,
+    RANGING: 0.8,      // v5.2: reduced from 1.0 — smaller positions in ranging markets
     VOLATILE: 0.5,
     UNKNOWN: 0.7,
   },
@@ -990,7 +990,7 @@ function adaptThresholds(review: PerformanceReview): void {
  */
 function calculatePatternConfidence(patternId: string, regime: MarketRegime): number {
   const pattern = state.strategyPatterns[patternId];
-  if (!pattern || pattern.stats.sampleSize < 2) return 0.3; // Unproven → low confidence
+  if (!pattern || pattern.stats.sampleSize < 2) return 0.5; // Unproven → moderate confidence (v5.2: raised from 0.3 to prevent $2-3 dust trades) // Unproven → low confidence
 
   let conf = pattern.confidence;
 
@@ -1221,6 +1221,11 @@ function loadTradeHistory() {
         state.explorationState = parsed.explorationState || { ...DEFAULT_EXPLORATION_STATE };
         state.lastReviewTradeIndex = parsed.lastReviewTradeIndex || 0;
         state.lastReviewTimestamp = parsed.lastReviewTimestamp || null;
+        // v5.2: Restore shadow proposals
+        if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
+          shadowProposals = parsed.shadowProposals;
+          console.log(`  🔬 Restored ${shadowProposals.length} shadow proposals`);
+        }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
         return;
@@ -1238,7 +1243,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "5.1",
+      version: "5.2",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -1258,7 +1263,14 @@ function saveTradeHistory() {
       explorationState: state.explorationState,
       lastReviewTradeIndex: state.lastReviewTradeIndex,
       lastReviewTimestamp: state.lastReviewTimestamp,
+      // v5.2: Persist shadow proposals so they survive restarts
+      shadowProposals: shadowProposals.filter(p => p.status === "PENDING").slice(-50),
     };
+    // Write to persistent volume path, creating directory if needed
+    const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
+    if (dir && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(CONFIG.logFile, JSON.stringify(data, null, 2));
   } catch (e: any) {
     console.error("Failed to save trade history:", e.message);
@@ -1327,6 +1339,52 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
       cb.peakPriceDate = new Date().toISOString();
     }
   }
+}
+
+// ============================================================================
+// v5.2: DUST POSITION CONSOLIDATION
+// ============================================================================
+
+const DUST_THRESHOLD_USD = 3.00;
+
+async function consolidateDustPositions(
+  balances: { symbol: string; balance: number; usdValue: number; price?: number }[],
+  marketData: MarketData
+): Promise<number> {
+  if (!CONFIG.trading.enabled) return 0;
+  const dustPositions = balances.filter(
+    b => b.symbol !== "USDC" && b.usdValue > 0.10 && b.usdValue < DUST_THRESHOLD_USD
+  );
+  if (dustPositions.length === 0) return 0;
+  console.log(`\n  🧹 DUST CONSOLIDATION: Found ${dustPositions.length} positions under ${DUST_THRESHOLD_USD.toFixed(2)}`);
+  let consolidated = 0;
+  for (const dust of dustPositions) {
+    try {
+      console.log(`     Selling dust: ${dust.symbol} (${dust.usdValue.toFixed(2)})`);
+      const decision: TradeDecision = {
+        action: "SELL", fromToken: dust.symbol, toToken: "USDC",
+        amountUSD: dust.usdValue,
+        reasoning: `Dust consolidation: ${dust.symbol} at ${dust.usdValue.toFixed(2)} is below ${DUST_THRESHOLD_USD} threshold`,
+        tokenAmount: dust.balance,
+      };
+      const result = await executeTrade(decision, marketData);
+      if (result.success) {
+        consolidated++;
+        console.log(`     ✅ Consolidated ${dust.symbol} → USDC`);
+        updateCostBasisAfterSell(dust.symbol, dust.usdValue, dust.balance);
+      } else {
+        console.log(`     ❌ Failed to consolidate ${dust.symbol}: ${result.error}`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    } catch (e: any) {
+      console.log(`     ❌ Error consolidating ${dust.symbol}: ${e.message}`);
+    }
+  }
+  if (consolidated > 0) {
+    console.log(`  🧹 Consolidated ${consolidated}/${dustPositions.length} dust positions to USDC`);
+    saveTradeHistory();
+  }
+  return consolidated;
 }
 
 // ============================================================================
@@ -3532,7 +3590,7 @@ Your ENTIRE response must be exactly one JSON object:
 
         if (decision.action === "BUY" || decision.action === "REBALANCE") {
           decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
-          if (decision.amountUSD < 1.00) {
+          if (decision.amountUSD < 5.00) {  // v5.2: raised from $1 to $5
             decision.action = "HOLD";
             decision.reasoning = `Trade amount ($${decision.amountUSD.toFixed(2)}) too small. Minimum $1.00. Holding.`;
           }
@@ -3869,6 +3927,11 @@ async function runTradingCycle() {
     console.log("📈 Fetching market data for all tracked tokens...");
     const marketData = await getMarketData();
 
+    // v5.2: Consolidate dust positions every 10 cycles
+    if (state.totalCycles % 10 === 1) {
+      await consolidateDustPositions(balances, marketData);
+    }
+
     // V4.5: Store intelligence data for API endpoint (now includes news + macro)
     lastIntelligenceData = {
       defi: marketData.defiLlama,
@@ -4094,13 +4157,13 @@ async function runTradingCycle() {
       ].join("_");
       const confidence = calculatePatternConfidence(tradePatternId, marketData.marketRegime);
       const originalAmount = decision.amountUSD;
-      decision.amountUSD = Math.max(2, Math.round(decision.amountUSD * confidence * 100) / 100);
+      decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * confidence * 100) / 100);
       const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
       console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
 
       // Circuit breaker: halve position size in caution zone
       if (circuitBreakerActive) {
-        decision.amountUSD = Math.max(2, Math.round(decision.amountUSD * 0.5 * 100) / 100);
+        decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * 0.5 * 100) / 100);
         console.log(`   🚨 Circuit breaker applied: size reduced to $${decision.amountUSD.toFixed(2)}`);
       }
     }
@@ -4282,14 +4345,40 @@ async function main() {
   // Heartbeat every 5 minutes to confirm process is alive
   setInterval(() => {
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
+    // v5.2: Save state every heartbeat
+    saveTradeHistory();
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v5.1.1 running! Tiered Profit Harvesting active. Banks small wins consistently. Patient capital, not passive capital.\n");
+  console.log("\n🚀 Agent v5.2.0 running! Persistent state + dust consolidation + meaningful position sizing. Patient capital, not passive capital.\n");
+  console.log(`   📂 State persistence: ${CONFIG.logFile}`);
+  console.log(`   💰 Max buy size: ${CONFIG.trading.maxBuySize} | Min trade: $5`);
+  console.log(`   🧹 Dust threshold: ${DUST_THRESHOLD_USD} (consolidates every 10 cycles)\n`);
 }
+
+// ============================================================================
+// GRACEFUL SHUTDOWN — save state before Railway restarts / redeploys
+// ============================================================================
+let isShuttingDown = false;
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n🛑 Received ${signal} — saving state before shutdown...`);
+  try {
+    saveTradeHistory();
+    console.log("   ✅ State saved successfully. Goodbye.");
+  } catch (e: any) {
+    console.error(`   ❌ Error saving state on shutdown: ${e.message}`);
+  }
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 main().catch((err) => {
   console.error("Fatal error:", err?.message || String(err));
   if (err?.stack) console.error(err.stack.split('\n').slice(0, 5).join('\n'));
+  // v5.2: Try to save state even on fatal crash
+  try { saveTradeHistory(); } catch (_) {}
   process.exit(1);
 });
 
