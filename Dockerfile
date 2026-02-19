@@ -1,4 +1,4 @@
-# Trading Bot V3.2 - Railway Deployment
+# Trading Bot V5.2 - Railway Deployment
 # Uses Coinbase CDP SDK for live trade execution on Base network
 FROM node:20-slim
 
@@ -19,11 +19,18 @@ RUN npm ci
 # Copy application files
 COPY . .
 
-# Create logs directory
+# Create logs directory (fallback if no persistent volume)
 RUN mkdir -p logs
+
+# v5.2: Create persistent data directory for Railway volume mount
+# When PERSIST_DIR env var is set, state saves there instead of ./logs
+RUN mkdir -p /data
 
 # Set environment
 ENV NODE_ENV=production
+
+# v5.2: Default persistent storage to /data (Railway volume mount point)
+ENV PERSIST_DIR=/data
 
 # IPv4/IPv6 autoselection fix for cloud environments (Railway, etc.)
 # Prevents connection timeouts to CDP API
