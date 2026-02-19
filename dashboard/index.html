@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Schertzinger Company Limited — Autonomous Trading Command</title>
+  <title>Schertzinger Company Limited â Autonomous Trading Command</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -93,7 +93,7 @@
 <body class="mesh-bg min-h-screen">
   <div class="max-w-[1440px] mx-auto px-6 py-6">
 
-    <!-- ═══ HEADER ═══ -->
+    <!-- âââ HEADER âââ -->
     <header class="flex items-center justify-between mb-8">
       <div class="flex items-center gap-5">
         <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-600 to-brand-800 flex items-center justify-center shadow-lg shadow-brand-600/20">
@@ -101,7 +101,7 @@
         </div>
         <div>
           <h1 class="text-xl font-bold tracking-tight text-white">Schertzinger Company Limited</h1>
-          <p class="text-xs text-slate-500 font-medium tracking-wide uppercase mt-0.5">Autonomous Trading Command &middot; Agent v3.1.1</p>
+          <p class="text-xs text-slate-500 font-medium tracking-wide uppercase mt-0.5">Autonomous Trading Command &middot; Autonomous Trading Agent v5.2.0</p>
         </div>
       </div>
       <div class="flex items-center gap-3">
@@ -120,9 +120,9 @@
       </div>
     </header>
 
-    <!-- ═══ HERO METRICS ═══ -->
+    <!-- âââ HERO METRICS âââ -->
     <div class="grid grid-cols-12 gap-4 mb-6">
-      <!-- Portfolio Value — Hero -->
+      <!-- Portfolio Value â Hero -->
       <div class="col-span-12 md:col-span-4 glass-highlight rounded-2xl p-6 glow-emerald">
         <div class="flex items-center justify-between mb-1">
           <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Portfolio Value</span>
@@ -165,7 +165,7 @@
       </div>
     </div>
 
-    <!-- ═══ MARKET TICKER ═══ -->
+    <!-- âââ MARKET TICKER âââ -->
     <div class="glass rounded-xl px-5 py-3 mb-6 flex items-center gap-6 overflow-x-auto" id="ticker-bar">
       <span class="text-xs text-slate-600 font-medium uppercase tracking-wider whitespace-nowrap">Markets</span>
       <div class="flex items-center gap-5" id="ticker-items">
@@ -173,7 +173,7 @@
       </div>
     </div>
 
-    <!-- ═══ MAIN GRID: Holdings + Sectors + AI ═══ -->
+    <!-- âââ MAIN GRID: Holdings + Sectors + AI âââ -->
     <div class="grid grid-cols-12 gap-4 mb-6">
 
       <!-- Holdings -->
@@ -242,7 +242,7 @@
       </div>
     </div>
 
-    <!-- ═══ TRADE LOG ═══ -->
+    <!-- âââ TRADE LOG âââ -->
     <div class="glass rounded-2xl p-6 mb-6">
       <div class="flex items-center justify-between mb-5">
         <h2 class="text-sm font-semibold text-white tracking-tight">Trade Log</h2>
@@ -267,7 +267,7 @@
       </div>
     </div>
 
-    <!-- ═══ FOOTER ═══ -->
+    <!-- âââ FOOTER âââ -->
     <footer class="flex items-center justify-between py-4 border-t border-white/5">
       <div class="flex items-center gap-2">
         <span class="text-xs text-slate-700">Schertzinger Company Limited</span>
@@ -283,9 +283,9 @@
   </div>
 
   <script>
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // CONFIGURATION
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     const WALLET = '0x55509AA76E2769eCCa5B4293359e3001dA16dd0F';
     const INITIAL_VALUE = 230;
@@ -325,9 +325,9 @@
     let marketPrices = {};
     let sectorChart = null;
 
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // RPC BALANCE READING (same as the bot)
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     async function rpcCall(method, params) {
       const res = await fetch(BASE_RPC, {
@@ -370,9 +370,9 @@
       return balances;
     }
 
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // MARKET DATA
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     async function fetchMarketData() {
       try {
@@ -414,9 +414,9 @@
       return { trades: [], totalTrades: 0, successfulTrades: 0, peakValue: INITIAL_VALUE };
     }
 
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // RENDER FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     function renderPortfolio(totalValue, peakValue) {
       const pnl = totalValue - INITIAL_VALUE;
@@ -595,20 +595,20 @@
         return `<tr class="trade-row border-b border-white/5">
           <td class="py-3 text-xs text-slate-500 mono">${time}</td>
           <td class="py-3"><span class="px-2 py-0.5 rounded border text-xs font-semibold ${cls}">${t.action}</span></td>
-          <td class="py-3 text-sm text-white">${t.fromToken || '—'} <span class="text-slate-600">\u2192</span> ${t.toToken || '—'}</td>
+          <td class="py-3 text-sm text-white">${t.fromToken || 'â'} <span class="text-slate-600">\u2192</span> ${t.toToken || 'â'}</td>
           <td class="py-3 text-sm text-right mono text-white">$${(t.amountUSD || 0).toFixed(2)}</td>
           <td class="py-3">${t.success
             ? `<a href="https://basescan.org/tx/${t.txHash}" target="_blank" class="text-xs text-emerald-400 hover:text-emerald-300">\u2713 Confirmed</a>`
             : '<span class="text-xs text-red-400">\u2717 Failed</span>'
           }</td>
-          <td class="py-3 text-xs text-slate-600 max-w-[280px] truncate" title="${(t.reasoning || '').replace(/"/g, '&quot;')}">${t.reasoning || '—'}</td>
+          <td class="py-3 text-xs text-slate-600 max-w-[280px] truncate" title="${(t.reasoning || '').replace(/"/g, '&quot;')}">${t.reasoning || 'â'}</td>
         </tr>`;
       }).join('');
     }
 
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // MAIN REFRESH
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     async function refreshAll() {
       const btn = document.getElementById('refresh-btn');
@@ -649,9 +649,9 @@
       btn.classList.remove('opacity-50');
     }
 
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     // INIT
-    // ═══════════════════════════════════════════════════════════════
+    // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
     refreshAll();
     setInterval(refreshAll, 30000);
