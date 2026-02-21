@@ -1,47 +1,26 @@
-# Trading Bot V5.2 - Railway Deployment
-# Uses Coinbase CDP SDK for live trade execution on Base network
 FROM node:20-slim
 
-# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files first (layer caching)
 COPY package*.json ./
-
-# Install ALL dependencies (tsx is in devDependencies, needed for runtime)
 RUN npm ci
 
-# Copy application files
 COPY . .
 
-# Create logs directory (fallback if no persistent volume)
 RUN mkdir -p logs
-
-# v5.2: Create persistent data directory for Railway volume mount
-# When PERSIST_DIR env var is set, state saves there instead of ./logs
 RUN mkdir -p /data
 
-# Set environment
-ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV PERSIST_DIR="/data"
 
-# v5.2: Default persistent storage to /data (Railway volume mount point)
-ENV PERSIST_DIR=/data
-
-# IPv4/IPv6 autoselection fix for cloud environments (Railway, etc.)
-# Prevents connection timeouts to CDP API
-ENV NODE_OPTIONS="--network-family-autoselection-attempt-timeout=500"
-
-# Expose health check port
-EXPOSE 3000
-
-# Health check against the bot's built-in HTTP server
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
-# Run the v3.2 trading agent with CDP SDK trade execution
-CMD ["npx", "tsx", "agent-v3.2.ts"]
+CMD ["npx", "tsx", "start.ts"]
