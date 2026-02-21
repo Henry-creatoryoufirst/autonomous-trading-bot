@@ -4595,48 +4595,6 @@ function apiTrades(limit: number) {
 function apiIndicators() {
   // Return last known indicator data from state if we store it
   return {
-
-    // v5.3.0: Auto-harvest status & history
-    if (url === '/api/auto-harvest') {
-      return sendJSON(res, 200, {
-        enabled: CONFIG.autoHarvest.enabled,
-        destinationWallet: CONFIG.autoHarvest.destinationWallet ?
-          CONFIG.autoHarvest.destinationWallet.slice(0, 6) + '...' + CONFIG.autoHarvest.destinationWallet.slice(-4) : 'Not set',
-        thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
-        cooldownHours: CONFIG.autoHarvest.cooldownHours,
-        minETHReserve: CONFIG.autoHarvest.minETHReserve,
-        totalTransferred: {
-          usd: state.totalAutoHarvestedUSD,
-          eth: state.totalAutoHarvestedETH,
-          count: state.autoHarvestCount,
-        },
-        lastTransfer: state.lastAutoHarvestTime,
-        recentTransfers: state.autoHarvestTransfers.slice(-10),
-        nextEligible: state.lastAutoHarvestTime ?
-          new Date(new Date(state.lastAutoHarvestTime).getTime() + CONFIG.autoHarvest.cooldownHours * 3600000).toISOString() :
-          'Now (no previous transfer)',
-      });
-    }
-
-    // v5.3.0: Manual trigger for auto-harvest (POST)
-    if (url === '/api/auto-harvest/trigger' && req.method === 'POST') {
-      if (!CONFIG.autoHarvest.enabled) {
-        return sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
-      }
-      try {
-        const ethBal = await getETHBalance();
-        const ethPriceUSD = prices['WETH'] || prices['ETH'] || 2700;
-        const savedCooldown = CONFIG.autoHarvest.cooldownHours;
-        CONFIG.autoHarvest.cooldownHours = 0;
-        const result = await checkAutoHarvestTransfer(account, cdp, ethPriceUSD, ethBal);
-        CONFIG.autoHarvest.cooldownHours = savedCooldown;
-        return sendJSON(res, 200, result);
-      } catch (err: any) {
-        return sendJSON(res, 500, { error: err.message });
-      }
-    }
-
-    message: "Indicators computed each cycle — see /api/portfolio for latest summary",
     costBasis: Object.values(state.costBasis).filter(cb => cb.currentHolding > 0),
   };
 }
@@ -4763,6 +4721,28 @@ const healthServer = http.createServer((req, res) => {
         break;
       case '/api/thresholds':
         sendJSON(res, 200, apiThresholds());
+        break;
+      case '/api/auto-harvest':
+        sendJSON(res, 200, {
+          enabled: CONFIG.autoHarvest.enabled,
+          destinationWallet: CONFIG.autoHarvest.enabled ? CONFIG.autoHarvest.profitDestination : 'not configured',
+          thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
+          cooldownHours: CONFIG.autoHarvest.cooldownHours,
+          minETHReserve: CONFIG.autoHarvest.minETHReserve,
+          totalTransfers: state.autoHarvest.autoHarvestTransfers.length,
+          recentTransfers: state.autoHarvest.autoHarvestTransfers.slice(-5),
+          lastHarvestTime: state.autoHarvest.lastAutoHarvestTime
+        });
+        break;
+      case '/api/auto-harvest/trigger':
+        if (CONFIG.autoHarvest.enabled) {
+          const cooldownMs = CONFIG.autoHarvest.cooldownHours * 60 * 60 * 1000;
+          CONFIG.autoHarvest.cooldownHours = 0;
+          sendJSON(res, 200, { message: 'Auto-harvest cooldown reset, will trigger on next cycle' });
+          setTimeout(() => { CONFIG.autoHarvest.cooldownHours = cooldownMs / (60 * 60 * 1000); }, 60000);
+        } else {
+          sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
+        }
         break;
       default:
         sendJSON(res, 404, { error: 'Not found' });
