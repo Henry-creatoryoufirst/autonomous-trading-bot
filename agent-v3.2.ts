@@ -1164,16 +1164,10 @@ interface AgentState {
     harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
 
     // v5.3.0: Auto-harvest transfer tracking
-    autoHarvestTransfers: [] as Array<{
-      timestamp: string;
-      amountETH: string;
-      amountUSD: number;
-      txHash: string;
-      destination: string;
-    }>,
+    autoHarvestTransfers: [],
     totalAutoHarvestedUSD: 0,
     totalAutoHarvestedETH: 0,
-    lastAutoHarvestTime: null as string | null,
+    lastAutoHarvestTime: null,
     autoHarvestCount: 0,
   };
   // Phase 3: Self-Improvement Engine
@@ -4029,9 +4023,9 @@ async function checkAutoHarvestTransfer(
 // Helper: send native ETH transfer using CDP SDK
 async function sendNativeTransfer(account: any, to: string, amountETH: number): Promise<string> {
   const result = await account.sendTransaction({
-    to: to as `0x${string}`,
+    to: to,
     value: BigInt(Math.floor(amountETH * 1e18)),
-    data: "0x" as `0x${string}`
+    data: "0x"
   });
   return typeof result === "string" ? result : result.transactionHash || result.hash || String(result);
 }
