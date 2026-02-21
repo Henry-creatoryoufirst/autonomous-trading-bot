@@ -325,6 +325,15 @@ const CONFIG = {
 
   // Logging
   logFile: process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/trades-v3.4.json` : "./logs/trades-v3.4.json",
+
+    // v5.3.0: Auto-Harvest — send realized profits back to owner wallet
+    autoHarvest: {
+      enabled: process.env.AUTO_HARVEST_ENABLED === 'true',
+      destinationWallet: process.env.PROFIT_DESTINATION_WALLET || '',
+      thresholdUSD: parseFloat(process.env.AUTO_HARVEST_THRESHOLD_USD || '25'),
+      minETHReserve: parseFloat(process.env.AUTO_HARVEST_MIN_ETH_RESERVE || '0.002'),
+      cooldownHours: parseFloat(process.env.AUTO_HARVEST_COOLDOWN_HOURS || '24'),
+    },
 };
 
 // ============================================================================
@@ -1153,6 +1162,19 @@ interface AgentState {
     totalHarvested: number;
     harvestCount: number;
     harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
+
+    // v5.3.0: Auto-harvest transfer tracking
+    autoHarvestTransfers: [] as Array<{
+      timestamp: string;
+      amountETH: string;
+      amountUSD: number;
+      txHash: string;
+      destination: string;
+    }>,
+    totalAutoHarvestedUSD: 0,
+    totalAutoHarvestedETH: 0,
+    lastAutoHarvestTime: null as string | null,
+    autoHarvestCount: 0,
   };
   // Phase 3: Self-Improvement Engine
   strategyPatterns: Record<string, StrategyPattern>;
@@ -3914,6 +3936,106 @@ async function executeTrade(
 // MAIN TRADING CYCLE
 // ============================================================================
 
+
+/**
+ * v5.3.0: Auto-Harvest Transfer
+ * Checks if accumulated harvested profits exceed the threshold,
+ * then sends ETH back to the owner wallet.
+ */
+async function checkAutoHarvestTransfer(
+  account: any,
+  cdp: any,
+  ethPrice: number,
+  ethBalance: number
+): Promise<{ sent: boolean; amountETH?: number; amountUSD?: number; txHash?: string; error?: string }> {
+  const cfg = CONFIG.autoHarvest;
+
+  if (!cfg.enabled) {
+    return { sent: false, error: 'Auto-harvest disabled' };
+  }
+
+  if (!cfg.destinationWallet || cfg.destinationWallet.length < 42) {
+    console.log('⚠️  Auto-harvest: No destination wallet configured');
+    return { sent: false, error: 'No destination wallet' };
+  }
+
+  if (state.lastAutoHarvestTime) {
+    const hoursSinceLast = (Date.now() - new Date(state.lastAutoHarvestTime).getTime()) / (1000 * 60 * 60);
+    if (hoursSinceLast < cfg.cooldownHours) {
+      return { sent: false, error: `Cooldown: ${(cfg.cooldownHours - hoursSinceLast).toFixed(1)}h remaining` };
+    }
+  }
+
+  const gasReserveETH = cfg.minETHReserve;
+  const sendableETH = ethBalance - gasReserveETH;
+
+  if (sendableETH <= 0) {
+    return { sent: false, error: `ETH balance (${ethBalance.toFixed(4)}) below reserve (${gasReserveETH})` };
+  }
+
+  const profitUSD = state.harvestedProfits
+    .reduce((sum: number, h: any) => sum + (h.profitUSD || 0), 0) - state.totalAutoHarvestedUSD;
+
+  if (profitUSD < cfg.thresholdUSD) {
+    return { sent: false, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` };
+  }
+
+  let profitETH = profitUSD / ethPrice;
+  profitETH = Math.min(profitETH, sendableETH);
+
+  if (profitETH < 0.0001) {
+    return { sent: false, error: `Profit ETH amount too small (${profitETH.toFixed(6)})` };
+  }
+
+  const amountUSD = profitETH * ethPrice;
+
+  console.log(`\n💰 AUTO-HARVEST TRANSFER`);
+  console.log(`   Sending ${profitETH.toFixed(6)} ETH (~$${amountUSD.toFixed(2)}) to ${cfg.destinationWallet}`);
+  console.log(`   ETH balance: ${ethBalance.toFixed(6)} | Reserve: ${gasReserveETH} | Sendable: ${sendableETH.toFixed(6)}`);
+
+  try {
+    const txHash = await sendNativeTransfer(account, cfg.destinationWallet, profitETH);
+
+    console.log(`   ✅ Transfer sent! TX: ${txHash}`);
+
+    const transferRecord = {
+      timestamp: new Date().toISOString(),
+      amountETH: profitETH.toFixed(6),
+      amountUSD: amountUSD,
+      txHash: txHash,
+      destination: cfg.destinationWallet
+    };
+
+    state.autoHarvestTransfers.push(transferRecord);
+    state.totalAutoHarvestedUSD += amountUSD;
+    state.totalAutoHarvestedETH += profitETH;
+    state.lastAutoHarvestTime = new Date().toISOString();
+    state.autoHarvestCount++;
+
+    if (state.autoHarvestTransfers.length > 50) {
+      state.autoHarvestTransfers = state.autoHarvestTransfers.slice(-50);
+    }
+
+    saveState();
+
+    return { sent: true, amountETH: profitETH, amountUSD, txHash: txHash };
+
+  } catch (err: any) {
+    console.error(`   ❌ Auto-harvest transfer failed:`, err.message);
+    return { sent: false, error: err.message };
+  }
+}
+
+// Helper: send native ETH transfer using CDP SDK
+async function sendNativeTransfer(account: any, to: string, amountETH: number): Promise<string> {
+  const result = await account.sendTransaction({
+    to: to as `0x${string}`,
+    value: BigInt(Math.floor(amountETH * 1e18)),
+    data: "0x" as `0x${string}`
+  });
+  return typeof result === "string" ? result : result.transactionHash || result.hash || String(result);
+}
+
 async function runTradingCycle() {
   state.totalCycles++;
   console.log("\n" + "═".repeat(70));
@@ -4206,6 +4328,20 @@ async function runTradingCycle() {
       state.explorationState.consecutiveHolds = 0;
       state.explorationState.totalExploitationTrades++;
       saveTradeHistory();
+
+    // v5.3.0: Check if we should auto-harvest profits to owner wallet
+    if (CONFIG.autoHarvest.enabled) {
+      try {
+        const ethBal = await getETHBalance();
+        const ethPriceUSD = prices['WETH'] || prices['ETH'] || 2700;
+        const harvestResult = await checkAutoHarvestTransfer(account, cdp, ethPriceUSD, ethBal);
+        if (harvestResult.sent) {
+          console.log(`💰 Auto-harvested ${harvestResult.amountETH?.toFixed(6)} ETH ($${harvestResult.amountUSD?.toFixed(2)}) to owner wallet`);
+        }
+      } catch (harvestErr: any) {
+        console.warn('Auto-harvest check failed:', harvestErr.message);
+      }
+    }
     } else if (decision.action === "HOLD") {
       // Track consecutive holds for stagnation detection
       state.explorationState.consecutiveHolds++;
@@ -4416,6 +4552,16 @@ function apiPortfolio() {
     harvestedProfits: state.harvestedProfits?.totalHarvested || 0,
     harvestCount: state.harvestedProfits?.harvestCount || 0,
     recentHarvests: (state.harvestedProfits?.harvests || []).slice(-5),
+      // v5.3.0: Auto-harvest info
+      autoHarvest: {
+        enabled: CONFIG.autoHarvest.enabled,
+        totalTransferredUSD: state.totalAutoHarvestedUSD,
+        totalTransferredETH: state.totalAutoHarvestedETH,
+        transferCount: state.autoHarvestCount,
+        lastTransfer: state.lastAutoHarvestTime,
+        destination: CONFIG.autoHarvest.destinationWallet ?
+          CONFIG.autoHarvest.destinationWallet.slice(0, 6) + '...' + CONFIG.autoHarvest.destinationWallet.slice(-4) : null,
+      },
   };
 }
 
@@ -4455,6 +4601,47 @@ function apiTrades(limit: number) {
 function apiIndicators() {
   // Return last known indicator data from state if we store it
   return {
+
+    // v5.3.0: Auto-harvest status & history
+    if (url === '/api/auto-harvest') {
+      return sendJSON(res, 200, {
+        enabled: CONFIG.autoHarvest.enabled,
+        destinationWallet: CONFIG.autoHarvest.destinationWallet ?
+          CONFIG.autoHarvest.destinationWallet.slice(0, 6) + '...' + CONFIG.autoHarvest.destinationWallet.slice(-4) : 'Not set',
+        thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
+        cooldownHours: CONFIG.autoHarvest.cooldownHours,
+        minETHReserve: CONFIG.autoHarvest.minETHReserve,
+        totalTransferred: {
+          usd: state.totalAutoHarvestedUSD,
+          eth: state.totalAutoHarvestedETH,
+          count: state.autoHarvestCount,
+        },
+        lastTransfer: state.lastAutoHarvestTime,
+        recentTransfers: state.autoHarvestTransfers.slice(-10),
+        nextEligible: state.lastAutoHarvestTime ?
+          new Date(new Date(state.lastAutoHarvestTime).getTime() + CONFIG.autoHarvest.cooldownHours * 3600000).toISOString() :
+          'Now (no previous transfer)',
+      });
+    }
+
+    // v5.3.0: Manual trigger for auto-harvest (POST)
+    if (url === '/api/auto-harvest/trigger' && req.method === 'POST') {
+      if (!CONFIG.autoHarvest.enabled) {
+        return sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
+      }
+      try {
+        const ethBal = await getETHBalance();
+        const ethPriceUSD = prices['WETH'] || prices['ETH'] || 2700;
+        const savedCooldown = CONFIG.autoHarvest.cooldownHours;
+        CONFIG.autoHarvest.cooldownHours = 0;
+        const result = await checkAutoHarvestTransfer(account, cdp, ethPriceUSD, ethBal);
+        CONFIG.autoHarvest.cooldownHours = savedCooldown;
+        return sendJSON(res, 200, result);
+      } catch (err: any) {
+        return sendJSON(res, 500, { error: err.message });
+      }
+    }
+
     message: "Indicators computed each cycle — see /api/portfolio for latest summary",
     costBasis: Object.values(state.costBasis).filter(cb => cb.currentHolding > 0),
   };
