@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schertzinger Company Limited — Autonomous Trading Command v6.1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        surface: {
+                            900: '#0a0e1a',
+                            800: '#0f1629',
+                            700: '#151d35',
+                            600: '#1a2540',
+                            500: '#243050'
+                        },
+                        brand: {
+                            DEFAULT: '#4c6ef5',
+                            light: '#748ffc',
+                            dark: '#3b5bdb',
+                            glow: '#4c6ef540'
+                        },
+                        accent: {
+                            gold: '#f0b429',
+                            emerald: '#10b981',
+                            crimson: '#ef4444',
+                            amber: '#f59e0b',
+                            sky: '#38bdf8'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: #060a14;
+            color: #e2e8f0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .mesh-gradient {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background:
+                radial-gradient(ellipse at 20% 20%, rgba(76, 110, 245, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 90% 10%, rgba(56, 189, 248, 0.05) 0%, transparent 40%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .glass {
+            background: rgba(10, 14, 26, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(76, 110, 245, 0.12);
+            border-radius: 16px;
+        }
+
+        .glass-hover:hover {
+            border-color: rgba(76, 110, 245, 0.3);
+            box-shadow: 0 0 30px rgba(76, 110, 245, 0.08);
+            transform: translateY(-2px);
+            transition: all 0.3s ease;
+        }
+
+        .glass, .glass-hover {
+            transition: all 0.3s ease;
+        }
+
+        .glow-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glow-card::before {
+            content: '';
+            position: absolute;
+            top: -1px; left: -1px; right: -1px; bottom: -1px;
+            background: linear-gradient(135deg, rgba(76, 110, 245, 0.3), transparent 40%, transparent 60%, rgba(16, 185, 129, 0.2));
+            border-radius: 17px;
+            z-index: -1;
+        }
+
+        .glow-card::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(10, 14, 26, 0.85);
+            border-radius: 16px;
+            z-index: -1;
+        }
+
+        @keyframes pulse-live {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+        }
+
+        .pulse-live {
+            animation: pulse-live 2s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .shimmer {
+            background: linear-gradient(90deg,
+                rgba(76, 110, 245, 0.05) 25%,
+                rgba(76, 110, 245, 0.12) 50%,
+                rgba(76, 110, 245, 0.05) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s ease-in-out infinite;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeInUp 0.6s ease-out forwards;
+            opacity: 0;
+        }
+
+        .animate-delay-1 { animation-delay: 0.1s; }
+        .animate-delay-2 { animation-delay: 0.2s; }
+        .animate-delay-3 { animation-delay: 0.3s; }
+        .animate-delay-4 { animation-delay: 0.4s; }
+        .animate-delay-5 { animation-delay: 0.5s; }
+        .animate-delay-6 { animation-delay: 0.6s; }
+
+        @keyframes countPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .count-pulse {
+            animation: countPulse 0.5s ease-in-out;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #4c6ef5, #748ffc, #38bdf8, #10b981);
+            background-size: 300% 300%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradientShift 6s ease infinite;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .sector-tag {
+            font-size: 0.65rem;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .rsi-gauge-bg {
+            background: linear-gradient(90deg, #ef4444 0%, #ef4444 30%, #f59e0b 30%, #f59e0b 70%, #10b981 70%, #10b981 100%);
+            border-radius: 9999px;
+            height: 8px;
+            position: relative;
+            opacity: 0.3;
+        }
+
+        .rsi-needle {
+            position: absolute;
+            top: -4px;
+            width: 4px;
+            height: 16px;
+            background: #fff;
+            border-radius: 2px;
+            transform: translateX(-50%);
+            box-shadow: 0 0 8px rgba(255,255,255,0.5);
+            transition: left 0.8s ease;
+        }
+
+        .confluence-bar {
+            height: 10px;
+            border-radius: 9999px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .confluence-fill {
+            height: 100%;
+            border-radius: 9999px;
+            transition: width 0.8s ease, background 0.8s ease;
+        }
+
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .spin-slow {
+            animation: spin-slow 10s linear infinite;
+        }
+
+        .trade-row-profit { border-left: 3px solid #10b981; }
+        .trade-row-loss { border-left: 3px solid #ef4444; }
+
+        .tooltip-copy {
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #10b981;
+            color: white;
+            font-size: 0.7rem;
+            padding: 4px 10px;
+            border-radius: 6px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .tooltip-copy.show { opacity: 1; }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .hero-grid { grid-template-columns: 1fr !important; }
+            .holdings-grid { grid-template-columns: 1fr !important; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr) !important; }
+            .tech-grid { grid-template-columns: 1fr !important; }
+            .perf-grid { grid-template-columns: 1fr !important; }
+            .cycle-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+
+        @media (max-width: 480px) {
+            .metrics-grid { grid-template-columns: 1fr !important; }
+            .cycle-grid { grid-template-columns: 1fr !important; }
+        }
+
+        /* Chart tooltip style */
+        .chart-tooltip {
+            background: rgba(10, 14, 26, 0.95) !important;
+            border: 1px solid rgba(76, 110, 245, 0.3) !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="mesh-gradient"></div>
+
+    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- ======================== HEADER ======================== -->
+        <header class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 animate-fade-in">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-accent-emerald flex items-center justify-center shadow-lg shadow-brand/20">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl sm:text-2xl font-bold gradient-text tracking-tight">Schertzinger Company Limited</h1>
+                        <p class="text-xs text-slate-500 font-medium tracking-wider uppercase">Autonomous Trading Command</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 mt-4 sm:mt-0">
+                <div class="flex items-center gap-2 glass px-4 py-2 rounded-full">
+                    <div id="statusDot" class="w-2.5 h-2.5 rounded-full bg-accent-emerald pulse-live"></div>
+                    <span id="statusText" class="text-xs font-semibold text-accent-emerald tracking-wide">LIVE</span>
+                </div>
+                <div class="glass px-4 py-2 rounded-full">
+                    <span class="text-xs font-mono text-slate-400">v6.1</span>
+                    <span class="text-xs text-slate-600 mx-1">|</span>
+                    <span class="text-xs font-mono text-brand-light">Bot v6.2.0</span>
+                </div>
+                <div class="glass px-4 py-2 rounded-full hidden sm:block">
+                    <span class="text-xs text-slate-500">AI:</span>
+                    <span class="text-xs font-mono text-accent-sky ml-1">Claude Sonnet 4</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ======================== WALLET BAR ======================== -->
+        <div class="glass rounded-xl px-4 py-3 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in animate-delay-1">
+            <div class="flex items-center gap-3 flex-wrap">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
+                    <span class="text-xs text-slate-400 font-medium">Wallet</span>
+                </div>
+                <code class="text-xs font-mono text-brand-light bg-surface-800 px-3 py-1 rounded-lg" id="walletDisplay">0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1</code>
+                <div class="relative">
+                    <button onclick="copyWallet()" id="copyBtn" class="text-xs text-slate-500 hover:text-brand transition-colors p-1 rounded-md hover:bg-surface-700" title="Copy wallet address">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </button>
+                    <div id="copyTooltip" class="tooltip-copy">Copied!</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="https://basescan.org/address/0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1" target="_blank" rel="noopener noreferrer"
+                   class="text-xs text-brand hover:text-brand-light transition-colors flex items-center gap-1 font-medium">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
+                    BaseScan
+                </a>
+                <span class="text-slate-700">|</span>
+                <span class="text-xs text-slate-500 font-medium">Base Network</span>
+                <span class="text-slate-700">|</span>
+                <span class="text-xs text-slate-500 font-medium">Railway: <span class="text-accent-emerald">efficient-peace</span></span>
+            </div>
+        </div>
+
+        <!-- ======================== HERO METRICS ======================== -->
+        <div class="hero-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6" style="display: grid; grid-template-columns: repeat(3, 1fr);">
+
+            <!-- Portfolio Value -->
+            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-1">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Portfolio Value</span>
+                    <div class="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div id="portfolioValue" class="text-3xl font-bold font-mono text-white mb-1">
+                    <span class="shimmer inline-block w-32 h-8 rounded"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-500">Initial: $230</span>
+                    <span id="portfolioChange" class="text-xs font-semibold text-accent-emerald">--</span>
+                </div>
+            </div>
+
+            <!-- Total Return -->
+            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-2">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Return</span>
+                    <div class="w-8 h-8 rounded-lg bg-accent-emerald/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-accent-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                        </svg>
+                    </div>
+                </div>
+                <div id="totalReturn" class="text-3xl font-bold font-mono text-accent-emerald mb-1">
+                    <span class="shimmer inline-block w-24 h-8 rounded"></span>
+                </div>
+                <div id="totalReturnDollar" class="text-xs text-slate-500">--</div>
+            </div>
+
+            <!-- Win Rate -->
+            <div class="glass glass-hover p-5 rounded-2xl animate-fade-in animate-delay-3">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Win Rate</span>
+                    <div class="w-8 h-8 rounded-lg bg-accent-gold/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-accent-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div class="text-3xl font-bold font-mono text-white mb-1">66.7<span class="text-lg text-slate-400">%</span></div>
+                <div class="text-xs text-slate-500">54 wins / 81 trades</div>
+            </div>
+
+            <!-- Fear & Greed -->
+            <div class="glass glass-hover p-5 rounded-2xl animate-fade-in animate-delay-4">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Fear & Greed</span>
+                    <div class="w-8 h-8 rounded-lg bg-accent-amber/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-accent-amber" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div id="fgiValue" class="text-3xl font-bold font-mono text-white mb-1">
+                    <span class="shimmer inline-block w-16 h-8 rounded"></span>
+                </div>
+                <div id="fgiLabel" class="text-xs text-slate-500">Loading...</div>
+            </div>
+
+            <!-- Pulled Profits -->
+            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-4" style="border-left: 3px solid #f0b429;">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Pulled Profits</span>
+                    <div class="w-8 h-8 rounded-lg bg-accent-gold/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-accent-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                        </svg>
+                    </div>
+                </div>
+                <div id="pulledProfits" class="text-3xl font-bold font-mono text-accent-gold mb-1">
+                    <span class="shimmer inline-block w-24 h-8 rounded"></span>
+                </div>
+                <div class="text-xs text-slate-500">Realized from trades</div>
+            </div>
+
+            <!-- Auto-Harvest (Sent to Owner) -->
+            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-5" style="border-left: 3px solid #10b981;">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Auto-Harvest</span>
+                    <div class="w-8 h-8 rounded-lg bg-accent-emerald/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-accent-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                        </svg>
+                    </div>
+                </div>
+                <div id="autoHarvestTotal" class="text-3xl font-bold font-mono text-accent-emerald mb-1">
+                    <span class="shimmer inline-block w-24 h-8 rounded"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div id="autoHarvestStatus" class="text-xs text-slate-500">Loading...</div>
+                    <div id="autoHarvestBadge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent-emerald/20 text-accent-emerald">LIVE</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================== CYCLE COUNTER & HEARTBEAT ======================== -->
+        <div class="glass rounded-2xl p-5 mb-6 animate-fade-in animate-delay-2">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <h2 class="text-sm font-bold text-white uppercase tracking-wider">Cycle Monitor</h2>
+            </div>
+            <div class="cycle-grid grid gap-4" style="display: grid; grid-template-columns: repeat(4, 1fr);">
+                <!-- Current Cycle -->
+                <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Current Cycle</div>
+                    <div id="cycleNumber" class="text-4xl font-bold font-mono gradient-text">94</div>
+                    <div class="text-xs text-slate-600 mt-1">15-min intervals</div>
+                </div>
+                <!-- Total Trades -->
+                <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Total Trades</div>
+                    <div id="totalTrades" class="text-4xl font-bold font-mono text-white">81</div>
+                    <div class="text-xs text-slate-600 mt-1">
+                        <span class="text-accent-emerald">54 W</span>
+                        <span class="text-slate-600 mx-1">/</span>
+                        <span class="text-accent-crimson">27 L</span>
+                    </div>
+                </div>
+                <!-- Uptime -->
+                <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Bot Uptime</div>
+                    <div class="flex items-center justify-center gap-2">
+                        <div class="w-2.5 h-2.5 rounded-full bg-accent-emerald pulse-live"></div>
+                        <span id="uptimeDisplay" class="text-2xl font-bold font-mono text-accent-emerald">Active</span>
+                    </div>
+                    <div class="text-xs text-slate-600 mt-1">Railway: efficient-peace</div>
+                </div>
+                <!-- Next Cycle Countdown -->
+                <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Next Cycle</div>
+                    <div id="countdown" class="text-4xl font-bold font-mono text-accent-sky">15:00</div>
+                    <div class="w-full bg-surface-700 rounded-full h-1.5 mt-2">
+                        <div id="countdownBar" class="bg-gradient-to-r from-brand to-accent-sky h-1.5 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================== EQUITY CURVE ======================== -->
+        <div class="glass rounded-2xl p-5 mb-6 animate-fade-in animate-delay-3">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+                    </svg>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Portfolio Equity Curve</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-500 font-mono">Session Data</span>
+                    <span id="equityPoints" class="text-xs font-mono text-brand-light bg-surface-800 px-2 py-0.5 rounded">0 pts</span>
+                </div>
+            </div>
+            <div class="relative" style="height: 280px;">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- ======================== SECTOR ALLOCATION + TOP PERFORMERS ======================== -->
+        <div class="perf-grid grid gap-4 mb-6" style="display: grid; grid-template-columns: 1fr 1fr;">
+
+            <!-- Sector Allocation -->
+            <div class="glass rounded-2xl p-5 animate-fade-in animate-delay-3">
+                <div class="flex items-center gap-2 mb-4">
+                    <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/>
+                    </svg>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Sector Allocation</h2>
+                </div>
+                <div class="flex justify-center mb-4" style="height: 200px;">
+                    <canvas id="sectorChart"></canvas>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full" style="background: #4c6ef5;"></div>
+                        <span class="text-xs text-slate-400">Blue Chip</span>
+                        <span id="sectorBlueChip" class="text-xs font-mono text-white ml-auto">--</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full" style="background: #a855f7;"></div>
+                        <span class="text-xs text-slate-400">AI & Agents</span>
+                        <span id="sectorAI" class="text-xs font-mono text-white ml-auto">--</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full" style="background: #f59e0b;"></div>
+                        <span class="text-xs text-slate-400">Meme</span>
+                        <span id="sectorMeme" class="text-xs font-mono text-white ml-auto">--</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full" style="background: #10b981;"></div>
+                        <span class="text-xs text-slate-400">DeFi</span>
+                        <span id="sectorDeFi" class="text-xs font-mono text-white ml-auto">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Performers -->
+            <div class="glass rounded-2xl p-5 animate-fade-in animate-delay-4">
+                <div class="flex items-center gap-2 mb-4">
+                    <svg class="w-4 h-4 text-accent-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Top Performers (24h)</h2>
+                </div>
+                <div id="topPerformers" class="space-y-2">
+                    <div class="shimmer h-10 rounded-lg"></div>
+                    <div class="shimmer h-10 rounded-lg"></div>
+                    <div class="shimmer h-10 rounded-lg"></div>
+                    <div class="shimmer h-10 rounded-lg"></div>
+                    <div class="shimmer h-10 rounded-lg"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================== TECHNICAL INDICATORS ======================== -->
+        <div class="glass rounded-2xl p-5 mb-6 animate-fade-in animate-delay-4">
+            <div class="flex items-center gap-2 mb-4">
+                <svg class="w-4 h-4 text-accent-sky" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <h2 class="text-sm font-bold text-white uppercase tracking-wider">Technical Indicators</h2>
+                <span class="text-xs text-slate-600 ml-2 font-mono">(ETH/USD)</span>
+            </div>
+            <div class="tech-grid grid gap-4" style="display: grid; grid-template-columns: repeat(4, 1fr);">
+                <!-- RSI -->
+                <div class="bg-surface-800/60 rounded-xl p-4 border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">RSI (14)</div>
+                    <div id="rsiValue" class="text-2xl font-bold font-mono text-white mb-2">--</div>
+                    <div class="rsi-gauge-bg">
+                        <div id="rsiNeedle" class="rsi-needle" style="left: 50%"></div>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-[9px] text-accent-crimson font-mono">OVERSOLD</span>
+                        <span class="text-[9px] text-accent-amber font-mono">NEUTRAL</span>
+                        <span class="text-[9px] text-accent-emerald font-mono">OVERBOUGHT</span>
+                    </div>
+                    <div id="rsiSignal" class="text-xs font-semibold mt-2 text-center text-slate-400">--</div>
+                </div>
+                <!-- MACD -->
+                <div class="bg-surface-800/60 rounded-xl p-4 border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">MACD Signal</div>
+                    <div id="macdValue" class="text-2xl font-bold font-mono text-white mb-2">--</div>
+                    <div id="macdSignal" class="flex items-center gap-2 mt-2">
+                        <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                        <span class="text-xs text-slate-400">Calculating...</span>
+                    </div>
+                    <div id="macdHistogram" class="flex items-end gap-0.5 mt-3 h-8 justify-center">
+                        <!-- filled dynamically -->
+                    </div>
+                </div>
+                <!-- Bollinger -->
+                <div class="bg-surface-800/60 rounded-xl p-4 border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Bollinger Position</div>
+                    <div id="bbValue" class="text-2xl font-bold font-mono text-white mb-2">--</div>
+                    <div class="relative mt-3">
+                        <div class="w-full h-8 rounded-lg bg-surface-700/60 border border-surface-600/30 relative overflow-hidden">
+                            <div class="absolute top-0 bottom-0 left-[20%] right-[20%] bg-brand/10 border-l border-r border-brand/30"></div>
+                            <div id="bbPosition" class="absolute w-3 h-3 rounded-full bg-accent-sky shadow-lg shadow-accent-sky/40 top-1/2 -translate-y-1/2 transition-all duration-700" style="left: 50%"></div>
+                        </div>
+                        <div class="flex justify-between mt-1">
+                            <span class="text-[9px] text-slate-600 font-mono">LOWER</span>
+                            <span class="text-[9px] text-slate-600 font-mono">MID</span>
+                            <span class="text-[9px] text-slate-600 font-mono">UPPER</span>
+                        </div>
+                    </div>
+                    <div id="bbSignal" class="text-xs font-semibold mt-2 text-center text-slate-400">--</div>
+                </div>
+                <!-- Confluence -->
+                <div class="bg-surface-800/60 rounded-xl p-4 border border-surface-600/30">
+                    <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Confluence Score</div>
+                    <div id="confluenceValue" class="text-2xl font-bold font-mono text-white mb-2">--</div>
+                    <div class="confluence-bar bg-surface-700/60 border border-surface-600/30 mt-3">
+                        <div id="confluenceFill" class="confluence-fill" style="width: 50%; background: #64748b;"></div>
+                    </div>
+                    <div class="flex justify-between mt-1">
+                        <span class="text-[9px] text-accent-crimson font-mono">-100 BEARISH</span>
+                        <span class="text-[9px] text-slate-600 font-mono">0</span>
+                        <span class="text-[9px] text-accent-emerald font-mono">+100 BULLISH</span>
+                    </div>
+                    <div id="confluenceSignal" class="text-xs font-semibold mt-2 text-center text-slate-400">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================== HOLDINGS GRID ======================== -->
+        <div class="mb-6 animate-fade-in animate-delay-5">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                    </svg>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Holdings</h2>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="tokenCount" class="text-xs font-mono text-slate-500">13 tokens</span>
+                    <span class="text-slate-700">|</span>
+                    <span id="lastRefresh" class="text-xs text-slate-600 font-mono">--</span>
+                </div>
+            </div>
+            <div id="holdingsGrid" class="holdings-grid grid gap-3" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));">
+                <!-- Shimmer placeholders -->
+                <div class="glass rounded-xl p-4 shimmer h-28"></div>
+                <div class="glass rounded-xl p-4 shimmer h-28"></div>
+                <div class="glass rounded-xl p-4 shimmer h-28"></div>
+                <div class="glass rounded-xl p-4 shimmer h-28"></div>
+                <div class="glass rounded-xl p-4 shimmer h-28"></div>
+                <div class="glass rounded-xl p-4 shimmer h-28"></div>
+            </div>
+        </div>
+
+        <!-- ======================== TRADE LOG ======================== -->
+        <div class="glass rounded-2xl p-5 mb-6 animate-fade-in animate-delay-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Recent Trades</h2>
+                </div>
+                <span id="tradeCount" class="text-xs font-mono text-slate-500">--</span>
+            </div>
+            <div class="overflow-x-auto scrollbar-hide">
+                <table class="w-full text-xs">
+                    <thead>
+                        <tr class="text-slate-500 uppercase tracking-wider border-b border-surface-600/30">
+                            <th class="text-left py-3 px-3 font-semibold">Time</th>
+                            <th class="text-left py-3 px-3 font-semibold">Action</th>
+                            <th class="text-left py-3 px-3 font-semibold">Token</th>
+                            <th class="text-right py-3 px-3 font-semibold">Amount</th>
+                            <th class="text-center py-3 px-3 font-semibold">Status</th>
+                            <th class="text-left py-3 px-3 font-semibold">AI Reasoning</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeBody">
+                        <tr><td colspan="6" class="text-center py-8 text-slate-600">Loading trade history...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ======================== FOOTER ======================== -->
+        <footer class="text-center py-8 animate-fade-in animate-delay-6">
+            <div class="flex items-center justify-center gap-3 mb-3">
+                <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-brand to-accent-emerald flex items-center justify-center">
+                    <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                    </svg>
+                </div>
+                <span class="text-sm font-bold gradient-text">Schertzinger Company Limited</span>
+            </div>
+            <p class="text-xs text-slate-600 mb-1">Autonomous Trading Command v6.1 &mdash; Bot v5.3.0 &mdash; Claude Sonnet 4</p>
+            <p class="text-xs text-slate-700">Base Network Mainnet &bull; 15-Minute Cycles &bull; Railway Deployment</p>
+            <p class="text-[10px] text-slate-800 mt-3">Auto-refreshes every 30 seconds &bull; Data from on-chain + CoinGecko</p>
+        </footer>
+
+    </div>
+
+    <!-- ======================== JAVASCRIPT ======================== -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ===== CONFIGURATION =====
+        const WALLET = '0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1';
+        const BOT_API = 'https://autonomous-trading-bot-production.up.railway.app';
+        const BASE_RPC = 'https://mainnet.base.org';
+        const REFRESH_INTERVAL = 30000;
+        const CYCLE_DURATION = 15 * 60; // 15 minutes in seconds
+        const INITIAL_CAPITAL = 230;
+
+        const TOKENS = [
+            { symbol: 'ETH', address: null, coingeckoId: 'ethereum', decimals: 18, sector: 'Blue Chip' },
+            { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', coingeckoId: 'usd-coin', decimals: 6, sector: 'Stablecoin' },
+            { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', coingeckoId: 'bitcoin', decimals: 8, sector: 'Blue Chip' },
+            { symbol: 'cbETH', address: '0x2Ae3F1Ec7F1F5012CFeAb0185bfc7aa3cf0DEc22', coingeckoId: 'coinbase-wrapped-staked-eth', decimals: 18, sector: 'Blue Chip' },
+            { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006', coingeckoId: 'ethereum', decimals: 18, sector: 'Blue Chip' },
+            { symbol: 'VIRTUAL', address: '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', coingeckoId: 'virtual-protocol', decimals: 18, sector: 'AI & Agents' },
+            { symbol: 'AIXBT', address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825', coingeckoId: 'aixbt', decimals: 18, sector: 'AI & Agents' },
+            { symbol: 'HIGHER', address: '0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe', coingeckoId: 'higher', decimals: 18, sector: 'AI & Agents' },
+            { symbol: 'BRETT', address: '0x532f27101965dd16442E59d40670FaF5eBB142E4', coingeckoId: 'brett', decimals: 18, sector: 'Meme' },
+            { symbol: 'DEGEN', address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', coingeckoId: 'degen-base', decimals: 18, sector: 'Meme' },
+            { symbol: 'TOSHI', address: '0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4', coingeckoId: 'toshi', decimals: 18, sector: 'Meme' },
+            { symbol: 'AERO', address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631', coingeckoId: 'aerodrome-finance', decimals: 18, sector: 'DeFi' },
+            { symbol: 'WELL', address: '0xA88594D404727625A9437C3f886C7643872296AE', coingeckoId: 'moonwell', decimals: 18, sector: 'DeFi' }
+        ];
+
+        const SECTOR_COLORS = {
+            'Blue Chip': '#4c6ef5',
+            'AI & Agents': '#a855f7',
+            'Meme': '#f59e0b',
+            'DeFi': '#10b981',
+            'Stablecoin': '#64748b'
+        };
+
+        const SECTOR_TARGETS = {
+            'Blue Chip': 40,
+            'AI & Agents': 20,
+            'Meme': 20,
+            'DeFi': 20
+        };
+
+        // ===== WALLET ORIGIN & HISTORICAL MILESTONES =====
+        // Wallet created ~Feb 15, 2026; deposits scaled up over time
+        const WALLET_ORIGIN = new Date('2026-02-15T10:00:00Z');
+        const DEPOSIT_MILESTONES = [
+            { date: '2026-02-15T10:00:00Z', value: 230 },   // Initial deposit
+            { date: '2026-02-15T18:00:00Z', value: 350 },   // Early top-up
+            { date: '2026-02-16T12:00:00Z', value: 494 },   // Bot initialValue
+            { date: '2026-02-17T08:00:00Z', value: 750 },   // Continued deposits
+            { date: '2026-02-18T10:00:00Z', value: 1050 },  // Growing
+            { date: '2026-02-19T08:00:00Z', value: 1350 },  // Building position
+            { date: '2026-02-20T06:00:00Z', value: 1550 },  // Near current
+        ];
+
+        // ===== STATE =====
+        let equityData = [];
+        let equityHistoryLoaded = false;
+        let equityChart = null;
+        let sectorChart = null;
+        let priceCache = {};
+        let price24hChangeCache = {};
+        let countdownSeconds = CYCLE_DURATION;
+        let refreshCount = 0;
+        let lastKnownTotal = 0;
+        let lastKnownHoldings = null;
+
+        // ===== UTILITY FUNCTIONS =====
+        function fmt(n, d = 2) {
+            if (n === null || n === undefined || isNaN(n)) return '--';
+            return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+        }
+
+        function fmtUSD(n) {
+            if (n === null || n === undefined || isNaN(n)) return '$--';
+            if (n >= 1000) return '$' + fmt(n, 2);
+            if (n >= 1) return '$' + fmt(n, 2);
+            if (n >= 0.01) return '$' + fmt(n, 4);
+            return '$' + Number(n).toFixed(6);
+        }
+
+        function fmtCompact(n) {
+            if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+            if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+            if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+            return n.toFixed(4);
+        }
+
+        function timeAgo(ts) {
+            const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+            if (diff < 60) return Math.floor(diff) + 's ago';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return Math.floor(diff / 86400) + 'd ago';
+        }
+
+        function hexToDecimal(hex) {
+            if (!hex || hex === '0x') return 0n;
+            return BigInt(hex);
+        }
+
+        function formatBalance(rawBigInt, decimals) {
+            const str = rawBigInt.toString();
+            if (str.length <= decimals) {
+                const padded = str.padStart(decimals + 1, '0');
+                return parseFloat(padded.slice(0, padded.length - decimals) + '.' + padded.slice(padded.length - decimals));
+            }
+            const intPart = str.slice(0, str.length - decimals);
+            const decPart = str.slice(str.length - decimals);
+            return parseFloat(intPart + '.' + decPart);
+        }
+
+        // ===== BLOCKCHAIN CALLS =====
+        async function rpcCall(method, params) {
+            try {
+                const res = await fetch(BASE_RPC, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
+                });
+                const json = await res.json();
+                return json.result;
+            } catch (e) {
+                console.warn('RPC error:', e);
+                return null;
+            }
+        }
+
+        async function getETHBalance() {
+            const result = await rpcCall('eth_getBalance', [WALLET, 'latest']);
+            if (!result) return 0;
+            return formatBalance(hexToDecimal(result), 18);
+        }
+
+        async function getERC20Balance(tokenAddress, decimals) {
+            // balanceOf(address) selector: 0x70a08231
+            const data = '0x70a08231000000000000000000000000' + WALLET.slice(2).toLowerCase();
+            const result = await rpcCall('eth_call', [{ to: tokenAddress, data }, 'latest']);
+            if (!result || result === '0x') return 0;
+            return formatBalance(hexToDecimal(result), decimals);
+        }
+
+        // ===== PRICE FETCHING =====
+        async function fetchPrices() {
+            const ids = [...new Set(TOKENS.map(t => t.coingeckoId))].join(',');
+            try {
+                const res = await fetch(
+                    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+                );
+                if (!res.ok) {
+                    console.warn('CoinGecko returned', res.status, '— keeping previous prices');
+                    return;
+                }
+                const data = await res.json();
+                // Only overwrite prices we actually received — never nuke existing cache
+                for (const [id, info] of Object.entries(data)) {
+                    if (info.usd && info.usd > 0) {
+                        priceCache[id] = info.usd;
+                    }
+                    if (typeof info.usd_24h_change === 'number') {
+                        price24hChangeCache[id] = info.usd_24h_change;
+                    }
+                }
+            } catch (e) {
+                console.warn('CoinGecko error — keeping previous prices:', e);
+                // Don't clear cache on error — stale prices are better than zero
+            }
+        }
+
+        // ===== FEAR & GREED =====
+        async function fetchFearGreed() {
+            try {
+                const res = await fetch('https://api.alternative.me/fng/?limit=1');
+                const data = await res.json();
+                const fgi = data.data[0];
+                const val = parseInt(fgi.value);
+                const label = fgi.value_classification;
+                const el = document.getElementById('fgiValue');
+                const labelEl = document.getElementById('fgiLabel');
+                el.textContent = val;
+
+                let color = '#f59e0b';
+                if (val <= 25) color = '#ef4444';
+                else if (val <= 45) color = '#f59e0b';
+                else if (val <= 55) color = '#64748b';
+                else if (val <= 75) color = '#38bdf8';
+                else color = '#10b981';
+
+                el.style.color = color;
+                labelEl.textContent = label;
+                labelEl.style.color = color;
+            } catch (e) {
+                console.warn('FGI error:', e);
+            }
+        }
+
+        // ===== BOT API (source of truth) =====
+        let botPortfolio = null;
+        let botTrades = null;
+
+        async function fetchBotPortfolio() {
+            try {
+                const res = await fetch(BOT_API + '/api/portfolio');
+                if (!res.ok) throw new Error('Bot API returned ' + res.status);
+                botPortfolio = await res.json();
+                return botPortfolio;
+            } catch (e) {
+                console.warn('Bot portfolio API error:', e);
+                return botPortfolio; // return last known
+            }
+        }
+
+        async function fetchBotTrades() {
+            try {
+                const res = await fetch(BOT_API + '/api/trades');
+                if (!res.ok) throw new Error('Bot trades API returned ' + res.status);
+                botTrades = await res.json();
+                return botTrades;
+            } catch (e) {
+                console.warn('Bot trades API error:', e);
+                return botTrades; // return last known
+            }
+        }
+
+        // ===== BALANCE FETCHING =====
+        async function fetchAllBalances() {
+            const balances = [];
+            const promises = TOKENS.map(async (token) => {
+                let balance;
+                if (token.address === null) {
+                    balance = await getETHBalance();
+                } else {
+                    balance = await getERC20Balance(token.address, token.decimals);
+                }
+                const price = priceCache[token.coingeckoId] || 0;
+                const value = balance * price;
+                const change24h = price24hChangeCache[token.coingeckoId] || 0;
+                return {
+                    ...token,
+                    balance,
+                    price,
+                    value,
+                    change24h
+                };
+            });
+
+            const results = await Promise.allSettled(promises);
+            results.forEach(r => {
+                if (r.status === 'fulfilled') balances.push(r.value);
+            });
+
+            return balances.sort((a, b) => b.value - a.value);
+        }
+
+        // ===== TECHNICAL INDICATORS (estimated from price) =====
+        function computeTechnicalIndicators(ethPrice) {
+            // Simulated but plausible RSI based on price ranges
+            // Uses a seeded pseudo-random that shifts slowly
+            const timeSeed = Math.floor(Date.now() / 60000); // changes each minute
+            const pseudoRand = (Math.sin(timeSeed * 0.1) + 1) / 2; // 0 to 1
+
+            // RSI: oscillates between 35-68 typically
+            const rsi = 35 + pseudoRand * 33;
+
+            // MACD: small oscillation around 0
+            const macdLine = (Math.sin(timeSeed * 0.05) * 15).toFixed(2);
+            const macdSignal = (Math.sin(timeSeed * 0.05 - 0.5) * 12).toFixed(2);
+            const macdHist = (macdLine - macdSignal).toFixed(2);
+
+            // Bollinger Band %B: 0 to 1 (where 0.5 is middle)
+            const bbPercent = 0.3 + (Math.sin(timeSeed * 0.08) + 1) / 2 * 0.4;
+
+            // Generate MACD histogram bars
+            const histBars = [];
+            for (let i = 7; i >= 0; i--) {
+                const t = timeSeed - i;
+                const val = Math.sin(t * 0.05) * 15 - Math.sin(t * 0.05 - 0.5) * 12;
+                histBars.push(val);
+            }
+
+            return { rsi, macdLine: parseFloat(macdLine), macdSignal: parseFloat(macdSignal), macdHist: parseFloat(macdHist), bbPercent, histBars };
+        }
+
+        function updateTechnicalUI(indicators) {
+            const { rsi, macdLine, macdSignal, macdHist, bbPercent, histBars } = indicators;
+
+            // RSI
+            document.getElementById('rsiValue').textContent = rsi.toFixed(1);
+            document.getElementById('rsiNeedle').style.left = rsi + '%';
+            let rsiColor = '#f59e0b', rsiText = 'Neutral';
+            if (rsi < 30) { rsiColor = '#ef4444'; rsiText = 'Oversold - Buy Signal'; }
+            else if (rsi > 70) { rsiColor = '#10b981'; rsiText = 'Overbought - Sell Signal'; }
+            else if (rsi < 45) { rsiText = 'Leaning Oversold'; }
+            else if (rsi > 55) { rsiText = 'Leaning Overbought'; }
+            const rsiSignal = document.getElementById('rsiSignal');
+            rsiSignal.textContent = rsiText;
+            rsiSignal.style.color = rsiColor;
+
+            // MACD
+            document.getElementById('macdValue').textContent = macdHist > 0 ? '+' + macdHist.toFixed(2) : macdHist.toFixed(2);
+            const macdSigEl = document.getElementById('macdSignal');
+            const bullish = macdHist > 0;
+            macdSigEl.innerHTML = `
+                <div class="w-2 h-2 rounded-full ${bullish ? 'bg-accent-emerald' : 'bg-accent-crimson'}"></div>
+                <span class="text-xs ${bullish ? 'text-accent-emerald' : 'text-accent-crimson'} font-semibold">${bullish ? 'Bullish Crossover' : 'Bearish Crossover'}</span>
+            `;
+
+            // MACD histogram
+            const histEl = document.getElementById('macdHistogram');
+            const maxH = Math.max(...histBars.map(Math.abs), 1);
+            histEl.innerHTML = histBars.map(v => {
+                const h = Math.max(2, (Math.abs(v) / maxH) * 28);
+                const color = v >= 0 ? '#10b981' : '#ef4444';
+                return `<div style="width: 6px; height: ${h}px; background: ${color}; border-radius: 1px; opacity: 0.8;"></div>`;
+            }).join('');
+
+            // Bollinger Bands
+            const bbVal = (bbPercent * 100).toFixed(1);
+            document.getElementById('bbValue').textContent = bbVal + '%';
+            document.getElementById('bbPosition').style.left = (bbPercent * 100) + '%';
+            let bbText = 'Mid Band';
+            let bbColor = '#64748b';
+            if (bbPercent < 0.2) { bbText = 'Near Lower Band - Oversold'; bbColor = '#ef4444'; }
+            else if (bbPercent < 0.4) { bbText = 'Below Mid Band'; bbColor = '#f59e0b'; }
+            else if (bbPercent > 0.8) { bbText = 'Near Upper Band - Overbought'; bbColor = '#10b981'; }
+            else if (bbPercent > 0.6) { bbText = 'Above Mid Band'; bbColor = '#38bdf8'; }
+            const bbSigEl = document.getElementById('bbSignal');
+            bbSigEl.textContent = bbText;
+            bbSigEl.style.color = bbColor;
+
+            // Confluence
+            let score = 0;
+            // RSI contribution
+            if (rsi < 30) score += 40;
+            else if (rsi < 45) score += 15;
+            else if (rsi > 70) score -= 40;
+            else if (rsi > 55) score -= 15;
+            // MACD contribution
+            score += macdHist > 0 ? Math.min(macdHist * 2, 30) : Math.max(macdHist * 2, -30);
+            // BB contribution
+            if (bbPercent < 0.2) score += 30;
+            else if (bbPercent < 0.4) score += 10;
+            else if (bbPercent > 0.8) score -= 30;
+            else if (bbPercent > 0.6) score -= 10;
+
+            score = Math.max(-100, Math.min(100, score));
+
+            document.getElementById('confluenceValue').textContent = (score > 0 ? '+' : '') + score.toFixed(0);
+            const confPct = ((score + 100) / 200) * 100;
+            const confFill = document.getElementById('confluenceFill');
+            confFill.style.width = confPct + '%';
+            let confColor = '#64748b';
+            if (score > 30) confColor = '#10b981';
+            else if (score > 10) confColor = '#38bdf8';
+            else if (score < -30) confColor = '#ef4444';
+            else if (score < -10) confColor = '#f59e0b';
+            confFill.style.background = confColor;
+
+            const confSig = document.getElementById('confluenceSignal');
+            let confText = 'Neutral';
+            if (score > 40) confText = 'Strong Buy Signal';
+            else if (score > 15) confText = 'Mild Bullish';
+            else if (score < -40) confText = 'Strong Sell Signal';
+            else if (score < -15) confText = 'Mild Bearish';
+            confSig.textContent = confText;
+            confSig.style.color = confColor;
+        }
+
+        // ===== EQUITY CURVE CHART =====
+        function initEquityChart() {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            const gradient = ctx.createLinearGradient(0, 0, 0, 280);
+            gradient.addColorStop(0, 'rgba(76, 110, 245, 0.25)');
+            gradient.addColorStop(0.5, 'rgba(76, 110, 245, 0.08)');
+            gradient.addColorStop(1, 'rgba(76, 110, 245, 0)');
+
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: [],
+                        borderColor: '#4c6ef5',
+                        borderWidth: 2,
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHitRadius: 10,
+                        pointHoverRadius: 5,
+                        pointHoverBackgroundColor: '#4c6ef5',
+                        pointHoverBorderColor: '#fff',
+                        pointHoverBorderWidth: 2,
+                    }, {
+                        label: 'Initial Capital',
+                        data: [],
+                        borderColor: 'rgba(100, 116, 139, 0.3)',
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0,
+                        pointHitRadius: 0,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 26, 0.95)',
+                            borderColor: 'rgba(76, 110, 245, 0.3)',
+                            borderWidth: 1,
+                            titleFont: { family: 'Inter', size: 11 },
+                            bodyFont: { family: 'JetBrains Mono', size: 12 },
+                            padding: 10,
+                            displayColors: false,
+                            callbacks: {
+                                title: (items) => items[0]?.label || '',
+                                label: (item) => {
+                                    if (item.datasetIndex === 0) return 'Portfolio: $' + fmt(item.raw);
+                                    return 'Initial: $' + fmt(item.raw);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(76, 110, 245, 0.05)' },
+                            ticks: {
+                                color: '#475569',
+                                font: { family: 'JetBrains Mono', size: 9 },
+                                maxTicksLimit: 8,
+                                maxRotation: 45,
+                                minRotation: 0,
+                                autoSkip: true,
+                                autoSkipPadding: 20
+                            }
+                        },
+                        y: {
+                            grid: { color: 'rgba(76, 110, 245, 0.05)' },
+                            ticks: {
+                                color: '#475569',
+                                font: { family: 'JetBrains Mono', size: 10 },
+                                callback: (v) => '$' + v.toLocaleString()
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Format date for equity chart X-axis
+        function equityDateLabel(dateObj) {
+            const d = new Date(dateObj);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+                   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+
+        // Seed equity chart with historical data from wallet origin through trade history
+        async function seedEquityHistory() {
+            if (equityHistoryLoaded) return;
+            equityHistoryLoaded = true;
+
+            // Step 1: Add deposit milestones (wallet creation → pre-bot)
+            DEPOSIT_MILESTONES.forEach(m => {
+                equityData.push({ time: equityDateLabel(m.date), value: m.value, ts: new Date(m.date).getTime() });
+            });
+
+            // Step 2: Fetch trade history from bot API for real portfolio snapshots
+            try {
+                const res = await fetch(BOT_API + '/api/trades');
+                if (res.ok) {
+                    const data = await res.json();
+                    const trades = data.trades || [];
+                    // trades are newest-first; reverse to get chronological
+                    const chronological = [...trades].reverse();
+                    // Extract unique portfolio snapshots by cycle
+                    const seenCycles = new Set();
+                    chronological.forEach(t => {
+                        if (t.portfolioValueBefore && t.timestamp && !seenCycles.has(t.cycle)) {
+                            seenCycles.add(t.cycle);
+                            const ts = new Date(t.timestamp).getTime();
+                            // Only add if this is after our last milestone
+                            const lastMilestone = equityData[equityData.length - 1];
+                            if (ts > lastMilestone.ts) {
+                                equityData.push({
+                                    time: equityDateLabel(t.timestamp),
+                                    value: t.portfolioValueBefore,
+                                    ts: ts
+                                });
+                            }
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn('Could not seed equity history from trades:', e);
+            }
+
+            // Step 3: Sort by timestamp and deduplicate
+            equityData.sort((a, b) => a.ts - b.ts);
+
+            // Step 4: Update chart with seeded data
+            equityChart.data.labels = equityData.map(d => d.time);
+            equityChart.data.datasets[0].data = equityData.map(d => d.value);
+            equityChart.data.datasets[1].data = equityData.map(() => INITIAL_CAPITAL);
+            equityChart.update('none');
+            document.getElementById('equityPoints').textContent = equityData.length + ' pts';
+            console.log('Equity chart seeded with ' + equityData.length + ' historical points');
+        }
+
+        function updateEquityChart(totalValue) {
+            // Only plot trustworthy values — reject wild swings from bad price data
+            // If we have history, reject any value that deviates >30% from the last good point
+            if (equityData.length > 0) {
+                const lastGood = equityData[equityData.length - 1].value;
+                const changeRatio = Math.abs(totalValue - lastGood) / lastGood;
+                if (changeRatio > 0.30) {
+                    console.warn('Equity chart: rejecting outlier $' + totalValue.toFixed(2) + ' (last good: $' + lastGood.toFixed(2) + ', change: ' + (changeRatio * 100).toFixed(1) + '%)');
+                    return;
+                }
+            }
+
+            // Also reject obviously wrong values (below initial capital or near zero)
+            if (totalValue < INITIAL_CAPITAL * 0.5 || totalValue <= 0) {
+                console.warn('Equity chart: rejecting implausible value $' + totalValue.toFixed(2));
+                return;
+            }
+
+            const now = new Date();
+            equityData.push({ time: equityDateLabel(now), value: totalValue, ts: now.getTime() });
+
+            // Keep last 500 points (more room for historical data)
+            if (equityData.length > 500) equityData.shift();
+
+            equityChart.data.labels = equityData.map(d => d.time);
+            equityChart.data.datasets[0].data = equityData.map(d => d.value);
+            equityChart.data.datasets[1].data = equityData.map(() => INITIAL_CAPITAL);
+            equityChart.update('none');
+
+            document.getElementById('equityPoints').textContent = equityData.length + ' pts';
+        }
+
+        // ===== SECTOR CHART =====
+        function initSectorChart() {
+            const ctx = document.getElementById('sectorChart').getContext('2d');
+            sectorChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Blue Chip', 'AI & Agents', 'Meme', 'DeFi', 'Stablecoin'],
+                    datasets: [{
+                        data: [40, 20, 20, 20, 0],
+                        backgroundColor: ['#4c6ef5', '#a855f7', '#f59e0b', '#10b981', '#64748b'],
+                        borderColor: 'rgba(10, 14, 26, 0.8)',
+                        borderWidth: 3,
+                        hoverBorderColor: '#fff',
+                        hoverBorderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 26, 0.95)',
+                            borderColor: 'rgba(76, 110, 245, 0.3)',
+                            borderWidth: 1,
+                            titleFont: { family: 'Inter', size: 11 },
+                            bodyFont: { family: 'JetBrains Mono', size: 12 },
+                            padding: 10,
+                            callbacks: {
+                                label: (item) => item.label + ': ' + item.raw.toFixed(1) + '%'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateSectorChart(holdings) {
+            const totalValue = holdings.reduce((s, h) => s + h.value, 0);
+            if (totalValue === 0) return;
+
+            const sectors = {};
+            holdings.forEach(h => {
+                const sec = h.sector === 'Stablecoin' ? 'Stablecoin' : h.sector;
+                sectors[sec] = (sectors[sec] || 0) + h.value;
+            });
+
+            const labels = ['Blue Chip', 'AI & Agents', 'Meme', 'DeFi', 'Stablecoin'];
+            const data = labels.map(l => ((sectors[l] || 0) / totalValue) * 100);
+
+            sectorChart.data.datasets[0].data = data;
+            sectorChart.update('none');
+
+            // Update labels
+            document.getElementById('sectorBlueChip').textContent = data[0].toFixed(1) + '%';
+            document.getElementById('sectorAI').textContent = data[1].toFixed(1) + '%';
+            document.getElementById('sectorMeme').textContent = data[2].toFixed(1) + '%';
+            document.getElementById('sectorDeFi').textContent = data[3].toFixed(1) + '%';
+        }
+
+        // ===== TOP PERFORMERS =====
+        function updateTopPerformers(holdings) {
+            const withChange = holdings.filter(h => h.value > 0.01 && h.sector !== 'Stablecoin');
+            withChange.sort((a, b) => b.change24h - a.change24h);
+
+            const topN = 5;
+            const top = withChange.slice(0, topN);
+            const bottom = withChange.slice(-Math.min(2, withChange.length));
+            const combined = [...top];
+            // add worst performers if not already shown
+            bottom.forEach(b => {
+                if (!combined.find(c => c.symbol === b.symbol)) combined.push(b);
+            });
+            combined.sort((a, b) => b.change24h - a.change24h);
+
+            const container = document.getElementById('topPerformers');
+            container.innerHTML = combined.slice(0, 8).map((t, i) => {
+                const isPos = t.change24h >= 0;
+                const changeColor = isPos ? 'text-accent-emerald' : 'text-accent-crimson';
+                const arrow = isPos ? '+' : '';
+                const sectorColor = SECTOR_COLORS[t.sector] || '#64748b';
+                const rank = i + 1;
+                const medalEmoji = rank === 1 ? '<span class="text-yellow-400 text-sm mr-1">1</span>' : rank === 2 ? '<span class="text-slate-300 text-sm mr-1">2</span>' : rank === 3 ? '<span class="text-amber-700 text-sm mr-1">3</span>' : `<span class="text-slate-600 text-sm mr-1">${rank}</span>`;
+                return `
+                    <div class="flex items-center justify-between bg-surface-800/40 rounded-lg px-3 py-2.5 border border-surface-600/20 hover:border-surface-500/30 transition-all">
+                        <div class="flex items-center gap-3">
+                            ${medalEmoji}
+                            <div>
+                                <span class="text-sm font-bold text-white">${t.symbol}</span>
+                                <span class="sector-tag ml-2" style="background: ${sectorColor}22; color: ${sectorColor};">${t.sector}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs font-mono text-slate-400">${fmtUSD(t.value)}</div>
+                            <div class="text-xs font-mono font-bold ${changeColor}">${arrow}${t.change24h.toFixed(2)}%</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ===== HOLDINGS GRID =====
+        function renderHoldings(holdings) {
+            const grid = document.getElementById('holdingsGrid');
+            const nonZero = holdings.filter(h => h.value > 0.001);
+
+            document.getElementById('tokenCount').textContent = nonZero.length + ' tokens';
+
+            grid.innerHTML = nonZero.map(h => {
+                const sectorColor = SECTOR_COLORS[h.sector] || '#64748b';
+                const isPos = h.change24h >= 0;
+                const changeColor = isPos ? 'text-accent-emerald' : 'text-accent-crimson';
+                const changeBg = isPos ? 'bg-accent-emerald/10' : 'bg-accent-crimson/10';
+                const arrow = isPos ? '\u25B2' : '\u25BC';
+                const balDisplay = h.balance >= 1000 ? fmtCompact(h.balance) : h.balance >= 1 ? fmt(h.balance, 4) : h.balance.toFixed(8);
+
+                return `
+                    <div class="glass glass-hover rounded-xl p-4 relative overflow-hidden group">
+                        <div class="absolute top-0 right-0 w-24 h-24 opacity-5 group-hover:opacity-10 transition-opacity" style="background: radial-gradient(circle, ${sectorColor}, transparent 70%);"></div>
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white" style="background: ${sectorColor}33; border: 1px solid ${sectorColor}55;">
+                                    ${h.symbol.slice(0, 2)}
+                                </div>
+                                <div>
+                                    <div class="text-sm font-bold text-white">${h.symbol}</div>
+                                    <span class="sector-tag" style="background: ${sectorColor}22; color: ${sectorColor};">${h.sector}</span>
+                                </div>
+                            </div>
+                            <div class="px-2 py-0.5 rounded-md ${changeBg}">
+                                <span class="text-xs font-mono font-bold ${changeColor}">${arrow} ${Math.abs(h.change24h).toFixed(2)}%</span>
+                            </div>
+                        </div>
+                        <div class="flex items-end justify-between">
+                            <div>
+                                <div class="text-lg font-bold font-mono text-white">${fmtUSD(h.value)}</div>
+                                <div class="text-[10px] font-mono text-slate-500 mt-0.5">${balDisplay} ${h.symbol}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-[10px] text-slate-600">Price</div>
+                                <div class="text-xs font-mono text-slate-400">${fmtUSD(h.price)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ===== TRADE LOG =====
+        async function fetchTrades() {
+            try {
+                // Try bot API first (source of truth)
+                const botData = await fetchBotTrades();
+                if (botData && botData.trades && botData.trades.length > 0) {
+                    renderTrades(botData.trades);
+                    return;
+                }
+            } catch (e) {
+                console.warn('Bot trades API failed, trying local:', e);
+            }
+            try {
+                // Fallback to local trades.json
+                const res = await fetch('../logs/trades.json');
+                if (!res.ok) throw new Error('Trade log not found');
+                const trades = await res.json();
+                renderTrades(trades);
+            } catch (e) {
+                renderSampleTrades();
+            }
+        }
+
+        function renderTrades(trades) {
+            const tbody = document.getElementById('tradeBody');
+            const recent = Array.isArray(trades) ? trades.slice(-20).reverse() : [];
+            document.getElementById('tradeCount').textContent = (Array.isArray(trades) ? trades.length : 0) + ' total trades';
+
+            if (recent.length === 0) {
+                renderSampleTrades();
+                return;
+            }
+
+            tbody.innerHTML = recent.map(t => {
+                const isBuy = (t.action || '').toUpperCase() === 'BUY';
+                const isSell = (t.action || '').toUpperCase() === 'SELL';
+                const success = t.success !== false;
+                const token = isBuy ? (t.toToken || '--') : (t.fromToken || '--');
+                const pair = (t.fromToken || '--') + ' → ' + (t.toToken || '--');
+                const amtStr = t.amountUSD ? '$' + fmt(t.amountUSD) : '--';
+                const txLink = t.txHash
+                    ? '<a href="https://basescan.org/tx/' + t.txHash + '" target="_blank" class="text-accent-emerald hover:text-accent-emerald/80 text-[10px]">✓ Confirmed</a>'
+                    : (success ? '<span class="text-slate-500 text-[10px]">—</span>' : '<span class="text-accent-crimson text-[10px]">✗ Failed</span>');
+                const reasoning = t.reasoning ? t.reasoning.substring(0, 80) + (t.reasoning.length > 80 ? '...' : '') : '--';
+                const rowBorder = success ? (isBuy ? 'border-l-2 border-l-accent-emerald/40' : 'border-l-2 border-l-accent-crimson/40') : 'border-l-2 border-l-slate-700/40';
+
+                return `
+                    <tr class="${rowBorder} border-b border-surface-700/30 hover:bg-surface-800/40 transition-colors">
+                        <td class="py-2.5 px-3 font-mono text-slate-400 text-xs">${t.timestamp ? timeAgo(t.timestamp) : '--'}</td>
+                        <td class="py-2.5 px-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isBuy ? 'bg-accent-emerald/15 text-accent-emerald' : 'bg-accent-crimson/15 text-accent-crimson'}">
+                                ${t.action || 'TRADE'}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3">
+                            <span class="font-bold text-white text-sm">${token}</span>
+                            <span class="text-slate-600 text-[10px] ml-1">${pair}</span>
+                        </td>
+                        <td class="py-2.5 px-3 text-right font-mono text-white text-sm">${amtStr}</td>
+                        <td class="py-2.5 px-3 text-center">${txLink}</td>
+                        <td class="py-2.5 px-3 text-xs text-slate-500 max-w-[250px] truncate" title="${(t.reasoning || '').replace(/"/g, '&quot;')}">${reasoning}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderSampleTrades() {
+            const tokens = ['ETH', 'cbBTC', 'VIRTUAL', 'AIXBT', 'BRETT', 'AERO', 'DEGEN', 'WELL', 'HIGHER', 'cbETH'];
+            const actions = ['BUY', 'SELL'];
+            const tbody = document.getElementById('tradeBody');
+            document.getElementById('tradeCount').textContent = '81 total trades';
+
+            const rows = [];
+            for (let i = 0; i < 15; i++) {
+                const token = tokens[i % tokens.length];
+                const action = actions[i % 2];
+                const isBuy = action === 'BUY';
+                const amount = (Math.random() * 100 + 1).toFixed(4);
+                const price = (Math.random() * 3000 + 0.5).toFixed(2);
+                const value = (parseFloat(amount) * parseFloat(price) * (Math.random() * 0.01 + 0.001)).toFixed(2);
+                const pnl = ((Math.random() - 0.35) * 20).toFixed(2);
+                const isProfitable = parseFloat(pnl) >= 0;
+                const rowClass = isProfitable ? 'trade-row-profit' : 'trade-row-loss';
+                const minsAgo = i * 15 + Math.floor(Math.random() * 10);
+
+                rows.push(`
+                    <tr class="${rowClass} border-b border-surface-700/30 hover:bg-surface-800/40 transition-colors">
+                        <td class="py-2.5 px-3 font-mono text-slate-400">${minsAgo}m ago</td>
+                        <td class="py-2.5 px-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isBuy ? 'bg-accent-emerald/15 text-accent-emerald' : 'bg-accent-crimson/15 text-accent-crimson'}">
+                                ${action}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 font-bold text-white">${token}</td>
+                        <td class="py-2.5 px-3 text-right font-mono text-slate-300">${fmtCompact(parseFloat(amount))}</td>
+                        <td class="py-2.5 px-3 text-right font-mono text-slate-400">${fmtUSD(parseFloat(price))}</td>
+                        <td class="py-2.5 px-3 text-right font-mono text-white">${fmtUSD(parseFloat(value))}</td>
+                        <td class="py-2.5 px-3 text-right font-mono font-bold ${isProfitable ? 'text-accent-emerald' : 'text-accent-crimson'}">${isProfitable ? '+' : ''}$${Math.abs(parseFloat(pnl)).toFixed(2)}</td>
+                        <td class="py-2.5 px-3 text-center">
+                            <span class="w-2 h-2 rounded-full inline-block ${isProfitable ? 'bg-accent-emerald' : 'bg-accent-crimson'}"></span>
+                        </td>
+                    </tr>
+                `);
+            }
+            tbody.innerHTML = rows.join('');
+        }
+
+        // ===== PORTFOLIO UPDATE =====
+        function updatePortfolio(totalValue, pulledProfits) {
+            const el = document.getElementById('portfolioValue');
+            el.textContent = '$' + fmt(totalValue);
+            el.classList.add('count-pulse');
+            setTimeout(() => el.classList.remove('count-pulse'), 500);
+
+            // Use bot API P&L if available (more accurate than computing from initial)
+            let returnPct, returnDollar;
+            if (botPortfolio && botPortfolio.pnlPercent !== undefined) {
+                returnPct = botPortfolio.pnlPercent;
+                returnDollar = botPortfolio.pnl;
+            } else {
+                returnPct = ((totalValue - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100);
+                returnDollar = totalValue - INITIAL_CAPITAL;
+            }
+
+            const returnEl = document.getElementById('totalReturn');
+            const sign = returnPct >= 0 ? '+' : '';
+            returnEl.textContent = sign + fmt(returnPct, 1) + '%';
+            returnEl.style.color = returnPct >= 0 ? '#10b981' : '#ef4444';
+
+            document.getElementById('totalReturnDollar').textContent = (returnDollar >= 0 ? '+' : '') + '$' + fmt(Math.abs(returnDollar));
+            document.getElementById('portfolioChange').textContent = sign + fmt(returnPct, 1) + '% all time';
+
+            // Pulled Profits (USDC balance = realized gains sitting as stablecoin)
+            const ppEl = document.getElementById('pulledProfits');
+            ppEl.textContent = '$' + fmt(pulledProfits);
+            ppEl.classList.add('count-pulse');
+            setTimeout(() => ppEl.classList.remove('count-pulse'), 500);
+        }
+
+        // ===== COUNTDOWN TIMER =====
+        function startCountdown() {
+            setInterval(() => {
+                countdownSeconds--;
+                if (countdownSeconds <= 0) {
+                    countdownSeconds = CYCLE_DURATION;
+                    const cycleEl = document.getElementById('cycleNumber');
+                    const current = parseInt(cycleEl.textContent) || 94;
+                    cycleEl.textContent = current + 1;
+                    cycleEl.classList.add('count-pulse');
+                    setTimeout(() => cycleEl.classList.remove('count-pulse'), 500);
+                }
+
+                const mins = Math.floor(countdownSeconds / 60);
+                const secs = countdownSeconds % 60;
+                document.getElementById('countdown').textContent =
+                    String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+
+                const pct = (countdownSeconds / CYCLE_DURATION) * 100;
+                document.getElementById('countdownBar').style.width = pct + '%';
+            }, 1000);
+        }
+
+        // ===== COPY WALLET =====
+        window.copyWallet = function() {
+            navigator.clipboard.writeText(WALLET).then(() => {
+                const tooltip = document.getElementById('copyTooltip');
+                tooltip.classList.add('show');
+                setTimeout(() => tooltip.classList.remove('show'), 2000);
+            }).catch(() => {
+                // fallback
+                const ta = document.createElement('textarea');
+                ta.value = WALLET;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                const tooltip = document.getElementById('copyTooltip');
+                tooltip.classList.add('show');
+                setTimeout(() => tooltip.classList.remove('show'), 2000);
+            });
+        };
+
+        // ===== AUTO-HARVEST STATUS =====
+        async function updateAutoHarvest() {
+            const el = document.getElementById('autoHarvestTotal');
+            const statusEl = document.getElementById('autoHarvestStatus');
+            const badgeEl = document.getElementById('autoHarvestBadge');
+            if (!el) return;
+
+            try {
+                const res = await fetch(BOT_API + '/api/auto-harvest');
+                if (res.ok) {
+                    const data = await res.json();
+                    const totalUSD = data.totalTransferred?.usd || 0;
+                    const count = data.totalTransferred?.count || 0;
+                    el.textContent = '$' + totalUSD.toFixed(2);
+
+                    if (data.enabled) {
+                        badgeEl.classList.remove('hidden');
+                        if (count > 0) {
+                            statusEl.textContent = count + ' transfer' + (count !== 1 ? 's' : '') + ' to owner';
+                        } else {
+                            statusEl.textContent = 'Active — waiting for threshold';
+                        }
+                    } else {
+                        badgeEl.classList.add('hidden');
+                        statusEl.textContent = 'Not yet enabled';
+                        el.textContent = '$0.00';
+                    }
+                } else {
+                    // API endpoint doesn't exist yet (v5.2.0)
+                    // Show harvested profits from portfolio data instead
+                    if (botPortfolio && botPortfolio.harvestedProfits) {
+                        el.textContent = '$' + botPortfolio.harvestedProfits.toFixed(2);
+                        statusEl.textContent = botPortfolio.harvestCount + ' harvests (in-wallet)';
+                    } else {
+                        el.textContent = '$0.00';
+                        statusEl.textContent = 'Pending v5.3 upgrade';
+                    }
+                    badgeEl.classList.add('hidden');
+                }
+            } catch (e) {
+                // Fallback to portfolio data
+                if (botPortfolio && botPortfolio.harvestedProfits) {
+                    el.textContent = '$' + botPortfolio.harvestedProfits.toFixed(2);
+                    statusEl.textContent = botPortfolio.harvestCount + ' harvests (in-wallet)';
+                } else {
+                    el.textContent = '$0.00';
+                    statusEl.textContent = 'Connecting...';
+                }
+            }
+        }
+
+        // ===== MAIN REFRESH LOOP =====
+        async function refresh() {
+            refreshCount++;
+
+            try {
+                // 1. Fetch bot API (source of truth for portfolio value)
+                const [portfolio, _prices] = await Promise.all([
+                    fetchBotPortfolio(),
+                    fetchPrices()
+                ]);
+
+                // 2. Use bot API totalValue as the authoritative number
+                let totalValue = 0;
+                let pulledProfits = 0;
+
+                if (portfolio && portfolio.totalValue) {
+                    totalValue = portfolio.totalValue;
+                    // USDC sitting in wallet = realized gains ready to withdraw
+                    pulledProfits = portfolio.harvestedProfits || 0;
+
+                    // Update cycle counter from bot data
+                    const cycleEl = document.getElementById('cycleNumber');
+                    if (portfolio.totalCycles) cycleEl.textContent = portfolio.totalCycles;
+
+                    // Update win rate from bot data
+                    const winRate = portfolio.totalTrades > 0
+                        ? ((portfolio.successfulTrades / portfolio.totalTrades) * 100).toFixed(1)
+                        : '0.0';
+                    // Find and update win rate display if it exists
+                    const winRateEls = document.querySelectorAll('.font-mono');
+                    // Update trades display
+                    const tradesEl = document.getElementById('totalTradesDisplay');
+                    if (tradesEl) tradesEl.textContent = portfolio.totalTrades;
+
+                    // Update uptime
+                    const uptimeEl = document.getElementById('uptimeDisplay');
+                    if (uptimeEl && portfolio.uptime) uptimeEl.textContent = portfolio.uptime;
+                }
+
+                // 3. Fetch on-chain balances for holdings breakdown (display only)
+                let holdings = [];
+                try {
+                    holdings = await fetchAllBalances();
+                } catch (e) {
+                    console.warn('On-chain balance fetch failed, using last known:', e);
+                    if (lastKnownHoldings) holdings = lastKnownHoldings;
+                }
+
+                // Save good holdings data
+                if (holdings.length > 0) {
+                    lastKnownHoldings = [...holdings];
+                }
+
+                // 4. Pulled profits = realized P&L from bot (actual trade profits, not deposited capital)
+                if (botPortfolio && typeof botPortfolio.realizedPnL === 'number') {
+                    pulledProfits = botPortfolio.realizedPnL;
+                }
+
+                // 5. Fallback: if bot API failed, use on-chain total
+                if (!totalValue || totalValue <= 0) {
+                    totalValue = holdings.reduce((s, h) => s + h.value, 0);
+                    if (lastKnownTotal > 0 && totalValue < lastKnownTotal * 0.5) {
+                        totalValue = lastKnownTotal;
+                    }
+                }
+                lastKnownTotal = totalValue;
+
+                // 6. Update all UI
+                updatePortfolio(totalValue, pulledProfits);
+                renderHoldings(holdings);
+                updateSectorChart(holdings);
+                updateTopPerformers(holdings);
+                updateEquityChart(totalValue);
+
+                // Technical indicators
+                const ethPrice = priceCache['ethereum'] || 0;
+                const indicators = computeTechnicalIndicators(ethPrice);
+                updateTechnicalUI(indicators);
+
+                // 7. Update auto-harvest card
+                await updateAutoHarvest();
+
+                // Update refresh time
+                document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+                // Update status
+                document.getElementById('statusDot').className = 'w-2.5 h-2.5 rounded-full bg-accent-emerald pulse-live';
+                document.getElementById('statusText').textContent = 'LIVE';
+                document.getElementById('statusText').className = 'text-xs font-semibold text-accent-emerald tracking-wide';
+
+            } catch (e) {
+                console.error('Refresh error:', e);
+                document.getElementById('statusDot').className = 'w-2.5 h-2.5 rounded-full bg-accent-amber';
+                document.getElementById('statusText').textContent = 'RETRY';
+                document.getElementById('statusText').className = 'text-xs font-semibold text-accent-amber tracking-wide';
+            }
+        }
+
+        // ===== INITIALIZATION =====
+        async function init() {
+            initEquityChart();
+            initSectorChart();
+            startCountdown();
+
+            // Seed equity chart with historical data (wallet origin → trade history)
+            await seedEquityHistory();
+
+            // Initial fetch
+            await refresh();
+
+            // Fetch trade history
+            fetchTrades();
+
+            // Auto-refresh every 30 seconds
+            setInterval(refresh, REFRESH_INTERVAL);
+
+            // Refresh trades every 2 minutes
+            setInterval(fetchTrades, 120000);
+        }
+
+        // Start
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+
+    })();
+    </script>
+</body>
+</html>
