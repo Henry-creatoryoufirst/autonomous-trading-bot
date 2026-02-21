@@ -4729,9 +4729,9 @@ const healthServer = http.createServer((req, res) => {
           thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
           cooldownHours: CONFIG.autoHarvest.cooldownHours,
           minETHReserve: CONFIG.autoHarvest.minETHReserve,
-          totalTransfers: state.autoHarvest.autoHarvestTransfers.length,
-          recentTransfers: state.autoHarvest.autoHarvestTransfers.slice(-5),
-          lastHarvestTime: state.autoHarvest.lastAutoHarvestTime
+          totalTransfers: (state.autoHarvestTransfers || []).length,
+          recentTransfers: (state.autoHarvestTransfers || []).slice(-5),
+          lastHarvestTime: (state.lastAutoHarvestTime || null)
         });
         break;
       case '/api/auto-harvest/trigger':
