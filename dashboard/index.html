@@ -360,7 +360,7 @@
                     <span class="shimmer inline-block w-32 h-8 rounded"></span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-xs text-slate-500">Initial: $230</span>
+                    <span class="text-xs text-slate-500">Initial: $494</span>
                     <span id="portfolioChange" class="text-xs font-semibold text-accent-emerald">--</span>
                 </div>
             </div>
@@ -721,7 +721,7 @@
         const BASE_RPC = 'https://mainnet.base.org';
         const REFRESH_INTERVAL = 30000;
         const CYCLE_DURATION = 15 * 60; // 15 minutes in seconds
-        const INITIAL_CAPITAL = 230;
+        const INITIAL_CAPITAL = 494;
 
         const TOKENS = [
             { symbol: 'ETH', address: null, coingeckoId: 'ethereum', decimals: 18, sector: 'Blue Chip' },
@@ -918,6 +918,7 @@
                 if (!res.ok) throw new Error('Bot API returned ' + res.status);
                 botPortfolio = await res.json();
                 return botPortfolio;
+                INITIAL_CAPITAL = botPortfolio.initialValue || INITIAL_CAPITAL;
             } catch (e) {
                 console.warn('Bot portfolio API error:', e);
                 return botPortfolio; // return last known
