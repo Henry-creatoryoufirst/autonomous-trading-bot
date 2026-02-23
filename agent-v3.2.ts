@@ -92,6 +92,11 @@ import cron from "node-cron";
 import axios from "axios";
 import { parseUnits, formatUnits, formatEther, type Address } from "viem";
 
+// === DERIVATIVES MODULE IMPORTS (v6.0) ===
+import { CoinbaseAdvancedTradeClient } from "./services/coinbase-advanced-trade.js";
+import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/derivatives-strategy.js";
+import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/macro-commodity-signals.js";
+
 dotenv.config();
 
 // ============================================================================
@@ -334,6 +339,17 @@ const CONFIG = {
       minETHReserve: parseFloat(process.env.AUTO_HARVEST_MIN_ETH_RESERVE || '0.002'),
       cooldownHours: parseFloat(process.env.AUTO_HARVEST_COOLDOWN_HOURS || '24'),
     },
+
+    // v6.0: Derivatives Module — Perpetual Futures + Commodity Futures
+    derivatives: {
+      enabled: process.env.DERIVATIVES_ENABLED === 'true',
+      maxLeverage: parseInt(process.env.DERIVATIVES_MAX_LEVERAGE || '3'),
+      basePositionUSD: parseFloat(process.env.DERIVATIVES_BASE_POSITION_USD || '50'),
+      stopLossPercent: parseFloat(process.env.DERIVATIVES_STOP_LOSS_PERCENT || '-10'),
+      takeProfitPercent: parseFloat(process.env.DERIVATIVES_TAKE_PROFIT_PERCENT || '15'),
+      apiKeyId: process.env.COINBASE_ADV_API_KEY_ID || process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME || '',
+      apiKeySecret: process.env.COINBASE_ADV_API_KEY_SECRET || process.env.CDP_API_KEY_SECRET || process.env.CDP_API_KEY_PRIVATE_KEY || '',
+    },
 };
 
 // ============================================================================
@@ -379,6 +395,17 @@ function createCdpClient(): CdpClient {
 }
 
 let cdpClient: CdpClient;
+
+// === DERIVATIVES MODULE STATE (v6.0) ===
+let advancedTradeClient: CoinbaseAdvancedTradeClient | null = null;
+let derivativesEngine: DerivativesStrategyEngine | null = null;
+let commoditySignalEngine: MacroCommoditySignalEngine | null = null;
+let lastDerivativesData: {
+  state: any;
+  signals: DerivativesSignal[];
+  trades: DerivativesTradeRecord[];
+  commoditySignal: MacroCommoditySignal | null;
+} | null = null;
 
 // ============================================================================
 // STATE
@@ -4343,16 +4370,73 @@ async function runTradingCycle() {
 
     state.trading.lastCheck = new Date();
 
+    // === DERIVATIVES CYCLE (v6.0) ===
+    if (derivativesEngine?.isEnabled() && advancedTradeClient) {
+      try {
+        // Generate commodity signals from existing macro data
+        let commoditySignal: MacroCommoditySignal | undefined = undefined;
+        if (commoditySignalEngine && marketData.macroData) {
+          const silverData = await commoditySignalEngine.fetchSilverPrice();
+          const macro = marketData.macroData;
+          commoditySignal = commoditySignalEngine.generateSignal({
+            fedFundsRate: macro.fedFundsRate?.value,
+            treasury10Y: macro.treasury10Y?.value,
+            cpi: macro.cpi?.value,
+            m2MoneySupply: macro.m2MoneySupply?.value,
+            dollarIndex: macro.dollarIndex?.value || macro.crossAssets?.dxyRealtime || undefined,
+            goldPrice: macro.crossAssets?.goldPrice || undefined,
+            goldChange24h: macro.crossAssets?.goldChange24h || undefined,
+            vixLevel: macro.crossAssets?.vixLevel || undefined,
+            spxChange24h: macro.crossAssets?.sp500Change || undefined,
+            macroSignal: macro.macroSignal,
+          });
+        }
+
+        // Run derivatives cycle — brain signals → derivatives execution
+        const derivResult = await derivativesEngine.runCycle({
+          indicators: marketData.indicators,
+          marketRegime: marketData.marketRegime,
+          macroSignal: marketData.macroData?.macroSignal,
+          derivatives: marketData.derivatives,
+          fearGreed: marketData.fearGreed,
+          commoditySignal,
+        });
+
+        // Log results
+        if (derivResult.tradesExecuted.length > 0) {
+          for (const trade of derivResult.tradesExecuted) {
+            console.log(`  ${trade.success ? "✅" : "❌"} [Deriv] ${trade.action} ${trade.product} $${trade.sizeUSD.toFixed(2)} @ ${trade.leverage}x — ${trade.reasoning.substring(0, 80)}`);
+          }
+        }
+
+        // Store derivatives state for dashboard
+        lastDerivativesData = {
+          state: derivResult.portfolioState,
+          signals: derivResult.signalsGenerated,
+          trades: derivResult.tradesExecuted,
+          commoditySignal: commoditySignalEngine?.getLastSignal() || null,
+        };
+      } catch (derivError: any) {
+        console.error(`  ❌ Derivatives cycle error: ${derivError?.message?.substring(0, 200)}`);
+      }
+    }
+
   } catch (error: any) {
     console.error("Cycle error:", error.message);
   }
 
   // Summary
+  const derivSummary = derivativesEngine?.isEnabled()
+    ? ` | Deriv Positions: ${derivativesEngine?.getState()?.openPositionCount || 0} | Deriv P&L: $${(derivativesEngine?.getState()?.totalUnrealizedPnl || 0).toFixed(2)}`
+    : "";
   console.log("\n" + "═".repeat(70));
   console.log("📊 CYCLE SUMMARY");
-  console.log(`   Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
+  console.log(`   Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}${derivSummary}`);
   console.log(`   Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} successful`);
   console.log(`   Tracking: ${CONFIG.activeTokens.length} tokens across 4 sectors`);
+  if (derivativesEngine?.isEnabled()) {
+    console.log(`   Derivatives: ACTIVE | Buying Power: $${(derivativesEngine?.getState()?.availableBuyingPower || 0).toFixed(2)}`);
+  }
   console.log(`   Next cycle in ${CONFIG.trading.intervalMinutes} minutes`);
   console.log("═".repeat(70));
 }
@@ -4365,11 +4449,11 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v5.1.1                            ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v6.0                              ║
 ║   ════════════════════════════════════════                              ║
 ║                                                                        ║
-║   PHASE 3 + v5.1 INTELLIGENCE UPGRADE — Full Spectrum Trading          ║
-║   LIVE TRADING | Base Network | 12 Data Sources + Self-Tuning          ║
+║   PHASE 4: DERIVATIVES MODULE — Spot + Perps + Commodities             ║
+║   LIVE TRADING | Base Network + Coinbase Advanced Trade                ║
 ║                                                                        ║
 ║   Intelligence Stack:                                                  ║
 ║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
@@ -4455,6 +4539,65 @@ async function main() {
     if (error.code) console.error(`   Code: ${error.code}`);
     console.error("   🚫 Trades will NOT execute. Bot will run in analysis-only mode.");
     console.error("   Fix: Verify CDP_API_KEY_NAME, CDP_API_KEY_PRIVATE_KEY, CDP_WALLET_SECRET in Railway vars.");
+  }
+
+  // === DERIVATIVES MODULE INITIALIZATION (v6.0) ===
+  if (CONFIG.derivatives.enabled) {
+    console.log("\n🔧 Initializing Derivatives Module...");
+    try {
+      let advApiSecret = CONFIG.derivatives.apiKeySecret;
+      if (advApiSecret.includes('\\n')) {
+        advApiSecret = advApiSecret.replace(/\\n/g, '\n');
+      }
+
+      advancedTradeClient = new CoinbaseAdvancedTradeClient({
+        apiKeyId: CONFIG.derivatives.apiKeyId,
+        apiKeySecret: advApiSecret,
+      });
+
+      // Test connectivity
+      const connectionTest = await advancedTradeClient.testConnection();
+      console.log(`  📡 Advanced Trade: ${connectionTest.message}`);
+
+      if (connectionTest.success) {
+        // Discover available commodity contracts
+        const contracts = await discoverCommodityContracts(advancedTradeClient);
+
+        // Initialize strategy engine
+        derivativesEngine = new DerivativesStrategyEngine(advancedTradeClient, {
+          enabled: true,
+          products: {
+            perpetuals: ["BTC-PERP-INTX", "ETH-PERP-INTX"],
+            commodityFutures: [...contracts.gold.slice(0, 1), ...contracts.silver.slice(0, 1)],
+          },
+          risk: {
+            ...DEFAULT_DERIVATIVES_CONFIG.risk,
+            maxLeverage: CONFIG.derivatives.maxLeverage,
+            stopLossPercent: CONFIG.derivatives.stopLossPercent,
+            takeProfitPercent: CONFIG.derivatives.takeProfitPercent,
+          },
+          sizing: {
+            ...DEFAULT_DERIVATIVES_CONFIG.sizing,
+            basePositionUSD: CONFIG.derivatives.basePositionUSD,
+          },
+        });
+
+        // Initialize commodity signal engine
+        commoditySignalEngine = new MacroCommoditySignalEngine();
+
+        console.log("  ✅ Derivatives module fully operational");
+        console.log(`     Perpetuals: BTC-PERP-INTX, ETH-PERP-INTX`);
+        console.log(`     Gold Futures: ${contracts.gold[0] || "none available"}`);
+        console.log(`     Silver Futures: ${contracts.silver[0] || "none available"}`);
+      } else {
+        console.log("  ⚠️ Derivatives module: API not accessible. Running spot-only.");
+      }
+    } catch (error: any) {
+      console.error(`  ❌ Derivatives init failed: ${error.message?.substring(0, 200)}`);
+      console.log("  ⚠️ Continuing in spot-only mode.");
+    }
+  } else {
+    console.log("\n📊 Derivatives module: DISABLED (set DERIVATIVES_ENABLED=true to activate)");
   }
 
   loadTradeHistory();
@@ -4744,6 +4887,18 @@ const healthServer = http.createServer((req, res) => {
           sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
         }
         break;
+      // === DERIVATIVES API ENDPOINT (v6.0) ===
+      case '/api/derivatives':
+        sendJSON(res, 200, {
+          enabled: derivativesEngine?.isEnabled() || false,
+          state: derivativesEngine?.getState() || null,
+          recentTrades: derivativesEngine?.getTradeHistory()?.slice(-20) || [],
+          config: derivativesEngine?.getConfig() || null,
+          commoditySignal: commoditySignalEngine?.getLastSignal() || null,
+          lastCycleData: lastDerivativesData,
+        });
+        break;
+
       default:
         sendJSON(res, 404, { error: 'Not found' });
     }
