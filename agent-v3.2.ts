@@ -93,9 +93,9 @@ import axios from "axios";
 import { parseUnits, formatUnits, formatEther, type Address } from "viem";
 
 // === DERIVATIVES MODULE IMPORTS (v6.0) ===
-import { CoinbaseAdvancedTradeClient } from "./services/coinbase-advanced-trade.js";
-import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/derivatives-strategy.js";
-import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/macro-commodity-signals.js";
+import { CoinbaseAdvancedTradeClient } from "./services/services/coinbase-advanced-trade.js";
+import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/services/derivatives-strategy.js";
+import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/services/macro-commodity-signals.js";
 
 dotenv.config();
 
