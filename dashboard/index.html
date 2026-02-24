@@ -1435,7 +1435,7 @@
 
         function renderTrades(trades) {
             const tbody = document.getElementById('tradeBody');
-            const recent = Array.isArray(trades) ? trades.slice(-20).reverse() : [];
+            const recent = Array.isArray(trades) ? trades.slice(0, 50) : [];
             document.getElementById('tradeCount').textContent = (Array.isArray(trades) ? trades.length : 0) + ' total trades';
 
             if (recent.length === 0) {
