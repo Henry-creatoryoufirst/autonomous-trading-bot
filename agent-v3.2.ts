@@ -1184,6 +1184,8 @@ interface AgentState {
   costBasis: Record<string, TokenCostBasis>;
   profitTakeCooldowns: Record<string, string>;  // symbol:tier → ISO date of last trigger
   stopLossCooldowns: Record<string, string>;     // symbol → ISO date of last trigger
+  // v5.3.3: Consecutive failure tracking per token
+  tradeFailures: Record<string, { count: number; lastFailure: string }>;  // symbol → consecutive fail count + timestamp
   // v5.1.1: Profit harvesting tracking
   harvestedProfits?: {
     totalHarvested: number;
@@ -1224,6 +1226,7 @@ let state: AgentState = {
   costBasis: {},
   profitTakeCooldowns: {},
   stopLossCooldowns: {},
+  tradeFailures: {},
   harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
   // Phase 3: Self-Improvement Engine
   strategyPatterns: {},
@@ -1254,6 +1257,7 @@ function loadTradeHistory() {
         state.costBasis = parsed.costBasis || {};
         state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
         state.stopLossCooldowns = parsed.stopLossCooldowns || {};
+        state.tradeFailures = parsed.tradeFailures || {};
         state.harvestedProfits = parsed.harvestedProfits || { totalHarvested: 0, harvestCount: 0, harvests: [] };
         // Phase 3 fields
         state.strategyPatterns = parsed.strategyPatterns || {};
@@ -1298,6 +1302,7 @@ function saveTradeHistory() {
       costBasis: state.costBasis,
       profitTakeCooldowns: state.profitTakeCooldowns,
       stopLossCooldowns: state.stopLossCooldowns,
+      tradeFailures: state.tradeFailures,
       harvestedProfits: state.harvestedProfits,
       // Phase 3: Self-Improvement Engine
       strategyPatterns: state.strategyPatterns,
@@ -1318,6 +1323,48 @@ function saveTradeHistory() {
   } catch (e: any) {
     console.error("Failed to save trade history:", e.message);
   }
+}
+
+// ============================================================================
+// v5.3.3: CONSECUTIVE FAILURE CIRCUIT BREAKER
+// ============================================================================
+
+const MAX_CONSECUTIVE_FAILURES = 3;       // Block token after 3 consecutive failures
+const FAILURE_COOLDOWN_HOURS = 6;          // Unblock after 6 hours
+
+function recordTradeFailure(symbol: string): void {
+  const existing = state.tradeFailures[symbol];
+  state.tradeFailures[symbol] = {
+    count: (existing?.count || 0) + 1,
+    lastFailure: new Date().toISOString(),
+  };
+  const f = state.tradeFailures[symbol];
+  if (f.count >= MAX_CONSECUTIVE_FAILURES) {
+    console.log(`  🚫 CIRCUIT BREAKER: ${symbol} blocked after ${f.count} consecutive failures (cooldown ${FAILURE_COOLDOWN_HOURS}h)`);
+  }
+}
+
+function clearTradeFailures(symbol: string): void {
+  if (state.tradeFailures[symbol]) {
+    delete state.tradeFailures[symbol];
+  }
+}
+
+function isTokenBlocked(symbol: string): boolean {
+  const f = state.tradeFailures[symbol];
+  if (!f || f.count < MAX_CONSECUTIVE_FAILURES) return false;
+
+  // Check if cooldown has expired
+  const hoursSinceLastFailure = (Date.now() - new Date(f.lastFailure).getTime()) / (1000 * 60 * 60);
+  if (hoursSinceLastFailure >= FAILURE_COOLDOWN_HOURS) {
+    console.log(`  🔓 CIRCUIT BREAKER: ${symbol} unblocked after ${hoursSinceLastFailure.toFixed(1)}h cooldown`);
+    delete state.tradeFailures[symbol];
+    return false;
+  }
+
+  const remainingHours = (FAILURE_COOLDOWN_HOURS - hoursSinceLastFailure).toFixed(1);
+  console.log(`  🚫 CIRCUIT BREAKER: ${symbol} blocked (${f.count} failures, ${remainingHours}h remaining)`);
+  return true;
 }
 
 // ============================================================================
@@ -1484,6 +1531,18 @@ function checkProfitTaking(
     if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
     const cb = state.costBasis[b.symbol];
     if (!cb || cb.averageCostBasis <= 0) continue;
+
+    // v5.3.3: Skip tokens blocked by circuit breaker
+    if (isTokenBlocked(b.symbol)) continue;
+
+    // v5.3.3: Check stop-loss cooldown (1 hour between attempts per token)
+    const slCooldown = state.stopLossCooldowns[b.symbol];
+    if (slCooldown) {
+      const hoursSinceLast = (Date.now() - new Date(slCooldown).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceLast < 1) {
+        continue; // Skip — cooldown active
+      }
+    }
 
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
@@ -4240,7 +4299,14 @@ async function runTradingCycle() {
     const stopLossDecision = checkStopLoss(balances);
     if (stopLossDecision) {
       console.log(`\n  🛑 STOP-LOSS GUARD executing sell...`);
-      await executeTrade(stopLossDecision, marketData);
+      const slResult = await executeTrade(stopLossDecision, marketData);
+      // v5.3.3: Track failures and set cooldown
+      state.stopLossCooldowns[stopLossDecision.fromToken] = new Date().toISOString();
+      if (!slResult.success) {
+        recordTradeFailure(stopLossDecision.fromToken);
+      } else {
+        clearTradeFailures(stopLossDecision.fromToken);
+      }
       state.trading.lastCheck = new Date();
       return; // Skip AI decision this cycle
     }
@@ -4248,10 +4314,20 @@ async function runTradingCycle() {
     // === PROFIT-TAKING CHECK ===
     const profitTakeDecision = checkProfitTaking(balances);
     if (profitTakeDecision) {
-      console.log(`\n  🎯 PROFIT-TAKE GUARD executing sell...`);
-      await executeTrade(profitTakeDecision, marketData);
-      state.trading.lastCheck = new Date();
-      return; // Skip AI decision this cycle
+      // v5.3.3: Check circuit breaker before attempting profit-take
+      if (isTokenBlocked(profitTakeDecision.fromToken)) {
+        console.log(`\n  🚫 PROFIT-TAKE skipped: ${profitTakeDecision.fromToken} blocked by circuit breaker`);
+      } else {
+        console.log(`\n  🎯 PROFIT-TAKE GUARD executing sell...`);
+        const ptResult = await executeTrade(profitTakeDecision, marketData);
+        if (!ptResult.success) {
+          recordTradeFailure(profitTakeDecision.fromToken);
+        } else {
+          clearTradeFailures(profitTakeDecision.fromToken);
+        }
+        state.trading.lastCheck = new Date();
+        return; // Skip AI decision this cycle
+      }
     }
 
     // === PHASE 3: STAGNATION CHECK ===
@@ -4338,9 +4414,24 @@ async function runTradingCycle() {
       }
     }
 
+    // v5.3.3: Circuit breaker guard — block trades on tokens with consecutive failures
+    if (["SELL", "REBALANCE"].includes(decision.action) && decision.fromToken && isTokenBlocked(decision.fromToken)) {
+      console.log(`   🚫 CIRCUIT BREAKER: Skipping ${decision.action} for ${decision.fromToken} — too many consecutive failures`);
+      decision.action = "HOLD";
+      decision.reasoning = `Circuit breaker: ${decision.fromToken} blocked after repeated failures. Cooling off.`;
+    }
+
     // Execute if needed
     if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
-      await executeTrade(decision, marketData);
+      const tradeResult = await executeTrade(decision, marketData);
+
+      // v5.3.3: Track consecutive failures / clear on success
+      const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
+      if (!tradeResult.success) {
+        recordTradeFailure(tradeToken);
+      } else {
+        clearTradeFailures(tradeToken);
+      }
 
       // === PHASE 3: UPDATE PATTERN MEMORY AFTER TRADE ===
       analyzeStrategyPatterns();
