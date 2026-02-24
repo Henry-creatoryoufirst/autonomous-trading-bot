@@ -193,7 +193,9 @@ function generateJWT(
   requestMethod: string,
   requestPath: string,
 ): string {
-  const uri = `${requestMethod} ${requestPath}`;
+  // Coinbase Advanced Trade API requires the host in the URI claim
+  // Format: "METHOD api.coinbase.com/path"
+  const uri = `${requestMethod} api.coinbase.com${requestPath}`;
 
   const header = {
     alg: "ES256",
@@ -216,16 +218,29 @@ function generateJWT(
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const message = `${encodedHeader}.${encodedPayload}`;
 
-  // Sign with ECDSA P-256
+  // Prepare the private key for ECDSA P-256 signing
   let privateKey = apiKeySecret;
-  if (!privateKey.includes("-----BEGIN")) {
-    // If it's a raw base64 key, wrap it in PEM format
-    privateKey = `-----BEGIN EC PRIVATE KEY-----\n${privateKey}\n-----END EC PRIVATE KEY-----`;
+
+  // Handle Railway env var newline escaping
+  if (privateKey.includes("\\n")) {
+    privateKey = privateKey.replace(/\\n/g, "\n");
   }
 
+  if (!privateKey.includes("-----BEGIN")) {
+    // Raw base64 key — wrap in PKCS#8 PEM format
+    // Split into 64-char lines for proper PEM formatting
+    const lines = privateKey.match(/.{1,64}/g) || [privateKey];
+    privateKey = `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----`;
+  }
+
+  // Both PKCS#8 (-----BEGIN PRIVATE KEY-----) and SEC1 (-----BEGIN EC PRIVATE KEY-----)
+  // are supported by Node.js crypto.createSign for ECDSA signing
   const sign = crypto.createSign("SHA256");
   sign.update(message);
-  const signature = sign.sign(privateKey, "base64url");
+  const signature = sign.sign(
+    { key: privateKey, dsaEncoding: "ieee-p1363" },
+    "base64url",
+  );
 
   return `${message}.${signature}`;
 }
