@@ -270,8 +270,9 @@ export class StockDataEngine {
       const batchResults = await Promise.allSettled(promises);
 
       for (let j = 0; j < batch.length; j++) {
-        if (batchResults[j].status === 'fulfilled') {
-          results[batch[j]] = batchResults[j].value;
+        const result = batchResults[j];
+        if (result.status === 'fulfilled') {
+          results[batch[j]] = result.value;
         } else {
           results[batch[j]] = this.emptyIndicators(batch[j]);
         }

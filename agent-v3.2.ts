@@ -110,6 +110,7 @@ import {
   FG_CHANGE_THRESHOLD,
   DEFAULT_TRADING_INTERVAL_MINUTES,
 } from "./config/constants.js";
+import type { CooldownDecision } from "./types/index.js";
 
 dotenv.config();
 
@@ -4244,12 +4245,16 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
   }
 
   // 5. Check if any tokens exited cooldown
+  // Capture count BEFORE filterTokensForEvaluation, which deletes expired entries
+  const activeBeforeFilter = cooldownManager.getActiveCount();
   const tokensWithPrices = Array.from(currentPrices.entries())
     .filter(([symbol]) => symbol !== 'USDC')
     .map(([symbol, price]) => ({ symbol, price }));
   const [tokensToEval] = cooldownManager.filterTokensForEvaluation(tokensWithPrices);
-  if (tokensToEval.length > 0 && cooldownManager.getActiveCount() > 0) {
-    return { isHeavy: true, reason: `${tokensToEval.length} token(s) exited cooldown` };
+  const activeAfterFilter = cooldownManager.getActiveCount();
+  if (activeBeforeFilter > 0 && activeBeforeFilter > activeAfterFilter) {
+    const exited = activeBeforeFilter - activeAfterFilter;
+    return { isHeavy: true, reason: `${exited} token(s) exited cooldown` };
   }
 
   return { isHeavy: false, reason: 'No significant changes' };
@@ -4601,7 +4606,7 @@ async function runTradingCycle() {
       // v6.0: Set cooldown for traded token
       const cooldownToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
       const tokenPrice = currentPrices.get(cooldownToken) || 0;
-      cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as any, tokenPrice);
+      cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as CooldownDecision, tokenPrice);
 
       // === PHASE 3: UPDATE PATTERN MEMORY AFTER TRADE ===
       analyzeStrategyPatterns();

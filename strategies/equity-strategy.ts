@@ -35,7 +35,7 @@ export interface EquitySectorConfig {
 // ============================================================================
 
 export const EQUITY_SECTORS: EquitySectorConfig[] = [
-  { name: 'Tech Giants', targetPercent: 40, symbols: ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META'] },
+  { name: 'Tech Giants', targetPercent: 40, symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'] },
   { name: 'Crypto-Adjacent', targetPercent: 20, symbols: ['COIN', 'BITQ', 'ARKK'] },
   { name: 'AI & Semiconductor', targetPercent: 25, symbols: ['NVDA', 'AMD', 'PLTR', 'TSLA', 'SOXX'] },
   { name: 'Broad Market ETFs', targetPercent: 15, symbols: ['SPY', 'QQQ', 'IWM', 'VTI', 'XLK'] },

@@ -157,6 +157,7 @@ export class CooldownManager {
     switch (decision) {
       case 'BUY':
       case 'SELL':
+      case 'REBALANCE':
         return COOLDOWN_DURATIONS.TRADE_EXECUTED;
       case 'HOLD':
         return COOLDOWN_DURATIONS.HOLD_DECISION;

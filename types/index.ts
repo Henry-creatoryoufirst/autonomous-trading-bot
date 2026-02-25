@@ -221,7 +221,7 @@ export interface BalanceEntry {
 // COOLDOWN TYPES (v6.0)
 // ============================================================================
 
-export type CooldownDecision = "BUY" | "SELL" | "HOLD" | "WEAK_SIGNAL";
+export type CooldownDecision = "BUY" | "SELL" | "HOLD" | "WEAK_SIGNAL" | "REBALANCE";
 
 export interface CooldownEntry {
   symbol: string;
