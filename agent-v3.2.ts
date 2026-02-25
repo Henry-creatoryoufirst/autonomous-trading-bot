@@ -97,6 +97,20 @@ import { CoinbaseAdvancedTradeClient } from "./services/services/coinbase-advanc
 import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/services/derivatives-strategy.js";
 import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/services/macro-commodity-signals.js";
 
+// === v6.0: EQUITY INTEGRATION ===
+import { EquityIntegration } from './equity-integration.js';
+
+// === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
+import { cacheManager, CacheKeys } from "./services/cache-manager.js";
+import { CACHE_TTL } from "./config/constants.js";
+import { cooldownManager } from "./services/cooldown-manager.js";
+import {
+  HEAVY_CYCLE_FORCED_INTERVAL_MS,
+  PRICE_CHANGE_THRESHOLD,
+  FG_CHANGE_THRESHOLD,
+  DEFAULT_TRADING_INTERVAL_MINUTES,
+} from "./config/constants.js";
+
 dotenv.config();
 
 // ============================================================================
@@ -293,7 +307,7 @@ const CONFIG = {
     enabled: process.env.TRADING_ENABLED === "true",
     maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "25"),
     maxSellPercent: parseFloat(process.env.MAX_SELL_PERCENT || "50"),
-    intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || "15"),
+    intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || String(DEFAULT_TRADING_INTERVAL_MINUTES)),
     // V3.1: Risk-adjusted position sizing
     maxPositionPercent: 25,  // No single token > 25% of portfolio
     minPositionUSD: 5,       // Minimum position size
@@ -406,6 +420,16 @@ let lastDerivativesData: {
   trades: DerivativesTradeRecord[];
   commoditySignal: MacroCommoditySignal | null;
 } | null = null;
+
+// === v6.0: LIGHT/HEAVY CYCLE STATE ===
+let lastHeavyCycleAt = 0;
+let lastPriceSnapshot: Map<string, number> = new Map();
+let lastFearGreedValue = 0;
+let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
+
+// === v6.0: EQUITY MODULE STATE (initialized in main()) ===
+let equityEngine: EquityIntegration | null = null;
+let equityEnabled = false;
 
 // ============================================================================
 // STATE
@@ -2670,23 +2694,42 @@ async function getMarketData(): Promise<MarketData> {
     )].join(",");
     const coingeckoUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
 
-    // Launch all non-CoinGecko fetches in parallel (they use different APIs)
+    // v6.0: Launch all non-CoinGecko fetches in parallel with smart caching
     const intelligencePromise = (async () => {
-      const fng = await Promise.allSettled([axios.get("https://api.alternative.me/fng/", { timeout: 10000 })]).then(r => r[0]);
-      const [defi, deriv] = await Promise.allSettled([fetchDefiLlamaData(), fetchDerivativesData()]);
-      const [news, macro] = await Promise.allSettled([fetchNewsSentiment(), fetchMacroData()]);
+      const fng = await Promise.allSettled([
+        cacheManager.getOrFetch(CacheKeys.FEAR_GREED, CACHE_TTL.FEAR_GREED, () =>
+          axios.get("https://api.alternative.me/fng/", { timeout: 10000 })
+        )
+      ]).then(r => r[0]);
+      const [defi, deriv] = await Promise.allSettled([
+        cacheManager.getOrFetch(CacheKeys.DEFI_LLAMA_TVL, CACHE_TTL.DEFI_LLAMA, fetchDefiLlamaData),
+        cacheManager.getOrFetch(CacheKeys.BINANCE_FUNDING, CACHE_TTL.DERIVATIVES, fetchDerivativesData),
+      ]);
+      const [news, macro] = await Promise.allSettled([
+        cacheManager.getOrFetch(CacheKeys.NEWS_SENTIMENT, CACHE_TTL.NEWS, fetchNewsSentiment),
+        cacheManager.getOrFetch(CacheKeys.MACRO_DATA, CACHE_TTL.MACRO, fetchMacroData),
+      ]);
       return { fng, defi, deriv, news, macro };
     })();
 
-    // CoinGecko with retry — this is the most critical data source for portfolio pricing
+    // v6.0: CoinGecko with smart cache + retry — critical data source for portfolio pricing
+    const cachedCoinGecko = cacheManager.get<any>(CacheKeys.COINGECKO_PRICES);
+    let marketResult: PromiseSettledResult<any>;
+
+    if (cachedCoinGecko) {
+      marketResult = { status: "fulfilled", value: cachedCoinGecko };
+      console.log(`  ♻️  CoinGecko: using cached data (${((cacheManager.getAge(CacheKeys.COINGECKO_PRICES) || 0) / 1000).toFixed(0)}s old)`);
+    } else {
     // Free tier rate limit window is ~60s, so retries need substantial delays
     const retryDelays = [15000, 45000]; // 15s after 1st fail, 45s after 2nd fail
-    let marketResult: PromiseSettledResult<any> = { status: "rejected", reason: new Error("No attempt") } as PromiseRejectedResult;
+    marketResult = { status: "rejected", reason: new Error("No attempt") } as PromiseRejectedResult;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const res = await axios.get(coingeckoUrl, { timeout: 15000 });
         if (res.data && Array.isArray(res.data) && res.data.length > 0) {
           marketResult = { status: "fulfilled", value: res };
+          // v6.0: Cache the successful response
+          cacheManager.set(CacheKeys.COINGECKO_PRICES, res, CACHE_TTL.PRICE);
           // Update last-known-prices cache on success
           for (const coin of res.data) {
             const registryEntry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.coingeckoId === coin.id);
@@ -2713,6 +2756,7 @@ async function getMarketData(): Promise<MarketData> {
         if (attempt === 3) marketResult = { status: "rejected", reason: err } as PromiseRejectedResult;
       }
     }
+    } // end of cache miss else block
 
     // Await intelligence data (likely already resolved during CoinGecko retries)
     const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult } = await intelligencePromise;
@@ -4116,10 +4160,126 @@ async function sendNativeTransfer(account: any, to: string, amountETH: number): 
   return typeof result === "string" ? result : result.transactionHash || result.hash || String(result);
 }
 
+// ============================================================================
+// v6.0: LIGHT/HEAVY CYCLE ORCHESTRATOR
+// ============================================================================
+
+/**
+ * Quick price check for light cycle determination.
+ * Uses cached CoinGecko data (3-min TTL) — essentially free.
+ */
+async function fetchQuickPrices(): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+
+  // Use cached prices first (most light cycles will hit cache)
+  if (Object.keys(lastKnownPrices).length > 0) {
+    for (const [symbol, data] of Object.entries(lastKnownPrices)) {
+      prices.set(symbol, data.price);
+    }
+    return prices;
+  }
+
+  // Fallback: fetch from CoinGecko (will be cached by getMarketData on next heavy cycle)
+  try {
+    const coingeckoIds = [...new Set(
+      Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean)
+    )].join(",");
+    const res = await axios.get(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&sparkline=false`,
+      { timeout: 10000 }
+    );
+    if (res.data && Array.isArray(res.data)) {
+      for (const coin of res.data) {
+        const registryEntry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.coingeckoId === coin.id);
+        const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
+        prices.set(symbol, coin.current_price);
+      }
+    }
+  } catch {
+    // On failure, use whatever cached prices exist
+    for (const [symbol, data] of Object.entries(lastKnownPrices)) {
+      prices.set(symbol, data.price);
+    }
+  }
+  return prices;
+}
+
+/**
+ * Determine if this cycle should be HEAVY (full analysis + AI) or LIGHT (price check only).
+ */
+async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<{ isHeavy: boolean; reason: string }> {
+  const now = Date.now();
+
+  // 1. Forced interval: at least one heavy cycle every 15 minutes
+  if (now - lastHeavyCycleAt > HEAVY_CYCLE_FORCED_INTERVAL_MS) {
+    return { isHeavy: true, reason: `Forced interval (${((now - lastHeavyCycleAt) / 60000).toFixed(0)}m since last heavy)` };
+  }
+
+  // 2. First cycle is always heavy
+  if (lastHeavyCycleAt === 0) {
+    return { isHeavy: true, reason: 'First cycle' };
+  }
+
+  // 3. Check for significant price moves since last heavy cycle
+  for (const [symbol, price] of currentPrices) {
+    const lastPrice = lastPriceSnapshot.get(symbol);
+    if (lastPrice && lastPrice > 0) {
+      const change = Math.abs(price - lastPrice) / lastPrice;
+      if (change > PRICE_CHANGE_THRESHOLD) {
+        const direction = price > lastPrice ? 'UP' : 'DOWN';
+        return { isHeavy: true, reason: `${symbol} moved ${(change * 100).toFixed(1)}% ${direction}` };
+      }
+    }
+  }
+
+  // 4. Check Fear & Greed change (use cached value, no API call)
+  const cachedFG = cacheManager.get<any>(CacheKeys.FEAR_GREED);
+  if (cachedFG) {
+    try {
+      const currentFG = parseInt(cachedFG?.data?.data?.[0]?.value || '0');
+      if (currentFG > 0 && lastFearGreedValue > 0 && Math.abs(currentFG - lastFearGreedValue) > FG_CHANGE_THRESHOLD) {
+        return { isHeavy: true, reason: `Fear & Greed changed: ${lastFearGreedValue} → ${currentFG}` };
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  // 5. Check if any tokens exited cooldown
+  const tokensWithPrices = Array.from(currentPrices.entries())
+    .filter(([symbol]) => symbol !== 'USDC')
+    .map(([symbol, price]) => ({ symbol, price }));
+  const [tokensToEval] = cooldownManager.filterTokensForEvaluation(tokensWithPrices);
+  if (tokensToEval.length > 0 && cooldownManager.getActiveCount() > 0) {
+    return { isHeavy: true, reason: `${tokensToEval.length} token(s) exited cooldown` };
+  }
+
+  return { isHeavy: false, reason: 'No significant changes' };
+}
+
 async function runTradingCycle() {
   state.totalCycles++;
+  const cycleStart = Date.now();
+
+  // v6.0: Light/Heavy cycle determination
+  const currentPrices = await fetchQuickPrices();
+  const { isHeavy, reason: heavyReason } = await shouldRunHeavyCycle(currentPrices);
+
+  if (!isHeavy) {
+    // === LIGHT CYCLE ===
+    cycleStats.totalLight++;
+    const portfolioValue = state.trading.totalPortfolioValue || 0;
+    const cooldownCount = cooldownManager.getActiveCount();
+    const cacheStats = cacheManager.getStats();
+    console.log(`[CYCLE #${state.totalCycles}] LIGHT | Portfolio: $${portfolioValue.toFixed(2)} | Cooldowns: ${cooldownCount} | Cache: ${cacheStats.entries} entries (${cacheStats.hitRate} hit rate) | ${(Date.now() - cycleStart)}ms`);
+    return; // Skip full analysis
+  }
+
+  // === HEAVY CYCLE ===
+  cycleStats.totalHeavy++;
+  cycleStats.lastHeavyReason = heavyReason;
+
   console.log("\n" + "═".repeat(70));
-  console.log(`🤖 TRADING CYCLE #${state.totalCycles} | ${new Date().toISOString()}`);
+  console.log(`🤖 TRADING CYCLE #${state.totalCycles} [HEAVY: ${heavyReason}] | ${new Date().toISOString()}`);
+  console.log(`   Light/Heavy ratio: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H | Cache hit rate: ${cacheManager.getStats().hitRate}`);
   console.log("═".repeat(70));
 
   try {
@@ -4128,6 +4288,11 @@ async function runTradingCycle() {
 
     console.log("📈 Fetching market data for all tracked tokens...");
     const marketData = await getMarketData();
+
+    // v6.0: Update light/heavy cycle state
+    lastHeavyCycleAt = Date.now();
+    lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
+    lastFearGreedValue = marketData.fearGreed.value;
 
     // v5.2: Consolidate dust positions every 10 cycles
     if (state.totalCycles % 10 === 1) {
@@ -4433,6 +4598,11 @@ async function runTradingCycle() {
         clearTradeFailures(tradeToken);
       }
 
+      // v6.0: Set cooldown for traded token
+      const cooldownToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
+      const tokenPrice = currentPrices.get(cooldownToken) || 0;
+      cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as any, tokenPrice);
+
       // === PHASE 3: UPDATE PATTERN MEMORY AFTER TRADE ===
       analyzeStrategyPatterns();
       // Update exploration state
@@ -4455,6 +4625,11 @@ async function runTradingCycle() {
       }
     }
     } else if (decision.action === "HOLD") {
+      // v6.0: Set HOLD cooldown for all tokens to skip re-evaluation
+      if (decision.toToken && decision.toToken !== "USDC") {
+        const holdPrice = currentPrices.get(decision.toToken) || 0;
+        cooldownManager.setCooldown(decision.toToken, "HOLD", holdPrice);
+      }
       // Track consecutive holds for stagnation detection
       state.explorationState.consecutiveHolds++;
     }
@@ -4512,6 +4687,18 @@ async function runTradingCycle() {
       }
     }
 
+    // === v6.0: EQUITY CYCLE ===
+    if (equityEnabled && equityEngine) {
+      try {
+        const equityResult = await equityEngine.runEquityCycle(marketData.fearGreed.value);
+        // The AI prompt section is available but we don't inject it into the crypto AI call
+        // (equity has its own signal generation). Log the summary instead.
+        console.log(`  [EQUITY] ${equityResult.signals.length} signals, ${equityResult.executedTrades.length} trades | Value: $${equityResult.totalEquityValue.toFixed(2)}`);
+      } catch (eqError: any) {
+        console.error(`  ❌ Equity cycle error: ${eqError?.message?.substring(0, 200)}`);
+      }
+    }
+
   } catch (error: any) {
     console.error("Cycle error:", error.message);
   }
@@ -4528,6 +4715,8 @@ async function runTradingCycle() {
   if (derivativesEngine?.isEnabled()) {
     console.log(`   Derivatives: ACTIVE | Buying Power: $${(derivativesEngine?.getState()?.availableBuyingPower || 0).toFixed(2)}`);
   }
+  console.log(`   Cooldowns: ${cooldownManager.getActiveCount()} active | Cache: ${cacheManager.getStats().entries} entries (${cacheManager.getStats().hitRate} hit rate)`);
+  console.log(`   Cycle type: HEAVY (${heavyReason}) | Light/Heavy: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H`);
   console.log(`   Next cycle in ${CONFIG.trading.intervalMinutes} minutes`);
   console.log("═".repeat(70));
 }
@@ -4691,6 +4880,10 @@ async function main() {
     console.log("\n📊 Derivatives module: DISABLED (set DERIVATIVES_ENABLED=true to activate)");
   }
 
+  // === v6.0: EQUITY INTEGRATION INITIALIZATION ===
+  equityEngine = new EquityIntegration();
+  equityEnabled = await equityEngine.initialize();
+
   loadTradeHistory();
 
   // Run immediately
@@ -4713,9 +4906,10 @@ async function main() {
     saveTradeHistory();
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v5.2.0 running! Persistent state + dust consolidation + meaningful position sizing. Patient capital, not passive capital.\n");
+  console.log("\n🚀 Agent v6.0 running! 2-min cycles + Light/Heavy pattern + Smart Caching + Per-Token Cooldowns.\n");
   console.log(`   📂 State persistence: ${CONFIG.logFile}`);
   console.log(`   💰 Max buy size: ${CONFIG.trading.maxBuySize} | Min trade: $5`);
+  console.log(`   ⏱️  Cycle interval: ${CONFIG.trading.intervalMinutes}m | Heavy forced every 15m`);
   console.log(`   🧹 Dust threshold: ${DUST_THRESHOLD_USD} (consolidates every 10 cycles)\n`);
 }
 
@@ -4987,6 +5181,26 @@ const healthServer = http.createServer((req, res) => {
           config: derivativesEngine?.getConfig() || null,
           commoditySignal: commoditySignalEngine?.getLastSignal() || null,
           lastCycleData: lastDerivativesData,
+        });
+        break;
+
+      case '/api/equity':
+        if (equityEnabled && equityEngine) {
+          const eqDash = await equityEngine.getDashboardData();
+          sendJSON(res, 200, eqDash);
+        } else {
+          sendJSON(res, 200, { enabled: false });
+        }
+        break;
+
+      case '/api/cache':
+        sendJSON(res, 200, {
+          stats: cacheManager.getStats(),
+          cooldowns: {
+            active: cooldownManager.getActiveCount(),
+            summary: cooldownManager.getSummary(),
+          },
+          cycleStats,
         });
         break;
 
