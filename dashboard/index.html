@@ -460,7 +460,7 @@
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
                     <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Current Cycle</div>
                     <div id="cycleNumber" class="text-4xl font-bold font-mono gradient-text">94</div>
-                    <div class="text-xs text-slate-600 mt-1">2-min intervals</div>
+                    <div class="text-xs text-slate-600 mt-1"><span id="adaptiveInterval">adaptive</span> tempo</div>
                 </div>
                 <!-- Total Trades -->
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
@@ -481,12 +481,17 @@
                     </div>
                     <div class="text-xs text-slate-600 mt-1">Railway: efficient-peace</div>
                 </div>
-                <!-- Next Cycle Countdown -->
+                <!-- Next Cycle Countdown + Adaptive Info -->
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
                     <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Next Cycle</div>
                     <div id="countdown" class="text-4xl font-bold font-mono text-accent-sky">2:00</div>
                     <div class="w-full bg-surface-700 rounded-full h-1.5 mt-2">
                         <div id="countdownBar" class="bg-gradient-to-r from-brand to-accent-sky h-1.5 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                    </div>
+                    <div class="flex items-center justify-center gap-1.5 mt-2">
+                        <div id="streamDot" class="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                        <span id="adaptiveLabel" class="text-[10px] text-slate-600 uppercase">ADAPTIVE</span>
+                        <span id="volatilityBadge" class="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-700 text-slate-500">—</span>
                     </div>
                 </div>
             </div>
@@ -720,7 +725,7 @@
         const BOT_API = 'https://autonomous-trading-bot-production.up.railway.app';
         const BASE_RPC = 'https://mainnet.base.org';
         const REFRESH_INTERVAL = 30000;
-        const CYCLE_DURATION = 2 * 60; // 2 minutes in seconds
+        let CYCLE_DURATION = 120; // Default 2 minutes, updated dynamically by adaptive engine
         const INITIAL_CAPITAL = 494;
 
         const TOKENS = [
@@ -1549,7 +1554,7 @@
             setTimeout(() => ppEl.classList.remove('count-pulse'), 500);
         }
 
-        // ===== COUNTDOWN TIMER =====
+        // ===== COUNTDOWN TIMER + ADAPTIVE ENGINE SYNC =====
         function startCountdown() {
             setInterval(() => {
                 countdownSeconds--;
@@ -1571,6 +1576,77 @@
                 document.getElementById('countdownBar').style.width = pct + '%';
             }, 1000);
         }
+
+        // v6.2: Fetch adaptive cycle data and update dashboard
+        async function fetchAdaptiveData() {
+            try {
+                const res = await fetch(BOT_API + '/api/adaptive');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // Update cycle duration dynamically
+                if (data.currentIntervalSec && data.currentIntervalSec !== CYCLE_DURATION) {
+                    CYCLE_DURATION = data.currentIntervalSec;
+                    if (countdownSeconds > CYCLE_DURATION) countdownSeconds = CYCLE_DURATION;
+                }
+
+                // Update adaptive interval label
+                const intervalEl = document.getElementById('adaptiveInterval');
+                if (intervalEl) {
+                    if (data.currentIntervalSec < 60) {
+                        intervalEl.textContent = data.currentIntervalSec + 's';
+                    } else {
+                        intervalEl.textContent = (data.currentIntervalSec / 60).toFixed(1).replace('.0', '') + 'min';
+                    }
+                }
+
+                // Update stream dot
+                const streamDot = document.getElementById('streamDot');
+                if (streamDot) {
+                    streamDot.style.backgroundColor = data.priceStreamActive ? '#22c55e' : '#64748b';
+                    if (data.priceStreamActive) streamDot.classList.add('pulse-live');
+                    else streamDot.classList.remove('pulse-live');
+                }
+
+                // Update volatility badge
+                const volBadge = document.getElementById('volatilityBadge');
+                if (volBadge && data.volatilityLevel) {
+                    volBadge.textContent = data.volatilityLevel;
+                    const volColors = {
+                        EXTREME: 'bg-red-500/20 text-red-400',
+                        HIGH: 'bg-orange-500/20 text-orange-400',
+                        ELEVATED: 'bg-amber-500/20 text-amber-400',
+                        NORMAL: 'bg-sky-500/20 text-sky-400',
+                        LOW: 'bg-slate-500/20 text-slate-400',
+                        DEAD: 'bg-slate-700/20 text-slate-600',
+                    };
+                    const colorClass = volColors[data.volatilityLevel] || volColors.NORMAL;
+                    volBadge.className = 'text-[10px] px-1.5 py-0.5 rounded-full ' + colorClass;
+                }
+
+                // Update adaptive label for emergency mode
+                const adaptiveLabel = document.getElementById('adaptiveLabel');
+                if (adaptiveLabel) {
+                    if (data.emergencyMode) {
+                        adaptiveLabel.textContent = 'EMERGENCY';
+                        adaptiveLabel.style.color = '#ef4444';
+                    } else {
+                        adaptiveLabel.textContent = data.portfolioTier || 'ADAPTIVE';
+                        adaptiveLabel.style.color = '#64748b';
+                    }
+                }
+
+                // Flash countdown red in emergency
+                const countdownEl = document.getElementById('countdown');
+                if (countdownEl) {
+                    countdownEl.style.color = data.emergencyMode ? '#ef4444' : '';
+                }
+            } catch { /* adaptive fetch failed, non-critical */ }
+        }
+
+        // Fetch adaptive data every 15 seconds
+        setInterval(fetchAdaptiveData, 15000);
+        setTimeout(fetchAdaptiveData, 3000); // Initial fetch after page load
 
         // ===== COPY WALLET =====
         window.copyWallet = function() {

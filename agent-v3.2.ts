@@ -112,6 +112,15 @@ import {
   PRICE_CHANGE_THRESHOLD,
   FG_CHANGE_THRESHOLD,
   DEFAULT_TRADING_INTERVAL_MINUTES,
+  ADAPTIVE_MIN_INTERVAL_SEC,
+  ADAPTIVE_MAX_INTERVAL_SEC,
+  ADAPTIVE_DEFAULT_INTERVAL_SEC,
+  EMERGENCY_INTERVAL_SEC,
+  EMERGENCY_DROP_THRESHOLD,
+  PORTFOLIO_SENSITIVITY_TIERS,
+  VOLATILITY_SPEED_MAP,
+  WS_RECONNECT_DELAY_MS,
+  WS_MAX_RECONNECT_ATTEMPTS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -433,6 +442,240 @@ let equityEnabled = false;
 
 // === v6.1: TOKEN DISCOVERY STATE ===
 let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
+
+// === v6.2: ADAPTIVE CYCLE ENGINE ===
+// Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
+
+interface AdaptiveCycleState {
+  currentIntervalSec: number;
+  volatilityLevel: keyof typeof VOLATILITY_SPEED_MAP;
+  portfolioTier: string;
+  dynamicPriceThreshold: number;
+  consecutiveLightCycles: number;
+  lastPriceCheck: Map<string, number>;
+  emergencyMode: boolean;
+  emergencyUntil: number;
+  wsConnected: boolean;
+  wsReconnectAttempts: number;
+  realtimePrices: Map<string, { price: number; timestamp: number }>;
+}
+
+const adaptiveCycle: AdaptiveCycleState = {
+  currentIntervalSec: ADAPTIVE_DEFAULT_INTERVAL_SEC,
+  volatilityLevel: 'NORMAL',
+  portfolioTier: 'STARTER',
+  dynamicPriceThreshold: PRICE_CHANGE_THRESHOLD,
+  consecutiveLightCycles: 0,
+  lastPriceCheck: new Map(),
+  emergencyMode: false,
+  emergencyUntil: 0,
+  wsConnected: false,
+  wsReconnectAttempts: 0,
+  realtimePrices: new Map(),
+};
+
+let adaptiveCycleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * v6.2: Determine the portfolio sensitivity tier based on current value.
+ * Higher portfolio = lower threshold = more sensitive to price moves.
+ */
+function getPortfolioSensitivity(portfolioUSD: number): { threshold: number; tier: string } {
+  let matched = PORTFOLIO_SENSITIVITY_TIERS[0];
+  for (const tier of PORTFOLIO_SENSITIVITY_TIERS) {
+    if (portfolioUSD >= tier.minUSD) matched = tier;
+  }
+  return { threshold: matched.priceChangeThreshold, tier: matched.label };
+}
+
+/**
+ * v6.2: Calculate volatility level from recent price movements.
+ * Looks at max price change across all tracked tokens in the last snapshot.
+ */
+function assessVolatility(currentPrices: Map<string, number>, previousPrices: Map<string, number>): {
+  level: keyof typeof VOLATILITY_SPEED_MAP;
+  maxChange: number;
+  fastestMover: string;
+} {
+  let maxChange = 0;
+  let fastestMover = '';
+
+  for (const [symbol, price] of currentPrices) {
+    const prev = previousPrices.get(symbol);
+    if (prev && prev > 0) {
+      const change = Math.abs(price - prev) / prev;
+      if (change > maxChange) {
+        maxChange = change;
+        fastestMover = symbol;
+      }
+    }
+  }
+
+  let level: keyof typeof VOLATILITY_SPEED_MAP;
+  if (maxChange > 0.08) level = 'EXTREME';
+  else if (maxChange > 0.05) level = 'HIGH';
+  else if (maxChange > 0.03) level = 'ELEVATED';
+  else if (maxChange > 0.01) level = 'NORMAL';
+  else if (maxChange > 0.003) level = 'LOW';
+  else level = 'DEAD';
+
+  return { level, maxChange, fastestMover };
+}
+
+/**
+ * v6.2: Check for emergency conditions — any position dropped 5%+ since last check.
+ * Returns the token and drop percentage if emergency detected.
+ */
+function checkEmergencyConditions(currentPrices: Map<string, number>): {
+  emergency: boolean;
+  token?: string;
+  dropPercent?: number;
+} {
+  for (const [symbol, price] of currentPrices) {
+    const lastCheck = adaptiveCycle.lastPriceCheck.get(symbol);
+    if (lastCheck && lastCheck > 0) {
+      const change = (price - lastCheck) / lastCheck;
+      if (change <= EMERGENCY_DROP_THRESHOLD) {
+        return { emergency: true, token: symbol, dropPercent: change * 100 };
+      }
+    }
+  }
+  return { emergency: false };
+}
+
+/**
+ * v6.2: Compute the next cycle interval based on all adaptive factors.
+ * This is the brain of the adaptive engine.
+ */
+function computeNextInterval(currentPrices: Map<string, number>): {
+  intervalSec: number;
+  reason: string;
+  volatilityLevel: keyof typeof VOLATILITY_SPEED_MAP;
+} {
+  const portfolioValue = state.trading.totalPortfolioValue || 0;
+  const { tier } = getPortfolioSensitivity(portfolioValue);
+  adaptiveCycle.portfolioTier = tier;
+
+  // Check emergency first
+  if (adaptiveCycle.emergencyMode && Date.now() < adaptiveCycle.emergencyUntil) {
+    return {
+      intervalSec: EMERGENCY_INTERVAL_SEC,
+      reason: `EMERGENCY rapid-fire (${adaptiveCycle.portfolioTier} tier)`,
+      volatilityLevel: 'EXTREME',
+    };
+  }
+
+  // Assess volatility from price movements
+  const vol = assessVolatility(currentPrices, adaptiveCycle.lastPriceCheck);
+  const baseInterval = VOLATILITY_SPEED_MAP[vol.level];
+
+  // Scale down interval for larger portfolios (more at stake = check more often)
+  let portfolioMultiplier = 1.0;
+  if (portfolioValue >= 100000) portfolioMultiplier = 0.5;
+  else if (portfolioValue >= 50000) portfolioMultiplier = 0.6;
+  else if (portfolioValue >= 25000) portfolioMultiplier = 0.75;
+  else if (portfolioValue >= 5000) portfolioMultiplier = 0.85;
+
+  let finalInterval = Math.round(baseInterval * portfolioMultiplier);
+
+  // Clamp to bounds
+  finalInterval = Math.max(ADAPTIVE_MIN_INTERVAL_SEC, Math.min(ADAPTIVE_MAX_INTERVAL_SEC, finalInterval));
+
+  // If many consecutive light cycles, gradually relax (nothing is happening)
+  if (adaptiveCycle.consecutiveLightCycles > 10) {
+    finalInterval = Math.min(finalInterval * 1.5, ADAPTIVE_MAX_INTERVAL_SEC);
+  }
+
+  const reason = vol.maxChange > 0
+    ? `${vol.level} volatility (${vol.fastestMover} ±${(vol.maxChange * 100).toFixed(1)}%) | ${tier} tier`
+    : `${vol.level} volatility | ${tier} tier`;
+
+  return { intervalSec: Math.round(finalInterval), reason, volatilityLevel: vol.level };
+}
+
+/**
+ * v6.2: Schedule the next adaptive cycle.
+ * Replaces the fixed cron job with dynamic setTimeout.
+ */
+function scheduleNextCycle() {
+  if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
+
+  const delayMs = adaptiveCycle.currentIntervalSec * 1000;
+  adaptiveCycleTimer = setTimeout(async () => {
+    try {
+      await runTradingCycle();
+    } catch (err: any) {
+      console.error(`[Adaptive Cycle Error] ${err?.message?.substring(0, 300) || err}`);
+    }
+    // After cycle completes, schedule the next one (interval may have changed)
+    scheduleNextCycle();
+  }, delayMs);
+}
+
+/**
+ * v6.2: Initialize WebSocket price stream from DexScreener.
+ * Provides real-time price updates between cycles for emergency detection.
+ */
+function initPriceStream() {
+  // DexScreener doesn't have a public WebSocket API, so we use a high-frequency
+  // HTTP polling approach with a dedicated interval (every 10s) for real-time awareness.
+  // This is more reliable than WebSocket for DexScreener and avoids connection issues.
+
+  const STREAM_INTERVAL = 10_000; // 10 seconds
+
+  const streamPrices = async () => {
+    try {
+      const addresses = Object.entries(TOKEN_REGISTRY)
+        .filter(([s]) => s !== "USDC")
+        .map(([_, t]) => t.address)
+        .join(",");
+
+      const dexRes = await axios.get(
+        `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+        { timeout: 8000 }
+      );
+
+      if (dexRes.data && Array.isArray(dexRes.data)) {
+        const seen = new Set<string>();
+        const now = Date.now();
+        for (const pair of dexRes.data) {
+          const addr = pair.baseToken?.address?.toLowerCase();
+          const entry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.address.toLowerCase() === addr);
+          if (entry && !seen.has(entry[0])) {
+            seen.add(entry[0]);
+            const price = parseFloat(pair.priceUsd || "0");
+            if (price > 0) {
+              adaptiveCycle.realtimePrices.set(entry[0], { price, timestamp: now });
+
+              // Check for emergency drop in real-time
+              const lastCheck = adaptiveCycle.lastPriceCheck.get(entry[0]);
+              if (lastCheck && lastCheck > 0) {
+                const change = (price - lastCheck) / lastCheck;
+                if (change <= EMERGENCY_DROP_THRESHOLD && !adaptiveCycle.emergencyMode) {
+                  console.log(`\n🚨 EMERGENCY DETECTED: ${entry[0]} dropped ${(change * 100).toFixed(1)}% — activating rapid-fire mode!`);
+                  adaptiveCycle.emergencyMode = true;
+                  adaptiveCycle.emergencyUntil = now + 5 * 60 * 1000; // 5 minutes of emergency mode
+                  // Force immediate cycle
+                  if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
+                  scheduleNextCycle();
+                }
+              }
+            }
+          }
+        }
+        adaptiveCycle.wsConnected = true; // Mark stream as active
+      }
+    } catch {
+      // Silent fail — normal cycles still work as backup
+      adaptiveCycle.wsConnected = false;
+    }
+  };
+
+  // Start streaming
+  streamPrices();
+  setInterval(streamPrices, STREAM_INTERVAL);
+  console.log(`   📡 Real-time price stream: active (${STREAM_INTERVAL / 1000}s polling)`);
+}
 
 // ============================================================================
 // STATE
@@ -4402,15 +4645,28 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
   }
 
   // 3. Check for significant price moves since last heavy cycle
+  // v6.2: Use portfolio-scaled threshold instead of fixed 2%
+  const portfolioValue = state.trading.totalPortfolioValue || 0;
+  const { threshold: dynamicThreshold, tier: portfolioTier } = getPortfolioSensitivity(portfolioValue);
+  adaptiveCycle.dynamicPriceThreshold = dynamicThreshold;
+
   for (const [symbol, price] of currentPrices) {
     const lastPrice = lastPriceSnapshot.get(symbol);
     if (lastPrice && lastPrice > 0) {
       const change = Math.abs(price - lastPrice) / lastPrice;
-      if (change > PRICE_CHANGE_THRESHOLD) {
+      if (change > dynamicThreshold) {
         const direction = price > lastPrice ? 'UP' : 'DOWN';
-        return { isHeavy: true, reason: `${symbol} moved ${(change * 100).toFixed(1)}% ${direction}` };
+        return { isHeavy: true, reason: `${symbol} moved ${(change * 100).toFixed(1)}% ${direction} (${portfolioTier} tier threshold: ${(dynamicThreshold * 100).toFixed(1)}%)` };
       }
     }
+  }
+
+  // 3b. v6.2: Emergency drop detection — any token down 5%+ → immediate heavy
+  const emergency = checkEmergencyConditions(currentPrices);
+  if (emergency.emergency) {
+    adaptiveCycle.emergencyMode = true;
+    adaptiveCycle.emergencyUntil = Date.now() + 5 * 60 * 1000;
+    return { isHeavy: true, reason: `🚨 EMERGENCY: ${emergency.token} dropped ${emergency.dropPercent?.toFixed(1)}%` };
   }
 
   // 4. Check Fear & Greed change (use cached value, no API call)
@@ -4451,10 +4707,18 @@ async function runTradingCycle() {
   if (!isHeavy) {
     // === LIGHT CYCLE ===
     cycleStats.totalLight++;
+    adaptiveCycle.consecutiveLightCycles++;
     const portfolioValue = state.trading.totalPortfolioValue || 0;
     const cooldownCount = cooldownManager.getActiveCount();
     const cacheStats = cacheManager.getStats();
-    console.log(`[CYCLE #${state.totalCycles}] LIGHT | Portfolio: $${portfolioValue.toFixed(2)} | Cooldowns: ${cooldownCount} | Cache: ${cacheStats.entries} entries (${cacheStats.hitRate} hit rate) | ${(Date.now() - cycleStart)}ms`);
+
+    // v6.2: Update adaptive interval even on light cycles
+    const lightInterval = computeNextInterval(currentPrices);
+    adaptiveCycle.currentIntervalSec = lightInterval.intervalSec;
+    adaptiveCycle.volatilityLevel = lightInterval.volatilityLevel;
+    adaptiveCycle.lastPriceCheck = new Map(currentPrices);
+
+    console.log(`[CYCLE #${state.totalCycles}] LIGHT | Portfolio: $${portfolioValue.toFixed(2)} | Cooldowns: ${cooldownCount} | Cache: ${cacheStats.entries} entries (${cacheStats.hitRate} hit rate) | ${(Date.now() - cycleStart)}ms | ⚡ Next: ${lightInterval.intervalSec}s (${lightInterval.volatilityLevel})`);
     return; // Skip full analysis
   }
 
@@ -4903,7 +5167,24 @@ async function runTradingCycle() {
   }
   console.log(`   Cooldowns: ${cooldownManager.getActiveCount()} active | Cache: ${cacheManager.getStats().entries} entries (${cacheManager.getStats().hitRate} hit rate)`);
   console.log(`   Cycle type: HEAVY (${heavyReason}) | Light/Heavy: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H`);
-  console.log(`   Next cycle in ${CONFIG.trading.intervalMinutes} minutes`);
+
+  // v6.2: Compute and apply adaptive interval for next cycle
+  const nextInterval = computeNextInterval(currentPrices);
+  adaptiveCycle.currentIntervalSec = nextInterval.intervalSec;
+  adaptiveCycle.volatilityLevel = nextInterval.volatilityLevel;
+  adaptiveCycle.consecutiveLightCycles = 0; // Reset on heavy cycle
+
+  // Update price snapshot for next adaptive comparison
+  adaptiveCycle.lastPriceCheck = new Map(currentPrices);
+
+  // Clear emergency if conditions resolved
+  if (adaptiveCycle.emergencyMode && Date.now() > adaptiveCycle.emergencyUntil) {
+    adaptiveCycle.emergencyMode = false;
+    console.log(`   ✅ Emergency mode ended — returning to adaptive tempo`);
+  }
+
+  console.log(`   ⚡ Adaptive: ${nextInterval.intervalSec}s next cycle | ${nextInterval.reason}`);
+  console.log(`   📡 Price stream: ${adaptiveCycle.wsConnected ? 'LIVE' : 'offline'} | Threshold: ${(adaptiveCycle.dynamicPriceThreshold * 100).toFixed(1)}% (${adaptiveCycle.portfolioTier})`);
   console.log("═".repeat(70));
 }
 
@@ -5092,27 +5373,48 @@ async function main() {
   // Run immediately
   await runTradingCycle();
 
-  // Schedule recurring cycles with robust error handling
-  const cronExpression = `*/${CONFIG.trading.intervalMinutes} * * * *`;
+  // v6.2: ADAPTIVE CYCLE ENGINE — replaces fixed cron with dynamic scheduling
+  // The cron still exists as a safety net (forced heavy every 15min), but the
+  // primary scheduler is now adaptive setTimeout that adjusts 15s-5min based on
+  // volatility, portfolio size, and emergency conditions.
+  console.log("\n⚡ v6.2: Initializing Adaptive Cycle Engine...");
+
+  // Start real-time price stream (10s polling for emergency detection)
+  initPriceStream();
+
+  // Schedule first adaptive cycle
+  scheduleNextCycle();
+
+  // Safety net: keep the cron as a backup forced heavy cycle trigger
+  const cronExpression = `*/${Math.max(CONFIG.trading.intervalMinutes, 15)} * * * *`;
   cron.schedule(cronExpression, async () => {
     try {
-      await runTradingCycle();
+      // Only run if the adaptive engine somehow stalled
+      const timeSinceLastCycle = Date.now() - (lastHeavyCycleAt || 0);
+      if (timeSinceLastCycle > HEAVY_CYCLE_FORCED_INTERVAL_MS * 1.5) {
+        console.log(`[Safety Net] Adaptive engine may have stalled — forcing cycle (${(timeSinceLastCycle / 60000).toFixed(0)}m since last heavy)`);
+        await runTradingCycle();
+      }
     } catch (cronError: any) {
-      console.error(`[Cron Error] Cycle failed: ${cronError?.message?.substring(0, 300) || cronError}`);
+      console.error(`[Cron Safety Net Error] ${cronError?.message?.substring(0, 300) || cronError}`);
     }
   });
 
   // Heartbeat every 5 minutes to confirm process is alive
   setInterval(() => {
-    console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades}`);
+    const adaptiveInfo = `Interval: ${adaptiveCycle.currentIntervalSec}s | Vol: ${adaptiveCycle.volatilityLevel} | Tier: ${adaptiveCycle.portfolioTier} | Stream: ${adaptiveCycle.wsConnected ? 'LIVE' : 'OFF'}${adaptiveCycle.emergencyMode ? ' | 🚨 EMERGENCY' : ''}`;
+    console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | ${adaptiveInfo}`);
     // v5.2: Save state every heartbeat
     saveTradeHistory();
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v6.1 running! 2-min cycles + Light/Heavy pattern + Smart Caching + Per-Token Cooldowns + Token Discovery + Auto-Harvest.\n");
+  const { tier: startTier } = getPortfolioSensitivity(state.trading.totalPortfolioValue || 0);
+  console.log(`\n🚀 Agent v6.2 running! Adaptive Cycles + Real-Time Streaming + Portfolio-Scaled Intelligence.\n`);
   console.log(`   📂 State persistence: ${CONFIG.logFile}`);
   console.log(`   💰 Max buy size: ${CONFIG.trading.maxBuySize} | Min trade: $5`);
-  console.log(`   ⏱️  Cycle interval: ${CONFIG.trading.intervalMinutes}m | Heavy forced every 15m`);
+  console.log(`   ⚡ Adaptive tempo: ${ADAPTIVE_MIN_INTERVAL_SEC}s – ${ADAPTIVE_MAX_INTERVAL_SEC}s | Emergency: ${EMERGENCY_INTERVAL_SEC}s`);
+  console.log(`   🎯 Portfolio tier: ${startTier} | Emergency drop trigger: ${(EMERGENCY_DROP_THRESHOLD * 100).toFixed(0)}%`);
+  console.log(`   📡 Real-time price stream: ACTIVE (10s polling)`);
   console.log(`   🧹 Dust threshold: ${DUST_THRESHOLD_USD} (consolidates every 10 cycles)\n`);
 }
 
@@ -5375,6 +5677,33 @@ const healthServer = http.createServer(async (req, res) => {
           sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
         }
         break;
+      // === v6.2: ADAPTIVE CYCLE API ENDPOINT ===
+      case '/api/adaptive':
+        sendJSON(res, 200, {
+          version: '6.2',
+          currentIntervalSec: adaptiveCycle.currentIntervalSec,
+          volatilityLevel: adaptiveCycle.volatilityLevel,
+          portfolioTier: adaptiveCycle.portfolioTier,
+          dynamicPriceThreshold: adaptiveCycle.dynamicPriceThreshold,
+          emergencyMode: adaptiveCycle.emergencyMode,
+          emergencyUntil: adaptiveCycle.emergencyMode ? new Date(adaptiveCycle.emergencyUntil).toISOString() : null,
+          priceStreamActive: adaptiveCycle.wsConnected,
+          consecutiveLightCycles: adaptiveCycle.consecutiveLightCycles,
+          cycleStats: {
+            light: cycleStats.totalLight,
+            heavy: cycleStats.totalHeavy,
+            lastHeavyReason: cycleStats.lastHeavyReason,
+          },
+          config: {
+            minIntervalSec: ADAPTIVE_MIN_INTERVAL_SEC,
+            maxIntervalSec: ADAPTIVE_MAX_INTERVAL_SEC,
+            emergencyIntervalSec: EMERGENCY_INTERVAL_SEC,
+            emergencyDropThreshold: EMERGENCY_DROP_THRESHOLD,
+            portfolioTiers: PORTFOLIO_SENSITIVITY_TIERS,
+          },
+        });
+        break;
+
       // === DERIVATIVES API ENDPOINT (v6.0) ===
       case '/api/derivatives':
         sendJSON(res, 200, {

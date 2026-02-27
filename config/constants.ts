@@ -23,6 +23,50 @@ export const FG_CHANGE_THRESHOLD = 5; // 5 points
 export const VOLUME_SPIKE_THRESHOLD = 2.0;
 
 // ============================================================================
+// v6.2: ADAPTIVE CYCLE ENGINE — Dynamic tempo based on market conditions
+// ============================================================================
+
+/** Minimum cycle interval in seconds (maximum vigilance during volatility) */
+export const ADAPTIVE_MIN_INTERVAL_SEC = 30;
+
+/** Maximum cycle interval in seconds (calm markets, conserve API quota) */
+export const ADAPTIVE_MAX_INTERVAL_SEC = 300; // 5 minutes
+
+/** Default cycle interval in seconds (normal conditions) */
+export const ADAPTIVE_DEFAULT_INTERVAL_SEC = 120; // 2 minutes
+
+/** Emergency rapid-fire interval in seconds (triggered by large drops) */
+export const EMERGENCY_INTERVAL_SEC = 15;
+
+/** Emergency trigger: any position drops this much → immediate heavy cycle */
+export const EMERGENCY_DROP_THRESHOLD = -0.05; // -5%
+
+/** Portfolio size tiers for scaling sensitivity */
+export const PORTFOLIO_SENSITIVITY_TIERS = [
+  { minUSD: 0,      priceChangeThreshold: 0.02, label: 'STARTER' },      // $0-5K: 2% move triggers
+  { minUSD: 5000,   priceChangeThreshold: 0.015, label: 'GROWTH' },      // $5K-25K: 1.5% move triggers
+  { minUSD: 25000,  priceChangeThreshold: 0.01, label: 'SCALED' },       // $25K-50K: 1% move triggers
+  { minUSD: 50000,  priceChangeThreshold: 0.005, label: 'PREMIUM' },     // $50K-100K: 0.5% move triggers
+  { minUSD: 100000, priceChangeThreshold: 0.003, label: 'INSTITUTIONAL' }, // $100K+: 0.3% move triggers
+] as const;
+
+/** Volatility levels that control cycle speed */
+export const VOLATILITY_SPEED_MAP = {
+  EXTREME: 30,    // 30s cycles — market is on fire
+  HIGH: 45,       // 45s cycles — significant movement
+  ELEVATED: 60,   // 60s cycles — above normal activity
+  NORMAL: 120,    // 2min cycles — standard conditions
+  LOW: 180,       // 3min cycles — quiet market
+  DEAD: 300,      // 5min cycles — nothing happening
+} as const;
+
+/** WebSocket reconnect delay in ms */
+export const WS_RECONNECT_DELAY_MS = 5000;
+
+/** WebSocket max reconnect attempts before falling back to polling */
+export const WS_MAX_RECONNECT_ATTEMPTS = 10;
+
+// ============================================================================
 // CACHE TTLs (milliseconds) — Smart Caching System v6.0
 // ============================================================================
 

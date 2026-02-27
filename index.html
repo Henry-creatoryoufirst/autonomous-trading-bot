@@ -460,7 +460,7 @@
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
                     <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Current Cycle</div>
                     <div id="cycleNumber" class="text-4xl font-bold font-mono gradient-text">94</div>
-                    <div class="text-xs text-slate-600 mt-1">15-min intervals</div>
+                    <div class="text-xs text-slate-600 mt-1"><span id="adaptiveInterval">adaptive</span> tempo</div>
                 </div>
                 <!-- Total Trades -->
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
@@ -484,9 +484,14 @@
                 <!-- Next Cycle Countdown -->
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
                     <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Next Cycle</div>
-                    <div id="countdown" class="text-4xl font-bold font-mono text-accent-sky">15:00</div>
+                    <div id="countdown" class="text-4xl font-bold font-mono text-accent-sky">2:00</div>
                     <div class="w-full bg-surface-700 rounded-full h-1.5 mt-2">
                         <div id="countdownBar" class="bg-gradient-to-r from-brand to-accent-sky h-1.5 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                    </div>
+                    <div class="flex items-center justify-center gap-1.5 mt-2">
+                        <div id="streamDot" class="w-1.5 h-1.5 rounded-full bg-slate-600"></div>
+                        <span id="adaptiveLabel" class="text-[10px] text-slate-600 uppercase">ADAPTIVE</span>
+                        <span id="volatilityBadge" class="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-700 text-slate-500">—</span>
                     </div>
                 </div>
             </div>
@@ -720,7 +725,7 @@
         const BOT_API = 'https://autonomous-trading-bot-production.up.railway.app';
         const BASE_RPC = 'https://mainnet.base.org';
         const REFRESH_INTERVAL = 30000;
-        const CYCLE_DURATION = 15 * 60; // 15 minutes in seconds
+        let CYCLE_DURATION = 120; // Default 2 minutes, updated dynamically by adaptive engine
         const INITIAL_CAPITAL = 230;
 
         const TOKENS = [
