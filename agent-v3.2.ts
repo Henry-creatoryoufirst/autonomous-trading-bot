@@ -2818,6 +2818,69 @@ async function getMarketData(): Promise<MarketData> {
       }
     }
 
+    // v6.1: DexScreener fallback — if CoinGecko returned no tokens or failed,
+    // fetch prices from DexScreener using on-chain token addresses (no API key needed)
+    if (tokens.length === 0 || tokens.every(t => !t.price || t.price === 0)) {
+      console.log(`  🔄 DexScreener fallback: CoinGecko returned 0 priced tokens, fetching from DexScreener...`);
+      try {
+        const tokenAddresses = Object.entries(TOKEN_REGISTRY)
+          .filter(([symbol]) => symbol !== "USDC")
+          .map(([_, t]) => t.address)
+          .join(",");
+        const dexRes = await axios.get(
+          `https://api.dexscreener.com/tokens/v1/base/${tokenAddresses}`,
+          { timeout: 15000 }
+        );
+        if (dexRes.data && Array.isArray(dexRes.data) && dexRes.data.length > 0) {
+          const dexTokens: MarketData["tokens"] = [];
+          const seenSymbols = new Set<string>();
+          for (const pair of dexRes.data) {
+            const addr = pair.baseToken?.address?.toLowerCase();
+            const registryEntry = Object.entries(TOKEN_REGISTRY).find(
+              ([_, t]) => t.address.toLowerCase() === addr
+            );
+            if (registryEntry && !seenSymbols.has(registryEntry[0])) {
+              const [symbol, regData] = registryEntry;
+              seenSymbols.add(symbol);
+              const price = parseFloat(pair.priceUsd || "0");
+              if (price > 0) {
+                dexTokens.push({
+                  symbol, name: regData.name, price,
+                  priceChange24h: pair.priceChange?.h24 || 0,
+                  priceChange7d: 0,
+                  volume24h: pair.volume?.h24 || 0,
+                  marketCap: pair.marketCap || 0,
+                  sector: regData.sector,
+                });
+                // Also update lastKnownPrices so light cycles have data
+                lastKnownPrices[symbol] = {
+                  price, change24h: pair.priceChange?.h24 || 0, change7d: 0,
+                  volume: pair.volume?.h24 || 0, marketCap: pair.marketCap || 0,
+                  name: regData.name, sector: regData.sector,
+                };
+              }
+            }
+          }
+          if (dexTokens.length > 0) {
+            tokens = dexTokens;
+            console.log(`  ✅ DexScreener fallback: ${dexTokens.length} tokens priced`);
+            // Cache the DexScreener result so subsequent cycles don't re-fetch
+            cacheManager.set(CacheKeys.COINGECKO_PRICES, { data: dexTokens.map(t => ({
+              id: TOKEN_REGISTRY[t.symbol]?.coingeckoId || t.symbol.toLowerCase(),
+              symbol: t.symbol.toLowerCase(), name: t.name,
+              current_price: t.price, price_change_percentage_24h: t.priceChange24h,
+              price_change_percentage_7d_in_currency: t.priceChange7d,
+              total_volume: t.volume24h, market_cap: t.marketCap,
+            })) }, CACHE_TTL.PRICE);
+          } else {
+            console.warn(`  ⚠️ DexScreener returned data but no valid prices`);
+          }
+        }
+      } catch (dexErr: any) {
+        console.error(`  ❌ DexScreener fallback also failed: ${dexErr?.message || dexErr}`);
+      }
+    }
+
     const trendingTokens = tokens
       .filter((t: any) => t.priceChange24h > 5)
       .sort((a: any, b: any) => b.priceChange24h - a.priceChange24h)
@@ -4278,6 +4341,41 @@ async function fetchQuickPrices(): Promise<Map<string, number>> {
       prices.set(symbol, data.price);
     }
   }
+
+  // v6.1: DexScreener fallback for quick prices if nothing else worked
+  if (prices.size === 0) {
+    try {
+      const addresses = Object.entries(TOKEN_REGISTRY)
+        .filter(([s]) => s !== "USDC")
+        .map(([_, t]) => t.address)
+        .join(",");
+      const dexRes = await axios.get(
+        `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+        { timeout: 10000 }
+      );
+      if (dexRes.data && Array.isArray(dexRes.data)) {
+        const seen = new Set<string>();
+        for (const pair of dexRes.data) {
+          const addr = pair.baseToken?.address?.toLowerCase();
+          const entry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.address.toLowerCase() === addr);
+          if (entry && !seen.has(entry[0])) {
+            seen.add(entry[0]);
+            const price = parseFloat(pair.priceUsd || "0");
+            if (price > 0) {
+              prices.set(entry[0], price);
+              lastKnownPrices[entry[0]] = {
+                price, change24h: pair.priceChange?.h24 || 0, change7d: 0,
+                volume: pair.volume?.h24 || 0, marketCap: pair.marketCap || 0,
+                name: entry[1].name, sector: entry[1].sector,
+              };
+            }
+          }
+        }
+        if (prices.size > 0) console.log(`  🔄 Quick prices: ${prices.size} tokens via DexScreener fallback`);
+      }
+    } catch { /* DexScreener quick price fallback failed silently */ }
+  }
+
   return prices;
 }
 
@@ -4295,6 +4393,12 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
   // 2. First cycle is always heavy
   if (lastHeavyCycleAt === 0) {
     return { isHeavy: true, reason: 'First cycle' };
+  }
+
+  // 2b. v6.1: Force heavy if pricing is broken (all tokens $0 = only USDC counted)
+  const pricedTokenCount = Array.from(currentPrices.values()).filter(p => p > 0).length;
+  if (pricedTokenCount === 0 && Object.keys(lastKnownPrices).length === 0) {
+    return { isHeavy: true, reason: 'No token prices available — forcing price refresh' };
   }
 
   // 3. Check for significant price moves since last heavy cycle
