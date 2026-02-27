@@ -5205,7 +5205,7 @@ function getDashboardHTML(): string {
   return EMBEDDED_DASHBOARD;
 }
 
-const healthServer = http.createServer((req, res) => {
+const healthServer = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
