@@ -119,8 +119,6 @@ import {
   EMERGENCY_DROP_THRESHOLD,
   PORTFOLIO_SENSITIVITY_TIERS,
   VOLATILITY_SPEED_MAP,
-  WS_RECONNECT_DELAY_MS,
-  WS_MAX_RECONNECT_ATTEMPTS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -446,9 +444,9 @@ let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
 
-interface AdaptiveCycleState {
+const adaptiveCycle: {
   currentIntervalSec: number;
-  volatilityLevel: keyof typeof VOLATILITY_SPEED_MAP;
+  volatilityLevel: string;
   portfolioTier: string;
   dynamicPriceThreshold: number;
   consecutiveLightCycles: number;
@@ -458,9 +456,7 @@ interface AdaptiveCycleState {
   wsConnected: boolean;
   wsReconnectAttempts: number;
   realtimePrices: Map<string, { price: number; timestamp: number }>;
-}
-
-const adaptiveCycle: AdaptiveCycleState = {
+} = {
   currentIntervalSec: ADAPTIVE_DEFAULT_INTERVAL_SEC,
   volatilityLevel: 'NORMAL',
   portfolioTier: 'STARTER',
@@ -493,7 +489,7 @@ function getPortfolioSensitivity(portfolioUSD: number): { threshold: number; tie
  * Looks at max price change across all tracked tokens in the last snapshot.
  */
 function assessVolatility(currentPrices: Map<string, number>, previousPrices: Map<string, number>): {
-  level: keyof typeof VOLATILITY_SPEED_MAP;
+  level: string;
   maxChange: number;
   fastestMover: string;
 } {
@@ -511,7 +507,7 @@ function assessVolatility(currentPrices: Map<string, number>, previousPrices: Ma
     }
   }
 
-  let level: keyof typeof VOLATILITY_SPEED_MAP;
+  let level: string;
   if (maxChange > 0.08) level = 'EXTREME';
   else if (maxChange > 0.05) level = 'HIGH';
   else if (maxChange > 0.03) level = 'ELEVATED';
@@ -550,7 +546,7 @@ function checkEmergencyConditions(currentPrices: Map<string, number>): {
 function computeNextInterval(currentPrices: Map<string, number>): {
   intervalSec: number;
   reason: string;
-  volatilityLevel: keyof typeof VOLATILITY_SPEED_MAP;
+  volatilityLevel: string;
 } {
   const portfolioValue = state.trading.totalPortfolioValue || 0;
   const { tier } = getPortfolioSensitivity(portfolioValue);
@@ -567,7 +563,7 @@ function computeNextInterval(currentPrices: Map<string, number>): {
 
   // Assess volatility from price movements
   const vol = assessVolatility(currentPrices, adaptiveCycle.lastPriceCheck);
-  const baseInterval = VOLATILITY_SPEED_MAP[vol.level];
+  const baseInterval = (VOLATILITY_SPEED_MAP as any)[vol.level] || ADAPTIVE_DEFAULT_INTERVAL_SEC;
 
   // Scale down interval for larger portfolios (more at stake = check more often)
   let portfolioMultiplier = 1.0;
@@ -621,7 +617,7 @@ function initPriceStream() {
   // HTTP polling approach with a dedicated interval (every 10s) for real-time awareness.
   // This is more reliable than WebSocket for DexScreener and avoids connection issues.
 
-  const STREAM_INTERVAL = 10_000; // 10 seconds
+  const STREAM_INTERVAL = 10000; // 10 seconds
 
   const streamPrices = async () => {
     try {
