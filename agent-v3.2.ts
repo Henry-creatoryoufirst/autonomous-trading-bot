@@ -302,6 +302,58 @@ const TOKEN_REGISTRY: Record<string, {
 };
 
 // ============================================================================
+// v6.2: CHAINLINK ORACLE PRICE FEEDS — On-chain prices that can never rate-limit
+// ============================================================================
+// AggregatorV3Interface: latestRoundData() → (roundId, answer, startedAt, updatedAt, answeredInRound)
+// answer is price with 8 decimals for USD feeds
+
+const CHAINLINK_FEEDS_BASE: Record<string, { feed: string; decimals: number }> = {
+  ETH:   { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // ETH/USD
+  WETH:  { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Same as ETH
+  cbBTC: { feed: "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", decimals: 8 },  // BTC/USD
+  cbETH: { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Uses ETH feed as proxy
+};
+
+const CHAINLINK_ABI_FRAGMENT = "0x50d25bcd"; // latestAnswer() → int256
+
+/**
+ * v6.2: Fetch prices directly from Chainlink oracles on Base via eth_call.
+ * These are on-chain reads — no API key needed, no rate limits possible.
+ * Only covers major tokens (ETH, BTC) but provides an unbreakable price floor.
+ */
+async function fetchChainlinkPrices(): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  const BASE_RPC = "https://mainnet.base.org";
+
+  for (const [symbol, config] of Object.entries(CHAINLINK_FEEDS_BASE)) {
+    try {
+      const res = await axios.post(BASE_RPC, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [{ to: config.feed, data: CHAINLINK_ABI_FRAGMENT }, "latest"],
+      }, { timeout: 5000 });
+
+      if (res.data?.result && res.data.result !== "0x") {
+        const rawPrice = parseInt(res.data.result, 16);
+        const price = rawPrice / Math.pow(10, config.decimals);
+        if (price > 0) {
+          prices.set(symbol, price);
+        }
+      }
+    } catch {
+      // Silent fail per token — other sources still available
+    }
+  }
+
+  if (prices.size > 0) {
+    console.log(`  🔗 Chainlink oracle: ${prices.size} prices (${[...prices.entries()].map(([s, p]) => `${s}=$${p.toFixed(2)}`).join(", ")})`);
+  }
+
+  return prices;
+}
+
+// ============================================================================
 // CONFIGURATION V3.2
 // ============================================================================
 
@@ -338,11 +390,11 @@ const CONFIG = {
     // V3.5: Stop-Loss
     stopLoss: {
       enabled: true,
-      percentThreshold: -25,    // Trigger at -25% from avg cost
-      sellPercent: 50,          // Sell 50% of the losing position
+      percentThreshold: -15,    // v6.2: Tightened from -25% to -15% from avg cost
+      sellPercent: 75,          // v6.2: Sell 75% of losing position (was 50%)
       minHoldingUSD: 5,         // Don't trigger if holding < $5
       trailingEnabled: true,    // Also use trailing stop from peak
-      trailingPercent: -20,     // Trigger at -20% from token's peak
+      trailingPercent: -12,     // v6.2: Tightened from -20% to -12% from peak
     },
   },
 
@@ -882,8 +934,8 @@ const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: numb
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
   profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -40, max: -10, maxStep: 2 },
-  trailingStopPercent:   { min: -35, max: -10, maxStep: 2 },
+  stopLossPercent:       { min: -25, max: -8, maxStep: 2 },    // v6.2: tighter bounds
+  trailingStopPercent:   { min: -20, max: -8, maxStep: 2 },   // v6.2: tighter bounds
 };
 
 const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
@@ -895,8 +947,8 @@ const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   confluenceStrongSell: -40,
   profitTakeTarget: 20,
   profitTakeSellPercent: 30,
-  stopLossPercent: -25,
-  trailingStopPercent: -20,
+  stopLossPercent: -15,       // v6.2: tightened from -25%
+  trailingStopPercent: -12,   // v6.2: tightened from -20%
   regimeMultipliers: {
     TRENDING_UP: 1.2,
     TRENDING_DOWN: 0.6,
@@ -3120,6 +3172,38 @@ async function getMarketData(): Promise<MarketData> {
       }
     }
 
+    // v6.2: Chainlink on-chain oracle — 3rd fallback for blue-chip prices
+    // If we still have no ETH/BTC prices, read directly from on-chain oracles
+    const hasETHPrice = tokens.some(t => t.symbol === "ETH" && t.price > 0);
+    if (!hasETHPrice || tokens.length === 0) {
+      try {
+        const chainlinkPrices = await fetchChainlinkPrices();
+        for (const [symbol, price] of chainlinkPrices) {
+          const existing = tokens.find(t => t.symbol === symbol);
+          if (!existing && TOKEN_REGISTRY[symbol]) {
+            const reg = TOKEN_REGISTRY[symbol];
+            tokens.push({
+              symbol, name: reg.name, price,
+              priceChange24h: 0, priceChange7d: 0,
+              volume24h: 0, marketCap: 0, sector: reg.sector,
+            });
+            lastKnownPrices[symbol] = {
+              price, change24h: 0, change7d: 0,
+              volume: 0, marketCap: 0, name: reg.name, sector: reg.sector,
+            };
+          } else if (existing && existing.price === 0) {
+            existing.price = price;
+            lastKnownPrices[symbol] = { ...lastKnownPrices[symbol], price };
+          }
+        }
+        if (chainlinkPrices.size > 0) {
+          console.log(`  🔗 Chainlink oracle backfill: ${chainlinkPrices.size} blue-chip prices`);
+        }
+      } catch (chainErr: any) {
+        console.error(`  ❌ Chainlink oracle fallback failed: ${chainErr?.message || chainErr}`);
+      }
+    }
+
     const trendingTokens = tokens
       .filter((t: any) => t.priceChange24h > 5)
       .sort((a: any, b: any) => b.priceChange24h - a.priceChange24h)
@@ -4150,6 +4234,23 @@ async function executeTrade(
     return { success: false, error: "Trading disabled (dry run)" };
   }
 
+  // v6.2: Gas-aware trade sizing — skip trades where gas eats the profit
+  // Base chain gas is cheap (~$0.01-0.10) but for tiny trades it still matters
+  const estimatedGasUSD = 0.15; // Conservative estimate for Base swap (higher than typical)
+  const MIN_PROFIT_TO_GAS_RATIO = 3; // Trade must expect 3x gas cost in profit potential
+  const gasThreshold = estimatedGasUSD * MIN_PROFIT_TO_GAS_RATIO;
+
+  if (decision.amountUSD < gasThreshold && decision.amountUSD < 3) {
+    console.log(`  ⛽ Gas guard: Skipping $${decision.amountUSD.toFixed(2)} trade — below gas threshold ($${gasThreshold.toFixed(2)})`);
+    return { success: false, error: `Trade too small: $${decision.amountUSD.toFixed(2)} < gas threshold $${gasThreshold.toFixed(2)}` };
+  }
+
+  // Log gas-to-trade ratio for monitoring
+  const gasPercent = (estimatedGasUSD / decision.amountUSD) * 100;
+  if (gasPercent > 5) {
+    console.log(`  ⛽ Gas warning: Gas ~$${estimatedGasUSD.toFixed(2)} = ${gasPercent.toFixed(1)}% of $${decision.amountUSD.toFixed(2)} trade`);
+  }
+
   const portfolioValueBefore = state.trading.totalPortfolioValue;
 
   try {
@@ -4615,6 +4716,19 @@ async function fetchQuickPrices(): Promise<Map<string, number>> {
     } catch { /* DexScreener quick price fallback failed silently */ }
   }
 
+  // v6.2: Chainlink on-chain oracle — 3rd fallback, can never be rate-limited
+  // Only covers ETH/BTC but ensures we always have blue-chip prices
+  if (prices.size === 0 || !prices.has("ETH")) {
+    try {
+      const chainlinkPrices = await fetchChainlinkPrices();
+      for (const [symbol, price] of chainlinkPrices) {
+        if (!prices.has(symbol)) {
+          prices.set(symbol, price);
+        }
+      }
+    } catch { /* Chainlink fallback failed silently */ }
+  }
+
   return prices;
 }
 
@@ -4903,6 +5017,15 @@ async function runTradingCycle() {
         const pct = cb.averageCostBasis > 0 ? ((cb.unrealizedPnL / (cb.averageCostBasis * cb.currentHolding)) * 100) : 0;
         console.log(`   ${cb.unrealizedPnL >= 0 ? "🟢" : "🔴"} ${cb.symbol}: avg $${cb.averageCostBasis.toFixed(4)} | P&L ${cb.unrealizedPnL >= 0 ? "+" : ""}$${cb.unrealizedPnL.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`);
       }
+    }
+
+    // v6.2: Risk-Reward Metrics
+    const rrMetrics = calculateRiskRewardMetrics();
+    if (rrMetrics.avgWinUSD > 0 || rrMetrics.avgLossUSD > 0) {
+      console.log(`\n📊 Risk-Reward Profile:`);
+      console.log(`   Avg Win: +$${rrMetrics.avgWinUSD.toFixed(2)} | Avg Loss: -$${rrMetrics.avgLossUSD.toFixed(2)} | Ratio: ${rrMetrics.riskRewardRatio.toFixed(2)}x`);
+      console.log(`   Largest Win: +$${rrMetrics.largestWin.toFixed(2)} | Largest Loss: -$${rrMetrics.largestLoss.toFixed(2)}`);
+      console.log(`   Expectancy: $${rrMetrics.expectancy.toFixed(2)}/trade | Profit Factor: ${rrMetrics.profitFactor.toFixed(2)}`);
     }
 
     // === STOP-LOSS CHECK (highest priority) ===
@@ -5451,10 +5574,69 @@ function sendJSON(res: http.ServerResponse, status: number, data: any) {
   res.end(JSON.stringify(data));
 }
 
+/**
+ * v6.2: Calculate risk-reward metrics from trade history.
+ * Avg win size vs avg loss size tells you if the strategy is actually profitable
+ * beyond just win rate. A 60% win rate with $5 avg wins and $15 avg losses = net negative.
+ */
+function calculateRiskRewardMetrics(): {
+  avgWinUSD: number;
+  avgLossUSD: number;
+  riskRewardRatio: number;
+  largestWin: number;
+  largestLoss: number;
+  expectancy: number;
+  profitFactor: number;
+} {
+  const trades = state.trading.trades || [];
+  const sells = trades.filter(t => t.action === "SELL" && t.success);
+
+  const wins: number[] = [];
+  const losses: number[] = [];
+
+  for (const trade of sells) {
+    const symbol = trade.fromToken;
+    const cb = state.costBasis[symbol];
+    if (!cb || cb.averageCostBasis <= 0) continue;
+
+    // Calculate P&L for this sell based on cost basis
+    const tokenPrice = trade.amountUSD / (trade.tokenAmount || 1);
+    const pnl = (tokenPrice - cb.averageCostBasis) * (trade.tokenAmount || 0);
+
+    if (pnl >= 0) wins.push(pnl);
+    else losses.push(Math.abs(pnl));
+  }
+
+  // Also check realized P&L from cost basis records
+  for (const [, cb] of Object.entries(state.costBasis)) {
+    if (cb.realizedPnL > 0) wins.push(cb.realizedPnL);
+    else if (cb.realizedPnL < 0) losses.push(Math.abs(cb.realizedPnL));
+  }
+
+  const avgWin = wins.length > 0 ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
+  const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
+  const totalWins = wins.reduce((a, b) => a + b, 0);
+  const totalLosses = losses.reduce((a, b) => a + b, 0);
+  const winRate = (wins.length + losses.length) > 0 ? wins.length / (wins.length + losses.length) : 0;
+
+  return {
+    avgWinUSD: avgWin,
+    avgLossUSD: avgLoss,
+    riskRewardRatio: avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0,
+    largestWin: wins.length > 0 ? Math.max(...wins) : 0,
+    largestLoss: losses.length > 0 ? Math.max(...losses) : 0,
+    // Expectancy: how much you expect to make per trade on average
+    expectancy: (winRate * avgWin) - ((1 - winRate) * avgLoss),
+    // Profit factor: total wins / total losses (>1 = profitable)
+    profitFactor: totalLosses > 0 ? totalWins / totalLosses : totalWins > 0 ? Infinity : 0,
+  };
+}
+
 function apiPortfolio() {
   const uptime = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
   const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
   const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
+  const riskReward = calculateRiskRewardMetrics();
   return {
     totalValue: state.trading.totalPortfolioValue,
     initialValue: state.trading.initialValue,
@@ -5470,7 +5652,17 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "5.1.1",
+    version: "6.2",
+    // v6.2: Risk-reward metrics
+    riskReward: {
+      avgWinUSD: riskReward.avgWinUSD,
+      avgLossUSD: riskReward.avgLossUSD,
+      riskRewardRatio: riskReward.riskRewardRatio,
+      largestWin: riskReward.largestWin,
+      largestLoss: riskReward.largestLoss,
+      expectancy: riskReward.expectancy,
+      profitFactor: riskReward.profitFactor,
+    },
     // v5.1.1: Profit harvesting stats
     harvestedProfits: state.harvestedProfits?.totalHarvested || 0,
     harvestCount: state.harvestedProfits?.harvestCount || 0,
