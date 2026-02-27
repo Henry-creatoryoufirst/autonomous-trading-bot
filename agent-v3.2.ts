@@ -79,7 +79,7 @@
  *
  * Sectors:
  * - BLUE_CHIP (40%): ETH, cbBTC, cbETH
- * - AI_TOKENS (20%): VIRTUAL, AIXBT, GAME, HIGHER
+ * - AI_TOKENS (20%): VIRTUAL, AIXBT, HIGHER
  * - MEME_COINS (20%): BRETT, DEGEN, TOSHI, MOCHI, NORMIE
  * - DEFI (20%): AERO, WELL, SEAM, EXTRA, BAL
  */
@@ -99,6 +99,9 @@ import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./servic
 
 // === v6.0: EQUITY INTEGRATION ===
 import { EquityIntegration } from './equity-integration.js';
+
+// === v6.1: TOKEN DISCOVERY ENGINE ===
+import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from './services/token-discovery.js';
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./services/cache-manager.js";
@@ -166,7 +169,7 @@ const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20, // 20% of portfolio
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "GAME", "HIGHER"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -231,11 +234,7 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "AIXBT", name: "aixbt by Virtuals", coingeckoId: "aixbt",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 5, decimals: 18,
   },
-  GAME: {
-    address: "0x1C4CcA7C5DB003824208eDac21dd3b84C73Aecd1",
-    symbol: "GAME", name: "GAME by Virtuals", coingeckoId: "game-by-virtuals",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 5, decimals: 18,
-  },
+  // GAME removed — insufficient liquidity on Base DEX pools (failed 5+ consecutive swaps)
   HIGHER: {
     address: "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
@@ -431,6 +430,9 @@ let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
 // === v6.0: EQUITY MODULE STATE (initialized in main()) ===
 let equityEngine: EquityIntegration | null = null;
 let equityEnabled = false;
+
+// === v6.1: TOKEN DISCOVERY STATE ===
+let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
 
 // ============================================================================
 // STATE
@@ -1216,14 +1218,13 @@ interface AgentState {
     totalHarvested: number;
     harvestCount: number;
     harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
-
-    // v5.3.0: Auto-harvest transfer tracking
-    autoHarvestTransfers: [],
-    totalAutoHarvestedUSD: 0,
-    totalAutoHarvestedETH: 0,
-    lastAutoHarvestTime: null,
-    autoHarvestCount: 0,
   };
+  // v5.3.0: Auto-harvest transfer tracking (top-level state)
+  autoHarvestTransfers: Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>;
+  totalAutoHarvestedUSD: number;
+  totalAutoHarvestedETH: number;
+  lastAutoHarvestTime: string | null;
+  autoHarvestCount: number;
   // Phase 3: Self-Improvement Engine
   strategyPatterns: Record<string, StrategyPattern>;
   adaptiveThresholds: AdaptiveThresholds;
@@ -1253,6 +1254,12 @@ let state: AgentState = {
   stopLossCooldowns: {},
   tradeFailures: {},
   harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
+  // v5.3.0: Auto-harvest transfer state
+  autoHarvestTransfers: [] as Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>,
+  totalAutoHarvestedUSD: 0,
+  totalAutoHarvestedETH: 0,
+  lastAutoHarvestTime: null as string | null,
+  autoHarvestCount: 0,
   // Phase 3: Self-Improvement Engine
   strategyPatterns: {},
   adaptiveThresholds: { ...DEFAULT_ADAPTIVE_THRESHOLDS },
@@ -1293,6 +1300,12 @@ function loadTradeHistory() {
         state.explorationState = parsed.explorationState || { ...DEFAULT_EXPLORATION_STATE };
         state.lastReviewTradeIndex = parsed.lastReviewTradeIndex || 0;
         state.lastReviewTimestamp = parsed.lastReviewTimestamp || null;
+        // v5.3.0: Restore auto-harvest transfer state
+        state.autoHarvestTransfers = parsed.autoHarvestTransfers || [];
+        state.totalAutoHarvestedUSD = parsed.totalAutoHarvestedUSD || 0;
+        state.totalAutoHarvestedETH = parsed.totalAutoHarvestedETH || 0;
+        state.lastAutoHarvestTime = parsed.lastAutoHarvestTime || null;
+        state.autoHarvestCount = parsed.autoHarvestCount || 0;
         // v5.2: Restore shadow proposals
         if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
           shadowProposals = parsed.shadowProposals;
@@ -1329,6 +1342,12 @@ function saveTradeHistory() {
       stopLossCooldowns: state.stopLossCooldowns,
       tradeFailures: state.tradeFailures,
       harvestedProfits: state.harvestedProfits,
+      // v5.3.0: Auto-harvest transfer persistence
+      autoHarvestTransfers: state.autoHarvestTransfers,
+      totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,
+      totalAutoHarvestedETH: state.totalAutoHarvestedETH,
+      lastAutoHarvestTime: state.lastAutoHarvestTime,
+      autoHarvestCount: state.autoHarvestCount,
       // Phase 3: Self-Improvement Engine
       strategyPatterns: state.strategyPatterns,
       adaptiveThresholds: state.adaptiveThresholds,
@@ -1338,6 +1357,8 @@ function saveTradeHistory() {
       lastReviewTimestamp: state.lastReviewTimestamp,
       // v5.2: Persist shadow proposals so they survive restarts
       shadowProposals: shadowProposals.filter(p => p.status === "PENDING").slice(-50),
+      // v6.1: Persist token discovery state
+      tokenDiscovery: tokenDiscoveryEngine?.getState() || null,
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -3548,7 +3569,18 @@ async function makeTradeDecision(
   const totalTokenValue = balances.filter(b => b.symbol !== "USDC").reduce((sum, b) => sum + b.usdValue, 0);
   const maxBuyAmount = Math.min(CONFIG.trading.maxBuySize, availableUSDC);
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
-  const tradeableTokens = CONFIG.activeTokens.join(", ");
+  // v6.1: Merge static tokens with dynamically discovered tokens
+  const discoveredTokensList = tokenDiscoveryEngine?.getTradableTokens() || [];
+  const discoveredSymbols = discoveredTokensList.map(t => t.symbol);
+  const allTradeableTokens = [...CONFIG.activeTokens, ...discoveredSymbols.filter(s => !CONFIG.activeTokens.includes(s))];
+  const tradeableTokens = allTradeableTokens.join(", ");
+
+  // v6.1: Build discovery intel for AI prompt
+  const discoveryIntel = discoveredTokensList.length > 0
+    ? `\n═══ DISCOVERED TOKENS (Dynamic Scanner) ═══\nTokens discovered by on-chain liquidity scanner (tradeable if you see opportunity):\n${discoveredTokensList.slice(0, 15).map(t =>
+        `${t.symbol} ($${t.priceUSD.toFixed(4)}) | Vol24h: $${(t.volume24hUSD / 1000).toFixed(0)}K | Liq: $${(t.liquidityUSD / 1000).toFixed(0)}K | ${t.priceChange24h > 0 ? '+' : ''}${t.priceChange24h.toFixed(1)}% | Sector: ${t.sector} | DEX: ${t.dexName}`
+      ).join("\n")}\nNote: Discovered tokens may have less data than core tokens. Size positions smaller (50-75% of normal) for discovered tokens.\n`
+    : "";
 
   // Build technical indicators summary for the AI
   const indicatorsSummary = formatIndicatorsForPrompt(marketData.indicators, marketData.tokens);
@@ -3626,7 +3658,7 @@ ${Object.entries(marketBySector).map(([sector, tokens]) =>
 ═══ RECENT TRADE HISTORY ═══
 ${tradeHistorySummary}
 
-═══ TRADING LIMITS ═══
+${discoveryIntel}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
@@ -3774,17 +3806,35 @@ Your ENTIRE response must be exactly one JSON object:
 // ============================================================================
 
 function getTokenAddress(symbol: string): string {
+  // Check static registry first
   const token = TOKEN_REGISTRY[symbol];
-  if (!token) throw new Error(`Unknown token: ${symbol}`);
-  // For swaps, native ETH should use WETH address
-  if (token.address === "native") {
-    return TOKEN_REGISTRY["WETH"].address;
+  if (token) {
+    // For swaps, native ETH should use WETH address
+    if (token.address === "native") {
+      return TOKEN_REGISTRY["WETH"].address;
+    }
+    return token.address;
   }
-  return token.address;
+  // v6.1: Check discovered tokens
+  if (tokenDiscoveryEngine) {
+    const discovered = tokenDiscoveryEngine.getDiscoveredTokens().find(
+      t => t.symbol.toUpperCase() === symbol.toUpperCase()
+    );
+    if (discovered) return discovered.address;
+  }
+  throw new Error(`Unknown token: ${symbol}`);
 }
 
 function getTokenDecimals(symbol: string): number {
-  return TOKEN_REGISTRY[symbol]?.decimals || 18;
+  if (TOKEN_REGISTRY[symbol]) return TOKEN_REGISTRY[symbol].decimals;
+  // v6.1: Check discovered tokens
+  if (tokenDiscoveryEngine) {
+    const discovered = tokenDiscoveryEngine.getDiscoveredTokens().find(
+      t => t.symbol.toUpperCase() === symbol.toUpperCase()
+    );
+    if (discovered) return discovered.decimals;
+  }
+  return 18;
 }
 
 async function executeTrade(
@@ -4063,16 +4113,17 @@ async function executeTrade(
 
 
 /**
- * v5.3.0: Auto-Harvest Transfer
+ * v5.3.0: Auto-Harvest Transfer (USDC)
  * Checks if accumulated harvested profits exceed the threshold,
- * then sends ETH back to the owner wallet.
+ * then sends USDC directly to the owner's wallet.
+ * Profits are already in USDC (harvests sell tokens → USDC), so we transfer USDC directly.
  */
 async function checkAutoHarvestTransfer(
   account: any,
   cdp: any,
   ethPrice: number,
   ethBalance: number
-): Promise<{ sent: boolean; amountETH?: number; amountUSD?: number; txHash?: string; error?: string }> {
+): Promise<{ sent: boolean; amountUSDC?: number; amountUSD?: number; txHash?: string; error?: string }> {
   const cfg = CONFIG.autoHarvest;
 
   if (!cfg.enabled) {
@@ -4084,6 +4135,7 @@ async function checkAutoHarvestTransfer(
     return { sent: false, error: 'No destination wallet' };
   }
 
+  // Cooldown check
   if (state.lastAutoHarvestTime) {
     const hoursSinceLast = (Date.now() - new Date(state.lastAutoHarvestTime).getTime()) / (1000 * 60 * 60);
     if (hoursSinceLast < cfg.cooldownHours) {
@@ -4091,49 +4143,52 @@ async function checkAutoHarvestTransfer(
     }
   }
 
-  const gasReserveETH = cfg.minETHReserve;
-  const sendableETH = ethBalance - gasReserveETH;
-
-  if (sendableETH <= 0) {
-    return { sent: false, error: `ETH balance (${ethBalance.toFixed(4)}) below reserve (${gasReserveETH})` };
+  // Gas check — need ETH for the USDC transfer tx
+  if (ethBalance < cfg.minETHReserve) {
+    return { sent: false, error: `ETH balance (${ethBalance.toFixed(4)}) below reserve (${cfg.minETHReserve}) for gas` };
   }
 
-  const profitUSD = state.harvestedProfits
+  // Calculate unharvested profit (total harvested profits minus already transferred)
+  const profitUSD = (state.harvestedProfits?.harvests || [])
     .reduce((sum: number, h: any) => sum + (h.profitUSD || 0), 0) - state.totalAutoHarvestedUSD;
 
   if (profitUSD < cfg.thresholdUSD) {
     return { sent: false, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` };
   }
 
-  let profitETH = profitUSD / ethPrice;
-  profitETH = Math.min(profitETH, sendableETH);
+  // Check actual USDC balance available
+  const usdcAddress = TOKEN_REGISTRY.USDC.address;
+  const usdcBalance = await getERC20Balance(usdcAddress, CONFIG.walletAddress, 6);
 
-  if (profitETH < 0.0001) {
-    return { sent: false, error: `Profit ETH amount too small (${profitETH.toFixed(6)})` };
+  // Only send the profit amount, capped at available USDC (leave $5 USDC buffer for trading)
+  const sendableUSDC = Math.max(0, usdcBalance - 5);
+  const transferAmount = Math.min(profitUSD, sendableUSDC);
+
+  if (transferAmount < cfg.thresholdUSD) {
+    return { sent: false, error: `Sendable USDC ($${transferAmount.toFixed(2)}) below threshold after $5 buffer` };
   }
 
-  const amountUSD = profitETH * ethPrice;
-
-  console.log(`\n💰 AUTO-HARVEST TRANSFER`);
-  console.log(`   Sending ${profitETH.toFixed(6)} ETH (~$${amountUSD.toFixed(2)}) to ${cfg.destinationWallet}`);
-  console.log(`   ETH balance: ${ethBalance.toFixed(6)} | Reserve: ${gasReserveETH} | Sendable: ${sendableETH.toFixed(6)}`);
+  console.log(`\n💰 AUTO-HARVEST TRANSFER (USDC)`);
+  console.log(`   Sending $${transferAmount.toFixed(2)} USDC to ${cfg.destinationWallet}`);
+  console.log(`   USDC balance: $${usdcBalance.toFixed(2)} | Buffer: $5 | Sendable: $${sendableUSDC.toFixed(2)}`);
+  console.log(`   Profit available: $${profitUSD.toFixed(2)} | Transferring: $${transferAmount.toFixed(2)}`);
 
   try {
-    const txHash = await sendNativeTransfer(account, cfg.destinationWallet, profitETH);
+    const txHash = await sendUSDCTransfer(account, cfg.destinationWallet, transferAmount);
 
-    console.log(`   ✅ Transfer sent! TX: ${txHash}`);
+    console.log(`   ✅ USDC Transfer sent! TX: ${txHash}`);
+    console.log(`   🔍 View: https://basescan.org/tx/${txHash}`);
 
     const transferRecord = {
       timestamp: new Date().toISOString(),
-      amountETH: profitETH.toFixed(6),
-      amountUSD: amountUSD,
+      amountETH: '0', // We send USDC not ETH now
+      amountUSD: transferAmount,
       txHash: txHash,
       destination: cfg.destinationWallet
     };
 
     state.autoHarvestTransfers.push(transferRecord);
-    state.totalAutoHarvestedUSD += amountUSD;
-    state.totalAutoHarvestedETH += profitETH;
+    state.totalAutoHarvestedUSD += transferAmount;
     state.lastAutoHarvestTime = new Date().toISOString();
     state.autoHarvestCount++;
 
@@ -4141,17 +4196,38 @@ async function checkAutoHarvestTransfer(
       state.autoHarvestTransfers = state.autoHarvestTransfers.slice(-50);
     }
 
-    saveState();
+    saveTradeHistory();
 
-    return { sent: true, amountETH: profitETH, amountUSD, txHash: txHash };
+    return { sent: true, amountUSDC: transferAmount, amountUSD: transferAmount, txHash: txHash };
 
   } catch (err: any) {
-    console.error(`   ❌ Auto-harvest transfer failed:`, err.message);
+    console.error(`   ❌ Auto-harvest USDC transfer failed:`, err.message);
     return { sent: false, error: err.message };
   }
 }
 
-// Helper: send native ETH transfer using CDP SDK
+// Helper: send USDC (ERC-20) transfer
+async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): Promise<string> {
+  const usdcAddress = TOKEN_REGISTRY.USDC.address;
+  // USDC has 6 decimals
+  const amount = BigInt(Math.floor(amountUSDC * 1e6));
+  // ERC-20 transfer(address,uint256) selector: 0xa9059cbb
+  const transferData = "0xa9059cbb" +
+    to.slice(2).padStart(64, "0") +
+    amount.toString(16).padStart(64, "0");
+
+  const result = await account.sendTransaction({
+    network: "base",
+    transaction: {
+      to: usdcAddress,
+      data: transferData as `0x${string}`,
+      value: BigInt(0),
+    },
+  });
+  return result.transactionHash || result.hash || String(result);
+}
+
+// Helper: send native ETH transfer using CDP SDK (kept for future use)
 async function sendNativeTransfer(account: any, to: string, amountETH: number): Promise<string> {
   const result = await account.sendTransaction({
     to: to,
@@ -4619,11 +4695,12 @@ async function runTradingCycle() {
     // v5.3.0: Check if we should auto-harvest profits to owner wallet
     if (CONFIG.autoHarvest.enabled) {
       try {
-        const ethBal = await getETHBalance();
-        const ethPriceUSD = prices['WETH'] || prices['ETH'] || 2700;
-        const harvestResult = await checkAutoHarvestTransfer(account, cdp, ethPriceUSD, ethBal);
+        const ethBal = await getETHBalance(CONFIG.walletAddress);
+        const ethPriceUSD = lastKnownPrices['WETH']?.price || lastKnownPrices['ETH']?.price || 2700;
+        const harvestAccount = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+        const harvestResult = await checkAutoHarvestTransfer(harvestAccount, cdpClient, ethPriceUSD, ethBal);
         if (harvestResult.sent) {
-          console.log(`💰 Auto-harvested ${harvestResult.amountETH?.toFixed(6)} ETH ($${harvestResult.amountUSD?.toFixed(2)}) to owner wallet`);
+          console.log(`💰 Auto-harvested $${harvestResult.amountUSD?.toFixed(2)} USDC to owner wallet`);
         }
       } catch (harvestErr: any) {
         console.warn('Auto-harvest check failed:', harvestErr.message);
@@ -4889,7 +4966,24 @@ async function main() {
   equityEngine = new EquityIntegration();
   equityEnabled = await equityEngine.initialize();
 
+  // === v6.1: TOKEN DISCOVERY ENGINE INITIALIZATION ===
+  console.log("\n🔍 Initializing Token Discovery Engine...");
+  const staticTokens = Object.keys(TOKEN_REGISTRY);
+  tokenDiscoveryEngine = new TokenDiscoveryEngine(staticTokens);
+  tokenDiscoveryEngine.start();
+  console.log(`  ✅ Discovery engine active. Static pool: ${staticTokens.length} tokens. Dynamic discovery every 6h.`);
+
   loadTradeHistory();
+
+  // Restore discovery state if available
+  if (tokenDiscoveryEngine) {
+    try {
+      const logData = fs.existsSync(CONFIG.logFile) ? JSON.parse(fs.readFileSync(CONFIG.logFile, "utf-8")) : null;
+      if (logData?.tokenDiscovery) {
+        tokenDiscoveryEngine.restoreState(logData.tokenDiscovery);
+      }
+    } catch { /* non-critical */ }
+  }
 
   // Run immediately
   await runTradingCycle();
@@ -4911,7 +5005,7 @@ async function main() {
     saveTradeHistory();
   }, 5 * 60 * 1000);
 
-  console.log("\n🚀 Agent v6.0 running! 2-min cycles + Light/Heavy pattern + Smart Caching + Per-Token Cooldowns.\n");
+  console.log("\n🚀 Agent v6.1 running! 2-min cycles + Light/Heavy pattern + Smart Caching + Per-Token Cooldowns + Token Discovery + Auto-Harvest.\n");
   console.log(`   📂 State persistence: ${CONFIG.logFile}`);
   console.log(`   💰 Max buy size: ${CONFIG.trading.maxBuySize} | Min trade: $5`);
   console.log(`   ⏱️  Cycle interval: ${CONFIG.trading.intervalMinutes}m | Heavy forced every 15m`);
@@ -5158,7 +5252,7 @@ const healthServer = http.createServer((req, res) => {
       case '/api/auto-harvest':
         sendJSON(res, 200, {
           enabled: CONFIG.autoHarvest.enabled,
-          destinationWallet: CONFIG.autoHarvest.enabled ? CONFIG.autoHarvest.profitDestination : 'not configured',
+          destinationWallet: CONFIG.autoHarvest.destinationWallet ? CONFIG.autoHarvest.destinationWallet.slice(0, 6) + '...' + CONFIG.autoHarvest.destinationWallet.slice(-4) : 'not configured',
           thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
           cooldownHours: CONFIG.autoHarvest.cooldownHours,
           minETHReserve: CONFIG.autoHarvest.minETHReserve,
@@ -5193,6 +5287,29 @@ const healthServer = http.createServer((req, res) => {
         if (equityEnabled && equityEngine) {
           const eqDash = await equityEngine.getDashboardData();
           sendJSON(res, 200, eqDash);
+        } else {
+          sendJSON(res, 200, { enabled: false });
+        }
+        break;
+
+      case '/api/discovery':
+        if (tokenDiscoveryEngine) {
+          const discoveryState = tokenDiscoveryEngine.getState();
+          sendJSON(res, 200, {
+            ...discoveryState,
+            tradableTokens: tokenDiscoveryEngine.getTradableTokens().length,
+            topByVolume: tokenDiscoveryEngine.getDiscoveredTokens().slice(0, 10).map(t => ({
+              symbol: t.symbol,
+              name: t.name,
+              sector: t.sector,
+              volume24h: t.volume24hUSD,
+              liquidity: t.liquidityUSD,
+              price: t.priceUSD,
+              change24h: t.priceChange24h,
+              dex: t.dexName,
+              hasCoinGecko: !!t.coingeckoId,
+            })),
+          });
         } else {
           sendJSON(res, 200, { enabled: false });
         }
