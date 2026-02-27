@@ -460,7 +460,7 @@
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
                     <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Current Cycle</div>
                     <div id="cycleNumber" class="text-4xl font-bold font-mono gradient-text">94</div>
-                    <div class="text-xs text-slate-600 mt-1">15-min intervals</div>
+                    <div class="text-xs text-slate-600 mt-1">2-min intervals</div>
                 </div>
                 <!-- Total Trades -->
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
@@ -484,7 +484,7 @@
                 <!-- Next Cycle Countdown -->
                 <div class="bg-surface-800/60 rounded-xl p-4 text-center border border-surface-600/30">
                     <div class="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">Next Cycle</div>
-                    <div id="countdown" class="text-4xl font-bold font-mono text-accent-sky">15:00</div>
+                    <div id="countdown" class="text-4xl font-bold font-mono text-accent-sky">2:00</div>
                     <div class="w-full bg-surface-700 rounded-full h-1.5 mt-2">
                         <div id="countdownBar" class="bg-gradient-to-r from-brand to-accent-sky h-1.5 rounded-full transition-all duration-1000" style="width: 100%"></div>
                     </div>
@@ -720,7 +720,7 @@
         const BOT_API = 'https://autonomous-trading-bot-production.up.railway.app';
         const BASE_RPC = 'https://mainnet.base.org';
         const REFRESH_INTERVAL = 30000;
-        const CYCLE_DURATION = 15 * 60; // 15 minutes in seconds
+        const CYCLE_DURATION = 2 * 60; // 2 minutes in seconds
         const INITIAL_CAPITAL = 494;
 
         const TOKENS = [
