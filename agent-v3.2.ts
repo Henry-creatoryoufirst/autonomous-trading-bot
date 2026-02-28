@@ -5179,21 +5179,7 @@ async function runTradingCycle() {
       state.explorationState.totalExploitationTrades++;
       saveTradeHistory();
 
-    // v5.3.0: Check if we should auto-harvest profits to owner wallet
-    if (CONFIG.autoHarvest.enabled) {
-      try {
-        const ethBal = await getETHBalance(CONFIG.walletAddress);
-        const ethPriceUSD = lastKnownPrices['WETH']?.price || lastKnownPrices['ETH']?.price || 2700;
-        const harvestAccount = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-        const harvestResult = await checkAutoHarvestTransfer(harvestAccount, cdpClient, ethPriceUSD, ethBal);
-        if (harvestResult.sent) {
-          console.log(`💰 Auto-harvested $${harvestResult.amountUSD?.toFixed(2)} USDC to owner wallet`);
-        }
-      } catch (harvestErr: any) {
-        console.warn('Auto-harvest check failed:', harvestErr.message);
-      }
-    }
-    } else if (decision.action === "HOLD") {
+    } else if (decision.action === "HOLD") {} else if (decision.action === "HOLD") {
       // v6.0: Set HOLD cooldown for all tokens to skip re-evaluation
       if (decision.toToken && decision.toToken !== "USDC") {
         const holdPrice = currentPrices.get(decision.toToken) || 0;
@@ -5201,6 +5187,21 @@ async function runTradingCycle() {
       }
       // Track consecutive holds for stagnation detection
       state.explorationState.consecutiveHolds++;
+    }
+
+    // v6.2.1: Auto-harvest profits to owner wallet — runs every heavy cycle regardless of trade action
+    if (CONFIG.autoHarvest.enabled) {
+      try {
+        const ethBal = await getETHBalance(CONFIG.walletAddress);
+        const ethPriceUSD = lastKnownPrices['WETH']?.price || lastKnownPrices['ETH']?.price || 2700;
+        const harvestAccount = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+        const harvestResult = await checkAutoHarvestTransfer(harvestAccount, cdpClient, ethPriceUSD, ethBal);
+        if (harvestResult.sent) {
+          console.log(`Auto-harvested ${harvestResult.amountUSD?.toFixed(2)} to owner wallet`);
+        }
+      } catch (harvestErr: any) {
+        console.warn('Auto-harvest check failed:', harvestErr.message);
+      }
     }
 
     state.trading.lastCheck = new Date();
