@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.cm" crossoriin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
@@ -1524,7 +1524,7 @@
         // ===== PORTFOLIO UPDATE =====
         function updatePortfolio(totalValue, pulledProfits) {
             const el = document.getElementById('portfolioValue');
-            el.textContent = '$' + fmt(totalValue);
+            el.textContent = '$' + fmt(totalValue + pulledProfits);
             el.classList.add('count-pulse');
             setTimeout(() => el.classList.remove('count-pulse'), 500);
 
@@ -1534,8 +1534,9 @@
                 returnPct = botPortfolio.pnlPercent;
                 returnDollar = botPortfolio.pnl;
             } else {
-                returnPct = ((totalValue - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100);
-                returnDollar = totalValue - INITIAL_CAPITAL;
+                const totalGenerated = totalValue + pulledProfits;
+            returnPct = ((totalGenerated - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100);
+                returnDollar = totalGenerated - INITIAL_CAPITAL;
             }
 
             const returnEl = document.getElementById('totalReturn');
