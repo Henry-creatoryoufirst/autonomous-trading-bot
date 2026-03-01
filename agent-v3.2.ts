@@ -5813,18 +5813,22 @@ function apiThresholds() {
 }
 
 function getDashboardHTML(): string {
-  // Prefer index.html from disk (kept up-to-date) over stale embedded copy
-  try {
+    // Try multiple paths to find index.html on disk
     const path = require('path');
-    const dashPath = path.join(__dirname, 'index.html');
-    if (fs.existsSync(dashPath)) {
-      return fs.readFileSync(dashPath, 'utf-8');
+    const candidates = [
+      path.join(process.cwd(), 'index.html'),
+      path.join(__dirname, 'index.html'),
+      '/app/index.html'
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) {
+          return fs.readFileSync(p, 'utf-8');
+        }
+      } catch (e) { /* skip */ }
     }
-  } catch (e) {
-    // Fall through to embedded dashboard
+    return EMBEDDED_DASHBOARD;
   }
-  return EMBEDDED_DASHBOARD;
-}
 
 const healthServer = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
