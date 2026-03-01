@@ -411,20 +411,25 @@
                 <div id="fgiLabel" class="text-xs text-slate-500">Loading...</div>
             </div>
 
-            <!-- Pulled Profits -->
-            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-4" style="border-left: 3px solid #f0b429;">
+            <!-- Harvest Pipeline -->
+            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-4" style="border-left: 3px solid #6366f1;">
                 <div class="flex items-center justify-between mb-3">
-                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Pulled Profits</span>
-                    <div class="w-8 h-8 rounded-lg bg-accent-gold/10 flex items-center justify-center">
-                        <svg class="w-4 h-4 text-accent-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Harvest Pipeline</span>
+                    <div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                         </svg>
                     </div>
                 </div>
-                <div id="pulledProfits" class="text-3xl font-bold font-mono text-accent-gold mb-1">
+                <div id="harvestHeadroom" class="text-3xl font-bold font-mono text-indigo-400 mb-1">
                     <span class="shimmer inline-block w-24 h-8 rounded"></span>
                 </div>
-                <div class="text-xs text-slate-500">Realized from trades</div>
+                <div id="harvestPipelineStatus" class="text-xs text-slate-500">Loading...</div>
+                <!-- Mini progress bar: how close to unlocking harvest -->
+                <div class="mt-2 w-full bg-surface-800 rounded-full h-1.5 overflow-hidden">
+                    <div id="harvestProgressBar" class="h-full rounded-full bg-indigo-500 transition-all duration-700" style="width: 0%"></div>
+                </div>
+                <div id="harvestFloorLabel" class="text-[10px] text-slate-600 mt-1">Capital floor: $2,891</div>
             </div>
 
             <!-- Auto-Harvest (Sent to Owner) -->
@@ -1523,7 +1528,7 @@
         }
 
         // ===== PORTFOLIO UPDATE =====
-        function updatePortfolio(totalValue, pulledProfits) {
+        function updatePortfolio(totalValue) {
             const el = document.getElementById('portfolioValue');
             el.textContent = '$' + fmt(totalValue);
             el.classList.add('count-pulse');
@@ -1547,11 +1552,52 @@
             document.getElementById('totalReturnDollar').textContent = (returnDollar >= 0 ? '+' : '') + '$' + fmt(Math.abs(returnDollar));
             document.getElementById('portfolioChange').textContent = sign + fmt(returnPct, 1) + '% all time';
 
-            // Pulled Profits (USDC balance = realized gains sitting as stablecoin)
-            const ppEl = document.getElementById('pulledProfits');
-            ppEl.textContent = '$' + fmt(pulledProfits);
-            ppEl.classList.add('count-pulse');
-            setTimeout(() => ppEl.classList.remove('count-pulse'), 500);
+            // Harvest Pipeline — show headroom above capital floor
+            updateHarvestPipeline(totalValue);
+        }
+
+        // ===== HARVEST PIPELINE =====
+        function updateHarvestPipeline(totalValue) {
+            const headroomEl = document.getElementById('harvestHeadroom');
+            const statusEl = document.getElementById('harvestPipelineStatus');
+            const barEl = document.getElementById('harvestProgressBar');
+            const floorLabel = document.getElementById('harvestFloorLabel');
+            if (!headroomEl) return;
+
+            const capitalFloor = INITIAL_CAPITAL; // $2,891
+            const headroom = Math.max(0, totalValue - capitalFloor);
+            const deficit = Math.max(0, capitalFloor - totalValue);
+
+            // Update the floor label
+            floorLabel.textContent = 'Capital floor: $' + fmt(capitalFloor);
+
+            if (headroom > 0) {
+                // Portfolio is ABOVE capital floor — profits are harvestable
+                headroomEl.textContent = '$' + fmt(headroom);
+                headroomEl.style.color = '#10b981'; // green
+                statusEl.textContent = 'Available above $' + fmt(capitalFloor) + ' floor';
+                statusEl.style.color = '#10b981';
+                barEl.style.width = '100%';
+                barEl.style.backgroundColor = '#10b981';
+            } else {
+                // Portfolio is BELOW capital floor — growing back toward harvest zone
+                headroomEl.textContent = '$0';
+                headroomEl.style.color = '#6366f1'; // indigo
+                const progress = capitalFloor > 0 ? Math.min(100, (totalValue / capitalFloor) * 100) : 0;
+                barEl.style.width = progress.toFixed(1) + '%';
+                barEl.style.backgroundColor = '#6366f1';
+
+                if (deficit > 0) {
+                    statusEl.textContent = 'Need $' + fmt(deficit) + ' growth to unlock';
+                    statusEl.style.color = '';
+                } else {
+                    statusEl.textContent = 'At capital floor — reinvesting';
+                    statusEl.style.color = '';
+                }
+            }
+
+            headroomEl.classList.add('count-pulse');
+            setTimeout(() => headroomEl.classList.remove('count-pulse'), 500);
         }
 
         // ===== COUNTDOWN TIMER + ADAPTIVE ENGINE SYNC =====
@@ -1732,12 +1778,9 @@
 
                 // 2. Use bot API totalValue as the authoritative number
                 let totalValue = 0;
-                let pulledProfits = 0;
 
                 if (portfolio && portfolio.totalValue) {
                     totalValue = portfolio.totalValue;
-                    // USDC sitting in wallet = realized gains ready to withdraw
-                    pulledProfits = portfolio.harvestedProfits || 0;
 
                     // Update cycle counter from bot data
                     const cycleEl = document.getElementById('cycleNumber');
@@ -1772,12 +1815,7 @@
                     lastKnownHoldings = [...holdings];
                 }
 
-                // 4. Pulled profits = realized P&L from bot (actual trade profits, not deposited capital)
-                if (botPortfolio && typeof botPortfolio.realizedPnL === 'number') {
-                    pulledProfits = botPortfolio.realizedPnL;
-                }
-
-                // 5. Fallback: if bot API failed, use on-chain total
+                // 4. Fallback: if bot API failed, use on-chain total
                 if (!totalValue || totalValue <= 0) {
                     totalValue = holdings.reduce((s, h) => s + h.value, 0);
                     if (lastKnownTotal > 0 && totalValue < lastKnownTotal * 0.5) {
@@ -1786,8 +1824,8 @@
                 }
                 lastKnownTotal = totalValue;
 
-                // 6. Update all UI
-                updatePortfolio(totalValue, pulledProfits);
+                // 5. Update all UI
+                updatePortfolio(totalValue);
                 renderHoldings(holdings);
                 updateSectorChart(holdings);
                 updateTopPerformers(holdings);
@@ -1798,7 +1836,7 @@
                 const indicators = computeTechnicalIndicators(ethPrice);
                 updateTechnicalUI(indicators);
 
-                // 7. Update auto-harvest card
+                // 6. Update auto-harvest card
                 await updateAutoHarvest();
 
                 // Update refresh time
