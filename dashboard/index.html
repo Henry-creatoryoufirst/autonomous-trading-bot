@@ -365,20 +365,20 @@
                 </div>
             </div>
 
-            <!-- Total Return -->
-            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-2">
+            <!-- True Position (Wallet + Harvested) -->
+            <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-2" style="border-left: 3px solid #10b981;">
                 <div class="flex items-center justify-between mb-3">
-                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Return</span>
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">True Position</span>
                     <div class="w-8 h-8 rounded-lg bg-accent-emerald/10 flex items-center justify-center">
                         <svg class="w-4 h-4 text-accent-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                         </svg>
                     </div>
                 </div>
                 <div id="totalReturn" class="text-3xl font-bold font-mono text-accent-emerald mb-1">
                     <span class="shimmer inline-block w-24 h-8 rounded"></span>
                 </div>
-                <div id="totalReturnDollar" class="text-xs text-slate-500">--</div>
+                <div id="totalReturnDollar" class="text-xs text-slate-500">Wallet + harvested to Coinbase</div>
             </div>
 
             <!-- Win Rate -->
@@ -432,10 +432,10 @@
                 <div id="harvestFloorLabel" class="text-[10px] text-slate-600 mt-1">Capital floor: $2,891</div>
             </div>
 
-            <!-- Auto-Harvest (Sent to Owner) -->
+            <!-- Auto-Harvest (On-Chain Transfers to Coinbase) -->
             <div class="glow-card glass p-5 rounded-2xl animate-fade-in animate-delay-5" style="border-left: 3px solid #10b981;">
                 <div class="flex items-center justify-between mb-3">
-                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Auto-Harvest</span>
+                    <span class="text-xs text-slate-500 font-semibold uppercase tracking-wider">Sent to Coinbase</span>
                     <div class="w-8 h-8 rounded-lg bg-accent-emerald/10 flex items-center justify-center">
                         <svg class="w-4 h-4 text-accent-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
@@ -739,7 +739,7 @@
             { symbol: 'cbBTC', address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', coingeckoId: 'bitcoin', decimals: 8, sector: 'Blue Chip' },
             { symbol: 'cbETH', address: '0x2Ae3F1Ec7F1F5012CFeAb0185bfc7aa3cf0DEc22', coingeckoId: 'coinbase-wrapped-staked-eth', decimals: 18, sector: 'Blue Chip' },
             { symbol: 'WETH', address: '0x4200000000000000000000000000000000000006', coingeckoId: 'ethereum', decimals: 18, sector: 'Blue Chip' },
-            { symbol: 'VIRTUAL', address: '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', coingeckoId: 'virtual-protocol', decimals: 18, sector: 'AI & Agents' },
+            { symbol: 'VIRTUAL', address: '0x0b3e328455c4059EEb9e3f84B5543F74E24e7E1b', coingeckoId: 'virtual-protocol', decimals: 18, sector: 'AI & Agents' },
             { symbol: 'AIXBT', address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825', coingeckoId: 'aixbt', decimals: 18, sector: 'AI & Agents' },
             { symbol: 'HIGHER', address: '0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe', coingeckoId: 'higher', decimals: 18, sector: 'AI & Agents' },
             { symbol: 'BRETT', address: '0x532f27101965dd16442E59d40670FaF5eBB142E4', coingeckoId: 'brett', decimals: 18, sector: 'Meme' },
@@ -928,7 +928,6 @@
                 if (!res.ok) throw new Error('Bot API returned ' + res.status);
                 botPortfolio = await res.json();
                 return botPortfolio;
-                INITIAL_CAPITAL = botPortfolio.initialValue || INITIAL_CAPITAL;
             } catch (e) {
                 console.warn('Bot portfolio API error:', e);
                 return botPortfolio; // return last known
@@ -1530,27 +1529,47 @@
         // ===== PORTFOLIO UPDATE =====
         function updatePortfolio(totalValue) {
             const el = document.getElementById('portfolioValue');
+
+            // Fix: show Loading during startup when bot hasn't scanned wallet yet
+            if (!totalValue || totalValue <= 0) {
+                el.innerHTML = '<span class="shimmer inline-block w-32 h-8 rounded"></span>';
+                document.getElementById('totalReturn').innerHTML = '<span class="shimmer inline-block w-24 h-8 rounded"></span>';
+                document.getElementById('totalReturnDollar').textContent = 'Scanning wallet...';
+                document.getElementById('portfolioChange').textContent = 'loading...';
+                // Don't update harvest pipeline with 0 value
+                return;
+            }
+
             el.textContent = '$' + fmt(totalValue);
             el.classList.add('count-pulse');
             setTimeout(() => el.classList.remove('count-pulse'), 500);
 
-            // Use bot API P&L if available (more accurate than computing from initial)
-            let returnPct, returnDollar;
+            // True Position: wallet value + on-chain harvested transfers
+            const harvestedOnChain = (botPortfolio && botPortfolio.harvestedOnChain) ? botPortfolio.harvestedOnChain : 0;
+            const truePosition = totalValue + harvestedOnChain;
+            const truePnl = truePosition - INITIAL_CAPITAL;
+            const truePnlPct = INITIAL_CAPITAL > 0 ? (truePnl / INITIAL_CAPITAL * 100) : 0;
+
+            // Use bot API P&L for wallet-only return
+            let walletPnlPct;
             if (botPortfolio && botPortfolio.pnlPercent !== undefined) {
-                returnPct = botPortfolio.pnlPercent;
-                returnDollar = botPortfolio.pnl;
+                walletPnlPct = botPortfolio.pnlPercent;
             } else {
-                returnPct = ((totalValue - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100);
-                returnDollar = totalValue - INITIAL_CAPITAL;
+                walletPnlPct = ((totalValue - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100);
             }
 
+            // True Position card (replaces old Total Return)
             const returnEl = document.getElementById('totalReturn');
-            const sign = returnPct >= 0 ? '+' : '';
-            returnEl.textContent = sign + fmt(returnPct, 1) + '%';
-            returnEl.style.color = returnPct >= 0 ? '#10b981' : '#ef4444';
+            const sign = truePnlPct >= 0 ? '+' : '';
+            returnEl.textContent = '$' + fmt(truePosition);
+            returnEl.style.color = truePnlPct >= 0 ? '#10b981' : '#ef4444';
 
-            document.getElementById('totalReturnDollar').textContent = (returnDollar >= 0 ? '+' : '') + '$' + fmt(Math.abs(returnDollar));
-            document.getElementById('portfolioChange').textContent = sign + fmt(returnPct, 1) + '% all time';
+            const trueReturnLabel = sign + fmt(truePnlPct, 1) + '% (' + (truePnl >= 0 ? '+' : '-') + '$' + fmt(Math.abs(truePnl)) + ')';
+            document.getElementById('totalReturnDollar').textContent = trueReturnLabel;
+
+            const walletSign = walletPnlPct >= 0 ? '+' : '';
+            document.getElementById('portfolioChange').textContent = walletSign + fmt(walletPnlPct, 1) + '% wallet only';
+            document.getElementById('portfolioChange').style.color = walletPnlPct >= 0 ? '#10b981' : '#ef4444';
 
             // Harvest Pipeline — show headroom above capital floor
             updateHarvestPipeline(totalValue);
@@ -1715,6 +1734,9 @@
         };
 
         // ===== AUTO-HARVEST STATUS =====
+        // Track on-chain harvest total for True Position calculation
+        let harvestedOnChainTotal = 0;
+
         async function updateAutoHarvest() {
             const el = document.getElementById('autoHarvestTotal');
             const statusEl = document.getElementById('autoHarvestStatus');
@@ -1725,14 +1747,22 @@
                 const res = await fetch(BOT_API + '/api/auto-harvest');
                 if (res.ok) {
                     const data = await res.json();
-                    const totalUSD = data.totalTransferred?.usd || 0;
-                    const count = data.totalTransferred?.count || 0;
-                    el.textContent = '$' + totalUSD.toFixed(2);
+
+                    // Sum on-chain transfer amounts
+                    const transfers = data.recentTransfers || [];
+                    const onChainTotal = transfers.reduce((sum, t) => sum + (t.amountUSD || 0), 0);
+                    harvestedOnChainTotal = onChainTotal;
+
+                    // Store on botPortfolio so updatePortfolio can use it
+                    if (botPortfolio) botPortfolio.harvestedOnChain = onChainTotal;
+
+                    const count = data.totalTransfers || transfers.length || 0;
+                    el.textContent = '$' + onChainTotal.toFixed(2);
 
                     if (data.enabled) {
                         badgeEl.classList.remove('hidden');
                         if (count > 0) {
-                            statusEl.textContent = count + ' transfer' + (count !== 1 ? 's' : '') + ' to owner';
+                            statusEl.textContent = count + ' on-chain transfer' + (count !== 1 ? 's' : '') + ' to Coinbase';
                         } else {
                             statusEl.textContent = 'Active — waiting for threshold';
                         }
@@ -1742,14 +1772,13 @@
                         el.textContent = '$0.00';
                     }
                 } else {
-                    // API endpoint doesn't exist yet (v5.2.0)
-                    // Show harvested profits from portfolio data instead
+                    // Fallback: use realized harvest count from portfolio data
                     if (botPortfolio && botPortfolio.harvestedProfits) {
                         el.textContent = '$' + botPortfolio.harvestedProfits.toFixed(2);
-                        statusEl.textContent = botPortfolio.harvestCount + ' harvests (in-wallet)';
+                        statusEl.textContent = botPortfolio.harvestCount + ' realized gains (in-wallet)';
                     } else {
                         el.textContent = '$0.00';
-                        statusEl.textContent = 'Pending v5.3 upgrade';
+                        statusEl.textContent = 'Connecting...';
                     }
                     badgeEl.classList.add('hidden');
                 }
@@ -1757,7 +1786,7 @@
                 // Fallback to portfolio data
                 if (botPortfolio && botPortfolio.harvestedProfits) {
                     el.textContent = '$' + botPortfolio.harvestedProfits.toFixed(2);
-                    statusEl.textContent = botPortfolio.harvestCount + ' harvests (in-wallet)';
+                    statusEl.textContent = botPortfolio.harvestCount + ' realized gains (in-wallet)';
                 } else {
                     el.textContent = '$0.00';
                     statusEl.textContent = 'Connecting...';
@@ -1824,7 +1853,10 @@
                 }
                 lastKnownTotal = totalValue;
 
-                // 5. Update all UI
+                // 5. Fetch auto-harvest data FIRST so True Position can use it
+                await updateAutoHarvest();
+
+                // 6. Update all UI
                 updatePortfolio(totalValue);
                 renderHoldings(holdings);
                 updateSectorChart(holdings);
@@ -1835,9 +1867,6 @@
                 const ethPrice = priceCache['ethereum'] || 0;
                 const indicators = computeTechnicalIndicators(ethPrice);
                 updateTechnicalUI(indicators);
-
-                // 6. Update auto-harvest card
-                await updateAutoHarvest();
 
                 // Update refresh time
                 document.getElementById('lastRefresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
