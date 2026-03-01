@@ -5813,8 +5813,16 @@ function apiThresholds() {
 }
 
 function getDashboardHTML(): string {
-  // Always use embedded dashboard (connected to bot API)
-  // Old dashboard/index.html reads from blockchain directly — not useful
+  // Prefer index.html from disk (kept up-to-date) over stale embedded copy
+  try {
+    const path = require('path');
+    const dashPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(dashPath)) {
+      return fs.readFileSync(dashPath, 'utf-8');
+    }
+  } catch (e) {
+    // Fall through to embedded dashboard
+  }
   return EMBEDDED_DASHBOARD;
 }
 
