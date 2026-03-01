@@ -7,7 +7,7 @@
  * - NEW: Tiered Profit Harvesting — scale out of winners in 4 tranches (+8%, +15%, +25%, +40%)
  * - NEW: Time-based rebalancing — positions held 72h+ with +5% gain get a 10% trim
  * - NEW: Per-tier cooldowns — each harvest tier has independent 6h cooldowns
- * - NEW: Harvested profits tracking — dashboard shows total banked profits + harvest history
+ * - NEW: Harvested profits tracking — dashboard shows total banked profits +harvest history
  * - NEW: "Harvested" metric card on dashboard with harvest count + last harvest details
  * - UPGRADED: AI prompt teaches profit harvesting philosophy and smart money exit signals
  * - LOWERED: minHoldingUSD from $10 to $5, cooldown from 24h to 6h for faster harvesting cycles
@@ -1537,8 +1537,8 @@ let state: AgentState = {
     successfulTrades: 0,
     balances: [],
     totalPortfolioValue: 0,
-    initialValue: parseFloat(process.env.INITIAL_PORTFOLIO_VALUE || '1500'), // v6.2.2: env-configurable, was hardcoded 494
-    peakValue: 494,
+    initialValue: parseFloat(process.env.INITIAL_PORTFOLIO_VALUE || '2891'), // v6.2.3: env-configurable, corrected to actual total deposits
+    peakValue: 2891,
     sectorAllocations: [],
   },
   tradeHistory: [],
@@ -1575,7 +1575,7 @@ function loadTradeHistory() {
         const data = fs.readFileSync(file, "utf-8");
         const parsed = JSON.parse(data);
         state.tradeHistory = parsed.trades || [];
-        state.trading.initialValue = parsed.initialValue || parseFloat(process.env.INITIAL_PORTFOLIO_VALUE || '1500') // v6.2.2: corrected default;
+        state.trading.initialValue = process.env.INITIAL_PORTFOLIO_VALUE ? parseFloat(process.env.INITIAL_PORTFOLIO_VALUE) : (parsed.initialValue || 2891); // v6.2.3: env var overrides persistent state
         state.trading.peakValue = parsed.peakValue || 374;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
