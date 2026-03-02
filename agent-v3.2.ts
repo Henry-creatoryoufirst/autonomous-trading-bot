@@ -107,6 +107,7 @@ import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } 
 import { cacheManager, CacheKeys } from "./services/cache-manager.js";
 import { CACHE_TTL } from "./config/constants.js";
 import { cooldownManager } from "./services/cooldown-manager.js";
+import { tradeQueue } from "./services/trade-queue.js"; // v7.0: parallel trade execution queue
 import {
   HEAVY_CYCLE_FORCED_INTERVAL_MS,
   PRICE_CHANGE_THRESHOLD,
@@ -119,6 +120,8 @@ import {
   EMERGENCY_DROP_THRESHOLD,
   PORTFOLIO_SENSITIVITY_TIERS,
   VOLATILITY_SPEED_MAP,
+    TOKEN_WATCH_INTERVAL_MS, // v7.0
+      TOKEN_HEAVY_ANALYSIS_INTERVAL_MS, // v7.0
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -5187,7 +5190,7 @@ async function runTradingCycle() {
       // v6.0: Set cooldown for traded token
       const cooldownToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
       const tokenPrice = currentPrices.get(cooldownToken) || 0;
-      cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as CooldownDecision, tokenPrice);
+      cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as CooldownDecision, tokenPrice, marketData.indicators[cooldownToken]?.confluenceScore);
 
       // === PHASE 3: UPDATE PATTERN MEMORY AFTER TRADE ===
       analyzeStrategyPatterns();
@@ -5201,7 +5204,7 @@ async function runTradingCycle() {
       // v6.0: Set HOLD cooldown for all tokens to skip re-evaluation
       if (decision.toToken && decision.toToken !== "USDC") {
         const holdPrice = currentPrices.get(decision.toToken) || 0;
-        cooldownManager.setCooldown(decision.toToken, "HOLD", holdPrice);
+        cooldownManager.setCooldown(decision.toToken, "HOLD", holdPrice, marketData.indicators[decision.toToken]?.confluenceScore);
       }
       // Track consecutive holds for stagnation detection
       state.explorationState.consecutiveHolds++;
