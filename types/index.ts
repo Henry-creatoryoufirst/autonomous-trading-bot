@@ -229,6 +229,7 @@ export interface CooldownEntry {
   decidedAt: number;
   cooldownMs: number;
   priceAtDecision: number;
+  confluenceAtDecision?: number; // v7.0: confluence score that triggered this decision
 }
 
 // ============================================================================
