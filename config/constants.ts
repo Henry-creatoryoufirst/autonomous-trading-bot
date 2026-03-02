@@ -101,11 +101,11 @@ export const CACHE_TTL = {
 
 export const COOLDOWN_DURATIONS = {
   /** After executing a trade (buy/sell) — give position time to develop */
-  TRADE_EXECUTED: 30 * 60 * 1000,    // 30 minutes
+  TRADE_EXECUTED: 10 * 60 * 1000,    // 10 minutes (reduced from 30min — signal-weighted cooldown)
   /** After explicit HOLD decision — skip 5 cycles then re-evaluate */
-  HOLD_DECISION: 10 * 60 * 1000,     // 10 minutes
+  HOLD_DECISION: 6 * 60 * 1000,     // 6 minutes (reduced from 10min)
   /** Signal was too weak — almost triggered, check again soon */
-  WEAK_SIGNAL: 6 * 60 * 1000,        // 6 minutes
+      WEAK_SIGNAL: 3 * 60 * 1000,         // 3 minutes (reduced from 6min)
 } as const;
 
 /** Price move threshold to override cooldown (3% in either direction) */
@@ -192,3 +192,38 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
   VOLATILE: 0.5,
   UNKNOWN: 0.7,
 } as const;
+
+// ========================================================================
+// v7.0: SIGNAL-WEIGHTED RE-ENTRY THRESHOLDS
+// ========================================================================
+
+/**
+ * After a recent trade, re-entry requires a HIGHER confluence score.
+  * Normal BUY entry:  confluence >= +25
+   * Re-entry BUY:      confluence >= +40 (within TRADE_EXECUTED window)
+    * Normal SELL entry: confluence <= -20
+     * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
+      */
+export const REENTRY_CONFLUENCE_BUY = 40;
+export const REENTRY_CONFLUENCE_SELL = -35;
+export const NORMAL_CONFLUENCE_BUY = 25;
+export const NORMAL_CONFLUENCE_SELL = -20;
+
+// ========================================================================
+// v7.0: PARALLEL EVALUATION ENGINE
+// ========================================================================
+
+/** Maximum concurrent trade executions (evaluations are always parallel) */
+export const MAX_CONCURRENT_TRADES = 5;
+
+/** Minimum delay between consecutive on-chain transactions (ms) */
+export const TRADE_EXECUTION_GAP_MS = 2000; // 2 seconds
+
+/** Absolute minimum cooldown after ANY trade — prevents same-candle flip */
+export const TRADE_MINIMUM_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+/** How often each token watcher re-checks price when in cooldown */
+export const TOKEN_WATCH_INTERVAL_MS = 30 * 1000; // 30 seconds
+
+/** How often each token watcher runs a full AI heavy analysis */
+export const TOKEN_HEAVY_ANALYSIS_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
