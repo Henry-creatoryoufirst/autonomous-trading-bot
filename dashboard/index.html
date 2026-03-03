@@ -6,36 +6,46 @@
 <title>STC — Schertzinger Trading Command</title>
 <style>
 /* ============================================================================
-   DESIGN TOKENS
+   DESIGN TOKENS — Apple/iOS Premium Light
    ============================================================================ */
 :root {
-  --bg-base: #06080f;
-  --bg-surface: #0c1019;
-  --bg-card: rgba(14, 19, 32, 0.7);
-  --bg-card-hover: rgba(20, 28, 50, 0.8);
-  --bg-elevated: rgba(22, 30, 52, 0.85);
+  --bg-base: #FAF8F5;
+  --bg-surface: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FEFDFB;
+  --bg-elevated: #FFFFFF;
+  --bg-subtle: #F5F1EC;
+  --bg-warm: #F0EBE3;
 
-  --border-subtle: rgba(255,255,255,0.05);
-  --border-default: rgba(255,255,255,0.08);
-  --border-hover: rgba(255,255,255,0.13);
+  --border-subtle: rgba(120, 100, 70, 0.08);
+  --border-default: rgba(120, 100, 70, 0.12);
+  --border-hover: rgba(120, 100, 70, 0.20);
 
-  --text-primary: #eef0f4;
-  --text-secondary: #8a94a8;
-  --text-muted: #4f5972;
+  --text-primary: #1C1917;
+  --text-secondary: #78716C;
+  --text-muted: #A8A29E;
 
-  --accent: #38bdf8;
-  --accent-dim: rgba(56,189,248,0.12);
-  --green: #34d399;
-  --green-dim: rgba(52,211,153,0.10);
-  --red: #f87171;
-  --red-dim: rgba(248,113,113,0.10);
-  --amber: #fbbf24;
-  --amber-dim: rgba(251,191,36,0.10);
-  --purple: #a78bfa;
-  --purple-dim: rgba(167,139,250,0.10);
-  --cyan: #22d3ee;
+  --accent: #B45309;
+  --accent-light: #D97706;
+  --accent-dim: rgba(180, 83, 9, 0.06);
+  --accent-warm: #92400E;
 
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --green: #16A34A;
+  --green-dim: rgba(22, 163, 74, 0.06);
+  --green-soft: #DCFCE7;
+  --red: #DC2626;
+  --red-dim: rgba(220, 38, 38, 0.06);
+  --red-soft: #FEE2E2;
+  --amber: #D97706;
+  --amber-dim: rgba(217, 119, 6, 0.06);
+  --amber-soft: #FEF3C7;
+  --blue: #2563EB;
+  --blue-dim: rgba(37, 99, 235, 0.06);
+  --purple: #7C3AED;
+  --purple-dim: rgba(124, 58, 237, 0.06);
+  --cyan: #0891B2;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'SF Mono', SFMono-Regular, ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, monospace;
 
   --fs-xs: 0.6875rem;
@@ -44,17 +54,19 @@
   --fs-md: 0.875rem;
   --fs-lg: 1.125rem;
   --fs-xl: 1.5rem;
-  --fs-2xl: 1.875rem;
+  --fs-2xl: 2rem;
+  --fs-3xl: 2.5rem;
 
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
-  --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px;
 
-  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-full: 999px;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-full: 999px;
 
-  --glass-blur: 16px;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.35);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
+  --shadow-xs: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-sm: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow-md: 0 4px 12px rgba(28, 25, 23, 0.06), 0 2px 4px rgba(28, 25, 23, 0.04);
+  --shadow-lg: 0 8px 24px rgba(28, 25, 23, 0.08), 0 4px 8px rgba(28, 25, 23, 0.04);
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -67,7 +79,7 @@
    RESET & BASE
    ============================================================================ */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
 body {
   font-family: var(--font-sans);
   background: var(--bg-base);
@@ -76,39 +88,22 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   font-size: var(--fs-base);
-}
-
-/* Animated background blobs for glassmorphism depth */
-body::before {
-  content: '';
-  position: fixed;
-  inset: -50%;
-  width: 200%; height: 200%;
-  background:
-    radial-gradient(ellipse at 20% 40%, rgba(56,189,248,0.025) 0%, transparent 55%),
-    radial-gradient(ellipse at 75% 20%, rgba(139,92,250,0.025) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 80%, rgba(52,211,153,0.02) 0%, transparent 55%);
-  z-index: -1;
-  animation: bgShift 40s ease-in-out infinite alternate;
-  pointer-events: none;
-}
-@keyframes bgShift {
-  0% { transform: translate(0,0) rotate(0deg); }
-  100% { transform: translate(-4%,-3%) rotate(2deg); }
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ============================================================================
-   TOP BAR
+   TOP BAR — Sticky header
    ============================================================================ */
 .top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-6);
-  height: 52px;
-  background: rgba(10,14,24,0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  padding: 0 var(--space-8);
+  height: 56px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
@@ -117,12 +112,9 @@ body::before {
 .brand { display: flex; align-items: center; gap: var(--space-3); }
 .brand-name {
   font-size: var(--fs-lg);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.5px;
-  background: linear-gradient(135deg, var(--accent), var(--cyan));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
 }
 .brand-ver {
   font-size: var(--fs-xs);
@@ -137,44 +129,6 @@ body::before {
 .updated-text { font-size: var(--fs-xs); color: var(--text-muted); }
 
 /* ============================================================================
-   TAB BAR
-   ============================================================================ */
-.tab-bar {
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-6);
-  background: rgba(10,14,24,0.6);
-  border-bottom: 1px solid var(--border-subtle);
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  position: sticky;
-  top: 52px;
-  z-index: 199;
-}
-.tab-bar::-webkit-scrollbar { display: none; }
-.tab-btn {
-  padding: 7px 16px;
-  border-radius: var(--radius-full);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border: 1px solid transparent;
-  background: transparent;
-  transition: all var(--dur-norm) var(--ease-out);
-  white-space: nowrap;
-  user-select: none;
-}
-.tab-btn:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
-.tab-btn.active {
-  color: var(--accent);
-  background: var(--accent-dim);
-  border-color: rgba(56,189,248,0.2);
-  box-shadow: 0 0 12px rgba(56,189,248,0.08);
-}
-
-/* ============================================================================
    BADGES
    ============================================================================ */
 .badge {
@@ -186,11 +140,11 @@ body::before {
   border: 1px solid;
   line-height: 1.4;
 }
-.badge-live { background: var(--green-dim); color: var(--green); border-color: rgba(52,211,153,0.25); }
-.badge-tier { background: var(--purple-dim); color: var(--purple); border-color: rgba(167,139,250,0.25); }
-.badge-regime { background: var(--accent-dim); color: var(--accent); border-color: rgba(56,189,248,0.25); }
-.badge-warn { background: var(--amber-dim); color: var(--amber); border-color: rgba(251,191,36,0.25); }
-.badge-danger { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,0.25); }
+.badge-live { background: var(--green-soft); color: var(--green); border-color: rgba(22, 163, 74, 0.20); }
+.badge-tier { background: var(--amber-soft); color: var(--accent); border-color: rgba(180, 83, 9, 0.20); }
+.badge-regime { background: var(--blue-dim); color: var(--blue); border-color: rgba(37, 99, 235, 0.15); }
+.badge-warn { background: var(--amber-soft); color: var(--amber); border-color: rgba(217, 119, 6, 0.20); }
+.badge-danger { background: var(--red-soft); color: var(--red); border-color: rgba(220, 38, 38, 0.20); }
 .live-dot {
   width: 6px; height: 6px;
   background: var(--green);
@@ -203,9 +157,9 @@ body::before {
    MAIN CONTENT
    ============================================================================ */
 .main-content {
-  max-width: 1440px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: var(--space-5) var(--space-6) var(--space-8);
+  padding: var(--space-8) var(--space-8) var(--space-16);
 }
 
 /* ============================================================================
@@ -214,7 +168,7 @@ body::before {
 .banner {
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-5);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
   font-size: var(--fs-sm);
   font-weight: 600;
   display: none;
@@ -222,88 +176,61 @@ body::before {
   gap: var(--space-2);
 }
 .banner.visible { display: flex; }
-.banner-emergency { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
-.banner-floor { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(251,191,36,0.2); }
+.banner-emergency { background: var(--red-soft); color: var(--red); border: 1px solid rgba(220, 38, 38, 0.20); }
+.banner-floor { background: var(--amber-soft); color: var(--accent-warm); border: 1px solid rgba(180, 83, 9, 0.15); }
 
 /* ============================================================================
    GRID SYSTEM
    ============================================================================ */
-.grid { display: grid; gap: var(--space-4); }
-.g-12 { grid-template-columns: repeat(12, 1fr); }
+.grid { display: grid; gap: var(--space-5); }
 .g-6 { grid-template-columns: repeat(6, 1fr); }
 .g-4 { grid-template-columns: repeat(4, 1fr); }
 .g-3 { grid-template-columns: repeat(3, 1fr); }
 .g-2 { grid-template-columns: repeat(2, 1fr); }
 .g-1 { grid-template-columns: 1fr; }
+.g-8-4 { grid-template-columns: 2fr 1fr; }
 .col-span-2 { grid-column: span 2; }
 .col-span-3 { grid-column: span 3; }
-.col-span-4 { grid-column: span 4; }
-.col-span-8 { grid-column: span 8; }
 .col-span-full { grid-column: 1 / -1; }
-.mb { margin-bottom: var(--space-5); }
 
 @media (max-width: 1199px) {
   .g-6 { grid-template-columns: repeat(3, 1fr); }
-  .g-12 { grid-template-columns: repeat(6, 1fr); }
-  .col-span-8, .col-span-4 { grid-column: span 3; }
+  .g-4 { grid-template-columns: repeat(2, 1fr); }
+  .g-8-4 { grid-template-columns: 1fr; }
 }
 @media (max-width: 767px) {
   .g-6, .g-4 { grid-template-columns: repeat(2, 1fr); }
-  .g-3 { grid-template-columns: 1fr; }
-  .g-12 { grid-template-columns: repeat(2, 1fr); }
-  .col-span-8, .col-span-4, .col-span-3, .col-span-2 { grid-column: span 1; }
-  .main-content { padding: var(--space-3) var(--space-3) var(--space-6); }
-  .top-bar { padding: 0 var(--space-3); }
-  .tab-bar { padding: var(--space-2) var(--space-3); }
+  .g-3, .g-2 { grid-template-columns: 1fr; }
+  .main-content { padding: var(--space-4) var(--space-4) var(--space-12); }
+  .top-bar { padding: 0 var(--space-4); }
 }
 
 /* ============================================================================
-   GLASSMORPHIC CARD
+   CARD
    ============================================================================ */
 .card {
   background: var(--bg-card);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   position: relative;
-  overflow: hidden;
   transition: border-color var(--dur-norm) var(--ease-out),
               box-shadow var(--dur-norm) var(--ease-out),
               transform var(--dur-fast) var(--ease-out);
-  animation: fadeInUp var(--dur-slow) var(--ease-out) both;
+  box-shadow: var(--shadow-xs);
 }
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 10%, rgba(255,255,255,0.06) 50%, transparent 90%);
-  pointer-events: none;
-}
-.card:hover { border-color: var(--border-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-.card.glow-green { border-color: rgba(52,211,153,0.18); box-shadow: 0 0 20px rgba(52,211,153,0.06); }
-.card.glow-red { border-color: rgba(248,113,113,0.18); box-shadow: 0 0 20px rgba(248,113,113,0.06); }
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.card:nth-child(2) { animation-delay: 40ms; }
-.card:nth-child(3) { animation-delay: 80ms; }
-.card:nth-child(4) { animation-delay: 120ms; }
-.card:nth-child(5) { animation-delay: 160ms; }
-.card:nth-child(6) { animation-delay: 200ms; }
+.card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+.card.glow-green { border-color: rgba(22, 163, 74, 0.20); box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.08), var(--shadow-sm); }
+.card.glow-red { border-color: rgba(220, 38, 38, 0.18); box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.06), var(--shadow-sm); }
 
 /* ============================================================================
    CARD CONTENT
    ============================================================================ */
 .card-label {
   font-size: var(--fs-xs);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   margin-bottom: var(--space-2);
 }
@@ -313,6 +240,7 @@ body::before {
   font-family: var(--font-mono);
   line-height: 1.2;
   letter-spacing: -0.5px;
+  color: var(--text-primary);
 }
 .card-value.sm { font-size: var(--fs-xl); }
 .card-sub { font-size: var(--fs-xs); color: var(--text-secondary); margin-top: 3px; }
@@ -329,26 +257,21 @@ body::before {
   font-size: var(--fs-md);
   font-weight: 700;
   color: var(--text-primary);
-  margin: var(--space-6) 0 var(--space-3);
+  margin: var(--space-10) 0 var(--space-5);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-.section-hdr::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border-subtle);
-  margin-left: var(--space-3);
 }
 
 /* ============================================================================
    KEY-VALUE ROWS
    ============================================================================ */
-.kv { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--border-subtle); }
+.kv { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--border-subtle); }
 .kv:last-child { border-bottom: none; }
 .kv-label { color: var(--text-secondary); }
-.kv-value { font-weight: 600; font-family: var(--font-mono); font-size: var(--fs-sm); }
+.kv-value { font-weight: 600; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-primary); }
 
 /* ============================================================================
    TABLES
@@ -356,77 +279,76 @@ body::before {
 .table-wrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 th {
-  text-align: left; padding: 8px 10px;
-  color: var(--text-muted); font-weight: 700; font-size: var(--fs-xs);
+  text-align: left; padding: 10px 12px;
+  color: var(--text-muted); font-weight: 600; font-size: var(--fs-xs);
   text-transform: uppercase; letter-spacing: 0.04em;
   position: sticky; top: 0; background: var(--bg-card);
   border-bottom: 1px solid var(--border-default);
 }
-td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
-tr:hover td { background: rgba(56,189,248,0.02); }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; color: var(--text-primary); }
+tr:hover td { background: var(--bg-subtle); }
 
 /* ============================================================================
    GAUGE, BAR, PILL
    ============================================================================ */
-.bar-track { width: 100%; height: 5px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s var(--ease-out); }
+.bar-track { width: 100%; height: 4px; background: var(--bg-warm); border-radius: 2px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s var(--ease-out); }
 .pill {
   display: inline-block;
   padding: 2px 10px;
   border-radius: var(--radius-full);
   font-size: var(--fs-xs);
-  font-weight: 700;
+  font-weight: 600;
 }
-.pill-green { background: var(--green-dim); color: var(--green); }
-.pill-red { background: var(--red-dim); color: var(--red); }
-.pill-amber { background: var(--amber-dim); color: var(--amber); }
-.pill-blue { background: var(--accent-dim); color: var(--accent); }
-.pill-purple { background: var(--purple-dim); color: var(--purple); }
+.pill-green { background: var(--green-soft); color: var(--green); }
+.pill-red { background: var(--red-soft); color: var(--red); }
+.pill-amber { background: var(--amber-soft); color: var(--amber); }
+.pill-blue { background: rgba(37, 99, 235, 0.08); color: var(--blue); }
+.pill-purple { background: rgba(124, 58, 237, 0.08); color: var(--purple); }
 
 /* ============================================================================
    FEED ITEMS
    ============================================================================ */
-.feed { display: flex; flex-direction: column; gap: var(--space-2); max-height: 340px; overflow-y: auto; }
+.feed { display: flex; flex-direction: column; gap: var(--space-2); max-height: 360px; overflow-y: auto; }
 .feed-item {
   display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  background: rgba(255,255,255,0.02);
-  border-left: 3px solid var(--border-subtle);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
   font-size: var(--fs-sm);
-  animation: feedIn var(--dur-norm) var(--ease-out) both;
+  transition: background var(--dur-fast);
 }
-.feed-item.buy { border-left-color: var(--green); }
-.feed-item.sell { border-left-color: var(--red); }
+.feed-item:hover { background: var(--bg-warm); }
+.feed-item.buy { border-left: 3px solid var(--green); }
+.feed-item.sell { border-left: 3px solid var(--red); }
 .feed-icon {
-  width: 22px; height: 22px;
-  border-radius: 50%;
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 800;
+  font-size: 12px; font-weight: 800;
   flex-shrink: 0;
 }
-.feed-icon.buy { background: var(--green-dim); color: var(--green); }
-.feed-icon.sell { background: var(--red-dim); color: var(--red); }
+.feed-icon.buy { background: var(--green-soft); color: var(--green); }
+.feed-icon.sell { background: var(--red-soft); color: var(--red); }
 .feed-body { flex: 1; min-width: 0; }
-.feed-token { font-weight: 700; }
+.feed-token { font-weight: 700; color: var(--text-primary); }
 .feed-amt { font-family: var(--font-mono); font-weight: 600; margin-left: var(--space-2); }
 .feed-time { font-size: var(--fs-xs); color: var(--text-muted); white-space: nowrap; }
-@keyframes feedIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ============================================================================
    HOLDINGS
    ============================================================================ */
-.holdings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); }
+.holdings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-4); }
 .holding-chip {
-  background: rgba(255,255,255,0.02);
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  transition: border-color var(--dur-fast);
+  padding: var(--space-4);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
-.holding-chip:hover { border-color: var(--border-hover); }
-.holding-sym { font-weight: 700; font-size: var(--fs-md); }
-.holding-val { font-size: var(--fs-lg); font-weight: 700; font-family: var(--font-mono); margin-top: 2px; }
+.holding-chip:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+.holding-sym { font-weight: 700; font-size: var(--fs-md); color: var(--text-primary); }
+.holding-val { font-size: var(--fs-lg); font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: var(--text-primary); }
 .holding-meta { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
 .sector-tag {
   font-size: 9px; font-weight: 700;
@@ -435,46 +357,36 @@ tr:hover td { background: rgba(56,189,248,0.02); }
   margin-left: var(--space-2);
   vertical-align: middle;
 }
-.stag-blue { background: rgba(59,130,246,0.12); color: #60a5fa; }
-.stag-defi { background: var(--purple-dim); color: #a78bfa; }
-.stag-ai { background: rgba(34,211,238,0.12); color: #22d3ee; }
-.stag-meme { background: var(--amber-dim); color: #fbbf24; }
-.stag-stable { background: var(--green-dim); color: var(--green); }
+.stag-blue { background: rgba(37, 99, 235, 0.08); color: var(--blue); }
+.stag-defi { background: rgba(124, 58, 237, 0.08); color: var(--purple); }
+.stag-ai { background: rgba(8, 145, 178, 0.08); color: var(--cyan); }
+.stag-meme { background: var(--amber-soft); color: var(--amber); }
+.stag-stable { background: var(--green-soft); color: var(--green); }
 
-/* ============================================================================
-   HOLDINGS BAR (horizontal stacked)
-   ============================================================================ */
-.holdings-bar { display: flex; height: 36px; border-radius: var(--radius-sm); overflow: hidden; gap: 2px; }
+/* Holdings bar */
+.holdings-bar { display: flex; height: 40px; border-radius: var(--radius-md); overflow: hidden; gap: 2px; }
 .hbar-seg {
   display: flex; align-items: center; justify-content: center;
   font-size: var(--fs-xs); font-weight: 700; color: #fff;
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3);
   min-width: 30px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transition: flex var(--dur-slow) var(--ease-out);
 }
 
 /* ============================================================================
-   PAGES
-   ============================================================================ */
-.page { display: none; }
-.page.active { display: block; animation: fadeInUp var(--dur-slow) var(--ease-out) both; }
-
-/* ============================================================================
    DONUT + LEGEND
    ============================================================================ */
-.pie-wrap { display: flex; align-items: center; gap: var(--space-5); flex-wrap: wrap; }
-.pie-legend { display: flex; flex-direction: column; gap: 5px; }
-.legend-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); }
+.pie-wrap { display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap; }
+.pie-legend { display: flex; flex-direction: column; gap: 6px; }
+.legend-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); color: var(--text-primary); }
 .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-.legend-pct { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); margin-left: auto; }
+.legend-pct { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); margin-left: auto; min-width: 40px; text-align: right; }
 
 /* ============================================================================
    GAUGES
    ============================================================================ */
-.gauge-row { display: flex; gap: var(--space-5); justify-content: center; flex-wrap: wrap; }
+.gauge-row { display: flex; gap: var(--space-8); justify-content: center; flex-wrap: wrap; }
 .gauge-item { text-align: center; }
 .gauge-label { font-size: var(--fs-xs); color: var(--text-muted); font-weight: 600; margin-top: var(--space-1); text-transform: uppercase; letter-spacing: 0.04em; }
 .gauge-val { font-size: var(--fs-md); font-weight: 700; font-family: var(--font-mono); }
@@ -495,8 +407,6 @@ tr:hover td { background: rgba(56,189,248,0.02); }
 .toast {
   pointer-events: auto;
   background: var(--bg-elevated);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
@@ -514,7 +424,7 @@ tr:hover td { background: rgba(56,189,248,0.02); }
 /* ============================================================================
    PATTERN ITEMS
    ============================================================================ */
-.pat-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-sm); }
+.pat-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); font-size: var(--fs-sm); }
 .pat-item:last-child { border-bottom: none; }
 
 /* ============================================================================
@@ -525,14 +435,27 @@ tr:hover td { background: rgba(56,189,248,0.02); }
 /* ============================================================================
    EQUITY CURVE
    ============================================================================ */
-.equity-canvas { width: 100%; height: 260px; display: block; }
+.equity-canvas { width: 100%; height: 280px; display: block; }
 
+/* ============================================================================
+   DIVIDER
+   ============================================================================ */
+.section-divider {
+  border: none;
+  height: 1px;
+  background: var(--border-subtle);
+  margin: var(--space-12) 0 0;
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
 @media (max-width: 767px) {
-  .toast-container { bottom: auto; top: 110px; right: var(--space-3); left: var(--space-3); }
+  .toast-container { bottom: auto; top: 72px; right: var(--space-4); left: var(--space-4); }
   .toast { max-width: 100%; }
-  .card:hover { transform: none; }
-  .equity-canvas { height: 180px; }
-  .gauge-row { gap: var(--space-3); }
+  .equity-canvas { height: 200px; }
+  .gauge-row { gap: var(--space-4); }
+  .section-hdr { margin-top: var(--space-8); }
 }
 </style>
 </head>
@@ -541,8 +464,8 @@ tr:hover td { background: rgba(56,189,248,0.02); }
 <!-- TOP BAR -->
 <header class="top-bar">
   <div class="brand">
-    <span class="brand-name">STC</span>
-    <span class="brand-ver" id="versionTag">v7.0</span>
+    <span class="brand-name">Schertzinger Trading Command</span>
+    <span class="brand-ver" id="versionTag">v8.1</span>
   </div>
   <div class="top-badges" id="statusBadges">
     <span class="badge badge-live"><span class="live-dot"></span> LIVE</span>
@@ -554,314 +477,352 @@ tr:hover td { background: rgba(56,189,248,0.02); }
   </div>
 </header>
 
-<!-- TAB BAR -->
-<nav class="tab-bar">
-  <button class="tab-btn active" data-page="overview">Overview</button>
-  <button class="tab-btn" data-page="holdings">Holdings</button>
-  <button class="tab-btn" data-page="intelligence">Intelligence</button>
-  <button class="tab-btn" data-page="trades">Trades</button>
-  <button class="tab-btn" data-page="engine">Engine</button>
-  <button class="tab-btn" data-page="discovery">Discovery</button>
-</nav>
-
-<!-- BANNERS -->
+<!-- MAIN CONTENT — Single Infinite Scroll -->
 <div class="main-content">
+
+  <!-- BANNERS -->
   <div class="banner banner-emergency" id="emergencyBanner">EMERGENCY MODE ACTIVE</div>
   <div class="banner banner-floor" id="capitalFloorBanner"></div>
 
   <!-- ================================================================
-       OVERVIEW PAGE
+       1. KPI STRIP
        ================================================================ -->
-  <div class="page active" id="page-overview">
+  <div class="grid g-6" style="margin-top: var(--space-4)">
+    <div class="card" id="kpiCard-portfolio">
+      <div class="card-label">Portfolio Value</div>
+      <div class="card-value" id="kpi-portfolio">--</div>
+      <div class="card-sub" id="kpi-portfolio-sub">--</div>
+      <canvas class="kpi-spark" id="spark-portfolio"></canvas>
+    </div>
+    <div class="card" id="kpiCard-return">
+      <div class="card-label">Total Return</div>
+      <div class="card-value" id="kpi-return">--</div>
+      <div class="card-sub" id="kpi-return-sub">--</div>
+      <canvas class="kpi-spark" id="spark-return"></canvas>
+    </div>
+    <div class="card" id="kpiCard-winrate">
+      <div class="card-label">Win Rate</div>
+      <div class="card-value" id="kpi-winrate">--</div>
+      <div class="card-sub" id="kpi-winrate-sub">--</div>
+      <canvas class="kpi-spark" id="spark-winrate"></canvas>
+    </div>
+    <div class="card" id="kpiCard-drawdown">
+      <div class="card-label">Drawdown</div>
+      <div class="card-value" id="kpi-drawdown">--</div>
+      <div class="card-sub" id="kpi-drawdown-sub">--</div>
+      <canvas class="kpi-spark" id="spark-drawdown"></canvas>
+    </div>
+    <div class="card" id="kpiCard-fg">
+      <div class="card-label">Fear & Greed</div>
+      <div class="card-value" id="kpi-fg">--</div>
+      <div class="card-sub" id="kpi-fg-sub">--</div>
+      <canvas class="kpi-spark" id="gauge-fg" style="height:40px"></canvas>
+    </div>
+    <div class="card" id="kpiCard-engine">
+      <div class="card-label">Engine Pulse</div>
+      <div class="card-value sm" id="kpi-engine">--</div>
+      <div class="card-sub" id="kpi-engine-sub">--</div>
+      <div class="bar-track" style="margin-top:var(--space-2)"><div class="bar-fill" id="engine-pulse-bar" style="width:50%;background:var(--accent)"></div></div>
+    </div>
+  </div>
 
-    <!-- KPI Strip -->
-    <div class="grid g-6 mb">
-      <div class="card" id="kpiCard-portfolio">
-        <div class="card-label">Portfolio Value</div>
-        <div class="card-value" id="kpi-portfolio">--</div>
-        <div class="card-sub" id="kpi-portfolio-sub">--</div>
-        <canvas class="kpi-spark" id="spark-portfolio"></canvas>
-      </div>
-      <div class="card" id="kpiCard-return">
-        <div class="card-label">Total Return</div>
-        <div class="card-value" id="kpi-return">--</div>
-        <div class="card-sub" id="kpi-return-sub">--</div>
-        <canvas class="kpi-spark" id="spark-return"></canvas>
-      </div>
-      <div class="card" id="kpiCard-winrate">
-        <div class="card-label">Win Rate</div>
-        <div class="card-value" id="kpi-winrate">--</div>
-        <div class="card-sub" id="kpi-winrate-sub">--</div>
-        <canvas class="kpi-spark" id="spark-winrate"></canvas>
-      </div>
-      <div class="card" id="kpiCard-drawdown">
-        <div class="card-label">Drawdown</div>
-        <div class="card-value" id="kpi-drawdown">--</div>
-        <div class="card-sub" id="kpi-drawdown-sub">--</div>
-        <canvas class="kpi-spark" id="spark-drawdown"></canvas>
-      </div>
-      <div class="card" id="kpiCard-fg">
-        <div class="card-label">Fear & Greed</div>
-        <div class="card-value" id="kpi-fg">--</div>
-        <div class="card-sub" id="kpi-fg-sub">--</div>
-        <canvas class="kpi-spark" id="gauge-fg" style="height:40px"></canvas>
-      </div>
-      <div class="card" id="kpiCard-engine">
-        <div class="card-label">Engine Pulse</div>
-        <div class="card-value sm" id="kpi-engine">--</div>
-        <div class="card-sub" id="kpi-engine-sub">--</div>
-        <div class="bar-track" style="margin-top:var(--space-2)"><div class="bar-fill" id="engine-pulse-bar" style="width:50%;background:var(--accent)"></div></div>
+  <!-- ================================================================
+       2. EQUITY CURVE + SECTOR ALLOCATION
+       ================================================================ -->
+  <div class="section-hdr">Performance</div>
+  <div class="grid g-8-4">
+    <div class="card">
+      <div class="card-label">Equity Curve</div>
+      <canvas class="equity-canvas" id="equityCurve"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-label">Sector Allocation</div>
+      <div class="pie-wrap">
+        <canvas id="sectorPie" width="170" height="170"></canvas>
+        <div class="pie-legend" id="sectorLegend"></div>
       </div>
     </div>
+  </div>
 
-    <!-- Equity Curve + Sector Donut -->
-    <div class="grid g-12 mb">
-      <div class="card col-span-8">
-        <div class="card-label">Equity Curve</div>
-        <canvas class="equity-canvas" id="equityCurve"></canvas>
-      </div>
-      <div class="card col-span-4">
-        <div class="card-label">Sector Allocation</div>
-        <div class="pie-wrap">
-          <canvas id="sectorPie" width="170" height="170"></canvas>
-          <div class="pie-legend" id="sectorLegend"></div>
-        </div>
+  <!-- ================================================================
+       3. RISK GAUGES + TOP HOLDINGS BAR
+       ================================================================ -->
+  <div class="grid g-3" style="margin-top: var(--space-5)">
+    <div class="card">
+      <div class="card-label">Risk Gauges</div>
+      <div class="gauge-row" id="riskGauges">
+        <div class="gauge-item"><canvas id="gauge-dd" width="90" height="56"></canvas><div class="gauge-val" id="gval-dd">--</div><div class="gauge-label">Drawdown</div></div>
+        <div class="gauge-item"><canvas id="gauge-pf" width="90" height="56"></canvas><div class="gauge-val" id="gval-pf">--</div><div class="gauge-label">Profit Factor</div></div>
+        <div class="gauge-item"><canvas id="gauge-rr" width="90" height="56"></canvas><div class="gauge-val" id="gval-rr">--</div><div class="gauge-label">Risk/Reward</div></div>
       </div>
     </div>
-
-    <!-- Trade Feed + Intelligence + Risk Gauges -->
-    <div class="grid g-3 mb">
-      <div class="card">
-        <div class="card-label">Recent Activity</div>
-        <div class="feed" id="tradeFeed"><div class="loading">Loading...</div></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Intelligence Snapshot</div>
-        <div id="intelSnapshot"><div class="loading">Loading...</div></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Risk Gauges</div>
-        <div class="gauge-row" id="riskGauges">
-          <div class="gauge-item"><canvas id="gauge-dd" width="90" height="56"></canvas><div class="gauge-val" id="gval-dd">--</div><div class="gauge-label">Drawdown</div></div>
-          <div class="gauge-item"><canvas id="gauge-pf" width="90" height="56"></canvas><div class="gauge-val" id="gval-pf">--</div><div class="gauge-label">Profit Factor</div></div>
-          <div class="gauge-item"><canvas id="gauge-rr" width="90" height="56"></canvas><div class="gauge-val" id="gval-rr">--</div><div class="gauge-label">Risk/Reward</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Top Holdings Bar -->
-    <div class="card mb">
+    <div class="card col-span-2">
       <div class="card-label">Top Holdings</div>
       <div class="holdings-bar" id="holdingsBar"><div class="loading" style="width:100%">Loading...</div></div>
     </div>
   </div>
 
+  <hr class="section-divider">
+
   <!-- ================================================================
-       HOLDINGS PAGE
+       4. HOLDINGS
        ================================================================ -->
-  <div class="page" id="page-holdings">
-    <div class="grid g-3 mb">
-      <div class="card"><div class="card-label">Total Value</div><div class="card-value" id="hold-total">--</div><div class="card-sub" id="hold-total-sub">--</div></div>
-      <div class="card"><div class="card-label">Unrealized P&L</div><div class="card-value" id="hold-upnl">--</div><div class="card-sub">Open positions</div></div>
-      <div class="card"><div class="card-label">Realized P&L</div><div class="card-value" id="hold-rpnl">--</div><div class="card-sub">Closed trades</div></div>
-    </div>
-    <div class="section-hdr">Current Holdings</div>
-    <div class="holdings-grid mb" id="holdingsGrid"><div class="loading">Loading...</div></div>
-    <div class="section-hdr">Cost Basis Detail</div>
-    <div class="card mb">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Token</th><th>Sector</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Invested</th><th>Unrealized</th><th>Realized</th></tr></thead>
-          <tbody id="costBasisBody"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section-hdr">Harvested Profits</div>
-    <div class="grid g-3 mb">
-      <div class="card"><div class="card-label">Total Harvested</div><div class="card-value positive" id="harvest-total">--</div><div class="card-sub" id="harvest-count">--</div></div>
-      <div class="card"><div class="card-label">Auto-Transfer</div><div class="card-value" id="harvest-auto">--</div><div class="card-sub" id="harvest-auto-sub">--</div></div>
-      <div class="card"><div class="card-label">Last Harvest</div><div class="card-value" id="harvest-last">--</div><div class="card-sub" id="harvest-last-sub">--</div></div>
+  <div class="section-hdr">Holdings</div>
+  <div class="grid g-3">
+    <div class="card"><div class="card-label">Total Value</div><div class="card-value" id="hold-total">--</div><div class="card-sub" id="hold-total-sub">--</div></div>
+    <div class="card"><div class="card-label">Unrealized P&L</div><div class="card-value" id="hold-upnl">--</div><div class="card-sub">Open positions</div></div>
+    <div class="card"><div class="card-label">Realized P&L</div><div class="card-value" id="hold-rpnl">--</div><div class="card-sub">Closed trades</div></div>
+  </div>
+  <div class="holdings-grid" style="margin-top: var(--space-5)" id="holdingsGrid"><div class="loading">Loading...</div></div>
+
+  <div class="section-hdr">Cost Basis Detail</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Token</th><th>Sector</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Invested</th><th>Unrealized</th><th>Realized</th></tr></thead>
+        <tbody id="costBasisBody"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
+      </table>
     </div>
   </div>
 
-  <!-- ================================================================
-       INTELLIGENCE PAGE
-       ================================================================ -->
-  <div class="page" id="page-intelligence">
-    <div class="section-hdr">Market Intelligence</div>
-    <div class="grid g-4 mb">
-      <div class="card"><div class="card-label">Market Regime</div><div class="card-value sm" id="intel-regime">--</div><div class="card-sub" id="intel-regime-sub">AI classification</div></div>
-      <div class="card"><div class="card-label">News Sentiment</div><div class="card-value sm" id="intel-news">--</div><div class="card-sub" id="intel-news-sub">--</div></div>
-      <div class="card"><div class="card-label">Base TVL</div><div class="card-value sm" id="intel-tvl">--</div><div class="card-sub" id="intel-tvl-sub">--</div></div>
-      <div class="card"><div class="card-label">DEX Volume 24h</div><div class="card-value sm" id="intel-dex">--</div><div class="card-sub">Base chain</div></div>
-    </div>
-    <div class="section-hdr">Macro Data</div>
-    <div class="grid g-4 mb">
-      <div class="card"><div class="card-label">Fed Rate</div><div class="card-value sm" id="macro-fed">--</div><div class="card-sub">Federal Funds</div></div>
-      <div class="card"><div class="card-label">CPI</div><div class="card-value sm" id="macro-cpi">--</div><div class="card-sub">Consumer Price Index</div></div>
-      <div class="card"><div class="card-label">DXY</div><div class="card-value sm" id="macro-dxy">--</div><div class="card-sub">Dollar Index</div></div>
-      <div class="card"><div class="card-label">M2 Supply</div><div class="card-value sm" id="macro-m2">--</div><div class="card-sub">Money supply</div></div>
-    </div>
-    <div class="section-hdr">Derivatives Positioning</div>
-    <div class="grid g-3 mb">
-      <div class="card"><div class="card-label">BTC Funding</div><div class="card-value sm" id="dpos-btc">--</div><div class="card-sub">Binance perps</div></div>
-      <div class="card"><div class="card-label">ETH Funding</div><div class="card-value sm" id="dpos-eth">--</div><div class="card-sub">Binance perps</div></div>
-      <div class="card"><div class="card-label">Long/Short Ratio</div><div class="card-value sm" id="dpos-ls">--</div><div class="card-sub">Market positioning</div></div>
-    </div>
-    <div class="section-hdr">Technical Indicators</div>
-    <div class="grid g-4 mb">
-      <div class="card"><div class="card-label">RSI (14)</div><div class="card-value sm" id="tech-rsi">--</div><div class="bar-track" style="margin-top:8px"><div class="bar-fill" id="rsi-bar" style="width:50%;background:var(--text-muted)"></div></div></div>
-      <div class="card"><div class="card-label">MACD Signal</div><div class="card-value sm" id="tech-macd">--</div><div class="card-sub" id="tech-macd-sub">Latest signal</div></div>
-      <div class="card"><div class="card-label">Bollinger</div><div class="card-value sm" id="tech-bb">--</div><div class="card-sub" id="tech-bb-sub">Relative to bands</div></div>
-      <div class="card"><div class="card-label">Confluence</div><div class="card-value sm" id="tech-conf">--</div><div class="bar-track" style="margin-top:8px"><div class="bar-fill" id="conf-bar" style="width:50%;background:var(--text-muted)"></div></div></div>
-    </div>
-    <div class="section-hdr">Adaptive Thresholds</div>
-    <div class="card mb">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Parameter</th><th>Current</th><th>Default</th><th>Min</th><th>Max</th></tr></thead>
-          <tbody id="thresholdsBody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section-hdr">Threshold History</div>
-    <div class="card mb">
-      <div class="table-wrap" style="max-height:280px">
-        <table>
-          <thead><tr><th>Time</th><th>Parameter</th><th>Old</th><th>New</th><th>Reason</th></tr></thead>
-          <tbody id="threshHistBody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section-hdr">Data Sources</div>
-    <div class="card mb"><div id="dataSources" class="loading">Loading...</div></div>
+  <div class="section-hdr">Harvested Profits</div>
+  <div class="grid g-3">
+    <div class="card"><div class="card-label">Total Harvested</div><div class="card-value positive" id="harvest-total">--</div><div class="card-sub" id="harvest-count">--</div></div>
+    <div class="card"><div class="card-label">Auto-Transfer</div><div class="card-value" id="harvest-auto">--</div><div class="card-sub" id="harvest-auto-sub">--</div></div>
+    <div class="card"><div class="card-label">Last Harvest</div><div class="card-value" id="harvest-last">--</div><div class="card-sub" id="harvest-last-sub">--</div></div>
   </div>
 
+  <hr class="section-divider">
+
   <!-- ================================================================
-       TRADES PAGE
+       5. INTELLIGENCE
        ================================================================ -->
-  <div class="page" id="page-trades">
-    <div class="grid g-4 mb">
-      <div class="card"><div class="card-label">Total Trades</div><div class="card-value sm" id="tr-total">--</div></div>
-      <div class="card"><div class="card-label">Win Rate</div><div class="card-value sm" id="tr-winrate">--</div></div>
-      <div class="card"><div class="card-label">Expectancy</div><div class="card-value sm" id="tr-expect">--</div></div>
-      <div class="card"><div class="card-label">Profit Factor</div><div class="card-value sm" id="tr-pf">--</div></div>
+  <div class="section-hdr">Market Intelligence</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">Market Regime</div><div class="card-value sm" id="intel-regime">--</div><div class="card-sub">AI classification</div></div>
+    <div class="card"><div class="card-label">News Sentiment</div><div class="card-value sm" id="intel-news">--</div><div class="card-sub" id="intel-news-sub">--</div></div>
+    <div class="card"><div class="card-label">Base TVL</div><div class="card-value sm" id="intel-tvl">--</div><div class="card-sub" id="intel-tvl-sub">--</div></div>
+    <div class="card"><div class="card-label">DEX Volume 24h</div><div class="card-value sm" id="intel-dex">--</div><div class="card-sub">Base chain</div></div>
+  </div>
+
+  <div class="section-hdr">Macro Data</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">Fed Rate</div><div class="card-value sm" id="macro-fed">--</div><div class="card-sub">Federal Funds</div></div>
+    <div class="card"><div class="card-label">CPI</div><div class="card-value sm" id="macro-cpi">--</div><div class="card-sub">Consumer Price Index</div></div>
+    <div class="card"><div class="card-label">DXY</div><div class="card-value sm" id="macro-dxy">--</div><div class="card-sub">Dollar Index</div></div>
+    <div class="card"><div class="card-label">M2 Supply</div><div class="card-value sm" id="macro-m2">--</div><div class="card-sub">Money supply</div></div>
+  </div>
+
+  <div class="section-hdr">Derivatives Positioning</div>
+  <div class="grid g-3">
+    <div class="card"><div class="card-label">BTC Funding</div><div class="card-value sm" id="dpos-btc">--</div><div class="card-sub">Binance perps</div></div>
+    <div class="card"><div class="card-label">ETH Funding</div><div class="card-value sm" id="dpos-eth">--</div><div class="card-sub">Binance perps</div></div>
+    <div class="card"><div class="card-label">Long/Short Ratio</div><div class="card-value sm" id="dpos-ls">--</div><div class="card-sub">Market positioning</div></div>
+  </div>
+
+  <!-- Recent Activity + Intelligence Snapshot -->
+  <div class="grid g-2" style="margin-top: var(--space-5)">
+    <div class="card">
+      <div class="card-label">Recent Activity</div>
+      <div class="feed" id="tradeFeed"><div class="loading">Loading...</div></div>
     </div>
-    <div class="section-hdr">Trade Log</div>
-    <div class="card mb">
-      <div class="table-wrap" style="max-height:500px">
-        <table>
-          <thead><tr><th>Time</th><th>Action</th><th>From</th><th>To</th><th>USD</th><th>Result</th><th>RSI</th><th>Conf.</th><th>Reasoning</th></tr></thead>
-          <tbody id="tradeLogBody"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section-hdr">Pattern Analysis</div>
-    <div class="grid g-3 mb">
-      <div class="card"><div class="card-label">Total Patterns</div><div class="card-value sm" id="pat-total">--</div><div class="card-sub" id="pat-sub">--</div></div>
-      <div class="card"><div class="card-label">Best Pattern</div><div class="card-value sm positive" id="pat-best">--</div><div class="card-sub" id="pat-best-sub">--</div></div>
-      <div class="card"><div class="card-label">Worst Pattern</div><div class="card-value sm negative" id="pat-worst">--</div><div class="card-sub" id="pat-worst-sub">--</div></div>
-    </div>
-    <div class="grid g-2 mb">
-      <div class="card"><div class="card-label">Top Performers</div><div id="topPatterns" class="loading">Loading...</div></div>
-      <div class="card"><div class="card-label">Worst Performers</div><div id="worstPatterns" class="loading">Loading...</div></div>
-    </div>
-    <div class="section-hdr">Performance Reviews</div>
-    <div class="card mb">
-      <div class="table-wrap" style="max-height:300px">
-        <table>
-          <thead><tr><th>Time</th><th>Trades</th><th>Win Rate</th><th>Avg Return</th><th>Notes</th></tr></thead>
-          <tbody id="reviewsBody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
+    <div class="card">
+      <div class="card-label">Intelligence Snapshot</div>
+      <div id="intelSnapshot"><div class="loading">Loading...</div></div>
     </div>
   </div>
 
+  <hr class="section-divider">
+
   <!-- ================================================================
-       ENGINE PAGE
+       6. TRADES
        ================================================================ -->
-  <div class="page" id="page-engine">
-    <div class="section-hdr">Adaptive Cycle Engine</div>
-    <div class="grid g-4 mb">
-      <div class="card"><div class="card-label">Current Interval</div><div class="card-value sm" id="eng-interval">--</div><div class="card-sub">seconds</div></div>
-      <div class="card"><div class="card-label">Volatility</div><div class="card-value sm" id="eng-vol">--</div><div class="card-sub" id="eng-vol-sub">--</div></div>
-      <div class="card"><div class="card-label">Portfolio Tier</div><div class="card-value sm" id="eng-tier">--</div><div class="card-sub" id="eng-tier-sub">--</div></div>
-      <div class="card"><div class="card-label">Emergency</div><div class="card-value sm" id="eng-emerg">OFF</div><div class="card-sub" id="eng-emerg-sub">Normal</div></div>
-    </div>
-    <div class="grid g-2 mb">
-      <div class="card">
-        <div class="card-label">Configuration</div>
-        <div class="kv"><span class="kv-label">Min Interval</span><span class="kv-value" id="cfg-min">--</span></div>
-        <div class="kv"><span class="kv-label">Max Interval</span><span class="kv-value" id="cfg-max">--</span></div>
-        <div class="kv"><span class="kv-label">Emergency Interval</span><span class="kv-value" id="cfg-emerg">--</span></div>
-        <div class="kv"><span class="kv-label">Emergency Threshold</span><span class="kv-value" id="cfg-thresh">--</span></div>
-        <div class="kv"><span class="kv-label">Price Stream</span><span class="kv-value" id="cfg-ws">--</span></div>
-        <div class="kv"><span class="kv-label">Consec. Light</span><span class="kv-value" id="cfg-consec">--</span></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Cycle Statistics</div>
-        <div class="kv"><span class="kv-label">Light Cycles</span><span class="kv-value" id="cyc-light">--</span></div>
-        <div class="kv"><span class="kv-label">Heavy Cycles</span><span class="kv-value" id="cyc-heavy">--</span></div>
-        <div class="kv"><span class="kv-label">Last Heavy Reason</span><span class="kv-value" id="cyc-reason" style="font-size:11px;max-width:180px;text-align:right;white-space:normal">--</span></div>
-        <div class="kv"><span class="kv-label">Cache Entries</span><span class="kv-value" id="cyc-cache-n">--</span></div>
-        <div class="kv"><span class="kv-label">Cache Hit Rate</span><span class="kv-value" id="cyc-cache-r">--</span></div>
-        <div class="kv"><span class="kv-label">Active Cooldowns</span><span class="kv-value" id="cyc-cooldowns">--</span></div>
-      </div>
-    </div>
-    <div class="section-hdr">Portfolio Sensitivity Tiers</div>
-    <div class="card mb">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Tier</th><th>Min Portfolio</th><th>Price Threshold</th></tr></thead>
-          <tbody id="tiersBody"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section-hdr">Auto-Harvest</div>
-    <div class="grid g-3 mb">
-      <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="ah-status">--</div><div class="card-sub" id="ah-status-sub">--</div></div>
-      <div class="card"><div class="card-label">Total Transferred</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
-      <div class="card"><div class="card-label">Destination</div><div class="card-value sm" id="ah-dest" style="font-size:var(--fs-sm)">--</div><div class="card-sub" id="ah-dest-sub">--</div></div>
+  <div class="section-hdr">Trades</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">Total Trades</div><div class="card-value sm" id="tr-total">--</div></div>
+    <div class="card"><div class="card-label">Win Rate</div><div class="card-value sm" id="tr-winrate">--</div></div>
+    <div class="card"><div class="card-label">Expectancy</div><div class="card-value sm" id="tr-expect">--</div></div>
+    <div class="card"><div class="card-label">Profit Factor</div><div class="card-value sm" id="tr-pf">--</div></div>
+  </div>
+
+  <div class="section-hdr">Trade Log</div>
+  <div class="card">
+    <div class="table-wrap" style="max-height:500px">
+      <table>
+        <thead><tr><th>Time</th><th>Action</th><th>From</th><th>To</th><th>USD</th><th>Result</th><th>RSI</th><th>Conf.</th><th>Reasoning</th></tr></thead>
+        <tbody id="tradeLogBody"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
+      </table>
     </div>
   </div>
 
-  <!-- ================================================================
-       DISCOVERY PAGE
-       ================================================================ -->
-  <div class="page" id="page-discovery">
-    <div class="section-hdr">Token Discovery</div>
-    <div class="grid g-2 mb">
-      <div class="card"><div class="card-label">Tradable Tokens</div><div class="card-value sm" id="disc-count">--</div><div class="card-sub">Base chain scan</div></div>
-      <div class="card"><div class="card-label">Engine</div><div class="card-value sm" id="disc-status">--</div><div class="card-sub" id="disc-sub">--</div></div>
+  <div class="section-hdr">Pattern Analysis</div>
+  <div class="grid g-3">
+    <div class="card"><div class="card-label">Total Patterns</div><div class="card-value sm" id="pat-total">--</div><div class="card-sub" id="pat-sub">--</div></div>
+    <div class="card"><div class="card-label">Best Pattern</div><div class="card-value sm positive" id="pat-best">--</div><div class="card-sub" id="pat-best-sub">--</div></div>
+    <div class="card"><div class="card-label">Worst Pattern</div><div class="card-value sm negative" id="pat-worst">--</div><div class="card-sub" id="pat-worst-sub">--</div></div>
+  </div>
+  <div class="grid g-2" style="margin-top: var(--space-5)">
+    <div class="card"><div class="card-label">Top Performers</div><div id="topPatterns" class="loading">Loading...</div></div>
+    <div class="card"><div class="card-label">Worst Performers</div><div id="worstPatterns" class="loading">Loading...</div></div>
+  </div>
+
+  <div class="section-hdr">Performance Reviews</div>
+  <div class="card">
+    <div class="table-wrap" style="max-height:300px">
+      <table>
+        <thead><tr><th>Time</th><th>Trades</th><th>Win Rate</th><th>Avg Return</th><th>Notes</th></tr></thead>
+        <tbody id="reviewsBody"><tr><td colspan="5" class="loading">No reviews</td></tr></tbody>
+      </table>
     </div>
-    <div class="section-hdr">Top Discovered by Volume</div>
-    <div class="card mb">
-      <div class="table-wrap">
+  </div>
+
+  <hr class="section-divider">
+
+  <!-- ================================================================
+       7. TOKEN DISCOVERY
+       ================================================================ -->
+  <div class="section-hdr">Token Discovery</div>
+  <div class="grid g-2">
+    <div class="card"><div class="card-label">Tradable Tokens</div><div class="card-value sm" id="disc-count">--</div><div class="card-sub">Base chain scan</div></div>
+    <div class="card"><div class="card-label">Engine</div><div class="card-value sm" id="disc-status">--</div><div class="card-sub" id="disc-sub">--</div></div>
+  </div>
+  <div class="section-hdr">Top Discovered by Volume</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Symbol</th><th>Name</th><th>Sector</th><th>Price</th><th>24h</th><th>Volume</th><th>Liquidity</th><th>DEX</th></tr></thead>
+        <tbody id="discoveryBody"><tr><td colspan="8" class="loading">No discoveries</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-hdr">Derivatives Module</div>
+  <div class="grid g-3">
+    <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="deriv-status">--</div><div class="card-sub" id="deriv-status-sub">--</div></div>
+    <div class="card"><div class="card-label">Buying Power</div><div class="card-value sm" id="deriv-bp">--</div><div class="card-sub">Available margin</div></div>
+    <div class="card"><div class="card-label">Open Positions</div><div class="card-value sm" id="deriv-open">--</div><div class="card-sub" id="deriv-open-sub">--</div></div>
+  </div>
+  <div class="grid g-2" style="margin-top: var(--space-5)">
+    <div class="card" id="commodityCard"><div class="card-label">Commodity Signal</div><div class="loading">No data</div></div>
+    <div class="card">
+      <div class="card-label">Derivative Trades</div>
+      <div class="table-wrap" style="max-height:250px">
         <table>
-          <thead><tr><th>Symbol</th><th>Name</th><th>Sector</th><th>Price</th><th>24h</th><th>Volume</th><th>Liquidity</th><th>DEX</th></tr></thead>
-          <tbody id="discoveryBody"><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
+          <thead><tr><th>Time</th><th>Action</th><th>Product</th><th>Size</th><th>Result</th></tr></thead>
+          <tbody id="derivTradesBody"><tr><td colspan="5" class="loading">None</td></tr></tbody>
         </table>
       </div>
     </div>
-    <div class="section-hdr">Derivatives Module</div>
-    <div class="grid g-3 mb">
-      <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="deriv-status">--</div><div class="card-sub" id="deriv-status-sub">--</div></div>
-      <div class="card"><div class="card-label">Buying Power</div><div class="card-value sm" id="deriv-bp">--</div><div class="card-sub">Available margin</div></div>
-      <div class="card"><div class="card-label">Open Positions</div><div class="card-value sm" id="deriv-open">--</div><div class="card-sub" id="deriv-open-sub">--</div></div>
+  </div>
+
+  <hr class="section-divider">
+
+  <!-- ================================================================
+       8. ENGINE & TECHNICALS (bottom)
+       ================================================================ -->
+  <div class="section-hdr">Engine</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">Current Interval</div><div class="card-value sm" id="eng-interval">--</div><div class="card-sub">seconds</div></div>
+    <div class="card"><div class="card-label">Volatility</div><div class="card-value sm" id="eng-vol">--</div><div class="card-sub" id="eng-vol-sub">--</div></div>
+    <div class="card"><div class="card-label">Portfolio Tier</div><div class="card-value sm" id="eng-tier">--</div><div class="card-sub" id="eng-tier-sub">--</div></div>
+    <div class="card"><div class="card-label">Emergency</div><div class="card-value sm" id="eng-emerg">OFF</div><div class="card-sub" id="eng-emerg-sub">Normal</div></div>
+  </div>
+
+  <!-- Phase 1/2 Engine Data -->
+  <div class="grid g-2" style="margin-top: var(--space-5)">
+    <div class="card">
+      <div class="card-label">Institutional Breaker</div>
+      <div class="kv"><span class="kv-label">Status</span><span class="kv-value" id="brk-status">--</span></div>
+      <div class="kv"><span class="kv-label">Consecutive Losses</span><span class="kv-value" id="brk-losses">--</span></div>
+      <div class="kv"><span class="kv-label">Daily Drawdown</span><span class="kv-value" id="brk-daily-dd">--</span></div>
+      <div class="kv"><span class="kv-label">Weekly Drawdown</span><span class="kv-value" id="brk-weekly-dd">--</span></div>
+      <div class="kv"><span class="kv-label">Breaker Triggers</span><span class="kv-value" id="brk-triggers">--</span></div>
+      <div class="kv"><span class="kv-label">Size Reduction</span><span class="kv-value" id="brk-reduction">--</span></div>
     </div>
-    <div class="grid g-2 mb">
-      <div class="card" id="commodityCard"><div class="card-label">Commodity Signal</div><div class="loading">No data</div></div>
-      <div class="card">
-        <div class="card-label">Derivative Trades</div>
-        <div class="table-wrap" style="max-height:250px">
-          <table>
-            <thead><tr><th>Time</th><th>Action</th><th>Product</th><th>Size</th><th>Result</th></tr></thead>
-            <tbody id="derivTradesBody"><tr><td colspan="5" class="loading">None</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+    <div class="card">
+      <div class="card-label">Position Sizing (Kelly)</div>
+      <div class="kv"><span class="kv-label">Kelly %</span><span class="kv-value" id="kelly-pct">--</span></div>
+      <div class="kv"><span class="kv-label">Max Trade Size</span><span class="kv-value" id="kelly-max">--</span></div>
+      <div class="kv"><span class="kv-label">Vol Multiplier</span><span class="kv-value" id="kelly-vol-mult">--</span></div>
+      <div class="kv"><span class="kv-label">Trade Sample</span><span class="kv-value" id="kelly-sample">--</span></div>
+      <div class="kv"><span class="kv-label">Win Rate (Rolling)</span><span class="kv-value" id="kelly-winrate">--</span></div>
+      <div class="kv"><span class="kv-label">Method</span><span class="kv-value" id="kelly-method">--</span></div>
     </div>
   </div>
+
+  <div class="grid g-2" style="margin-top: var(--space-5)">
+    <div class="card">
+      <div class="card-label">Configuration</div>
+      <div class="kv"><span class="kv-label">Min Interval</span><span class="kv-value" id="cfg-min">--</span></div>
+      <div class="kv"><span class="kv-label">Max Interval</span><span class="kv-value" id="cfg-max">--</span></div>
+      <div class="kv"><span class="kv-label">Emergency Interval</span><span class="kv-value" id="cfg-emerg">--</span></div>
+      <div class="kv"><span class="kv-label">Emergency Threshold</span><span class="kv-value" id="cfg-thresh">--</span></div>
+      <div class="kv"><span class="kv-label">Price Stream</span><span class="kv-value" id="cfg-ws">--</span></div>
+      <div class="kv"><span class="kv-label">Consec. Light</span><span class="kv-value" id="cfg-consec">--</span></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Cycle Statistics</div>
+      <div class="kv"><span class="kv-label">Light Cycles</span><span class="kv-value" id="cyc-light">--</span></div>
+      <div class="kv"><span class="kv-label">Heavy Cycles</span><span class="kv-value" id="cyc-heavy">--</span></div>
+      <div class="kv"><span class="kv-label">Last Heavy Reason</span><span class="kv-value" id="cyc-reason" style="font-size:11px;max-width:180px;text-align:right;white-space:normal">--</span></div>
+      <div class="kv"><span class="kv-label">Cache Entries</span><span class="kv-value" id="cyc-cache-n">--</span></div>
+      <div class="kv"><span class="kv-label">Cache Hit Rate</span><span class="kv-value" id="cyc-cache-r">--</span></div>
+      <div class="kv"><span class="kv-label">Active Cooldowns</span><span class="kv-value" id="cyc-cooldowns">--</span></div>
+    </div>
+  </div>
+
+  <div class="section-hdr">Portfolio Sensitivity Tiers</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Tier</th><th>Min Portfolio</th><th>Price Threshold</th></tr></thead>
+        <tbody id="tiersBody"><tr><td colspan="3" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-hdr">Auto-Harvest</div>
+  <div class="grid g-3">
+    <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="ah-status">--</div><div class="card-sub" id="ah-status-sub">--</div></div>
+    <div class="card"><div class="card-label">Total Transferred</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
+    <div class="card"><div class="card-label">Destination</div><div class="card-value sm" id="ah-dest" style="font-size:var(--fs-sm)">--</div><div class="card-sub" id="ah-dest-sub">--</div></div>
+  </div>
+
+  <hr class="section-divider">
+
+  <!-- ================================================================
+       9. TECHNICALS (very bottom)
+       ================================================================ -->
+  <div class="section-hdr">Technical Indicators</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">RSI (14)</div><div class="card-value sm" id="tech-rsi">--</div><div class="bar-track" style="margin-top:8px"><div class="bar-fill" id="rsi-bar" style="width:50%;background:var(--text-muted)"></div></div></div>
+    <div class="card"><div class="card-label">MACD Signal</div><div class="card-value sm" id="tech-macd">--</div><div class="card-sub" id="tech-macd-sub">Latest signal</div></div>
+    <div class="card"><div class="card-label">Bollinger</div><div class="card-value sm" id="tech-bb">--</div><div class="card-sub" id="tech-bb-sub">Relative to bands</div></div>
+    <div class="card"><div class="card-label">Confluence</div><div class="card-value sm" id="tech-conf">--</div><div class="bar-track" style="margin-top:8px"><div class="bar-fill" id="conf-bar" style="width:50%;background:var(--text-muted)"></div></div></div>
+  </div>
+
+  <div class="section-hdr">Adaptive Thresholds</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Parameter</th><th>Current</th><th>Default</th><th>Min</th><th>Max</th></tr></thead>
+        <tbody id="thresholdsBody"><tr><td colspan="5" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-hdr">Threshold History</div>
+  <div class="card">
+    <div class="table-wrap" style="max-height:280px">
+      <table>
+        <thead><tr><th>Time</th><th>Parameter</th><th>Old</th><th>New</th><th>Reason</th></tr></thead>
+        <tbody id="threshHistBody"><tr><td colspan="5" class="loading">No adaptations</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-hdr">Data Sources</div>
+  <div class="card"><div id="dataSources" class="loading">Loading...</div></div>
 
 </div><!-- main-content -->
 
@@ -870,7 +831,7 @@ tr:hover td { background: rgba(56,189,248,0.02); }
 
 <script>
 // ============================================================================
-// STC DASHBOARD v7.0 — Modern Fintech Command Center
+// STC DASHBOARD v8.1 — Premium Single Scroll
 // ============================================================================
 
 const $ = id => document.getElementById(id);
@@ -891,7 +852,7 @@ const fmtAgo = ts => {
 const clsPnl = n => n >= 0 ? 'positive' : 'negative';
 const sectorLabel = s => ({BLUE_CHIP:'Blue Chip',DEFI:'DeFi',AI_TOKENS:'AI',MEME_COINS:'Meme',STABLECOIN:'Stable'})[s] || s || 'Other';
 const sectorCls = s => ({BLUE_CHIP:'stag-blue',DEFI:'stag-defi',AI_TOKENS:'stag-ai',MEME_COINS:'stag-meme',STABLECOIN:'stag-stable'})[s] || '';
-const sectorColor = s => ({BLUE_CHIP:'#3b82f6',DEFI:'#a78bfa',AI_TOKENS:'#22d3ee',MEME_COINS:'#fbbf24',STABLECOIN:'#34d399'})[s] || '#6b7280';
+const sectorColor = s => ({BLUE_CHIP:'#2563EB',DEFI:'#7C3AED',AI_TOKENS:'#0891B2',MEME_COINS:'#D97706',STABLECOIN:'#16A34A'})[s] || '#78716C';
 const regimePill = r => {
   const map = {TRENDING_UP:'pill-green',BULLISH:'pill-green',TRENDING_DOWN:'pill-red',BEARISH:'pill-red',VOLATILE:'pill-amber',RANGING:'pill-blue',NEUTRAL:'pill-blue'};
   return map[r] || 'pill-blue';
@@ -968,8 +929,8 @@ function drawSparkline(canvas, points, color) {
   ctx.lineTo(0, h);
   ctx.closePath();
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  const rgb = color === '#34d399' ? '52,211,153' : color === '#f87171' ? '248,113,113' : '56,189,248';
-  grad.addColorStop(0, 'rgba('+rgb+',0.12)');
+  const rgb = color === '#16A34A' ? '22,163,74' : color === '#DC2626' ? '220,38,38' : '180,83,9';
+  grad.addColorStop(0, 'rgba('+rgb+',0.10)');
   grad.addColorStop(1, 'rgba('+rgb+',0)');
   ctx.fillStyle = grad;
   ctx.fill();
@@ -993,21 +954,19 @@ function drawGauge(canvas, value, min, max, goodBelow) {
   const startA = Math.PI;
   const endA = 2 * Math.PI;
 
-  // Background arc
   ctx.beginPath();
   ctx.arc(cx, cy, r, startA, endA);
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = 'rgba(120, 100, 70, 0.08)';
   ctx.lineWidth = 6;
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  // Value arc
   const valAngle = startA + pct * Math.PI;
   let color;
   if (goodBelow) {
-    color = pct < 0.4 ? '#34d399' : pct < 0.7 ? '#fbbf24' : '#f87171';
+    color = pct < 0.4 ? '#16A34A' : pct < 0.7 ? '#D97706' : '#DC2626';
   } else {
-    color = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : '#f87171';
+    color = pct > 0.5 ? '#16A34A' : pct > 0.25 ? '#D97706' : '#DC2626';
   }
   ctx.beginPath();
   ctx.arc(cx, cy, r, startA, valAngle);
@@ -1033,17 +992,15 @@ function drawFGGauge(canvas, value) {
   const cx = w / 2, cy = h - 2, r = Math.min(w/2, h) - 6;
   const pct = Math.max(0, Math.min(1, value / 100));
 
-  // Background
   ctx.beginPath();
   ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = 'rgba(120, 100, 70, 0.08)';
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  // Colored arc (red=fear, green=greed)
   const angle = Math.PI + pct * Math.PI;
-  const color = value < 25 ? '#f87171' : value < 45 ? '#fb923c' : value < 55 ? '#fbbf24' : value < 75 ? '#a3e635' : '#34d399';
+  const color = value < 25 ? '#DC2626' : value < 45 ? '#EA580C' : value < 55 ? '#D97706' : value < 75 ? '#65A30D' : '#16A34A';
   ctx.beginPath();
   ctx.arc(cx, cy, r, Math.PI, angle);
   ctx.strokeStyle = color;
@@ -1051,7 +1008,6 @@ function drawFGGauge(canvas, value) {
   ctx.lineCap = 'round';
   ctx.stroke();
 
-  // Needle
   const nx = cx + r * 0.7 * Math.cos(angle);
   const ny = cy + r * 0.7 * Math.sin(angle);
   ctx.beginPath();
@@ -1083,8 +1039,8 @@ function renderEquityCurve() {
     .filter(v => v > 0);
 
   if (pts.length < 2) {
-    ctx.fillStyle = '#4f5972';
-    ctx.font = '13px system-ui';
+    ctx.fillStyle = '#A8A29E';
+    ctx.font = '13px -apple-system, system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Insufficient trade data for equity curve', w/2, h/2);
     return;
@@ -1097,8 +1053,7 @@ function renderEquityCurve() {
   const max = Math.max(...pts) * 1.02;
   const range = max - min || 1;
 
-  // Grid lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.strokeStyle = 'rgba(120, 100, 70, 0.06)';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   for (let i = 0; i <= 4; i++) {
@@ -1107,16 +1062,14 @@ function renderEquityCurve() {
     ctx.moveTo(pad.left, y);
     ctx.lineTo(w - pad.right, y);
     ctx.stroke();
-    // Price label
     const val = max - (i / 4) * range;
-    ctx.fillStyle = '#4f5972';
-    ctx.font = '10px system-ui';
+    ctx.fillStyle = '#A8A29E';
+    ctx.font = '10px -apple-system, system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText('$' + val.toFixed(0), pad.left - 6, y + 3);
   }
   ctx.setLineDash([]);
 
-  // Curve
   const toX = i => pad.left + (i / (pts.length - 1)) * pw;
   const toY = v => pad.top + (1 - (v - min) / range) * ph;
 
@@ -1126,42 +1079,39 @@ function renderEquityCurve() {
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   });
   const positive = pts[pts.length-1] >= pts[0];
-  ctx.strokeStyle = positive ? '#34d399' : '#f87171';
+  ctx.strokeStyle = positive ? '#16A34A' : '#DC2626';
   ctx.lineWidth = 2;
   ctx.lineJoin = 'round';
   ctx.stroke();
 
-  // Gradient fill
   ctx.lineTo(toX(pts.length - 1), pad.top + ph);
   ctx.lineTo(toX(0), pad.top + ph);
   ctx.closePath();
   const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ph);
-  const rgb = positive ? '52,211,153' : '248,113,113';
-  grad.addColorStop(0, 'rgba('+rgb+',0.12)');
+  const rgb = positive ? '22,163,74' : '220,38,38';
+  grad.addColorStop(0, 'rgba('+rgb+',0.10)');
   grad.addColorStop(1, 'rgba('+rgb+',0)');
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // Start line (dashed)
   const startY = toY(pts[0]);
   ctx.beginPath();
   ctx.setLineDash([3, 3]);
   ctx.moveTo(pad.left, startY);
   ctx.lineTo(w - pad.right, startY);
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(120, 100, 70, 0.15)';
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = '#8a94a8';
-  ctx.font = '10px system-ui';
+  ctx.fillStyle = '#78716C';
+  ctx.font = '10px -apple-system, system-ui, sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText('Start $' + pts[0].toFixed(0), pad.left + 2, startY - 5);
 
-  // End dot
   const lastX = toX(pts.length - 1), lastY = toY(pts[pts.length - 1]);
   ctx.beginPath();
   ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
-  ctx.fillStyle = positive ? '#34d399' : '#f87171';
+  ctx.fillStyle = positive ? '#16A34A' : '#DC2626';
   ctx.fill();
 }
 
@@ -1197,9 +1147,9 @@ function renderSectorDonut() {
   const total = sectors.reduce((s,e) => s + e[1], 0);
   if (total === 0) return;
 
-  const colors = {'Blue Chip':'#3b82f6','DeFi':'#a78bfa','AI':'#22d3ee','Meme':'#fbbf24','Stable':'#34d399','Other':'#6b7280'};
+  const colors = {'Blue Chip':'#2563EB','DeFi':'#7C3AED','AI':'#0891B2','Meme':'#D97706','Stable':'#16A34A','Other':'#78716C'};
   const cx = 85, cy = 85, outerR = 72, innerR = 45;
-  const gap = 0.03; // gap between slices in radians
+  const gap = 0.03;
 
   let angle = -Math.PI / 2;
   sectors.forEach(([name, val]) => {
@@ -1209,24 +1159,22 @@ function renderSectorDonut() {
     ctx.arc(cx, cy, outerR, angle + gap/2, angle + slice - gap/2);
     ctx.arc(cx, cy, innerR, angle + slice - gap/2, angle + gap/2, true);
     ctx.closePath();
-    ctx.fillStyle = colors[name] || '#6b7280';
+    ctx.fillStyle = colors[name] || '#78716C';
     ctx.fill();
     angle += slice;
   });
 
-  // Center text
-  ctx.fillStyle = '#eef0f4';
-  ctx.font = 'bold 14px system-ui';
+  ctx.fillStyle = '#1C1917';
+  ctx.font = 'bold 14px -apple-system, system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(fmtK(total), cx, cy - 2);
-  ctx.fillStyle = '#8a94a8';
-  ctx.font = '10px system-ui';
+  ctx.fillStyle = '#78716C';
+  ctx.font = '10px -apple-system, system-ui, sans-serif';
   ctx.fillText(sectors.length + ' sectors', cx, cy + 13);
 
-  // Legend
   $('sectorLegend').innerHTML = sectors.map(([name, val]) =>
-    '<div class="legend-row"><div class="legend-dot" style="background:' + (colors[name]||'#6b7280') + '"></div><span>' + name + '</span><span class="legend-pct">' + ((val/total)*100).toFixed(1) + '%</span></div>'
+    '<div class="legend-row"><div class="legend-dot" style="background:' + (colors[name]||'#78716C') + '"></div><span>' + name + '</span><span class="legend-pct">' + ((val/total)*100).toFixed(1) + '%</span></div>'
   ).join('');
 }
 
@@ -1248,7 +1196,6 @@ const Toast = {
     }, dur);
   },
   trade(t) {
-    const icon = t.action === 'BUY' ? '&#x2191;' : '&#x2193;';
     const cls = t.action === 'BUY' ? 'positive' : 'negative';
     const token = t.action === 'BUY' ? (t.toToken || '?') : (t.fromToken || '?');
     this.show(
@@ -1267,28 +1214,6 @@ const AV = {
   winrate: new AnimVal('kpi-winrate', n => n.toFixed(1) + '%'),
   drawdown: new AnimVal('kpi-drawdown', n => n.toFixed(1) + '%'),
 };
-
-// ============================================================================
-// NAVIGATION
-// ============================================================================
-let currentPage = 'overview';
-$$('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (btn.dataset.page === currentPage) return;
-    const oldPage = $('page-' + currentPage);
-    const newPage = $('page-' + btn.dataset.page);
-    oldPage.style.opacity = '0';
-    oldPage.style.transition = 'opacity 0.15s';
-    setTimeout(() => {
-      oldPage.classList.remove('active');
-      oldPage.style.opacity = '';
-      oldPage.style.transition = '';
-      newPage.classList.add('active');
-      currentPage = btn.dataset.page;
-      $$('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.page === currentPage));
-    }, 150);
-  });
-});
 
 // ============================================================================
 // FETCH ALL DATA
@@ -1334,7 +1259,7 @@ async function fetchAll() {
 }
 
 // ============================================================================
-// RENDER
+// RENDER ALL
 // ============================================================================
 function render() {
   renderBadges();
@@ -1342,8 +1267,9 @@ function render() {
   renderHoldings();
   renderIntelligence();
   renderTrades();
-  renderEngine();
   renderDiscovery();
+  renderEngine();
+  renderTechnicals();
 }
 
 // ============================================================================
@@ -1352,9 +1278,9 @@ function render() {
 function renderBadges() {
   const p = Store.data.portfolio || Store.data.health || {};
   const a = Store.data.adaptive || {};
-  $('tierBadge').textContent = a.portfolioTier || 'v7.0';
+  $('tierBadge').textContent = a.portfolioTier || 'v8.1';
   $('regimeBadge').textContent = Store.data.intelligence?.marketRegime || '--';
-  $('versionTag').textContent = 'v' + (p.version || '7.0');
+  $('versionTag').textContent = 'v' + (p.version || '8.1');
 
   if (a.emergencyMode) {
     $('emergencyBanner').classList.add('visible');
@@ -1374,15 +1300,13 @@ function renderBadges() {
 }
 
 // ============================================================================
-// OVERVIEW
+// OVERVIEW (KPIs, Equity, Sector, Gauges, Holdings Bar)
 // ============================================================================
 function renderOverview() {
   const p = Store.data.portfolio || Store.data.health || {};
   const rr = p.riskReward || {};
   const a = Store.data.adaptive || {};
-  const c = Store.data.cache || {};
 
-  // KPI values (animated)
   AV.portfolio.set(p.totalValue);
   $('kpi-portfolio-sub').textContent = 'Peak: ' + fmtUSD(p.peakValue);
   const pnlCard = $('kpiCard-portfolio');
@@ -1402,7 +1326,6 @@ function renderOverview() {
   $('kpi-drawdown').className = 'card-value' + (dd > 12 ? ' negative' : dd > 5 ? ' warn' : '');
   $('kpi-drawdown-sub').textContent = 'From peak ' + fmtUSD(p.peakValue);
 
-  // Fear & Greed
   const h = Store.data.health || {};
   const fg = h.fearGreed || h.fearGreedValue;
   const fgVal = typeof fg === 'object' ? fg?.value : fg;
@@ -1412,7 +1335,6 @@ function renderOverview() {
   $('kpi-fg-sub').textContent = fgCls || '--';
   if (fgVal != null) drawFGGauge($('gauge-fg'), Number(fgVal));
 
-  // Engine pulse
   $('kpi-engine').textContent = (a.currentIntervalSec || '--') + 's';
   $('kpi-engine-sub').textContent = a.volatilityLevel || '--';
   const maxInt = 300;
@@ -1420,10 +1342,10 @@ function renderOverview() {
   $('engine-pulse-bar').style.width = engPct + '%';
   $('engine-pulse-bar').style.background = engPct > 70 ? 'var(--amber)' : engPct > 40 ? 'var(--accent)' : 'var(--green)';
 
-  // Sparklines from trade history
+  // Sparklines
   const trades = Store.data.trades?.trades || [];
   const pvPts = trades.slice(0, 30).reverse().map(t => t.portfolioValueAfter || t.portfolioValueBefore || 0).filter(v => v > 0);
-  const posColor = (p.pnl || 0) >= 0 ? '#34d399' : '#f87171';
+  const posColor = (p.pnl || 0) >= 0 ? '#16A34A' : '#DC2626';
   drawSparkline($('spark-portfolio'), pvPts, posColor);
 
   if (pvPts.length > 1) {
@@ -1431,7 +1353,6 @@ function renderOverview() {
     drawSparkline($('spark-return'), retPts, posColor);
   }
 
-  // Win rate sparkline (rolling 10)
   if (trades.length >= 10) {
     const wrPts = [];
     const rev = trades.slice().reverse();
@@ -1440,19 +1361,12 @@ function renderOverview() {
       const wins = window.filter(t => t.success).length;
       wrPts.push(wins / window.length * 100);
     }
-    drawSparkline($('spark-winrate'), wrPts, '#38bdf8');
+    drawSparkline($('spark-winrate'), wrPts, '#B45309');
   }
 
-  // Equity curve
   renderEquityCurve();
-
-  // Sector donut
   renderSectorDonut();
-
-  // Trade feed
   renderTradeFeed();
-
-  // Intelligence snapshot
   renderIntelSnapshot();
 
   // Risk gauges
@@ -1468,7 +1382,6 @@ function renderOverview() {
   $('gval-rr').textContent = fmt(rr.riskRewardRatio, 2);
   $('gval-rr').className = 'gauge-val ' + ((rr.riskRewardRatio || 0) >= 1.5 ? 'positive' : 'warn');
 
-  // Holdings bar
   renderHoldingsBar();
 }
 
@@ -1523,7 +1436,7 @@ function renderHoldingsBar() {
 }
 
 // ============================================================================
-// HOLDINGS PAGE
+// HOLDINGS
 // ============================================================================
 function renderHoldings() {
   const ind = Store.data.indicators || {};
@@ -1540,7 +1453,6 @@ function renderHoldings() {
   $('hold-rpnl').textContent = fmtUSD(totalReal);
   $('hold-rpnl').className = 'card-value ' + clsPnl(totalReal);
 
-  // Chips
   $('holdingsGrid').innerHTML = holdings.length === 0 ? '<div class="loading">No holdings</div>' :
     holdings.sort((a,b) => (b.currentHolding * (b.currentPrice||0)) - (a.currentHolding * (a.currentPrice||0))).map(h => {
       const val = h.currentHolding * (h.currentPrice || 0);
@@ -1552,7 +1464,6 @@ function renderHoldings() {
         '<div class="holding-meta ' + clsPnl(pnlPct) + '">' + fmtPct(pnlPct) + ' from cost</div></div>';
     }).join('');
 
-  // Cost basis table
   $('costBasisBody').innerHTML = holdings.length === 0 ? '<tr><td colspan="9" class="loading">No data</td></tr>' :
     holdings.map(h => {
       const val = h.currentHolding * (h.currentPrice || 0);
@@ -1563,7 +1474,6 @@ function renderHoldings() {
         '</td><td class="' + clsPnl(h.realizedPnL||0) + '">' + fmtUSD(h.realizedPnL) + '</td></tr>';
     }).join('');
 
-  // Harvest
   const ah = Store.data.autoHarvest || p.autoHarvest || {};
   $('harvest-total').textContent = fmtUSD(p.harvestedProfits);
   $('harvest-count').textContent = (p.harvestCount || 0) + ' operations';
@@ -1574,13 +1484,12 @@ function renderHoldings() {
 }
 
 // ============================================================================
-// INTELLIGENCE PAGE
+// INTELLIGENCE
 // ============================================================================
 function renderIntelligence() {
   const intel = Store.data.intelligence || {};
 
   $('intel-regime').textContent = intel.marketRegime || '--';
-  $('intel-regime').className = 'card-value sm';
 
   const news = intel.newsSentiment;
   if (news) {
@@ -1609,59 +1518,10 @@ function renderIntelligence() {
     $('dpos-eth').textContent = deriv.ethFunding != null ? fmt(deriv.ethFunding * 100, 4) + '%' : '--';
     $('dpos-ls').textContent = deriv.longShortRatio != null ? fmt(deriv.longShortRatio, 2) : '--';
   }
-
-  // Technicals from latest trade
-  const trades = Store.data.trades?.trades || [];
-  if (trades.length > 0) {
-    const sc = trades[0].signalContext || {};
-    const rsi = sc.rsi || 50;
-    $('tech-rsi').textContent = fmt(rsi, 1);
-    $('tech-rsi').className = 'card-value sm' + (rsi < 30 ? ' positive' : rsi > 70 ? ' negative' : '');
-    $('rsi-bar').style.width = rsi + '%';
-    $('rsi-bar').style.background = rsi < 30 ? 'var(--green)' : rsi > 70 ? 'var(--red)' : 'var(--accent)';
-
-    $('tech-macd').textContent = sc.macdSignal || '--';
-    $('tech-macd').className = 'card-value sm' + (sc.macdSignal === 'BULLISH' ? ' positive' : sc.macdSignal === 'BEARISH' ? ' negative' : '');
-
-    $('tech-bb').textContent = sc.bollingerPosition || '--';
-    $('tech-bb').className = 'card-value sm' + (sc.bollingerPosition === 'BELOW_LOWER' ? ' positive' : sc.bollingerPosition === 'ABOVE_UPPER' ? ' negative' : '');
-
-    const conf = sc.confluenceScore || 0;
-    $('tech-conf').textContent = (conf > 0 ? '+' : '') + fmt(conf, 0);
-    $('tech-conf').className = 'card-value sm ' + clsPnl(conf);
-    $('conf-bar').style.width = Math.max(5, ((conf + 100) / 200) * 100) + '%';
-    $('conf-bar').style.background = conf > 0 ? 'var(--green)' : conf < 0 ? 'var(--red)' : 'var(--text-muted)';
-  }
-
-  // Thresholds
-  const th = Store.data.thresholds || {};
-  if (th.currentThresholds) {
-    const curr = th.currentThresholds;
-    const defaults = th.defaults || {};
-    const bounds = th.bounds || {};
-    const rows = Object.keys(curr).filter(k => !['regimeMultipliers','history','lastAdapted','adaptationCount'].includes(k));
-    $('thresholdsBody').innerHTML = rows.map(k => {
-      const b = bounds[k] || {};
-      return '<tr><td><code>' + k + '</code></td><td><strong>' + fmt(curr[k], 2) + '</strong></td><td>' +
-        fmt(defaults[k], 2) + '</td><td>' + fmt(b.min, 2) + '</td><td>' + fmt(b.max, 2) + '</td></tr>';
-    }).join('');
-  }
-
-  const hist = th.recentHistory || [];
-  $('threshHistBody').innerHTML = hist.length === 0 ? '<tr><td colspan="5" class="loading">No adaptations</td></tr>' :
-    hist.map(h => '<tr><td>' + fmtTime(h.timestamp) + '</td><td><code>' + (h.parameter||h.key) + '</code></td><td>' +
-      fmt(h.oldValue, 2) + '</td><td>' + fmt(h.newValue, 2) + '</td><td style="max-width:180px;white-space:normal;font-size:11px">' +
-      (h.reason||'--') + '</td></tr>').join('');
-
-  // Data sources
-  const sources = intel.dataSources || [];
-  $('dataSources').innerHTML = sources.length > 0 ?
-    '<div style="display:flex;flex-wrap:wrap;gap:6px">' + sources.map(s => '<span class="pill pill-blue">' + s + '</span>').join('') + '</div>' :
-    '<span style="color:var(--text-muted)">No data sources</span>';
 }
 
 // ============================================================================
-// TRADES PAGE
+// TRADES
 // ============================================================================
 function renderTrades() {
   const p = Store.data.portfolio || Store.data.health || {};
@@ -1676,7 +1536,6 @@ function renderTrades() {
   $('tr-pf').textContent = fmt(rr.profitFactor, 2);
   $('tr-pf').className = 'card-value sm ' + ((rr.profitFactor || 0) >= 1 ? 'positive' : 'negative');
 
-  // Trade log
   const trades = Store.data.trades?.trades || [];
   $('tradeLogBody').innerHTML = trades.length === 0 ? '<tr><td colspan="9" class="loading">No trades</td></tr>' :
     trades.map(t => {
@@ -1690,7 +1549,6 @@ function renderTrades() {
         (t.reasoning||'').substring(0, 100) + '</td></tr>';
     }).join('');
 
-  // Patterns
   const pat = Store.data.patterns || {};
   $('pat-total').textContent = pat.totalPatterns || '--';
   $('pat-sub').textContent = (pat.patternsWithData || 0) + ' with 3+ samples';
@@ -1712,7 +1570,6 @@ function renderTrades() {
   $('worstPatterns').innerHTML = worst.length === 0 ? '<div class="loading">No data</div>' :
     worst.map(p => '<div class="pat-item"><div><code style="font-size:11px">' + (p.patternId||p.id) + '</code><div style="font-size:10px;color:var(--text-muted)">' + (p.sampleSize||p.trades||0) + ' trades</div></div><div class="negative" style="font-weight:700">' + fmtPct(p.avgReturn) + '</div></div>').join('');
 
-  // Reviews
   const reviews = Store.data.reviews?.recentReviews || [];
   $('reviewsBody').innerHTML = reviews.length === 0 ? '<tr><td colspan="5" class="loading">No reviews</td></tr>' :
     reviews.map(r => '<tr><td>' + fmtTime(r.timestamp) + '</td><td>' + (r.tradeCount||'--') + '</td><td>' +
@@ -1721,65 +1578,7 @@ function renderTrades() {
 }
 
 // ============================================================================
-// ENGINE PAGE
-// ============================================================================
-function renderEngine() {
-  const a = Store.data.adaptive || {};
-  const c = Store.data.cache || {};
-  const p = Store.data.portfolio || Store.data.health || {};
-  const ah = Store.data.autoHarvest || p.autoHarvest || {};
-
-  $('eng-interval').textContent = (a.currentIntervalSec || '--') + 's';
-  $('eng-vol').textContent = a.volatilityLevel || '--';
-  $('eng-vol-sub').textContent = 'Threshold: ' + (a.dynamicPriceThreshold ? fmt(a.dynamicPriceThreshold * 100, 2) + '%' : '--');
-  $('eng-tier').textContent = a.portfolioTier || '--';
-  $('eng-tier-sub').textContent = a.dynamicPriceThreshold ? 'Threshold: ' + fmt(a.dynamicPriceThreshold * 100, 2) + '%' : 'Sensitivity tier';
-  $('eng-emerg').textContent = a.emergencyMode ? 'ACTIVE' : 'OFF';
-  $('eng-emerg').className = 'card-value sm' + (a.emergencyMode ? ' negative' : ' positive');
-  $('eng-emerg-sub').textContent = a.emergencyMode ? 'Until ' + fmtTime(a.emergencyUntil) : 'Normal';
-
-  const cfg = a.config || {};
-  $('cfg-min').textContent = (cfg.minIntervalSec || '--') + 's';
-  $('cfg-max').textContent = (cfg.maxIntervalSec || '--') + 's';
-  $('cfg-emerg').textContent = (cfg.emergencyIntervalSec || '--') + 's';
-  $('cfg-thresh').textContent = cfg.emergencyDropThreshold != null ? (cfg.emergencyDropThreshold * 100) + '%' : '--';
-  $('cfg-ws').textContent = a.priceStreamActive ? 'Connected' : 'Disconnected';
-  $('cfg-ws').className = 'kv-value ' + (a.priceStreamActive ? 'positive' : 'warn');
-  $('cfg-consec').textContent = a.consecutiveLightCycles || '0';
-
-  const cs = a.cycleStats || c.cycleStats || {};
-  $('cyc-light').textContent = cs.light || cs.totalLight || '--';
-  $('cyc-heavy').textContent = cs.heavy || cs.totalHeavy || '--';
-  $('cyc-reason').textContent = cs.lastHeavyReason || '--';
-  const cStats = c.stats || {};
-  $('cyc-cache-n').textContent = cStats.entries || '--';
-  $('cyc-cache-r').textContent = cStats.hitRate != null ? fmt(cStats.hitRate, 1) + '%' : '--';
-  const cd = c.cooldowns || {};
-  $('cyc-cooldowns').textContent = cd.active != null ? cd.active + ' active' : '--';
-
-  // Tiers
-  const tiers = cfg.portfolioTiers || [];
-  if (Array.isArray(tiers) && tiers.length > 0) {
-    $('tiersBody').innerHTML = tiers.map(t => {
-      const isCurrent = a.portfolioTier === t.label;
-      return '<tr' + (isCurrent ? ' style="background:var(--accent-dim)"' : '') + '><td><strong>' + t.label + '</strong>' +
-        (isCurrent ? ' <span class="pill pill-blue">CURRENT</span>' : '') + '</td><td>' + fmtUSD(t.minUSD) +
-        '</td><td>' + (t.priceChangeThreshold * 100).toFixed(1) + '%</td></tr>';
-    }).join('');
-  }
-
-  // Auto-harvest
-  $('ah-status').textContent = ah.enabled ? 'ENABLED' : 'DISABLED';
-  $('ah-status').className = 'card-value sm ' + (ah.enabled ? 'positive' : 'neutral');
-  $('ah-status-sub').textContent = ah.enabled ? 'Threshold: $' + (ah.thresholdUSD || '--') : 'Not configured';
-  $('ah-total').textContent = fmtUSD(ah.totalTransferredUSD || 0);
-  $('ah-total-sub').textContent = (ah.transferCount || ah.totalTransfers || 0) + ' transfers';
-  $('ah-dest').textContent = ah.destinationWallet || '--';
-  $('ah-dest-sub').textContent = ah.lastHarvestTime ? 'Last: ' + fmtTime(ah.lastHarvestTime) : 'Never transferred';
-}
-
-// ============================================================================
-// DISCOVERY PAGE
+// DISCOVERY
 // ============================================================================
 function renderDiscovery() {
   const d = Store.data.discovery || {};
@@ -1797,7 +1596,6 @@ function renderDiscovery() {
       fmtPct(t.change24h) + '</td><td>' + (t.volume24h ? fmtK(t.volume24h) : '--') + '</td><td>' +
       (t.liquidity ? fmtK(t.liquidity) : '--') + '</td><td>' + (t.dex||'--') + '</td></tr>').join('');
 
-  // Derivatives
   $('deriv-status').textContent = deriv.enabled ? 'ACTIVE' : 'DISABLED';
   $('deriv-status').className = 'card-value sm ' + (deriv.enabled ? 'positive' : 'neutral');
   $('deriv-status-sub').textContent = deriv.enabled ? 'Futures + Perps' : 'Not configured';
@@ -1820,6 +1618,132 @@ function renderDiscovery() {
   $('derivTradesBody').innerHTML = dTrades.length === 0 ? '<tr><td colspan="5" class="loading">None</td></tr>' :
     dTrades.map(t => '<tr><td>' + fmtTime(t.timestamp) + '</td><td>' + (t.action||'--') + '</td><td>' +
       (t.product||'--') + '</td><td>' + fmtUSD(t.size) + '</td><td>' + (t.result||'--') + '</td></tr>').join('');
+}
+
+// ============================================================================
+// ENGINE (Phase 1/2 data)
+// ============================================================================
+function renderEngine() {
+  const a = Store.data.adaptive || {};
+  const c = Store.data.cache || {};
+  const p = Store.data.portfolio || Store.data.health || {};
+  const ah = Store.data.autoHarvest || p.autoHarvest || {};
+
+  $('eng-interval').textContent = (a.currentIntervalSec || '--') + 's';
+  $('eng-vol').textContent = a.volatilityLevel || '--';
+  $('eng-vol-sub').textContent = 'Threshold: ' + (a.dynamicPriceThreshold ? fmt(a.dynamicPriceThreshold * 100, 2) + '%' : '--');
+  $('eng-tier').textContent = a.portfolioTier || '--';
+  $('eng-tier-sub').textContent = a.dynamicPriceThreshold ? 'Threshold: ' + fmt(a.dynamicPriceThreshold * 100, 2) + '%' : 'Sensitivity tier';
+  $('eng-emerg').textContent = a.emergencyMode ? 'ACTIVE' : 'OFF';
+  $('eng-emerg').className = 'card-value sm' + (a.emergencyMode ? ' negative' : ' positive');
+  $('eng-emerg-sub').textContent = a.emergencyMode ? 'Until ' + fmtTime(a.emergencyUntil) : 'Normal';
+
+  // Institutional Breaker (Phase 1)
+  const brk = a.institutionalBreaker || {};
+  $('brk-status').textContent = brk.paused ? 'PAUSED' : 'ACTIVE';
+  $('brk-status').className = 'kv-value ' + (brk.paused ? 'negative' : 'positive');
+  $('brk-losses').textContent = brk.consecutiveLosses != null ? brk.consecutiveLosses + '/3' : '--';
+  $('brk-daily-dd').textContent = brk.dailyDrawdownPct != null ? fmt(brk.dailyDrawdownPct, 2) + '%' : '--';
+  $('brk-weekly-dd').textContent = brk.weeklyDrawdownPct != null ? fmt(brk.weeklyDrawdownPct, 2) + '%' : '--';
+  $('brk-triggers').textContent = brk.totalTriggers != null ? brk.totalTriggers : '--';
+  $('brk-reduction').textContent = brk.sizeReductionActive ? '50% (24h post-breaker)' : 'None';
+
+  // Position Sizing (Phase 1)
+  const ps = a.positionSizing || {};
+  $('kelly-pct').textContent = ps.kellyPct != null ? fmt(ps.kellyPct, 2) + '%' : '--';
+  $('kelly-max').textContent = ps.maxTradeUSD != null ? fmtUSD(ps.maxTradeUSD) : '--';
+  $('kelly-vol-mult').textContent = ps.volMultiplier != null ? fmt(ps.volMultiplier, 2) + 'x' : '--';
+  $('kelly-sample').textContent = ps.sampleSize != null ? ps.sampleSize + ' trades' : '--';
+  $('kelly-winrate').textContent = ps.rollingWinRate != null ? fmt(ps.rollingWinRate, 1) + '%' : '--';
+  $('kelly-method').textContent = ps.method || '--';
+
+  const cfg = a.config || {};
+  $('cfg-min').textContent = (cfg.minIntervalSec || '--') + 's';
+  $('cfg-max').textContent = (cfg.maxIntervalSec || '--') + 's';
+  $('cfg-emerg').textContent = (cfg.emergencyIntervalSec || '--') + 's';
+  $('cfg-thresh').textContent = cfg.emergencyDropThreshold != null ? (cfg.emergencyDropThreshold * 100) + '%' : '--';
+  $('cfg-ws').textContent = a.priceStreamActive ? 'Connected' : 'Disconnected';
+  $('cfg-ws').className = 'kv-value ' + (a.priceStreamActive ? 'positive' : 'warn');
+  $('cfg-consec').textContent = a.consecutiveLightCycles || '0';
+
+  const cs = a.cycleStats || c.cycleStats || {};
+  $('cyc-light').textContent = cs.light || cs.totalLight || '--';
+  $('cyc-heavy').textContent = cs.heavy || cs.totalHeavy || '--';
+  $('cyc-reason').textContent = cs.lastHeavyReason || '--';
+  const cStats = c.stats || {};
+  $('cyc-cache-n').textContent = cStats.entries || '--';
+  $('cyc-cache-r').textContent = cStats.hitRate != null ? fmt(cStats.hitRate, 1) + '%' : '--';
+  const cd = c.cooldowns || {};
+  $('cyc-cooldowns').textContent = cd.active != null ? cd.active + ' active' : '--';
+
+  const tiers = cfg.portfolioTiers || [];
+  if (Array.isArray(tiers) && tiers.length > 0) {
+    $('tiersBody').innerHTML = tiers.map(t => {
+      const isCurrent = a.portfolioTier === t.label;
+      return '<tr' + (isCurrent ? ' style="background:var(--accent-dim)"' : '') + '><td><strong>' + t.label + '</strong>' +
+        (isCurrent ? ' <span class="pill pill-amber">CURRENT</span>' : '') + '</td><td>' + fmtUSD(t.minUSD) +
+        '</td><td>' + (t.priceChangeThreshold * 100).toFixed(1) + '%</td></tr>';
+    }).join('');
+  }
+
+  $('ah-status').textContent = ah.enabled ? 'ENABLED' : 'DISABLED';
+  $('ah-status').className = 'card-value sm ' + (ah.enabled ? 'positive' : 'neutral');
+  $('ah-status-sub').textContent = ah.enabled ? 'Threshold: $' + (ah.thresholdUSD || '--') : 'Not configured';
+  $('ah-total').textContent = fmtUSD(ah.totalTransferredUSD || 0);
+  $('ah-total-sub').textContent = (ah.transferCount || ah.totalTransfers || 0) + ' transfers';
+  $('ah-dest').textContent = ah.destinationWallet || '--';
+  $('ah-dest-sub').textContent = ah.lastHarvestTime ? 'Last: ' + fmtTime(ah.lastHarvestTime) : 'Never transferred';
+}
+
+// ============================================================================
+// TECHNICALS (bottom of page)
+// ============================================================================
+function renderTechnicals() {
+  const trades = Store.data.trades?.trades || [];
+  if (trades.length > 0) {
+    const sc = trades[0].signalContext || {};
+    const rsi = sc.rsi || 50;
+    $('tech-rsi').textContent = fmt(rsi, 1);
+    $('tech-rsi').className = 'card-value sm' + (rsi < 30 ? ' positive' : rsi > 70 ? ' negative' : '');
+    $('rsi-bar').style.width = rsi + '%';
+    $('rsi-bar').style.background = rsi < 30 ? 'var(--green)' : rsi > 70 ? 'var(--red)' : 'var(--accent)';
+
+    $('tech-macd').textContent = sc.macdSignal || '--';
+    $('tech-macd').className = 'card-value sm' + (sc.macdSignal === 'BULLISH' ? ' positive' : sc.macdSignal === 'BEARISH' ? ' negative' : '');
+
+    $('tech-bb').textContent = sc.bollingerPosition || '--';
+    $('tech-bb').className = 'card-value sm' + (sc.bollingerPosition === 'BELOW_LOWER' ? ' positive' : sc.bollingerPosition === 'ABOVE_UPPER' ? ' negative' : '');
+
+    const conf = sc.confluenceScore || 0;
+    $('tech-conf').textContent = (conf > 0 ? '+' : '') + fmt(conf, 0);
+    $('tech-conf').className = 'card-value sm ' + clsPnl(conf);
+    $('conf-bar').style.width = Math.max(5, ((conf + 100) / 200) * 100) + '%';
+    $('conf-bar').style.background = conf > 0 ? 'var(--green)' : conf < 0 ? 'var(--red)' : 'var(--text-muted)';
+  }
+
+  const th = Store.data.thresholds || {};
+  if (th.currentThresholds) {
+    const curr = th.currentThresholds;
+    const defaults = th.defaults || {};
+    const bounds = th.bounds || {};
+    const rows = Object.keys(curr).filter(k => !['regimeMultipliers','history','lastAdapted','adaptationCount'].includes(k));
+    $('thresholdsBody').innerHTML = rows.map(k => {
+      const b = bounds[k] || {};
+      return '<tr><td><code>' + k + '</code></td><td><strong>' + fmt(curr[k], 2) + '</strong></td><td>' +
+        fmt(defaults[k], 2) + '</td><td>' + fmt(b.min, 2) + '</td><td>' + fmt(b.max, 2) + '</td></tr>';
+    }).join('');
+  }
+
+  const hist = th.recentHistory || [];
+  $('threshHistBody').innerHTML = hist.length === 0 ? '<tr><td colspan="5" class="loading">No adaptations</td></tr>' :
+    hist.map(h => '<tr><td>' + fmtTime(h.timestamp) + '</td><td><code>' + (h.parameter||h.key) + '</code></td><td>' +
+      fmt(h.oldValue, 2) + '</td><td>' + fmt(h.newValue, 2) + '</td><td style="max-width:180px;white-space:normal;font-size:11px">' +
+      (h.reason||'--') + '</td></tr>').join('');
+
+  const sources = Store.data.intelligence?.dataSources || [];
+  $('dataSources').innerHTML = sources.length > 0 ?
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">' + sources.map(s => '<span class="pill pill-amber">' + s + '</span>').join('') + '</div>' :
+    '<span style="color:var(--text-muted)">No data sources</span>';
 }
 
 // ============================================================================
