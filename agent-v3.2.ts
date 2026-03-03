@@ -3456,12 +3456,15 @@ function determineMarketRegime(
   indicators: Record<string, TechnicalIndicators>,
   derivatives: DerivativesData | null
 ): MarketRegime {
+  const indValues = Object.values(indicators);
+  if (indValues.length === 0) return "UNKNOWN";
+
   // Count directional signals
   let upSignals = 0;
   let downSignals = 0;
   let totalSignals = 0;
 
-  for (const ind of Object.values(indicators)) {
+  for (const ind of indValues) {
     totalSignals++;
     if (ind.trendDirection === "STRONG_UP" || ind.trendDirection === "UP") upSignals++;
     if (ind.trendDirection === "STRONG_DOWN" || ind.trendDirection === "DOWN") downSignals++;
@@ -3470,14 +3473,39 @@ function determineMarketRegime(
   const upRatio = totalSignals > 0 ? upSignals / totalSignals : 0;
   const downRatio = totalSignals > 0 ? downSignals / totalSignals : 0;
 
-  // Check for high volatility regime
-  const avgBandwidth = Object.values(indicators)
-    .filter(i => i.bollingerBands)
-    .reduce((sum, i) => sum + (i.bollingerBands?.bandwidth || 0), 0) / Math.max(1, Object.values(indicators).filter(i => i.bollingerBands).length);
+  // Bollinger Band width — volatility proxy
+  const bbIndicators = indValues.filter(i => i.bollingerBands);
+  const avgBandwidth = bbIndicators.length > 0
+    ? bbIndicators.reduce((sum, i) => sum + (i.bollingerBands?.bandwidth || 0), 0) / bbIndicators.length
+    : 0;
 
+  // v8.3: ADX-based trend strength (average across tokens that have ADX data)
+  const adxIndicators = indValues.filter(i => i.adx14 !== null);
+  const avgADX = adxIndicators.length > 0
+    ? adxIndicators.reduce((sum, i) => sum + (i.adx14?.adx || 0), 0) / adxIndicators.length
+    : 0;
+
+  // v8.3: ATR%-based volatility (average across tokens that have ATR data)
+  const atrIndicators = indValues.filter(i => i.atrPercent !== null);
+  const avgATRPct = atrIndicators.length > 0
+    ? atrIndicators.reduce((sum, i) => sum + (i.atrPercent || 0), 0) / atrIndicators.length
+    : 0;
+
+  // v8.3: Enhanced regime classification — ADX + ATR + BB + directional ratios + F&G
+  // Priority 1: High volatility (ATR% > 5 OR BB bandwidth > 15)
+  if (avgATRPct > 5 && avgBandwidth > 12) return "VOLATILE";
   if (avgBandwidth > 15) return "VOLATILE";
+
+  // Priority 2: Strong trending (ADX > 25 confirms directional strength)
+  if (avgADX > 25 && upRatio > 0.5) return "TRENDING_UP";
+  if (avgADX > 25 && downRatio > 0.5) return "TRENDING_DOWN";
+
+  // Priority 3: Weak-signal trending (ADX 15-25, rely more on ratios + F&G as tiebreaker)
   if (upRatio > 0.6 && fearGreed > 40) return "TRENDING_UP";
   if (downRatio > 0.6 && fearGreed < 40) return "TRENDING_DOWN";
+
+  // Priority 4: ADX < 20 = trendless market → ranging
+  if (avgADX > 0 && avgADX < 20) return "RANGING";
   if (upRatio < 0.4 && downRatio < 0.4) return "RANGING";
 
   return "UNKNOWN";
@@ -3963,6 +3991,15 @@ interface TechnicalIndicators {
   sma20: number | null;         // 20-period Simple Moving Average
   sma50: number | null;         // 50-period Simple Moving Average (if enough data)
   volumeChange24h: number | null; // Volume change vs 7-day average
+  // v8.3: ATR + ADX — institutional-grade volatility & trend strength
+  atr14: number | null;          // Average True Range (14-period, dollar value)
+  atrPercent: number | null;     // ATR as % of price (cross-asset comparable)
+  adx14: {                       // Average Directional Index (14-period)
+    adx: number;                 // ADX value 0-100 (trend strength, not direction)
+    plusDI: number;              // +DI (bullish directional indicator)
+    minusDI: number;            // -DI (bearish directional indicator)
+    trend: "STRONG_TREND" | "TRENDING" | "WEAK" | "NO_TREND";
+  } | null;
   trendDirection: "STRONG_UP" | "UP" | "SIDEWAYS" | "DOWN" | "STRONG_DOWN";
   overallSignal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
   confluenceScore: number;       // -100 to +100, aggregated signal strength
@@ -4179,6 +4216,142 @@ function calculateSMA(prices: number[], period: number): number | null {
 }
 
 /**
+ * v8.3: Calculate ATR (Average True Range) — close-to-close variant
+ * Uses |close[i] - close[i-1]| as True Range since CoinGecko only provides close prices.
+ * Wilder's smoothing (same as RSI) for the averaging.
+ */
+function calculateATR(prices: number[], period: number = 14): { atr: number; atrPercent: number } | null {
+  if (prices.length < period + 1) return null;
+
+  // Calculate True Range series (close-to-close)
+  const tr: number[] = [];
+  for (let i = 1; i < prices.length; i++) {
+    tr.push(Math.abs(prices[i] - prices[i - 1]));
+  }
+
+  // Use last N*3 TRs for smoothed calculation (same approach as RSI)
+  const recentTR = tr.slice(-Math.min(tr.length, period * 3));
+
+  // Initial ATR = simple average of first N periods
+  let atr = 0;
+  for (let i = 0; i < period && i < recentTR.length; i++) {
+    atr += recentTR[i];
+  }
+  atr /= period;
+
+  // Wilder's smoothing for remaining periods
+  for (let i = period; i < recentTR.length; i++) {
+    atr = (atr * (period - 1) + recentTR[i]) / period;
+  }
+
+  const currentPrice = prices[prices.length - 1];
+  const atrPercent = currentPrice > 0 ? (atr / currentPrice) * 100 : 0;
+
+  return { atr, atrPercent };
+}
+
+/**
+ * v8.3: Calculate ADX (Average Directional Index) — close-to-close variant
+ * Measures trend STRENGTH (0-100), not direction. Uses +DI/-DI for direction.
+ *
+ * Close-to-close DM approximation:
+ *   +DM = max(close[i] - close[i-1], 0)  if up move > down move, else 0
+ *   -DM = max(close[i-1] - close[i], 0)  if down move > up move, else 0
+ *
+ * Then: +DI = 100 * smoothed(+DM) / ATR
+ *       -DI = 100 * smoothed(-DM) / ATR
+ *       DX  = 100 * |+DI - -DI| / (+DI + -DI)
+ *       ADX = smoothed(DX)
+ */
+function calculateADX(prices: number[], period: number = 14): TechnicalIndicators["adx14"] {
+  // Need at least 2*period+1 prices for a meaningful ADX
+  if (prices.length < 2 * period + 1) return null;
+
+  // Step 1: Calculate directional movements and TR
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const tr: number[] = [];
+
+  for (let i = 1; i < prices.length; i++) {
+    const upMove = prices[i] - prices[i - 1];
+    const downMove = prices[i - 1] - prices[i];
+
+    // Only keep the larger directional movement
+    if (upMove > 0 && upMove > downMove) {
+      plusDM.push(upMove);
+      minusDM.push(0);
+    } else if (downMove > 0 && downMove > upMove) {
+      plusDM.push(0);
+      minusDM.push(downMove);
+    } else {
+      plusDM.push(0);
+      minusDM.push(0);
+    }
+
+    tr.push(Math.abs(prices[i] - prices[i - 1]));
+  }
+
+  // Step 2: Wilder's smoothing for +DM, -DM, and TR
+  const smooth = (values: number[], p: number): number[] => {
+    if (values.length < p) return [];
+    const result: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < p; i++) sum += values[i];
+    result.push(sum); // First smoothed value = simple sum
+    for (let i = p; i < values.length; i++) {
+      result.push(result[result.length - 1] - result[result.length - 1] / p + values[i]);
+    }
+    return result;
+  };
+
+  const smoothPlusDM = smooth(plusDM, period);
+  const smoothMinusDM = smooth(minusDM, period);
+  const smoothTR = smooth(tr, period);
+
+  if (smoothPlusDM.length === 0 || smoothTR.length === 0) return null;
+
+  // Step 3: Calculate +DI and -DI series
+  const dx: number[] = [];
+  for (let i = 0; i < smoothPlusDM.length; i++) {
+    const atr = smoothTR[i];
+    if (atr === 0) continue;
+
+    const pDI = (smoothPlusDM[i] / atr) * 100;
+    const mDI = (smoothMinusDM[i] / atr) * 100;
+    const diSum = pDI + mDI;
+
+    if (diSum > 0) {
+      dx.push((Math.abs(pDI - mDI) / diSum) * 100);
+    }
+  }
+
+  if (dx.length < period) return null;
+
+  // Step 4: Smooth DX to get ADX (Wilder's smoothing)
+  let adx = 0;
+  for (let i = 0; i < period; i++) adx += dx[i];
+  adx /= period;
+  for (let i = period; i < dx.length; i++) {
+    adx = (adx * (period - 1) + dx[i]) / period;
+  }
+
+  // Final +DI and -DI (most recent values)
+  const lastIdx = smoothPlusDM.length - 1;
+  const lastATR = smoothTR[lastIdx];
+  const plusDIVal = lastATR > 0 ? (smoothPlusDM[lastIdx] / lastATR) * 100 : 0;
+  const minusDIVal = lastATR > 0 ? (smoothMinusDM[lastIdx] / lastATR) * 100 : 0;
+
+  // Classify trend strength
+  let trend: "STRONG_TREND" | "TRENDING" | "WEAK" | "NO_TREND";
+  if (adx >= 40) trend = "STRONG_TREND";
+  else if (adx >= 25) trend = "TRENDING";
+  else if (adx >= 20) trend = "WEAK";
+  else trend = "NO_TREND";
+
+  return { adx: Math.round(adx * 10) / 10, plusDI: Math.round(plusDIVal * 10) / 10, minusDI: Math.round(minusDIVal * 10) / 10, trend };
+}
+
+/**
  * Determine trend direction from price action and moving averages
  */
 function determineTrend(prices: number[], sma20: number | null, sma50: number | null): TechnicalIndicators["trendDirection"] {
@@ -4212,7 +4385,9 @@ function calculateConfluence(
   bb: TechnicalIndicators["bollingerBands"],
   trend: TechnicalIndicators["trendDirection"],
   priceChange24h: number,
-  priceChange7d: number
+  priceChange7d: number,
+  adx: TechnicalIndicators["adx14"] = null,
+  atr: { atr: number; atrPercent: number } | null = null
 ): { score: number; signal: TechnicalIndicators["overallSignal"] } {
   let score = 0;
   let signals = 0;
@@ -4272,6 +4447,30 @@ function calculateConfluence(
   else if (priceChange7d < -10) score -= 7;
   else if (priceChange7d < -3) score -= 3;
 
+  // v8.3: ADX trend strength confirmation/dampening (weight: ±10 directional, ±20% dampening)
+  if (adx) {
+    signals++;
+    // Strong trend confirmation: ADX > 30 adds directional conviction
+    if (adx.adx > 30 && adx.plusDI > adx.minusDI) {
+      score += 5;  // Strong uptrend confirmation
+    } else if (adx.adx > 30 && adx.minusDI > adx.plusDI) {
+      score -= 5;  // Strong downtrend confirmation
+    }
+    // No trend dampening: ADX < 15 means signals are unreliable
+    if (adx.adx < 15) {
+      score = Math.round(score * 0.80); // 20% dampening — trendless market, less conviction
+    }
+  }
+
+  // v8.3: ATR volatility adjustment — high vol = less conviction, low vol = breakout potential
+  if (atr) {
+    if (atr.atrPercent > 5) {
+      score = Math.round(score * 0.85); // 15% dampening — high volatility, uncertain
+    } else if (atr.atrPercent < 1) {
+      score = Math.round(score * 1.10); // 10% boost — low volatility, potential breakout
+    }
+  }
+
   // Normalize to -100 to +100
   const normalizedScore = Math.max(-100, Math.min(100, score));
 
@@ -4304,6 +4503,7 @@ async function computeIndicators(
     return {
       rsi14: null, macd: null, bollingerBands: null,
       sma20: null, sma50: null, volumeChange24h: null,
+      atr14: null, atrPercent: null, adx14: null,
       trendDirection: "SIDEWAYS", overallSignal: "NEUTRAL", confluenceScore: 0,
     };
   }
@@ -4326,13 +4526,20 @@ async function computeIndicators(
     }
   }
 
+  // v8.3: ATR + ADX — institutional-grade volatility & trend strength
+  const atrData = calculateATR(prices, 14);
+  const adxData = calculateADX(prices, 14);
+
   const trendDirection = determineTrend(prices, sma20, sma50);
-  const { score, signal } = calculateConfluence(rsi14, macd, bollingerBands, trendDirection, priceChange24h, priceChange7d);
+  const { score, signal } = calculateConfluence(rsi14, macd, bollingerBands, trendDirection, priceChange24h, priceChange7d, adxData, atrData);
 
   return {
     rsi14, macd, bollingerBands,
     sma20, sma50,
     volumeChange24h: volumeChange24hPct,
+    atr14: atrData?.atr ?? null,
+    atrPercent: atrData?.atrPercent ?? null,
+    adx14: adxData,
     trendDirection,
     overallSignal: signal,
     confluenceScore: score,
@@ -4395,6 +4602,7 @@ async function getTokenIndicators(
         indicators[batch[j].symbol] = {
           rsi14: null, macd: null, bollingerBands: null,
           sma20: null, sma50: null, volumeChange24h: null,
+          atr14: null, atrPercent: null, adx14: null,
           trendDirection: "SIDEWAYS", overallSignal: "NEUTRAL", confluenceScore: 0,
         };
       }
@@ -4433,6 +4641,18 @@ function formatIndicatorsForPrompt(indicators: Record<string, TechnicalIndicator
 
     if (ind.bollingerBands) {
       parts.push(`BB%B=${ind.bollingerBands.percentB.toFixed(2)}(${ind.bollingerBands.signal})`);
+    }
+
+    // v8.3: ATR volatility measure
+    if (ind.atrPercent !== null) {
+      const atrLabel = ind.atrPercent > 5 ? "HIGH_VOL" : ind.atrPercent > 3 ? "MODERATE" : ind.atrPercent > 1 ? "NORMAL" : "LOW_VOL";
+      parts.push(`ATR=${ind.atrPercent.toFixed(1)}%(${atrLabel})`);
+    }
+
+    // v8.3: ADX trend strength
+    if (ind.adx14) {
+      const dirLabel = ind.adx14.plusDI > ind.adx14.minusDI ? "+DI>-DI" : "-DI>+DI";
+      parts.push(`ADX=${ind.adx14.adx.toFixed(0)}(${ind.adx14.trend},${dirLabel})`);
     }
 
     parts.push(`Trend=${ind.trendDirection}`);
