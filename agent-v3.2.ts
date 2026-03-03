@@ -405,6 +405,55 @@ async function fetchChainlinkPrices(): Promise<Map<string, number>> {
 }
 
 // ============================================================================
+// v9.1: MULTI-WALLET PROFIT DISTRIBUTION
+// ============================================================================
+
+interface HarvestRecipient {
+  label: string;        // "Henry", "Brother"
+  wallet: string;       // 0x address
+  percent: number;      // 15 = 15% of harvested profits
+}
+
+function parseHarvestRecipients(): HarvestRecipient[] {
+  // New format: HARVEST_RECIPIENTS='Henry:0xabc...123:15,Brother:0xdef...456:15'
+  const recipientStr = process.env.HARVEST_RECIPIENTS || '';
+  if (recipientStr) {
+    const recipients = recipientStr.split(',').map(r => {
+      const parts = r.trim().split(':');
+      // Handle wallet addresses containing colons (shouldn't, but be safe)
+      if (parts.length >= 3) {
+        const label = parts[0];
+        const pct = parseFloat(parts[parts.length - 1]);
+        const wallet = parts.slice(1, -1).join(':');
+        return { label, wallet, percent: pct };
+      }
+      return { label: '', wallet: '', percent: 0 };
+    }).filter(r => r.wallet?.length >= 42 && r.percent > 0 && r.percent <= 50);
+
+    // Validate: total must be <= 70% (protect at least 30% for compounding)
+    const totalPct = recipients.reduce((s, r) => s + r.percent, 0);
+    if (totalPct > 70) {
+      console.warn(`  ⚠️ HARVEST_RECIPIENTS total ${totalPct}% exceeds 70% cap — rejecting all. At least 30% must compound.`);
+      return [];
+    }
+    if (totalPct > 50) {
+      console.warn(`  ⚠️ HARVEST_RECIPIENTS total ${totalPct}% — over 50% allocated to withdrawals. Consider reducing.`);
+    }
+    if (recipients.length > 0) {
+      console.log(`  💰 Harvest recipients: ${recipients.map(r => `${r.label}(${r.percent}%)`).join(', ')} | ${100 - totalPct}% reinvested`);
+    }
+    return recipients;
+  }
+
+  // Backward compat: old single-wallet env var → 15% default
+  const oldWallet = process.env.PROFIT_DESTINATION_WALLET || '';
+  if (oldWallet.length >= 42) {
+    return [{ label: 'Owner', wallet: oldWallet, percent: 15 }];
+  }
+  return [];
+}
+
+// ============================================================================
 // CONFIGURATION V3.2
 // ============================================================================
 
@@ -455,15 +504,14 @@ const CONFIG = {
   // Logging
   logFile: process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/trades-v3.4.json` : "./logs/trades-v3.4.json",
 
-    // v5.3.0: Auto-Harvest — send realized profits back to owner wallet
-    // v8.2: DISABLED — user does not want automated transfers to external wallets
+    // v9.1: Multi-Wallet Profit Distribution — percentage-based splits, rest compounds
     autoHarvest: {
-      enabled: false, // Was: process.env.AUTO_HARVEST_ENABLED === 'true'
-      destinationWallet: process.env.PROFIT_DESTINATION_WALLET || '',
+      enabled: process.env.AUTO_HARVEST_ENABLED === 'true',
+      recipients: parseHarvestRecipients(),
+      destinationWallet: process.env.PROFIT_DESTINATION_WALLET || '', // Legacy compat
       thresholdUSD: parseFloat(process.env.AUTO_HARVEST_THRESHOLD_USD || '25'),
       minETHReserve: parseFloat(process.env.AUTO_HARVEST_MIN_ETH_RESERVE || '0.002'),
       cooldownHours: parseFloat(process.env.AUTO_HARVEST_COOLDOWN_HOURS || '24'),
-      // v6.2.2: Capital floor — never harvest below this portfolio value
       minTradingCapitalUSD: parseFloat(process.env.MIN_TRADING_CAPITAL_USD || '500'),
     },
 
@@ -1641,12 +1689,13 @@ let state: AgentState = {
   stopLossCooldowns: {},
   tradeFailures: {},
   harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
-  // v5.3.0: Auto-harvest transfer state
-  autoHarvestTransfers: [] as Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>,
+  // v9.1: Auto-harvest transfer state (multi-wallet)
+  autoHarvestTransfers: [] as Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string; label: string }>,
   totalAutoHarvestedUSD: 0,
   totalAutoHarvestedETH: 0,
   lastAutoHarvestTime: null as string | null,
   autoHarvestCount: 0,
+  autoHarvestByRecipient: {} as Record<string, number>, // v9.1: total USD sent per recipient label
   // Phase 3: Self-Improvement Engine
   strategyPatterns: {},
   adaptiveThresholds: { ...DEFAULT_ADAPTIVE_THRESHOLDS },
@@ -1691,12 +1740,20 @@ function loadTradeHistory() {
         state.explorationState = parsed.explorationState || { ...DEFAULT_EXPLORATION_STATE };
         state.lastReviewTradeIndex = parsed.lastReviewTradeIndex || 0;
         state.lastReviewTimestamp = parsed.lastReviewTimestamp || null;
-        // v5.3.0: Restore auto-harvest transfer state
+        // v9.1: Restore auto-harvest transfer state (multi-wallet)
         state.autoHarvestTransfers = parsed.autoHarvestTransfers || [];
         state.totalAutoHarvestedUSD = parsed.totalAutoHarvestedUSD || 0;
         state.totalAutoHarvestedETH = parsed.totalAutoHarvestedETH || 0;
         state.lastAutoHarvestTime = parsed.lastAutoHarvestTime || null;
         state.autoHarvestCount = parsed.autoHarvestCount || 0;
+        state.autoHarvestByRecipient = parsed.autoHarvestByRecipient || {};
+        // v9.1: Backfill per-recipient tracking from existing transfer records
+        if (Object.keys(state.autoHarvestByRecipient).length === 0 && state.autoHarvestTransfers.length > 0) {
+          for (const t of state.autoHarvestTransfers) {
+            const lbl = (t as any).label || 'Owner';
+            state.autoHarvestByRecipient[lbl] = (state.autoHarvestByRecipient[lbl] || 0) + (t.amountUSD || 0);
+          }
+        }
         // v5.2: Restore shadow proposals
         if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
           shadowProposals = parsed.shadowProposals;
@@ -1761,12 +1818,13 @@ function saveTradeHistory() {
       stopLossCooldowns: state.stopLossCooldowns,
       tradeFailures: state.tradeFailures,
       harvestedProfits: state.harvestedProfits,
-      // v5.3.0: Auto-harvest transfer persistence
+      // v9.1: Auto-harvest transfer persistence (multi-wallet)
       autoHarvestTransfers: state.autoHarvestTransfers,
       totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,
       totalAutoHarvestedETH: state.totalAutoHarvestedETH,
       lastAutoHarvestTime: state.lastAutoHarvestTime,
       autoHarvestCount: state.autoHarvestCount,
+      autoHarvestByRecipient: state.autoHarvestByRecipient,
       // Phase 3: Self-Improvement Engine
       strategyPatterns: state.strategyPatterns,
       adaptiveThresholds: state.adaptiveThresholds,
@@ -5714,29 +5772,29 @@ async function checkAutoHarvestTransfer(
   cdp: any,
   ethPrice: number,
   ethBalance: number
-): Promise<{ sent: boolean; amountUSDC?: number; amountUSD?: number; txHash?: string; error?: string }> {
+): Promise<{ sent: boolean; transfers: { label: string; amount: number; txHash?: string; error?: string }[] }> {
   const cfg = CONFIG.autoHarvest;
+  const results: { label: string; amount: number; txHash?: string; error?: string }[] = [];
 
   if (!cfg.enabled) {
-    return { sent: false, error: 'Auto-harvest disabled' };
+    return { sent: false, transfers: [{ label: '-', amount: 0, error: 'Auto-harvest disabled' }] };
   }
 
-  if (!cfg.destinationWallet || cfg.destinationWallet.length < 42) {
-    console.log('⚠️  Auto-harvest: No destination wallet configured');
-    return { sent: false, error: 'No destination wallet' };
+  if (!cfg.recipients || cfg.recipients.length === 0) {
+    return { sent: false, transfers: [{ label: '-', amount: 0, error: 'No recipients configured' }] };
   }
 
   // Cooldown check
   if (state.lastAutoHarvestTime) {
     const hoursSinceLast = (Date.now() - new Date(state.lastAutoHarvestTime).getTime()) / (1000 * 60 * 60);
     if (hoursSinceLast < cfg.cooldownHours) {
-      return { sent: false, error: `Cooldown: ${(cfg.cooldownHours - hoursSinceLast).toFixed(1)}h remaining` };
+      return { sent: false, transfers: [{ label: '-', amount: 0, error: `Cooldown: ${(cfg.cooldownHours - hoursSinceLast).toFixed(1)}h remaining` }] };
     }
   }
 
-  // Gas check — need ETH for the USDC transfer tx
+  // Gas check
   if (ethBalance < cfg.minETHReserve) {
-    return { sent: false, error: `ETH balance (${ethBalance.toFixed(4)}) below reserve (${cfg.minETHReserve}) for gas` };
+    return { sent: false, transfers: [{ label: '-', amount: 0, error: `ETH balance (${ethBalance.toFixed(4)}) below reserve for gas` }] };
   }
 
   // Calculate unharvested profit (total harvested profits minus already transferred)
@@ -5744,65 +5802,91 @@ async function checkAutoHarvestTransfer(
     .reduce((sum: number, h: any) => sum + (h.profitUSD || 0), 0) - state.totalAutoHarvestedUSD;
 
   if (profitUSD < cfg.thresholdUSD) {
-    return { sent: false, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` };
+    return { sent: false, transfers: [{ label: '-', amount: 0, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` }] };
   }
 
   // Check actual USDC balance available
   const usdcAddress = TOKEN_REGISTRY.USDC.address;
   const usdcBalance = await getERC20Balance(usdcAddress, CONFIG.walletAddress, 6);
 
-  // v6.2.2: Capital floor — never let portfolio drop below minTradingCapitalUSD
+  // Capital floor
   const currentPortfolio = state.trading.totalPortfolioValue || 0;
   const capitalFloor = cfg.minTradingCapitalUSD || 500;
   const headroom = Math.max(0, currentPortfolio - capitalFloor);
   if (headroom <= 0) {
-    return { sent: false, error: `Portfolio ($${currentPortfolio.toFixed(2)}) at or below capital floor ($${capitalFloor}). Preserving trading capital.` };
+    return { sent: false, transfers: [{ label: '-', amount: 0, error: `Portfolio ($${currentPortfolio.toFixed(2)}) at capital floor ($${capitalFloor})` }] };
   }
 
-  // Only send the profit amount, capped at available USDC and headroom above capital floor
-  const sendableUSDC = Math.max(0, usdcBalance - 5);
-  const transferAmount = Math.min(profitUSD, sendableUSDC, headroom);
+  const sendableUSDC = Math.max(0, usdcBalance - 5); // Keep $5 buffer
+  const totalRecipientPct = cfg.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+  const reinvestPct = 100 - totalRecipientPct;
 
-  if (transferAmount < cfg.thresholdUSD) {
-    return { sent: false, error: `Sendable amount ($${transferAmount.toFixed(2)}) below threshold after capital floor + $5 buffer` };
+  console.log(`\n💰 AUTO-HARVEST DISTRIBUTION (v9.1)`);
+  console.log(`   Profit pool: $${profitUSD.toFixed(2)} | USDC avail: $${usdcBalance.toFixed(2)} | Headroom: $${headroom.toFixed(2)}`);
+  console.log(`   Split: ${cfg.recipients.map(r => `${r.label}=${r.percent}%`).join(', ')} | ${reinvestPct}% reinvested`);
+
+  let anySent = false;
+  let totalSentThisCycle = 0;
+
+  for (const recipient of cfg.recipients) {
+    // Each recipient gets their percentage of the total unharvested profit
+    const share = profitUSD * (recipient.percent / 100);
+
+    if (share < cfg.thresholdUSD) {
+      results.push({ label: recipient.label, amount: 0, error: `Share $${share.toFixed(2)} below threshold $${cfg.thresholdUSD}` });
+      continue;
+    }
+
+    // Cap at remaining sendable USDC and headroom
+    const remainingSendable = sendableUSDC - totalSentThisCycle;
+    const remainingHeadroom = headroom - totalSentThisCycle;
+    const transferAmount = Math.min(share, remainingSendable, remainingHeadroom);
+
+    if (transferAmount < cfg.thresholdUSD) {
+      results.push({ label: recipient.label, amount: 0, error: `Capped amount $${transferAmount.toFixed(2)} below threshold` });
+      continue;
+    }
+
+    console.log(`   -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${profitUSD.toFixed(2)})`);
+
+    try {
+      const txHash = await sendUSDCTransfer(account, recipient.wallet, transferAmount);
+
+      console.log(`   ✅ ${recipient.label}: TX ${txHash}`);
+      console.log(`   🔍 View: https://basescan.org/tx/${txHash}`);
+
+      state.autoHarvestTransfers.push({
+        timestamp: new Date().toISOString(),
+        amountETH: '0',
+        amountUSD: transferAmount,
+        txHash,
+        destination: recipient.wallet,
+        label: recipient.label,
+      });
+
+      state.totalAutoHarvestedUSD += transferAmount;
+      state.autoHarvestCount++;
+      state.autoHarvestByRecipient[recipient.label] = (state.autoHarvestByRecipient[recipient.label] || 0) + transferAmount;
+      totalSentThisCycle += transferAmount;
+      anySent = true;
+
+      results.push({ label: recipient.label, amount: transferAmount, txHash });
+    } catch (err: any) {
+      console.error(`   ❌ ${recipient.label} transfer failed:`, err.message);
+      results.push({ label: recipient.label, amount: 0, error: err.message });
+    }
   }
 
-  console.log(`\n💰 AUTO-HARVEST TRANSFER (USDC)`);
-  console.log(`   Sending $${transferAmount.toFixed(2)} USDC to ${cfg.destinationWallet}`);
-  console.log(`   USDC balance: $${usdcBalance.toFixed(2)} | Capital floor: $${capitalFloor} | Headroom: $${headroom.toFixed(2)} | Sendable: $${sendableUSDC.toFixed(2)}`);
-  console.log(`   Profit available: $${profitUSD.toFixed(2)} | Transferring: $${transferAmount.toFixed(2)}`);
-
-  try {
-    const txHash = await sendUSDCTransfer(account, cfg.destinationWallet, transferAmount);
-
-    console.log(`   ✅ USDC Transfer sent! TX: ${txHash}`);
-    console.log(`   🔍 View: https://basescan.org/tx/${txHash}`);
-
-    const transferRecord = {
-      timestamp: new Date().toISOString(),
-      amountETH: '0', // We send USDC not ETH now
-      amountUSD: transferAmount,
-      txHash: txHash,
-      destination: cfg.destinationWallet
-    };
-
-    state.autoHarvestTransfers.push(transferRecord);
-    state.totalAutoHarvestedUSD += transferAmount;
+  if (anySent) {
     state.lastAutoHarvestTime = new Date().toISOString();
-    state.autoHarvestCount++;
-
     if (state.autoHarvestTransfers.length > 50) {
       state.autoHarvestTransfers = state.autoHarvestTransfers.slice(-50);
     }
-
     saveTradeHistory();
-
-    return { sent: true, amountUSDC: transferAmount, amountUSD: transferAmount, txHash: txHash };
-
-  } catch (err: any) {
-    console.error(`   ❌ Auto-harvest USDC transfer failed:`, err.message);
-    return { sent: false, error: err.message };
+    console.log(`   Total distributed: $${totalSentThisCycle.toFixed(2)} | Reinvested: $${(profitUSD - totalSentThisCycle).toFixed(2)} (${reinvestPct}%)`);
   }
+
+  return { sent: anySent, transfers: results };
 }
 
 // Helper: send USDC (ERC-20) transfer
@@ -6518,15 +6602,16 @@ async function runTradingCycle() {
       state.explorationState.consecutiveHolds++;
     }
 
-    // v6.2.1: Auto-harvest profits to owner wallet — runs every heavy cycle regardless of trade action
-    if (CONFIG.autoHarvest.enabled) {
+    // v9.1: Multi-wallet profit distribution — runs every heavy cycle
+    if (CONFIG.autoHarvest.enabled && CONFIG.autoHarvest.recipients.length > 0) {
       try {
         const ethBal = await getETHBalance(CONFIG.walletAddress);
         const ethPriceUSD = lastKnownPrices['WETH']?.price || lastKnownPrices['ETH']?.price || 2700;
         const harvestAccount = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
         const harvestResult = await checkAutoHarvestTransfer(harvestAccount, cdpClient, ethPriceUSD, ethBal);
         if (harvestResult.sent) {
-          console.log(`Auto-harvested ${harvestResult.amountUSD?.toFixed(2)} to owner wallet`);
+          const summary = harvestResult.transfers.filter(t => t.txHash).map(t => `${t.label}=$${t.amount.toFixed(2)}`).join(', ');
+          console.log(`Distributed profits: ${summary}`);
         }
       } catch (harvestErr: any) {
         console.warn('Auto-harvest check failed:', harvestErr.message);
@@ -7020,6 +7105,14 @@ function apiPortfolio() {
         lastTransfer: state.lastAutoHarvestTime,
         destination: CONFIG.autoHarvest.destinationWallet ?
           CONFIG.autoHarvest.destinationWallet.slice(0, 6) + '...' + CONFIG.autoHarvest.destinationWallet.slice(-4) : null,
+        // v9.1: Multi-wallet recipients
+        recipients: (CONFIG.autoHarvest.recipients || []).map((r: HarvestRecipient) => ({
+          label: r.label,
+          wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
+          percent: r.percent,
+          totalTransferred: state.autoHarvestByRecipient[r.label] || 0,
+        })),
+        reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
       },
   };
 }
@@ -7215,13 +7308,20 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/auto-harvest':
         sendJSON(res, 200, {
           enabled: CONFIG.autoHarvest.enabled,
-          destinationWallet: CONFIG.autoHarvest.destinationWallet ? CONFIG.autoHarvest.destinationWallet.slice(0, 6) + '...' + CONFIG.autoHarvest.destinationWallet.slice(-4) : 'not configured',
           thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
           cooldownHours: CONFIG.autoHarvest.cooldownHours,
           minETHReserve: CONFIG.autoHarvest.minETHReserve,
           totalTransfers: (state.autoHarvestTransfers || []).length,
           recentTransfers: (state.autoHarvestTransfers || []).slice(-5),
-          lastHarvestTime: (state.lastAutoHarvestTime || null)
+          lastHarvestTime: (state.lastAutoHarvestTime || null),
+          // v9.1: Multi-wallet recipients
+          recipients: (CONFIG.autoHarvest.recipients || []).map((r: HarvestRecipient) => ({
+            label: r.label,
+            wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
+            percent: r.percent,
+            totalTransferred: state.autoHarvestByRecipient[r.label] || 0,
+          })),
+          reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
         });
         break;
       case '/api/auto-harvest/trigger':

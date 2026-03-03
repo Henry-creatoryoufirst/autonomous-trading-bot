@@ -790,12 +790,13 @@ tr:hover td { background: var(--bg-subtle); }
     </div>
   </div>
 
-  <div class="section-hdr">Auto-Harvest</div>
+  <div class="section-hdr">Profit Distribution</div>
   <div class="grid g-3">
     <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="ah-status">--</div><div class="card-sub" id="ah-status-sub">--</div></div>
-    <div class="card"><div class="card-label">Total Transferred</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
-    <div class="card"><div class="card-label">Destination</div><div class="card-value sm" id="ah-dest" style="font-size:var(--fs-sm)">--</div><div class="card-sub" id="ah-dest-sub">--</div></div>
+    <div class="card"><div class="card-label">Total Distributed</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
+    <div class="card"><div class="card-label">Reinvested</div><div class="card-value sm" id="ah-reinvest" style="color:var(--positive)">--</div><div class="card-sub" id="ah-reinvest-sub">Compounding in portfolio</div></div>
   </div>
+  <div id="ah-recipients" style="margin-top:var(--space-3)"></div>
 
   <hr class="section-divider">
 
@@ -1660,8 +1661,24 @@ function renderEngine() {
   $('ah-status-sub').textContent = ah.enabled ? 'Threshold: $' + (ah.thresholdUSD || '--') : 'Not configured';
   $('ah-total').textContent = fmtUSD(ah.totalTransferredUSD || 0);
   $('ah-total-sub').textContent = (ah.transferCount || ah.totalTransfers || 0) + ' transfers';
-  $('ah-dest').textContent = ah.destinationWallet || '--';
-  $('ah-dest-sub').textContent = ah.lastHarvestTime ? 'Last: ' + fmtTime(ah.lastHarvestTime) : 'Never transferred';
+
+  // v9.1: Reinvest percentage and recipients
+  const reinvest = ah.reinvestPercent != null ? ah.reinvestPercent : 100;
+  $('ah-reinvest').textContent = reinvest + '%';
+  $('ah-reinvest-sub').textContent = 'Compounding in portfolio';
+
+  const recipientsEl = $('ah-recipients');
+  const recipients = ah.recipients || [];
+  if (recipients.length > 0) {
+    recipientsEl.innerHTML = '<div class="grid g-' + Math.min(recipients.length, 3) + '" style="gap:var(--space-3)">' +
+      recipients.map(function(r) {
+        return '<div class="card"><div class="card-label">' + r.label + ' (' + r.percent + '%)</div>' +
+          '<div class="card-value sm">' + fmtUSD(r.totalTransferred || 0) + '</div>' +
+          '<div class="card-sub">' + r.wallet + '</div></div>';
+      }).join('') + '</div>';
+  } else {
+    recipientsEl.innerHTML = '';
+  }
 }
 
 // ============================================================================
