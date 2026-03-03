@@ -120,8 +120,11 @@ import {
   EMERGENCY_DROP_THRESHOLD,
   PORTFOLIO_SENSITIVITY_TIERS,
   VOLATILITY_SPEED_MAP,
-    TOKEN_WATCH_INTERVAL_MS, // v7.0
-      TOKEN_HEAVY_ANALYSIS_INTERVAL_MS, // v7.0
+  TOKEN_WATCH_INTERVAL_MS, // v7.0
+  TOKEN_HEAVY_ANALYSIS_INTERVAL_MS, // v7.0
+  CAPITAL_FLOOR_PERCENT,
+  CAPITAL_FLOOR_ABSOLUTE_USD,
+  SECTOR_STOP_LOSS_OVERRIDES,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -939,8 +942,8 @@ const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: numb
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
   profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -25, max: -8, maxStep: 2 },    // v6.2: tighter bounds
-  trailingStopPercent:   { min: -20, max: -8, maxStep: 2 },   // v6.2: tighter bounds
+  stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds (-20% floor, -6% ceiling)
+  trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds (-15% floor, -5% ceiling)
 };
 
 const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
@@ -2033,8 +2036,16 @@ function checkStopLoss(
     }
 
     // Use adaptive thresholds (Phase 3) instead of static config
-    const adaptiveSL = state.adaptiveThresholds.stopLossPercent;
-    const adaptiveTrailing = state.adaptiveThresholds.trailingStopPercent;
+    let adaptiveSL = state.adaptiveThresholds.stopLossPercent;
+    let adaptiveTrailing = state.adaptiveThresholds.trailingStopPercent;
+
+    // v6.2: Sector-specific stop-loss tightening — meme coins get tighter stops
+    const sectorOverride = b.sector ? SECTOR_STOP_LOSS_OVERRIDES[b.sector] : undefined;
+    if (sectorOverride) {
+      // Use the tighter of adaptive vs sector override (closer to 0 = tighter)
+      adaptiveSL = Math.max(adaptiveSL, sectorOverride.maxLoss);
+      adaptiveTrailing = Math.max(adaptiveTrailing, sectorOverride.maxTrailing);
+    }
 
     const triggered = lossFromCost <= adaptiveSL ||
       (cfg.trailingEnabled && trailingLoss <= adaptiveTrailing);
@@ -4976,9 +4987,26 @@ async function runTradingCycle() {
     const pnlPercent = (pnl / state.trading.initialValue) * 100;
     const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
 
+    // === v6.2: CAPITAL FLOOR ENFORCEMENT ===
+    // Absolute minimum: if portfolio is below $50, halt ALL trading (prevent dust churn)
+    if (state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
+      console.log(`\n🚨 CAPITAL FLOOR BREACH: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < absolute minimum $${CAPITAL_FLOOR_ABSOLUTE_USD}`);
+      console.log(`   ALL TRADING HALTED — wallet needs funding or manual intervention.`);
+      state.trading.lastCheck = new Date();
+      return;
+    }
+
+    // Percentage floor: if portfolio < 60% of peak, HOLD-ONLY mode (stop-losses still fire)
+    const capitalFloorValue = state.trading.peakValue * (CAPITAL_FLOOR_PERCENT / 100);
+    const belowCapitalFloor = state.trading.totalPortfolioValue < capitalFloorValue;
+    if (belowCapitalFloor) {
+      console.log(`\n⚠️ CAPITAL FLOOR: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < floor $${capitalFloorValue.toFixed(2)} (${CAPITAL_FLOOR_PERCENT}% of peak $${state.trading.peakValue.toFixed(2)})`);
+      console.log(`   HOLD-ONLY mode active — no new buys, only stop-loss sells allowed.`);
+    }
+
     // === CIRCUIT BREAKERS ===
     // Hard halt: if drawdown exceeds 20% from peak, stop all trading this cycle
-    if (drawdown >= 20) {
+    if (drawdown >= 20 && !belowCapitalFloor) {
       console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% exceeds 20% threshold. Halting trading this cycle.`);
       console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Current: $${state.trading.totalPortfolioValue.toFixed(2)}`);
       state.trading.lastCheck = new Date();
@@ -5117,6 +5145,14 @@ async function runTradingCycle() {
     }
     console.log(`   Reasoning: ${decision.reasoning}`);
 
+    // === v6.2: CAPITAL FLOOR — BLOCK NEW BUYS ===
+    // When below capital floor, only allow SELL and HOLD (stop-losses still fire above)
+    if (belowCapitalFloor && decision.action === "BUY") {
+      console.log(`   🚫 CAPITAL FLOOR: Blocking BUY — portfolio $${state.trading.totalPortfolioValue.toFixed(2)} below floor $${capitalFloorValue.toFixed(2)}. Only sells allowed.`);
+      decision.action = "HOLD";
+      decision.reasoning = `Capital floor active: portfolio at $${state.trading.totalPortfolioValue.toFixed(2)} is below ${CAPITAL_FLOOR_PERCENT}% of peak ($${capitalFloorValue.toFixed(2)}). Holding until recovery or funding.`;
+    }
+
     // === PHASE 3: CONFIDENCE-WEIGHTED POSITION SIZING ===
     if (decision.action === "BUY" && decision.amountUSD > 0) {
       const tradePatternId = [
@@ -5143,16 +5179,22 @@ async function runTradingCycle() {
 
     // === POSITION SIZE GUARD ===
     // Hard enforcement: block BUY if target token already exceeds maxPositionPercent
+    // v6.2: Uses sector-specific limits (meme coins capped at 15%, blue chips at 30%)
     if (decision.action === "BUY" && decision.toToken !== "USDC" && state.trading.totalPortfolioValue > 0) {
       const targetHolding = balances.find(b => b.symbol === decision.toToken);
       const currentValue = targetHolding?.usdValue || 0;
       const afterBuyValue = currentValue + decision.amountUSD;
       const afterBuyPercent = (afterBuyValue / state.trading.totalPortfolioValue) * 100;
 
-      if (afterBuyPercent > CONFIG.trading.maxPositionPercent) {
-        console.log(`   🚫 POSITION GUARD: ${decision.toToken} would be ${afterBuyPercent.toFixed(1)}% of portfolio (max ${CONFIG.trading.maxPositionPercent}%). Current: $${currentValue.toFixed(2)}. Blocked.`);
+      const tokenSector = TOKEN_REGISTRY[decision.toToken]?.sector;
+      const sectorLimit = tokenSector && SECTOR_STOP_LOSS_OVERRIDES[tokenSector]
+        ? SECTOR_STOP_LOSS_OVERRIDES[tokenSector].maxPositionPercent
+        : CONFIG.trading.maxPositionPercent;
+
+      if (afterBuyPercent > sectorLimit) {
+        console.log(`   🚫 POSITION GUARD: ${decision.toToken} (${tokenSector}) would be ${afterBuyPercent.toFixed(1)}% of portfolio (max ${sectorLimit}%). Current: $${currentValue.toFixed(2)}. Blocked.`);
         decision.action = "HOLD";
-        decision.reasoning = `Position guard: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — too concentrated. Holding.`;
+        decision.reasoning = `Position guard: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — exceeds ${tokenSector} sector limit of ${sectorLimit}%. Holding.`;
       }
     }
 

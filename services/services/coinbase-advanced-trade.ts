@@ -605,11 +605,19 @@ export class CoinbaseAdvancedTradeClient {
         state.availableBuyingPower += parseFloat(state.cfmBalance.futures_buying_power?.value || "0");
         state.totalUnrealizedPnl += parseFloat(state.cfmBalance.unrealized_pnl?.value || "0");
         state.totalMarginUsed += parseFloat(state.cfmBalance.initial_margin?.value || "0");
+      } else {
+        const reason = balanceSummary.reason;
+        const msg = reason instanceof Error ? reason.message : String(reason);
+        console.error(`  ❌ [AdvancedTrade] CFM balance fetch FAILED: ${msg.substring(0, 200)}`);
       }
 
       if (cfmPositions.status === "fulfilled") {
         state.cfmPositions = cfmPositions.value.positions || [];
         state.openPositionCount += state.cfmPositions.length;
+      } else {
+        const reason = cfmPositions.reason;
+        const msg = reason instanceof Error ? reason.message : String(reason);
+        console.error(`  ❌ [AdvancedTrade] CFM positions fetch FAILED: ${msg.substring(0, 200)}`);
       }
     } catch (error: any) {
       console.warn(`  ⚠️ [AdvancedTrade] CFM state fetch failed: ${error?.message?.substring(0, 150)}`);
@@ -632,11 +640,19 @@ export class CoinbaseAdvancedTradeClient {
           state.intxPortfolio = intxPortfolio.value.summary;
           state.availableBuyingPower += parseFloat(state.intxPortfolio.buying_power?.value || "0");
           state.totalUnrealizedPnl += parseFloat(state.intxPortfolio.unrealized_pnl?.value || "0");
+        } else {
+          const reason = intxPortfolio.reason;
+          const msg = reason instanceof Error ? reason.message : String(reason);
+          console.error(`  ❌ [AdvancedTrade] INTX portfolio fetch FAILED: ${msg.substring(0, 200)}`);
         }
 
         if (intxPositions.status === "fulfilled") {
           state.intxPositions = intxPositions.value.positions || [];
           state.openPositionCount += state.intxPositions.length;
+        } else {
+          const reason = intxPositions.reason;
+          const msg = reason instanceof Error ? reason.message : String(reason);
+          console.error(`  ❌ [AdvancedTrade] INTX positions fetch FAILED: ${msg.substring(0, 200)}`);
         }
       }
     } catch (error: any) {

@@ -166,8 +166,8 @@ export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxSte
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
   profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -40, max: -10, maxStep: 2 },
-  trailingStopPercent:   { min: -35, max: -10, maxStep: 2 },
+  stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds
+  trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds
 };
 
 // ============================================================================
@@ -199,11 +199,11 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
 
 /**
  * After a recent trade, re-entry requires a HIGHER confluence score.
-  * Normal BUY entry:  confluence >= +25
-   * Re-entry BUY:      confluence >= +40 (within TRADE_EXECUTED window)
-    * Normal SELL entry: confluence <= -20
-     * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
-      */
+ * Normal BUY entry:  confluence >= +25
+ * Re-entry BUY:      confluence >= +40 (within TRADE_EXECUTED window)
+ * Normal SELL entry: confluence <= -20
+ * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
+ */
 export const REENTRY_CONFLUENCE_BUY = 40;
 export const REENTRY_CONFLUENCE_SELL = -35;
 export const NORMAL_CONFLUENCE_BUY = 25;
@@ -227,3 +227,36 @@ export const TOKEN_WATCH_INTERVAL_MS = 30 * 1000; // 30 seconds
 
 /** How often each token watcher runs a full AI heavy analysis */
 export const TOKEN_HEAVY_ANALYSIS_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+// ============================================================================
+// CAPITAL FLOOR — v6.2 Portfolio Protection
+// ============================================================================
+
+/**
+ * Capital floor as a percentage of peak portfolio value.
+ * When portfolio drops below this floor, the bot enters HOLD-ONLY mode
+ * (no new buys, only stop-loss sells allowed).
+ */
+export const CAPITAL_FLOOR_PERCENT = 60; // Hold-only if portfolio < 60% of peak
+
+/**
+ * Absolute minimum portfolio value (USD) below which ALL trading halts.
+ * This is the emergency kill switch — even stop-losses won't fire below this
+ * to prevent dust-level churn on a depleted wallet.
+ */
+export const CAPITAL_FLOOR_ABSOLUTE_USD = 50; // $50 absolute minimum
+
+// ============================================================================
+// SECTOR RISK LIMITS — v6.2 Per-Sector Stop-Loss Overrides
+// ============================================================================
+
+/**
+ * Tighter stop-loss bounds for high-risk sectors.
+ * These override the adaptive stop-loss when the sector is riskier.
+ */
+export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTrailing: number; maxPositionPercent: number }> = {
+  MEME_COINS:  { maxLoss: -10, maxTrailing: -8,  maxPositionPercent: 15 },
+  AI_TOKENS:   { maxLoss: -12, maxTrailing: -10, maxPositionPercent: 20 },
+  DEFI:        { maxLoss: -15, maxTrailing: -12, maxPositionPercent: 25 },
+  BLUE_CHIP:   { maxLoss: -20, maxTrailing: -15, maxPositionPercent: 30 },
+} as const;
