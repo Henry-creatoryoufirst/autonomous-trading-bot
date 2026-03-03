@@ -4438,6 +4438,8 @@ async function executeTrade(
       txHash,
       success: true,
       portfolioValueBefore,
+      // v7.1: Estimate portfolioValueAfter — swap is value-neutral minus slippage/gas
+      portfolioValueAfter: portfolioValueBefore - (decision.amountUSD * 0.015),
       reasoning: decision.reasoning,
       sector: decision.sector,
       marketConditions: {
@@ -4962,18 +4964,41 @@ async function runTradingCycle() {
             }
           }
         }
-        if (tokenData) {
+        if (tokenData && tokenData.price > 0) {
           balance.usdValue = balance.balance * tokenData.price;
           balance.price = tokenData.price;
         } else if (balance.balance > 0) {
-          console.warn(`   ⚠️ No price data for ${balance.symbol} — showing $0`);
+          // v7.1: Fall back to lastKnownPrices — prevents phantom $0 portfolio during price feed outages
+          const lastPrice = lastKnownPrices[balance.symbol]?.price || 0;
+          if (lastPrice > 0) {
+            balance.usdValue = balance.balance * lastPrice;
+            balance.price = lastPrice;
+            console.log(`   ♻️ Using last known price for ${balance.symbol}: $${lastPrice.toFixed(4)} (feed unavailable)`);
+          } else {
+            console.warn(`   ⚠️ No price data for ${balance.symbol} — no cache available, showing $0`);
+          }
         }
       }
       balance.sector = TOKEN_REGISTRY[balance.symbol]?.sector;
     }
 
     state.trading.balances = balances;
-    state.trading.totalPortfolioValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
+    const newPortfolioValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
+
+    // v7.1: Phantom drop detection — if portfolio drops >30% in a single cycle,
+    // it's almost certainly a price feed failure, not a real loss.
+    // Protect peakValue and use last known portfolio value instead.
+    const prevValue = state.trading.totalPortfolioValue;
+    const dropPercent = prevValue > 0 ? ((prevValue - newPortfolioValue) / prevValue) * 100 : 0;
+    if (dropPercent > 30 && prevValue > 100) {
+      console.warn(`\n🛡️ PHANTOM DROP DETECTED: Portfolio $${prevValue.toFixed(2)} → $${newPortfolioValue.toFixed(2)} (-${dropPercent.toFixed(1)}% in one cycle)`);
+      console.warn(`   This is almost certainly a price feed outage — keeping previous value.`);
+      console.warn(`   Tokens missing prices: ${balances.filter(b => b.symbol !== 'USDC' && b.balance > 0 && !b.price).map(b => b.symbol).join(', ') || 'none'}`);
+      // Keep previous portfolio value to prevent circuit breaker / capital floor false triggers
+      state.trading.totalPortfolioValue = prevValue;
+    } else {
+      state.trading.totalPortfolioValue = newPortfolioValue;
+    }
 
     if (state.trading.totalPortfolioValue > state.trading.peakValue) {
       state.trading.peakValue = state.trading.totalPortfolioValue;
