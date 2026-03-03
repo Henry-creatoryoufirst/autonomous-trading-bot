@@ -6992,7 +6992,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "8.2",
+    version: "9.0",
     // v8.2: Deposit tracking — separate injected capital from trading gains
     totalDeposited: state.totalDeposited,
     depositCount: state.depositHistory.length,
