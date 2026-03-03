@@ -447,8 +447,9 @@ const CONFIG = {
   logFile: process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/trades-v3.4.json` : "./logs/trades-v3.4.json",
 
     // v5.3.0: Auto-Harvest — send realized profits back to owner wallet
+    // v8.2: DISABLED — user does not want automated transfers to external wallets
     autoHarvest: {
-      enabled: process.env.AUTO_HARVEST_ENABLED === 'true',
+      enabled: false, // Was: process.env.AUTO_HARVEST_ENABLED === 'true'
       destinationWallet: process.env.PROFIT_DESTINATION_WALLET || '',
       thresholdUSD: parseFloat(process.env.AUTO_HARVEST_THRESHOLD_USD || '25'),
       minETHReserve: parseFloat(process.env.AUTO_HARVEST_MIN_ETH_RESERVE || '0.002'),
@@ -1578,6 +1579,10 @@ interface AgentState {
   explorationState: ExplorationState;
   lastReviewTradeIndex: number;
   lastReviewTimestamp: string | null;
+  // v8.2: Deposit tracking — separate injected capital from trading gains
+  totalDeposited: number;
+  lastKnownUSDCBalance: number;
+  depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
 }
 
 let state: AgentState = {
@@ -1590,8 +1595,8 @@ let state: AgentState = {
     successfulTrades: 0,
     balances: [],
     totalPortfolioValue: 0,
-    initialValue: parseFloat(process.env.INITIAL_PORTFOLIO_VALUE || '2891'), // v6.2.3: env-configurable, corrected to actual total deposits
-    peakValue: 2891,
+    initialValue: parseFloat(process.env.INITIAL_PORTFOLIO_VALUE || '4091'), // v8.2: $2,891 original + $1,200 deposit (March 2026)
+    peakValue: 4091,
     sectorAllocations: [],
   },
   tradeHistory: [],
@@ -1613,6 +1618,10 @@ let state: AgentState = {
   explorationState: { ...DEFAULT_EXPLORATION_STATE },
   lastReviewTradeIndex: 0,
   lastReviewTimestamp: null,
+  // v8.2: Deposit tracking — $1,200 seeded from March 2026 deposit
+  totalDeposited: 1200,
+  lastKnownUSDCBalance: 0,
+  depositHistory: [{ timestamp: '2026-03-03T00:00:00Z', amountUSD: 1200, newTotal: 1200 }],
 };
 
 // ============================================================================
@@ -1628,7 +1637,7 @@ function loadTradeHistory() {
         const data = fs.readFileSync(file, "utf-8");
         const parsed = JSON.parse(data);
         state.tradeHistory = parsed.trades || [];
-        state.trading.initialValue = process.env.INITIAL_PORTFOLIO_VALUE ? parseFloat(process.env.INITIAL_PORTFOLIO_VALUE) : (parsed.initialValue || 2891); // v6.2.3: env var overrides persistent state
+        state.trading.initialValue = process.env.INITIAL_PORTFOLIO_VALUE ? parseFloat(process.env.INITIAL_PORTFOLIO_VALUE) : (parsed.initialValue || 4091); // v8.2: $2,891 + $1,200 deposit
         state.trading.peakValue = parsed.peakValue || 374;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
@@ -1661,6 +1670,13 @@ function loadTradeHistory() {
         if (parsed.breakerState) {
           breakerState = { ...DEFAULT_BREAKER_STATE, ...parsed.breakerState };
           console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses${breakerState.lastBreakerTriggered ? `, last triggered ${breakerState.lastBreakerTriggered}` : ''}`);
+        }
+        // v8.2: Restore deposit tracking
+        state.totalDeposited = parsed.totalDeposited || 0;
+        state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
+        state.depositHistory = parsed.depositHistory || [];
+        if (state.totalDeposited > 0) {
+          console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
         }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
@@ -1712,6 +1728,10 @@ function saveTradeHistory() {
       tokenDiscovery: tokenDiscoveryEngine?.getState() || null,
       // v8.0: Persist institutional breaker state
       breakerState,
+      // v8.2: Deposit tracking
+      totalDeposited: state.totalDeposited,
+      lastKnownUSDCBalance: state.lastKnownUSDCBalance,
+      depositHistory: state.depositHistory.slice(-50),
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -5742,6 +5762,33 @@ async function runTradingCycle() {
       state.trading.totalPortfolioValue = newPortfolioValue;
     }
 
+    // v8.2: DEPOSIT DETECTION — detect external capital injections (not trading gains)
+    // If USDC balance increased significantly and no sell trade happened this cycle,
+    // the increase is a deposit, not a trading gain. Track it separately.
+    const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
+    const prevUSDCBalance = state.lastKnownUSDCBalance;
+    const usdcIncrease = currentUSDCBalance - prevUSDCBalance;
+    // Detect deposit: USDC jumped by >$50, and no trade was executed in the last 60 seconds
+    // (sell trades also increase USDC, but they happen within the cycle and are tracked by lastTrade)
+    const lastTradeAge = state.trading.lastTrade ? Date.now() - new Date(state.trading.lastTrade).getTime() : Infinity;
+    const recentSellTrade = lastTradeAge < 300_000; // Within last 5 minutes (covers cycle delays)
+    if (usdcIncrease > 50 && prevUSDCBalance > 0 && !recentSellTrade) {
+      const depositAmount = usdcIncrease;
+      state.totalDeposited += depositAmount;
+      state.depositHistory.push({
+        timestamp: new Date().toISOString(),
+        amountUSD: Math.round(depositAmount * 100) / 100,
+        newTotal: Math.round(state.totalDeposited * 100) / 100,
+      });
+      console.log(`\n💵 DEPOSIT DETECTED: +$${depositAmount.toFixed(2)} USDC`);
+      console.log(`   Total deposited capital: $${state.totalDeposited.toFixed(2)}`);
+      console.log(`   This will NOT count as trading profit.`);
+      // Adjust initialValue upward so P&L stays accurate
+      state.trading.initialValue += depositAmount;
+      saveTradeHistory();
+    }
+    state.lastKnownUSDCBalance = currentUSDCBalance;
+
     if (state.trading.totalPortfolioValue > state.trading.peakValue) {
       state.trading.peakValue = state.trading.totalPortfolioValue;
     }
@@ -6544,7 +6591,11 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "6.2",
+    version: "8.2",
+    // v8.2: Deposit tracking — separate injected capital from trading gains
+    totalDeposited: state.totalDeposited,
+    depositCount: state.depositHistory.length,
+    recentDeposits: state.depositHistory.slice(-5),
     // v6.2: Risk-reward metrics
     riskReward: {
       avgWinUSD: riskReward.avgWinUSD,

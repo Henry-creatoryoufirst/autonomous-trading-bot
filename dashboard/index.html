@@ -1308,14 +1308,15 @@ function renderOverview() {
   const a = Store.data.adaptive || {};
 
   AV.portfolio.set(p.totalValue);
-  $('kpi-portfolio-sub').textContent = 'Peak: ' + fmtUSD(p.peakValue);
+  $('kpi-portfolio-sub').textContent = 'Cost basis: ' + fmtUSD(p.initialValue) + ' | Peak: ' + fmtUSD(p.peakValue);
   const pnlCard = $('kpiCard-portfolio');
   pnlCard.classList.toggle('glow-green', (p.pnl || 0) >= 0);
   pnlCard.classList.toggle('glow-red', (p.pnl || 0) < 0);
 
   AV.returnVal.set(p.pnl);
   $('kpi-return').className = 'card-value ' + clsPnl(p.pnl || 0);
-  $('kpi-return-sub').textContent = fmtPct(p.pnlPercent) + ' all time';
+  const depositNote = (p.totalDeposited > 0) ? ' (excl. ' + fmtUSD(p.totalDeposited) + ' deposited)' : '';
+  $('kpi-return-sub').textContent = fmtPct(p.pnlPercent) + ' all time' + depositNote;
 
   const wr = p.totalTrades > 0 ? (p.successfulTrades / p.totalTrades * 100) : 0;
   AV.winrate.set(wr);
