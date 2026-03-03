@@ -2373,6 +2373,35 @@ const derivativesCache = { btcOI: 0, ethOI: 0, btcPriceChange: 0, ethPriceChange
 // Cache for CoinGecko last-known prices — prevents $0 portfolio when rate limited
 let lastKnownPrices: Record<string, { price: number; change24h: number; change7d: number; volume: number; marketCap: number; name: string; sector: string }> = {};
 
+// v7.1: Persist price cache to disk so deploys don't start with empty prices
+const PRICE_CACHE_FILE = "./logs/price-cache.json";
+
+function savePriceCache() {
+  try {
+    if (!fs.existsSync("./logs")) fs.mkdirSync("./logs", { recursive: true });
+    fs.writeFileSync(PRICE_CACHE_FILE, JSON.stringify({ lastUpdated: new Date().toISOString(), prices: lastKnownPrices }));
+  } catch { /* non-critical */ }
+}
+
+function loadPriceCache() {
+  try {
+    if (fs.existsSync(PRICE_CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(PRICE_CACHE_FILE, "utf-8"));
+      const age = Date.now() - new Date(data.lastUpdated).getTime();
+      // Only use cache if less than 1 hour old — stale prices are worse than no prices
+      if (age < 60 * 60 * 1000 && data.prices) {
+        lastKnownPrices = data.prices;
+        console.log(`♻️ Loaded ${Object.keys(lastKnownPrices).length} cached prices from disk (${(age / 60000).toFixed(0)}m old)`);
+      } else {
+        console.log(`⏭️ Price cache too old (${(age / 3600000).toFixed(1)}h) — will fetch fresh`);
+      }
+    }
+  } catch { /* non-critical */ }
+}
+
+// Load on module init
+loadPriceCache();
+
 // Cache for macro data (only fetch once per hour since most data is daily/monthly)
 let macroCache: { data: MacroData | null; lastFetch: number } = { data: null, lastFetch: 0 };
 const MACRO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
@@ -3078,6 +3107,7 @@ async function getMarketData(): Promise<MarketData> {
               volume: coin.total_volume, marketCap: coin.market_cap, name: coin.name, sector,
             };
           }
+          savePriceCache();
           break;
         } else {
           console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}/3: empty response, retrying in ${(retryDelays[attempt - 1] || 0) / 1000}s...`);
@@ -3178,6 +3208,7 @@ async function getMarketData(): Promise<MarketData> {
           }
           if (dexTokens.length > 0) {
             tokens = dexTokens;
+            savePriceCache();
             console.log(`  ✅ DexScreener fallback: ${dexTokens.length} tokens priced`);
             // Cache the DexScreener result so subsequent cycles don't re-fetch
             cacheManager.set(CacheKeys.COINGECKO_PRICES, { data: dexTokens.map(t => ({
@@ -4985,12 +5016,13 @@ async function runTradingCycle() {
     state.trading.balances = balances;
     const newPortfolioValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
 
-    // v7.1: Phantom drop detection — if portfolio drops >30% in a single cycle,
+    // v7.1: Phantom drop detection — if portfolio drops >15% in a single cycle,
     // it's almost certainly a price feed failure, not a real loss.
+    // (Even a flash crash rarely moves 15% in under 2 minutes across a diversified portfolio)
     // Protect peakValue and use last known portfolio value instead.
     const prevValue = state.trading.totalPortfolioValue;
     const dropPercent = prevValue > 0 ? ((prevValue - newPortfolioValue) / prevValue) * 100 : 0;
-    if (dropPercent > 30 && prevValue > 100) {
+    if (dropPercent > 15 && prevValue > 100) {
       console.warn(`\n🛡️ PHANTOM DROP DETECTED: Portfolio $${prevValue.toFixed(2)} → $${newPortfolioValue.toFixed(2)} (-${dropPercent.toFixed(1)}% in one cycle)`);
       console.warn(`   This is almost certainly a price feed outage — keeping previous value.`);
       console.warn(`   Tokens missing prices: ${balances.filter(b => b.symbol !== 'USDC' && b.balance > 0 && !b.price).map(b => b.symbol).join(', ') || 'none'}`);
