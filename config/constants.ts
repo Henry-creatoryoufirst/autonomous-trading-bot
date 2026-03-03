@@ -298,3 +298,49 @@ export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio
 export const BREAKER_PAUSE_HOURS = 2;          // Pause duration after breaker triggers
 export const BREAKER_SIZE_REDUCTION = 0.5;     // 50% size reduction for 24h after breaker
 export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
+
+// ============================================================================
+// v8.1: PHASE 2 — EXECUTION QUALITY (VWS, TWAP, Gas, Liquidity)
+// ============================================================================
+
+/**
+ * VWS Liquidity Filter — Volume-Weighted Spread
+ * VWS = (Ask - Bid) / ((AskSize + BidSize) / 2)
+ * Only trade when liquidity is thick enough to execute without excessive slippage.
+ */
+export const VWS_MAX_SPREAD_PCT = 0.5;             // Skip trade if VWS > 0.5%
+export const VWS_TRADE_AS_POOL_PCT_MAX = 5;        // Max trade size as % of pool liquidity
+export const VWS_TRADE_AS_POOL_PCT_WARN = 2;       // Warn if trade > 2% of pool
+export const VWS_MIN_LIQUIDITY_USD = 10_000;       // Minimum pool liquidity to trade at all
+export const VWS_PREFERRED_LIQUIDITY_USD = 50_000; // Preferred minimum for full-size trades
+export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools between min and preferred
+
+/**
+ * TWAP Execution — Time-Weighted Average Price
+ * Split large orders into smaller chunks to minimize market impact.
+ */
+export const TWAP_THRESHOLD_USD = 100;              // Orders > $100 get TWAP'd
+export const TWAP_NUM_SLICES = 5;                   // Split into 5 sub-orders
+export const TWAP_SLICE_INTERVAL_MS = 12_000;       // 12 seconds between slices
+export const TWAP_TIMING_JITTER_PCT = 20;           // Randomize ±20% to avoid pattern detection
+export const TWAP_ADVERSE_MOVE_PCT = 1.0;           // Pause TWAP if price moves >1% against us
+export const TWAP_MAX_DURATION_MS = 120_000;        // Max 2 minutes total TWAP duration
+
+/**
+ * Gas Price Optimization — Dynamic gas monitoring for Base L2
+ */
+export const GAS_PRICE_HIGH_GWEI = 0.5;            // Base L2: >0.5 gwei = congested
+export const GAS_PRICE_NORMAL_GWEI = 0.1;          // Base L2: normal ~0.01-0.1 gwei
+export const GAS_QUEUE_MAX_WAIT_MS = 30 * 60 * 1000; // Max 30 min wait for lower gas
+export const GAS_CHECK_INTERVAL_MS = 30_000;        // Re-check gas every 30s when queued
+export const GAS_COST_MAX_PCT_OF_TRADE = 5;         // Skip if gas > 5% of trade value
+
+/**
+ * Fallback RPC Endpoints — try in order
+ */
+export const BASE_RPC_ENDPOINTS = [
+  'https://mainnet.base.org',
+  'https://base.meowrpc.com',
+  'https://base.drpc.org',
+  'https://1rpc.io/base',
+] as const;

@@ -144,6 +144,23 @@ import {
   BREAKER_PAUSE_HOURS,
   BREAKER_SIZE_REDUCTION,
   BREAKER_SIZE_REDUCTION_HOURS,
+  // v8.1: Phase 2 — Execution Quality
+  VWS_MAX_SPREAD_PCT,
+  VWS_TRADE_AS_POOL_PCT_MAX,
+  VWS_TRADE_AS_POOL_PCT_WARN,
+  VWS_MIN_LIQUIDITY_USD,
+  VWS_PREFERRED_LIQUIDITY_USD,
+  VWS_THIN_POOL_SIZE_REDUCTION,
+  TWAP_THRESHOLD_USD,
+  TWAP_NUM_SLICES,
+  TWAP_SLICE_INTERVAL_MS,
+  TWAP_TIMING_JITTER_PCT,
+  TWAP_ADVERSE_MOVE_PCT,
+  TWAP_MAX_DURATION_MS,
+  GAS_PRICE_HIGH_GWEI,
+  GAS_PRICE_NORMAL_GWEI,
+  GAS_COST_MAX_PCT_OF_TRADE,
+  BASE_RPC_ENDPOINTS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -348,11 +365,11 @@ const CHAINLINK_ABI_FRAGMENT = "0x50d25bcd"; // latestAnswer() → int256
  */
 async function fetchChainlinkPrices(): Promise<Map<string, number>> {
   const prices = new Map<string, number>();
-  const BASE_RPC = "https://mainnet.base.org";
+  const chainlinkRpc = BASE_RPC_ENDPOINTS[0]; // v8.1: Use primary from fallback list
 
   for (const [symbol, config] of Object.entries(CHAINLINK_FEEDS_BASE)) {
     try {
-      const res = await axios.post(BASE_RPC, {
+      const res = await axios.post(chainlinkRpc, {
         jsonrpc: "2.0",
         id: 1,
         method: "eth_call",
@@ -672,15 +689,26 @@ function computeNextInterval(currentPrices: Map<string, number>): {
  * v6.2: Schedule the next adaptive cycle.
  * Replaces the fixed cron job with dynamic setTimeout.
  */
+// v8.1: Cycle mutex — prevents double-execution from timer + cron overlap
+let cycleInProgress = false;
+
 function scheduleNextCycle() {
   if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
 
   const delayMs = adaptiveCycle.currentIntervalSec * 1000;
   adaptiveCycleTimer = setTimeout(async () => {
+    if (cycleInProgress) {
+      console.log(`[Adaptive Cycle] Skipped — previous cycle still running`);
+      scheduleNextCycle();
+      return;
+    }
+    cycleInProgress = true;
     try {
       await runTradingCycle();
     } catch (err: any) {
       console.error(`[Adaptive Cycle Error] ${err?.message?.substring(0, 300) || err}`);
+    } finally {
+      cycleInProgress = false;
     }
     // After cycle completes, schedule the next one (interval may have changed)
     scheduleNextCycle();
@@ -2683,6 +2711,319 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number) {
   }
 }
 
+// ============================================================================
+// v8.1: PHASE 2 — EXECUTION QUALITY ENGINE
+// ============================================================================
+
+// ---- VWS Liquidity Filter ----
+
+interface PoolLiquidity {
+  liquidityUSD: number;
+  pairAddress: string;
+  dexName: string;
+  priceUSD: number;
+  fetchedAt: number;
+}
+
+const poolLiquidityCache: Map<string, PoolLiquidity> = new Map();
+const POOL_LIQUIDITY_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
+/**
+ * Fetch pool liquidity for a token from DexScreener.
+ * Returns the deepest Base pool for the token.
+ */
+async function fetchPoolLiquidity(tokenSymbol: string): Promise<PoolLiquidity | null> {
+  // Check cache first
+  const cached = poolLiquidityCache.get(tokenSymbol);
+  if (cached && Date.now() - cached.fetchedAt < POOL_LIQUIDITY_CACHE_TTL) {
+    return cached;
+  }
+
+  try {
+    const reg = TOKEN_REGISTRY[tokenSymbol];
+    if (!reg || reg.address === 'native') return null;
+
+    const res = await axios.get(
+      `https://api.dexscreener.com/tokens/v1/base/${reg.address}`,
+      { timeout: 8000 }
+    );
+
+    if (!res.data || !Array.isArray(res.data) || res.data.length === 0) return null;
+
+    // Find the deepest liquidity pool on Base
+    const basePools = res.data
+      .filter((p: any) => p.chainId === 'base' && p.liquidity?.usd > 0)
+      .sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+
+    if (basePools.length === 0) return null;
+
+    const best = basePools[0];
+    const result: PoolLiquidity = {
+      liquidityUSD: best.liquidity?.usd || 0,
+      pairAddress: best.pairAddress || '',
+      dexName: best.dexId || 'unknown',
+      priceUSD: parseFloat(best.priceUsd || '0'),
+      fetchedAt: Date.now(),
+    };
+
+    poolLiquidityCache.set(tokenSymbol, result);
+    return result;
+  } catch (e: any) {
+    console.warn(`   ⚠️ Pool liquidity fetch failed for ${tokenSymbol}: ${e.message?.substring(0, 80)}`);
+    return cached || null; // Return stale cache if available
+  }
+}
+
+/**
+ * VWS Pre-Trade Liquidity Check
+ * Returns { allowed, adjustedSize, reason } — call before every trade.
+ */
+async function checkLiquidity(tokenSymbol: string, tradeAmountUSD: number): Promise<{
+  allowed: boolean;
+  adjustedSize: number;
+  liquidityUSD: number;
+  tradeAsPoolPct: number;
+  reason: string;
+}> {
+  const pool = await fetchPoolLiquidity(tokenSymbol);
+
+  if (!pool || pool.liquidityUSD <= 0) {
+    // No liquidity data available — allow trade but at minimum size
+    return {
+      allowed: true,
+      adjustedSize: Math.min(tradeAmountUSD, 25), // Cap at $25 without liquidity data
+      liquidityUSD: 0,
+      tradeAsPoolPct: 0,
+      reason: 'No pool data — capped at $25',
+    };
+  }
+
+  const tradeAsPoolPct = (tradeAmountUSD / pool.liquidityUSD) * 100;
+
+  // Hard block: pool too small
+  if (pool.liquidityUSD < VWS_MIN_LIQUIDITY_USD) {
+    return {
+      allowed: false,
+      adjustedSize: 0,
+      liquidityUSD: pool.liquidityUSD,
+      tradeAsPoolPct,
+      reason: `Pool liquidity $${(pool.liquidityUSD / 1000).toFixed(1)}K < minimum $${(VWS_MIN_LIQUIDITY_USD / 1000).toFixed(0)}K`,
+    };
+  }
+
+  // Hard block: trade too large relative to pool
+  if (tradeAsPoolPct > VWS_TRADE_AS_POOL_PCT_MAX) {
+    const maxAllowed = pool.liquidityUSD * (VWS_TRADE_AS_POOL_PCT_MAX / 100);
+    return {
+      allowed: true,
+      adjustedSize: Math.max(5, Math.min(maxAllowed, tradeAmountUSD)),
+      liquidityUSD: pool.liquidityUSD,
+      tradeAsPoolPct,
+      reason: `Trade ${tradeAsPoolPct.toFixed(1)}% of pool — capped to ${VWS_TRADE_AS_POOL_PCT_MAX}% ($${maxAllowed.toFixed(2)})`,
+    };
+  }
+
+  // Warn zone: trade moderately large relative to pool
+  let adjustedSize = tradeAmountUSD;
+  let reason = 'OK';
+
+  if (pool.liquidityUSD < VWS_PREFERRED_LIQUIDITY_USD) {
+    adjustedSize = Math.max(5, tradeAmountUSD * VWS_THIN_POOL_SIZE_REDUCTION);
+    reason = `Thin pool $${(pool.liquidityUSD / 1000).toFixed(1)}K — size reduced ${((1 - VWS_THIN_POOL_SIZE_REDUCTION) * 100).toFixed(0)}%`;
+  } else if (tradeAsPoolPct > VWS_TRADE_AS_POOL_PCT_WARN) {
+    reason = `Warning: trade is ${tradeAsPoolPct.toFixed(1)}% of pool — expect elevated slippage`;
+  }
+
+  return {
+    allowed: true,
+    adjustedSize: Math.round(adjustedSize * 100) / 100,
+    liquidityUSD: pool.liquidityUSD,
+    tradeAsPoolPct,
+    reason,
+  };
+}
+
+// ---- Gas Price Monitor ----
+
+let lastGasPrice: { gweiL1: number; gweiL2: number; ethPriceUSD: number; fetchedAt: number } = {
+  gweiL1: 0, gweiL2: 0, ethPriceUSD: 0, fetchedAt: 0,
+};
+
+/**
+ * Fetch current Base L2 gas price from RPC.
+ * Returns gas cost estimate in USD for a typical swap (~150K gas).
+ */
+async function fetchGasPrice(): Promise<{ gasCostUSD: number; gweiL2: number; isHigh: boolean }> {
+  try {
+    const gasPriceHex = await rpcCall('eth_gasPrice', []);
+    const gasPriceWei = parseInt(gasPriceHex, 16);
+    const gweiL2 = gasPriceWei / 1e9;
+
+    // Get ETH price from last known prices
+    const ethPrice = lastKnownPrices['ETH']?.price || lastKnownPrices['WETH']?.price || 2000;
+
+    // Typical DEX swap on Base: ~150K gas units
+    const gasUnits = 150_000;
+    const gasCostETH = (gasPriceWei * gasUnits) / 1e18;
+    const gasCostUSD = gasCostETH * ethPrice;
+
+    lastGasPrice = { gweiL1: 0, gweiL2: gweiL2, ethPriceUSD: ethPrice, fetchedAt: Date.now() };
+
+    return {
+      gasCostUSD: Math.round(gasCostUSD * 10000) / 10000, // 4 decimal places
+      gweiL2,
+      isHigh: gweiL2 > GAS_PRICE_HIGH_GWEI,
+    };
+  } catch (e: any) {
+    // Return a conservative estimate if gas fetch fails
+    return { gasCostUSD: 0.15, gweiL2: 0.1, isHigh: false };
+  }
+}
+
+/**
+ * Pre-trade gas check. Returns { proceed, gasCostUSD, reason }.
+ */
+async function checkGasCost(tradeAmountUSD: number): Promise<{
+  proceed: boolean;
+  gasCostUSD: number;
+  gasPctOfTrade: number;
+  reason: string;
+}> {
+  const gas = await fetchGasPrice();
+  const gasPctOfTrade = (gas.gasCostUSD / tradeAmountUSD) * 100;
+
+  if (gasPctOfTrade > GAS_COST_MAX_PCT_OF_TRADE) {
+    return {
+      proceed: false,
+      gasCostUSD: gas.gasCostUSD,
+      gasPctOfTrade,
+      reason: `Gas $${gas.gasCostUSD.toFixed(4)} = ${gasPctOfTrade.toFixed(1)}% of $${tradeAmountUSD.toFixed(2)} trade (max ${GAS_COST_MAX_PCT_OF_TRADE}%)`,
+    };
+  }
+
+  if (gas.isHigh) {
+    return {
+      proceed: true,
+      gasCostUSD: gas.gasCostUSD,
+      gasPctOfTrade,
+      reason: `Gas elevated (${gas.gweiL2.toFixed(3)} gwei, $${gas.gasCostUSD.toFixed(4)}) — proceeding but noting cost`,
+    };
+  }
+
+  return {
+    proceed: true,
+    gasCostUSD: gas.gasCostUSD,
+    gasPctOfTrade,
+    reason: `Gas OK: $${gas.gasCostUSD.toFixed(4)} (${gasPctOfTrade.toFixed(2)}% of trade)`,
+  };
+}
+
+// ---- TWAP Execution Engine ----
+
+/**
+ * Execute a trade using TWAP (Time-Weighted Average Price).
+ * Splits large orders into smaller chunks with randomized timing.
+ * Returns aggregated result.
+ */
+async function executeTWAP(
+  decision: TradeDecision,
+  marketData: MarketData,
+  singleSwapFn: (d: TradeDecision, m: MarketData) => Promise<{ success: boolean; txHash?: string; error?: string; actualTokens?: number }>
+): Promise<{ success: boolean; txHash?: string; error?: string; totalTokensReceived?: number; slicesExecuted: number; slicesTotal: number }> {
+  const totalAmount = decision.amountUSD;
+  const numSlices = Math.min(TWAP_NUM_SLICES, Math.max(2, Math.floor(totalAmount / 20))); // At least $20 per slice
+  const sliceAmount = Math.round((totalAmount / numSlices) * 100) / 100;
+
+  console.log(`   ⏱️ TWAP: Splitting $${totalAmount.toFixed(2)} into ${numSlices} slices of ~$${sliceAmount.toFixed(2)} over ~${((numSlices - 1) * TWAP_SLICE_INTERVAL_MS / 1000).toFixed(0)}s`);
+
+  let totalTokensReceived = 0;
+  let totalAmountExecuted = 0;
+  let slicesExecuted = 0;
+  let lastTxHash = '';
+  const startPrice = marketData.tokens.find(t => t.symbol === (decision.action === 'BUY' ? decision.toToken : decision.fromToken))?.price || 0;
+
+  for (let i = 0; i < numSlices; i++) {
+    // Check for adverse price move before each slice (except first)
+    if (i > 0 && startPrice > 0) {
+      const currentPrice = lastKnownPrices[decision.action === 'BUY' ? decision.toToken : decision.fromToken]?.price || startPrice;
+      const priceMove = ((currentPrice - startPrice) / startPrice) * 100;
+
+      // For buys, price going UP is adverse. For sells, price going DOWN is adverse.
+      const adverseMove = decision.action === 'BUY' ? priceMove : -priceMove;
+      if (adverseMove > TWAP_ADVERSE_MOVE_PCT) {
+        console.log(`   ⏱️ TWAP PAUSED: Price moved ${priceMove > 0 ? '+' : ''}${priceMove.toFixed(2)}% against us (limit: ${TWAP_ADVERSE_MOVE_PCT}%). Executed ${slicesExecuted}/${numSlices} slices.`);
+        break;
+      }
+    }
+
+    // Determine this slice's amount (last slice gets remainder)
+    const thisSliceAmount = (i === numSlices - 1)
+      ? Math.round((totalAmount - totalAmountExecuted) * 100) / 100
+      : sliceAmount;
+
+    if (thisSliceAmount < 3) break; // Skip dust slices
+
+    const sliceDecision: TradeDecision = {
+      ...decision,
+      amountUSD: thisSliceAmount,
+      tokenAmount: decision.tokenAmount ? (decision.tokenAmount * thisSliceAmount / totalAmount) : undefined,
+    };
+
+    console.log(`   ⏱️ TWAP slice ${i + 1}/${numSlices}: $${thisSliceAmount.toFixed(2)}`);
+    const result = await singleSwapFn(sliceDecision, marketData);
+
+    if (result.success) {
+      slicesExecuted++;
+      totalAmountExecuted += thisSliceAmount;
+      totalTokensReceived += result.actualTokens || 0;
+      if (result.txHash) lastTxHash = result.txHash;
+    } else {
+      console.log(`   ⏱️ TWAP slice ${i + 1} failed: ${result.error} — stopping TWAP`);
+      break;
+    }
+
+    // Wait between slices (with jitter)
+    if (i < numSlices - 1) {
+      const jitter = TWAP_SLICE_INTERVAL_MS * (TWAP_TIMING_JITTER_PCT / 100);
+      const delay = TWAP_SLICE_INTERVAL_MS + (Math.random() * 2 - 1) * jitter;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  const success = slicesExecuted > 0;
+  console.log(`   ⏱️ TWAP complete: ${slicesExecuted}/${numSlices} slices, $${totalAmountExecuted.toFixed(2)} executed${totalTokensReceived > 0 ? `, ${totalTokensReceived.toFixed(6)} tokens` : ''}`);
+
+  return {
+    success,
+    txHash: lastTxHash || undefined,
+    error: !success ? 'All TWAP slices failed' : undefined,
+    totalTokensReceived: totalTokensReceived > 0 ? totalTokensReceived : undefined,
+    slicesExecuted,
+    slicesTotal: numSlices,
+  };
+}
+
+// ---- Actual Token Balance Diff (for accurate cost basis) ----
+
+/**
+ * Get token balance before and after a swap to determine actual tokens received/sent.
+ * This replaces the estimated `amountUSD / price` calculation.
+ */
+async function getTokenBalance(tokenSymbol: string): Promise<number> {
+  try {
+    const walletAddr = CONFIG.walletAddress;
+    if (tokenSymbol === 'ETH' || tokenSymbol === 'WETH') {
+      return await getETHBalance(walletAddr);
+    }
+    const reg = TOKEN_REGISTRY[tokenSymbol];
+    if (!reg) return 0;
+    if (reg.address === 'native') return await getETHBalance(walletAddr);
+    return await getERC20Balance(reg.address, walletAddr, reg.decimals);
+  } catch {
+    return 0;
+  }
+}
+
 // Cache for macro data (only fetch once per hour since most data is daily/monthly)
 let macroCache: { data: MacroData | null; lastFetch: number } = { data: null, lastFetch: 0 };
 const MACRO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
@@ -4092,29 +4433,55 @@ function formatIndicatorsForPrompt(indicators: Record<string, TechnicalIndicator
 // DIRECT ON-CHAIN BALANCE READING (same as v3.1.1)
 // ============================================================================
 
-const BASE_RPC_URL = "https://mainnet.base.org";
+// v8.1: Fallback RPC system — rotates through multiple providers on failure
+let currentRpcIndex = 0;
+let rpcFailCounts: number[] = new Array(BASE_RPC_ENDPOINTS.length).fill(0);
+
+function getCurrentRpc(): string {
+  return BASE_RPC_ENDPOINTS[currentRpcIndex] || BASE_RPC_ENDPOINTS[0];
+}
+
+function rotateRpc(failedIndex: number): string {
+  rpcFailCounts[failedIndex]++;
+  // Find the RPC with the fewest recent failures
+  const nextIndex = (failedIndex + 1) % BASE_RPC_ENDPOINTS.length;
+  currentRpcIndex = nextIndex;
+  console.log(`   🔄 RPC rotated: ${BASE_RPC_ENDPOINTS[failedIndex]} → ${BASE_RPC_ENDPOINTS[nextIndex]} (fails: ${rpcFailCounts.join(',')})`);
+  return BASE_RPC_ENDPOINTS[nextIndex];
+}
 
 async function rpcCall(method: string, params: any[]): Promise<any> {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const response = await axios.post(BASE_RPC_URL, {
-        jsonrpc: "2.0", id: 1, method, params,
-      }, { timeout: 15000 });
-      if (response.data.error) {
-        throw new Error(`RPC error: ${response.data.error.message}`);
+  // Try current RPC first, then rotate through others
+  for (let rpcAttempt = 0; rpcAttempt < BASE_RPC_ENDPOINTS.length; rpcAttempt++) {
+    const rpcUrl = rpcAttempt === 0 ? getCurrentRpc() : BASE_RPC_ENDPOINTS[(currentRpcIndex + rpcAttempt) % BASE_RPC_ENDPOINTS.length];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await axios.post(rpcUrl, {
+          jsonrpc: "2.0", id: 1, method, params,
+        }, { timeout: 12000 });
+        if (response.data.error) {
+          throw new Error(`RPC error: ${response.data.error.message}`);
+        }
+        // Success — update current index if we rotated
+        if (rpcAttempt > 0) {
+          currentRpcIndex = (currentRpcIndex + rpcAttempt) % BASE_RPC_ENDPOINTS.length;
+        }
+        return response.data.result;
+      } catch (error: any) {
+        const status = error?.response?.status;
+        const isRetryable = status === 429 || status === 502 || status === 503 ||
+          error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT' || error?.code === 'ENOTFOUND';
+        if (isRetryable && attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1500));
+          continue;
+        }
+        // This RPC failed — try next provider
+        break;
       }
-      return response.data.result;
-    } catch (error: any) {
-      const status = error?.response?.status;
-      const isRetryable = status === 429 || status === 502 || status === 503 ||
-        error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT' || error?.code === 'ENOTFOUND';
-      if (isRetryable && attempt < 3) {
-        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
-        continue;
-      }
-      throw error;
     }
   }
+  // All RPCs failed
+  throw new Error(`All ${BASE_RPC_ENDPOINTS.length} RPC endpoints failed for ${method}`);
 }
 
 async function getETHBalance(address: string): Promise<number> {
@@ -4573,22 +4940,55 @@ async function executeTrade(
     return { success: false, error: "Trading disabled (dry run)" };
   }
 
-  // v6.2: Gas-aware trade sizing — skip trades where gas eats the profit
-  // Base chain gas is cheap (~$0.01-0.10) but for tiny trades it still matters
-  const estimatedGasUSD = 0.15; // Conservative estimate for Base swap (higher than typical)
-  const MIN_PROFIT_TO_GAS_RATIO = 3; // Trade must expect 3x gas cost in profit potential
-  const gasThreshold = estimatedGasUSD * MIN_PROFIT_TO_GAS_RATIO;
-
-  if (decision.amountUSD < gasThreshold && decision.amountUSD < 3) {
-    console.log(`  ⛽ Gas guard: Skipping $${decision.amountUSD.toFixed(2)} trade — below gas threshold ($${gasThreshold.toFixed(2)})`);
-    return { success: false, error: `Trade too small: $${decision.amountUSD.toFixed(2)} < gas threshold $${gasThreshold.toFixed(2)}` };
+  // v8.1: Dynamic gas price check (replaces hardcoded $0.15)
+  const gasCheck = await checkGasCost(decision.amountUSD);
+  if (!gasCheck.proceed) {
+    console.log(`  ⛽ Gas guard: ${gasCheck.reason}`);
+    return { success: false, error: gasCheck.reason };
+  }
+  if (gasCheck.gasPctOfTrade > 2) {
+    console.log(`  ⛽ Gas: $${gasCheck.gasCostUSD.toFixed(4)} (${gasCheck.gasPctOfTrade.toFixed(1)}% of trade)`);
   }
 
-  // Log gas-to-trade ratio for monitoring
-  const gasPercent = (estimatedGasUSD / decision.amountUSD) * 100;
-  if (gasPercent > 5) {
-    console.log(`  ⛽ Gas warning: Gas ~$${estimatedGasUSD.toFixed(2)} = ${gasPercent.toFixed(1)}% of $${decision.amountUSD.toFixed(2)} trade`);
+  // v8.1: VWS Liquidity check — ensure pool is deep enough for this trade
+  const tradeToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+  if (tradeToken !== 'USDC' && tradeToken !== 'ETH') {
+    const liqCheck = await checkLiquidity(tradeToken, decision.amountUSD);
+    if (!liqCheck.allowed) {
+      console.log(`  💧 VWS BLOCKED: ${liqCheck.reason}`);
+      return { success: false, error: `Liquidity too thin: ${liqCheck.reason}` };
+    }
+    if (liqCheck.adjustedSize < decision.amountUSD) {
+      console.log(`  💧 VWS: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool | Size: $${decision.amountUSD.toFixed(2)} → $${liqCheck.adjustedSize.toFixed(2)} (${liqCheck.reason})`);
+      decision.amountUSD = liqCheck.adjustedSize;
+    } else if (liqCheck.liquidityUSD > 0) {
+      console.log(`  💧 VWS OK: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool`);
+    }
   }
+
+  // v8.1: TWAP routing for large orders
+  if (decision.amountUSD >= TWAP_THRESHOLD_USD) {
+    console.log(`  ⏱️ Order $${decision.amountUSD.toFixed(2)} ≥ $${TWAP_THRESHOLD_USD} → routing through TWAP engine`);
+    const twapResult = await executeTWAP(decision, marketData, executeSingleSwap);
+    return {
+      success: twapResult.success,
+      txHash: twapResult.txHash,
+      error: twapResult.error,
+    };
+  }
+
+  // Small orders: direct single swap
+  return executeSingleSwap(decision, marketData);
+}
+
+/**
+ * Execute a single atomic swap (used directly for small orders, or called per-slice by TWAP).
+ * v8.1: Now returns actualTokens from pre/post balance diff.
+ */
+async function executeSingleSwap(
+  decision: TradeDecision,
+  marketData: MarketData
+): Promise<{ success: boolean; txHash?: string; error?: string; actualTokens?: number }> {
 
   const portfolioValueBefore = state.trading.totalPortfolioValue;
 
@@ -4687,6 +5087,13 @@ async function executeTrade(
 
     console.log(`     🛡️ MEV Protection: Adaptive slippage ${adaptiveSlippage}bps (${(adaptiveSlippage / 100).toFixed(2)}%) for $${tradeValueUSD.toFixed(2)} trade`);
 
+    // v8.1: Snapshot token balance BEFORE swap for accurate cost basis
+    const balanceToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+    let preSwapBalance = 0;
+    try {
+      preSwapBalance = await getTokenBalance(balanceToken);
+    } catch { /* non-critical — fall back to estimate */ }
+
     // Execute the swap with retry logic — CDP API may not see the approval immediately
     let result: any;
     const maxRetries = justApproved ? 3 : 1;
@@ -4727,16 +5134,35 @@ async function executeTrade(
     state.trading.totalTrades++;
     state.trading.successfulTrades++;
 
-    // Update cost basis
+    // v8.1: Read actual token balance AFTER swap for accurate cost basis
+    let postSwapBalance = 0;
+    let actualTokens = 0;
+    try {
+      // Small delay to let the on-chain state settle
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      postSwapBalance = await getTokenBalance(balanceToken);
+      actualTokens = Math.abs(postSwapBalance - preSwapBalance);
+      if (actualTokens > 0) {
+        console.log(`     📊 Actual tokens ${decision.action === 'BUY' ? 'received' : 'sent'}: ${actualTokens.toFixed(8)} ${balanceToken} (balance: ${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
+      }
+    } catch (e: any) {
+      console.warn(`     ⚠️ Post-swap balance check failed: ${e.message?.substring(0, 60)} — using estimate`);
+    }
+
+    // Update cost basis — prefer actual tokens, fall back to estimated
     if (decision.action === "BUY" && decision.toToken !== "USDC") {
-      // Estimate tokens received: amountUSD / current price
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price || 1;
-      const estimatedTokens = decision.amountUSD / tokenPrice;
-      updateCostBasisAfterBuy(decision.toToken, decision.amountUSD, estimatedTokens);
+      const tokensReceived = actualTokens > 0 ? actualTokens : (decision.amountUSD / tokenPrice);
+      if (actualTokens > 0) {
+        const actualPrice = decision.amountUSD / actualTokens;
+        const slippagePaid = ((actualPrice - tokenPrice) / tokenPrice) * 100;
+        console.log(`     📊 Cost basis: actual price $${actualPrice.toFixed(6)} vs market $${tokenPrice.toFixed(6)} (slippage: ${slippagePaid > 0 ? '+' : ''}${slippagePaid.toFixed(2)}%)`);
+      }
+      updateCostBasisAfterBuy(decision.toToken, decision.amountUSD, tokensReceived);
     } else if (decision.action === "SELL" && decision.fromToken !== "USDC") {
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
-      const estimatedTokensSold = decision.tokenAmount || (decision.amountUSD / tokenPrice);
-      updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, estimatedTokensSold);
+      const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tokenPrice));
+      updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
     }
 
     // Record trade with full signal context (V4.0)
@@ -4753,8 +5179,8 @@ async function executeTrade(
       txHash,
       success: true,
       portfolioValueBefore,
-      // v7.1: Estimate portfolioValueAfter — swap is value-neutral minus slippage/gas
-      portfolioValueAfter: portfolioValueBefore - (decision.amountUSD * 0.015),
+      // v8.1: portfolioValueAfter — use cached gas cost instead of hardcoded 1.5%
+      portfolioValueAfter: portfolioValueBefore - (lastGasPrice.fetchedAt > 0 ? (lastGasPrice.gweiL2 * 150000 / 1e9 * lastGasPrice.ethPriceUSD) : 0.15),
       reasoning: decision.reasoning,
       sector: decision.sector,
       marketConditions: {
@@ -4783,7 +5209,7 @@ async function executeTrade(
     state.tradeHistory.push(record);
     saveTradeHistory();
 
-    return { success: true, txHash };
+    return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
 
   } catch (error: any) {
     const errorMsg = error.message || String(error);
@@ -5967,8 +6393,17 @@ async function main() {
       // Only run if the adaptive engine somehow stalled
       const timeSinceLastCycle = Date.now() - (lastHeavyCycleAt || 0);
       if (timeSinceLastCycle > HEAVY_CYCLE_FORCED_INTERVAL_MS * 1.5) {
-        console.log(`[Safety Net] Adaptive engine may have stalled — forcing cycle (${(timeSinceLastCycle / 60000).toFixed(0)}m since last heavy)`);
-        await runTradingCycle();
+        if (cycleInProgress) {
+          console.log(`[Safety Net] Cycle already in progress — skipping forced trigger`);
+        } else {
+          console.log(`[Safety Net] Adaptive engine may have stalled — forcing cycle (${(timeSinceLastCycle / 60000).toFixed(0)}m since last heavy)`);
+          cycleInProgress = true;
+          try {
+            await runTradingCycle();
+          } finally {
+            cycleInProgress = false;
+          }
+        }
       }
     } catch (cronError: any) {
       console.error(`[Cron Safety Net Error] ${cronError?.message?.substring(0, 300) || cronError}`);
@@ -5984,13 +6419,14 @@ async function main() {
   }, 5 * 60 * 1000);
 
   const { tier: startTier } = getPortfolioSensitivity(state.trading.totalPortfolioValue || 0);
-  console.log(`\n🚀 Agent v8.0 running! Kelly Sizing + Institutional Breakers + Adaptive Cycles.\n`);
+  console.log(`\n🚀 Agent v8.1 running! Kelly Sizing + VWS Liquidity + TWAP + Fallback RPCs.\n`);
   console.log(`   📂 State persistence: ${CONFIG.logFile}`);
-  console.log(`   💰 Position sizing: Quarter Kelly (${KELLY_FRACTION}×) | Ceiling: ${KELLY_POSITION_CEILING_PCT}% | Floor: $${KELLY_POSITION_FLOOR_USD} | Legacy max: $${CONFIG.trading.maxBuySize}`);
+  console.log(`   💰 Position sizing: Quarter Kelly (${KELLY_FRACTION}×) | Ceiling: ${KELLY_POSITION_CEILING_PCT}% | Floor: $${KELLY_POSITION_FLOOR_USD}`);
+  console.log(`   💧 VWS: Min pool $${(VWS_MIN_LIQUIDITY_USD / 1000).toFixed(0)}K | Max trade ${VWS_TRADE_AS_POOL_PCT_MAX}% of pool | TWAP > $${TWAP_THRESHOLD_USD}`);
+  console.log(`   🔗 RPC: ${BASE_RPC_ENDPOINTS.length} endpoints (${BASE_RPC_ENDPOINTS[0].replace('https://', '')}${BASE_RPC_ENDPOINTS.length > 1 ? ` +${BASE_RPC_ENDPOINTS.length - 1} fallbacks` : ''})`);
   console.log(`   ⚡ Adaptive tempo: ${ADAPTIVE_MIN_INTERVAL_SEC}s – ${ADAPTIVE_MAX_INTERVAL_SEC}s | Emergency: ${EMERGENCY_INTERVAL_SEC}s`);
   console.log(`   🎯 Portfolio tier: ${startTier} | Emergency drop trigger: ${(EMERGENCY_DROP_THRESHOLD * 100).toFixed(0)}%`);
-  console.log(`   📡 Real-time price stream: ACTIVE (10s polling)`);
-  console.log(`   🧹 Dust threshold: ${DUST_THRESHOLD_USD} (consolidates every 10 cycles)\n`);
+  console.log(`   🔒 Cycle mutex: ACTIVE | Gas: dynamic (RPC query)\n`);
 }
 
 // ============================================================================
