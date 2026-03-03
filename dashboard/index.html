@@ -495,7 +495,7 @@ tr:hover td { background: var(--bg-subtle); }
       <canvas class="kpi-spark" id="spark-portfolio"></canvas>
     </div>
     <div class="card" id="kpiCard-return">
-      <div class="card-label">Total Return</div>
+      <div class="card-label">Trading P&L</div>
       <div class="card-value" id="kpi-return">--</div>
       <div class="card-sub" id="kpi-return-sub">--</div>
       <canvas class="kpi-spark" id="spark-return"></canvas>
@@ -1310,13 +1310,16 @@ function renderOverview() {
   AV.portfolio.set(p.totalValue);
   $('kpi-portfolio-sub').textContent = 'Cost basis: ' + fmtUSD(p.initialValue) + ' | Peak: ' + fmtUSD(p.peakValue);
   const pnlCard = $('kpiCard-portfolio');
-  pnlCard.classList.toggle('glow-green', (p.pnl || 0) >= 0);
-  pnlCard.classList.toggle('glow-red', (p.pnl || 0) < 0);
+  const tradingPnlForGlow = (p.realizedPnL || 0) + (p.unrealizedPnL || 0);
+  pnlCard.classList.toggle('glow-green', tradingPnlForGlow >= 0);
+  pnlCard.classList.toggle('glow-red', tradingPnlForGlow < 0);
 
-  AV.returnVal.set(p.pnl);
-  $('kpi-return').className = 'card-value ' + clsPnl(p.pnl || 0);
-  const depositNote = (p.totalDeposited > 0) ? ' (excl. ' + fmtUSD(p.totalDeposited) + ' deposited)' : '';
-  $('kpi-return-sub').textContent = fmtPct(p.pnlPercent) + ' all time' + depositNote;
+  // Trading P&L = realized + unrealized from actual trades (not portfolio delta)
+  const tradingPnl = (p.realizedPnL || 0) + (p.unrealizedPnL || 0);
+  const tradingPnlPct = p.initialValue > 0 ? (tradingPnl / p.initialValue) * 100 : 0;
+  AV.returnVal.set(tradingPnl);
+  $('kpi-return').className = 'card-value ' + clsPnl(tradingPnl);
+  $('kpi-return-sub').textContent = fmtPct(tradingPnlPct) + ' | Realized: ' + fmtUSD(p.realizedPnL || 0);
 
   const wr = p.totalTrades > 0 ? (p.successfulTrades / p.totalTrades * 100) : 0;
   AV.winrate.set(wr);
@@ -1346,7 +1349,7 @@ function renderOverview() {
   // Sparklines
   const trades = Store.data.trades?.trades || [];
   const pvPts = trades.slice(0, 30).reverse().map(t => t.portfolioValueAfter || t.portfolioValueBefore || 0).filter(v => v > 0);
-  const posColor = (p.pnl || 0) >= 0 ? '#16A34A' : '#DC2626';
+  const posColor = tradingPnl >= 0 ? '#16A34A' : '#DC2626';
   drawSparkline($('spark-portfolio'), pvPts, posColor);
 
   if (pvPts.length > 1) {
