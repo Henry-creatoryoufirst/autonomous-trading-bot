@@ -161,6 +161,15 @@ import {
   GAS_PRICE_NORMAL_GWEI,
   GAS_COST_MAX_PCT_OF_TRADE,
   BASE_RPC_ENDPOINTS,
+  // v9.0: ATR-Based Dynamic Risk Management
+  ATR_STOP_LOSS_MULTIPLIER,
+  ATR_TRAILING_STOP_MULTIPLIER,
+  ATR_STOP_FLOOR_PERCENT,
+  ATR_STOP_CEILING_PERCENT,
+  ATR_TRAIL_ACTIVATION_MULTIPLIER,
+  SECTOR_ATR_MULTIPLIERS,
+  ATR_PROFIT_TIERS,
+  ATR_COMPARISON_LOG_COUNT,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -937,6 +946,9 @@ interface AdaptiveThresholds {
   profitTakeSellPercent: number;    // Default 30
   stopLossPercent: number;          // Default -25
   trailingStopPercent: number;      // Default -20
+  // v9.0: ATR-based multiplier tuning
+  atrStopMultiplier: number;        // Default 2.5, tuned 1.5-4.0
+  atrTrailMultiplier: number;       // Default 2.0, tuned 1.5-4.0
   regimeMultipliers: Record<MarketRegime, number>;  // Position size multiplier per regime
   history: Array<{
     timestamp: string;
@@ -992,6 +1004,8 @@ const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: numb
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
   stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds (-20% floor, -6% ceiling)
   trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds (-15% floor, -5% ceiling)
+  atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR stop multiplier
+  atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR trail multiplier
 };
 
 const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
@@ -1005,6 +1019,8 @@ const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   profitTakeSellPercent: 30,
   stopLossPercent: -15,       // v6.2: tightened from -25%
   trailingStopPercent: -12,   // v6.2: tightened from -20%
+  atrStopMultiplier: ATR_STOP_LOSS_MULTIPLIER,     // v9.0: 2.5x ATR default
+  atrTrailMultiplier: ATR_TRAILING_STOP_MULTIPLIER, // v9.0: 2.0x ATR default
   regimeMultipliers: {
     TRENDING_UP: 1.2,
     TRENDING_DOWN: 0.6,
@@ -1286,6 +1302,9 @@ interface ShadowProposal {
 // In-memory shadow proposal queue (persisted via state)
 let shadowProposals: ShadowProposal[] = [];
 
+// v9.0: ATR comparison logging — tracks how many comparison entries we've emitted
+let atrComparisonLogCount = 0;
+
 function adaptThresholds(review: PerformanceReview): void {
   const t = state.adaptiveThresholds;
   const { winRate, totalTrades } = review.periodStats;
@@ -1377,11 +1396,22 @@ function adaptThresholds(review: PerformanceReview): void {
   if (review.periodStats.avgReturn < -2) {
     proposeAdaptation("stopLossPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
     proposeAdaptation("trailingStopPercent", 2, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+    // v9.0: Tighten ATR multipliers too (lower multiplier = tighter stop)
+    proposeAdaptation("atrStopMultiplier", -0.25, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+    proposeAdaptation("atrTrailMultiplier", -0.25, `Negative avg return $${review.periodStats.avgReturn.toFixed(2)}`);
   }
 
   // Strong avg return → propose letting winners run longer
   if (review.periodStats.avgReturn > 5) {
     proposeAdaptation("profitTakeTarget", 2, `Strong avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+    // v9.0: Widen ATR multipliers (higher multiplier = wider stop = let winners run)
+    proposeAdaptation("atrStopMultiplier", 0.25, `Strong avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+    proposeAdaptation("atrTrailMultiplier", 0.25, `Strong avg return $${review.periodStats.avgReturn.toFixed(2)}`);
+  }
+
+  // v9.0: Low win rate → tighten ATR stops
+  if (winRate < 0.35) {
+    proposeAdaptation("atrStopMultiplier", -0.25, `Low win rate ${(winRate * 100).toFixed(0)}%`);
   }
 
   // Clean up old completed/rejected proposals (keep last 50)
@@ -1538,6 +1568,12 @@ interface TokenCostBasis {
   peakPriceDate: string;          // When peak occurred
   firstBuyDate: string;
   lastTradeDate: string;
+  // v9.0: ATR-based dynamic stops
+  atrStopPercent: number | null;       // Current ATR stop as % (negative, e.g. -12.5)
+  atrTrailPercent: number | null;      // Current ATR trail as % (negative)
+  atrAtEntry: number | null;           // ATR% snapshot at first buy
+  trailActivated: boolean;             // True once position is +1xATR in profit
+  lastAtrUpdate: string | null;        // ISO timestamp of last ATR computation
 }
 
 interface AgentState {
@@ -1678,6 +1714,22 @@ function loadTradeHistory() {
         if (state.totalDeposited > 0) {
           console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
         }
+        // v9.0: Migrate existing cost basis entries — backfill ATR fields
+        for (const sym of Object.keys(state.costBasis)) {
+          const cb = state.costBasis[sym];
+          if (cb.atrStopPercent === undefined) cb.atrStopPercent = null;
+          if (cb.atrTrailPercent === undefined) cb.atrTrailPercent = null;
+          if (cb.atrAtEntry === undefined) cb.atrAtEntry = null;
+          if (cb.trailActivated === undefined) cb.trailActivated = false;
+          if (cb.lastAtrUpdate === undefined) cb.lastAtrUpdate = null;
+        }
+        // v9.0: Ensure adaptive thresholds have ATR multiplier fields
+        if ((state.adaptiveThresholds as any).atrStopMultiplier === undefined) {
+          state.adaptiveThresholds.atrStopMultiplier = ATR_STOP_LOSS_MULTIPLIER;
+        }
+        if ((state.adaptiveThresholds as any).atrTrailMultiplier === undefined) {
+          state.adaptiveThresholds.atrTrailMultiplier = ATR_TRAILING_STOP_MULTIPLIER;
+        }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
         return;
@@ -1804,6 +1856,12 @@ function getOrCreateCostBasis(symbol: string): TokenCostBasis {
       peakPriceDate: new Date().toISOString(),
       firstBuyDate: new Date().toISOString(),
       lastTradeDate: new Date().toISOString(),
+      // v9.0: ATR-based dynamic stops
+      atrStopPercent: null,
+      atrTrailPercent: null,
+      atrAtEntry: null,
+      trailActivated: false,
+      lastAtrUpdate: null,
     };
   }
   return state.costBasis[symbol];
@@ -1848,6 +1906,73 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
       cb.peakPriceDate = new Date().toISOString();
     }
   }
+}
+
+// ============================================================================
+// v9.0: ATR-BASED DYNAMIC STOP LEVELS
+// ============================================================================
+
+/**
+ * Pure function: computes ATR-relative stop and trail levels for a position.
+ * Returns null if ATR data is unavailable.
+ *
+ * Logic:
+ * - rawStop = -(sectorMultiplier × atrPercent), clamped to [ATR_STOP_FLOOR, ATR_STOP_CEILING]
+ * - Only tightens stops: Math.max(newStop, existingStop) — both negative, max = tighter
+ * - Trail activates when unrealized gain >= ATR_TRAIL_ACTIVATION_MULTIPLIER × atrPercent
+ * - Trail never moves down (ratchet up only)
+ */
+function computeAtrStopLevels(
+  symbol: string,
+  sector: string | undefined,
+  atrPercent: number | null,
+  currentPrice: number,
+  costBasis: TokenCostBasis,
+): { stopPercent: number; trailPercent: number; trailActivated: boolean } | null {
+  if (atrPercent === null || atrPercent <= 0) return null;
+
+  const sectorKey = sector || "BLUE_CHIP";
+  const sectorMult = SECTOR_ATR_MULTIPLIERS[sectorKey] || 2.5;
+  const adaptiveStopMult = state.adaptiveThresholds.atrStopMultiplier;
+  const adaptiveTrailMult = state.adaptiveThresholds.atrTrailMultiplier;
+
+  // Compute raw ATR-based stop: -(sectorMult × adaptiveStopMult × atrPercent)
+  // e.g. MEME with 4% ATR: -(2.0 × 2.5 × 4) = -20%
+  const rawStop = -(sectorMult * adaptiveStopMult * atrPercent / sectorMult);
+  // Simplify: rawStop = -(adaptiveStopMult × atrPercent)
+  const computedStop = -(adaptiveStopMult * atrPercent);
+
+  // Clamp to floor/ceiling
+  const clampedStop = Math.max(ATR_STOP_FLOOR_PERCENT, Math.min(ATR_STOP_CEILING_PERCENT, computedStop));
+
+  // Only tighten: use tighter of new ATR stop vs existing ATR stop (both negative, max = tighter)
+  let finalStop = clampedStop;
+  if (costBasis.atrStopPercent !== null) {
+    finalStop = Math.max(clampedStop, costBasis.atrStopPercent);
+  }
+
+  // Compute trailing stop distance
+  const computedTrail = -(adaptiveTrailMult * atrPercent);
+  const clampedTrail = Math.max(ATR_STOP_FLOOR_PERCENT, Math.min(ATR_STOP_CEILING_PERCENT, computedTrail));
+
+  // Trail only ratchets tighter
+  let finalTrail = clampedTrail;
+  if (costBasis.atrTrailPercent !== null) {
+    finalTrail = Math.max(clampedTrail, costBasis.atrTrailPercent);
+  }
+
+  // Check trail activation: gain >= ATR_TRAIL_ACTIVATION_MULTIPLIER × atrPercent
+  const gainPercent = costBasis.averageCostBasis > 0
+    ? ((currentPrice - costBasis.averageCostBasis) / costBasis.averageCostBasis) * 100
+    : 0;
+  const activationThreshold = ATR_TRAIL_ACTIVATION_MULTIPLIER * atrPercent;
+  const trailActivated = costBasis.trailActivated || gainPercent >= activationThreshold;
+
+  return {
+    stopPercent: finalStop,
+    trailPercent: finalTrail,
+    trailActivated,
+  };
 }
 
 // ============================================================================
@@ -1922,11 +2047,12 @@ async function consolidateDustPositions(
  */
 function checkProfitTaking(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
+  indicators: Record<string, TechnicalIndicators> = {},
 ): TradeDecision | null {
   if (!CONFIG.trading.profitTaking.enabled) return null;
 
   const cfg = CONFIG.trading.profitTaking;
-  const tiers = (cfg as any).tiers || [
+  const flatTiers = (cfg as any).tiers || [
     { gainPercent: 8,  sellPercent: 15, label: "EARLY_HARVEST" },
     { gainPercent: 15, sellPercent: 20, label: "MID_HARVEST" },
     { gainPercent: 25, sellPercent: 30, label: "STRONG_HARVEST" },
@@ -1968,9 +2094,24 @@ function checkProfitTaking(
 
     if (gainPercent <= 0) continue; // No profit to take
 
+    // v9.0: Compute effective tiers — ATR-relative when ATR data available, flat fallback
+    const ind = indicators[b.symbol];
+    const atrPct = ind?.atrPercent ?? null;
+    let effectiveTiers: { gainPercent: number; sellPercent: number; label: string }[];
+    if (atrPct !== null && atrPct > 0) {
+      // ATR-relative tiers: gainPercent = atrMultiple × atrPercent
+      effectiveTiers = ATR_PROFIT_TIERS.map(t => ({
+        gainPercent: t.atrMultiple * atrPct,
+        sellPercent: t.sellPercent,
+        label: t.label,
+      }));
+    } else {
+      effectiveTiers = flatTiers;
+    }
+
     // Find the highest tier this position qualifies for
     // Walk tiers from highest to lowest — take the best available
-    const sortedTiers = [...tiers].sort((a: any, b: any) => b.gainPercent - a.gainPercent);
+    const sortedTiers = [...effectiveTiers].sort((a: any, b: any) => b.gainPercent - a.gainPercent);
     for (const tier of sortedTiers) {
       if (gainPercent >= tier.gainPercent) {
         // Check per-tier cooldown: key is "symbol:tierLabel"
@@ -2088,6 +2229,7 @@ function checkProfitTaking(
 
 function checkStopLoss(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
+  indicators: Record<string, TechnicalIndicators> = {},
 ): TradeDecision | null {
   if (!CONFIG.trading.stopLoss.enabled) return null;
 
@@ -2109,28 +2251,67 @@ function checkStopLoss(
       trailingLoss = ((currentPrice - cb.peakPrice) / cb.peakPrice) * 100;
     }
 
-    // Use adaptive thresholds (Phase 3) instead of static config
-    let adaptiveSL = state.adaptiveThresholds.stopLossPercent;
-    let adaptiveTrailing = state.adaptiveThresholds.trailingStopPercent;
+    // --- v9.0: ATR-based dynamic stops ---
+    const ind = indicators[b.symbol];
+    const atrPct = ind?.atrPercent ?? null;
+    const atrLevels = computeAtrStopLevels(b.symbol, b.sector, atrPct, currentPrice, cb);
 
-    // v6.2: Sector-specific stop-loss tightening — meme coins get tighter stops
-    const sectorOverride = b.sector ? SECTOR_STOP_LOSS_OVERRIDES[b.sector] : undefined;
-    if (sectorOverride) {
-      // Use the tighter of adaptive vs sector override (closer to 0 = tighter)
-      adaptiveSL = Math.max(adaptiveSL, sectorOverride.maxLoss);
-      adaptiveTrailing = Math.max(adaptiveTrailing, sectorOverride.maxTrailing);
+    // Update cost basis with latest ATR stop data
+    if (atrLevels) {
+      cb.atrStopPercent = atrLevels.stopPercent;
+      cb.atrTrailPercent = atrLevels.trailPercent;
+      cb.trailActivated = atrLevels.trailActivated;
+      cb.lastAtrUpdate = new Date().toISOString();
+      if (cb.atrAtEntry === null && atrPct !== null) {
+        cb.atrAtEntry = atrPct;
+      }
     }
 
-    const triggered = lossFromCost <= adaptiveSL ||
-      (cfg.trailingEnabled && trailingLoss <= adaptiveTrailing);
+    // Use adaptive flat thresholds as fallback
+    let effectiveSL = state.adaptiveThresholds.stopLossPercent;
+    let effectiveTrailing = state.adaptiveThresholds.trailingStopPercent;
+
+    // v6.2: Sector-specific stop-loss tightening
+    const sectorOverride = b.sector ? SECTOR_STOP_LOSS_OVERRIDES[b.sector] : undefined;
+    if (sectorOverride) {
+      effectiveSL = Math.max(effectiveSL, sectorOverride.maxLoss);
+      effectiveTrailing = Math.max(effectiveTrailing, sectorOverride.maxTrailing);
+    }
+
+    // v9.0: When ATR data available, use tighter of ATR-based vs flat
+    if (atrLevels) {
+      // ATR stop: use tighter (closer to 0) of ATR vs flat+sector
+      effectiveSL = Math.max(effectiveSL, atrLevels.stopPercent);
+      // ATR trail: only apply if trail has activated
+      if (atrLevels.trailActivated) {
+        effectiveTrailing = Math.max(effectiveTrailing, atrLevels.trailPercent);
+      }
+
+      // v9.0: Comparison logging for first N cycles
+      if (atrComparisonLogCount < ATR_COMPARISON_LOG_COUNT) {
+        const flatSL = state.adaptiveThresholds.stopLossPercent;
+        const flatTrail = state.adaptiveThresholds.trailingStopPercent;
+        console.log(`  [ATR-CMP] ${b.symbol}: ATR%=${atrPct?.toFixed(2)} | ATR-stop=${atrLevels.stopPercent.toFixed(1)}% vs flat=${flatSL}% -> effective=${effectiveSL.toFixed(1)}% | trail=${atrLevels.trailPercent.toFixed(1)}% vs flat=${flatTrail}% activated=${atrLevels.trailActivated}`);
+        atrComparisonLogCount++;
+      }
+    }
+
+    // Determine if stop triggered
+    const costBasisTriggered = lossFromCost <= effectiveSL;
+    const trailingTriggered = cfg.trailingEnabled && trailingLoss <= effectiveTrailing;
+    // v9.0: Only allow trailing stop if trail is activated (ATR mode) or no ATR data
+    const trailAllowed = !atrLevels || atrLevels.trailActivated;
+
+    const triggered = costBasisTriggered || (trailingTriggered && trailAllowed);
 
     if (triggered && lossFromCost < worstLoss) {
       worstLoss = lossFromCost;
       const sellUSD = b.usdValue * (cfg.sellPercent / 100);
       const tokenAmount = b.balance * (cfg.sellPercent / 100);
-      const reason = lossFromCost <= adaptiveSL
-        ? `Stop-loss: ${b.symbol} ${lossFromCost.toFixed(1)}% from cost basis $${cb.averageCostBasis.toFixed(4)} (adaptive: ${adaptiveSL}%)`
-        : `Trailing stop: ${b.symbol} ${trailingLoss.toFixed(1)}% from peak $${cb.peakPrice.toFixed(4)} (adaptive: ${adaptiveTrailing}%)`;
+      const stopType = atrLevels ? "ATR" : "FLAT";
+      const reason = costBasisTriggered
+        ? `Stop-loss(${stopType}): ${b.symbol} ${lossFromCost.toFixed(1)}% from cost $${cb.averageCostBasis.toFixed(4)} (effective: ${effectiveSL.toFixed(1)}%)`
+        : `Trailing-stop(${stopType}): ${b.symbol} ${trailingLoss.toFixed(1)}% from peak $${cb.peakPrice.toFixed(4)} (effective: ${effectiveTrailing.toFixed(1)}%)`;
 
       worstDecision = {
         action: "SELL",
@@ -6128,7 +6309,7 @@ async function runTradingCycle() {
     }
 
     // === STOP-LOSS CHECK (highest priority) ===
-    const stopLossDecision = checkStopLoss(balances);
+    const stopLossDecision = checkStopLoss(balances, marketData.indicators);
     if (stopLossDecision) {
       console.log(`\n  🛑 STOP-LOSS GUARD executing sell...`);
       const slResult = await executeTrade(stopLossDecision, marketData);
@@ -6147,7 +6328,7 @@ async function runTradingCycle() {
     }
 
     // === PROFIT-TAKING CHECK ===
-    const profitTakeDecision = checkProfitTaking(balances);
+    const profitTakeDecision = checkProfitTaking(balances, marketData.indicators);
     if (profitTakeDecision) {
       // v5.3.3: Check circuit breaker before attempting profit-take
       if (isTokenBlocked(profitTakeDecision.fromToken)) {
@@ -6855,6 +7036,11 @@ function apiBalances() {
       unrealizedPnL: state.costBasis[b.symbol]?.unrealizedPnL || 0,
       totalInvested: state.costBasis[b.symbol]?.totalInvestedUSD || 0,
       realizedPnL: state.costBasis[b.symbol]?.realizedPnL || 0,
+      // v9.0: ATR-based stop data
+      atrStopPercent: state.costBasis[b.symbol]?.atrStopPercent ?? null,
+      atrTrailPercent: state.costBasis[b.symbol]?.atrTrailPercent ?? null,
+      atrAtEntry: state.costBasis[b.symbol]?.atrAtEntry ?? null,
+      trailActivated: state.costBasis[b.symbol]?.trailActivated ?? false,
     })),
     totalValue: state.trading.totalPortfolioValue,
     lastUpdate: state.trading.lastCheck.toISOString(),
@@ -6877,9 +7063,17 @@ function apiTrades(limit: number) {
 }
 
 function apiIndicators() {
-  // Return last known indicator data from state if we store it
+  // Return last known indicator data from state
   return {
     costBasis: Object.values(state.costBasis).filter(cb => cb.currentHolding > 0),
+    // v9.0: ATR risk management config
+    atrConfig: {
+      stopMultiplier: state.adaptiveThresholds.atrStopMultiplier,
+      trailMultiplier: state.adaptiveThresholds.atrTrailMultiplier,
+      stopFloor: ATR_STOP_FLOOR_PERCENT,
+      stopCeiling: ATR_STOP_CEILING_PERCENT,
+      trailActivation: ATR_TRAIL_ACTIVATION_MULTIPLIER,
+    },
   };
 }
 

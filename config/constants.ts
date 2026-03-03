@@ -168,6 +168,8 @@ export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxSte
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
   stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds
   trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds
+  atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR stop multiplier tuning
+  atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR trail multiplier tuning
 };
 
 // ============================================================================
@@ -260,6 +262,44 @@ export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTr
   DEFI:        { maxLoss: -15, maxTrailing: -12, maxPositionPercent: 25 },
   BLUE_CHIP:   { maxLoss: -20, maxTrailing: -15, maxPositionPercent: 30 },
 } as const;
+
+// ============================================================================
+// v9.0: ATR-BASED DYNAMIC RISK MANAGEMENT
+// ============================================================================
+
+/** Base stop-loss distance in ATR units (e.g. 2.5 × ATR% = stop distance) */
+export const ATR_STOP_LOSS_MULTIPLIER = 2.5;
+
+/** Trailing stop distance in ATR units */
+export const ATR_TRAILING_STOP_MULTIPLIER = 2.0;
+
+/** ATR stop-loss floor — never wider than -25% regardless of ATR */
+export const ATR_STOP_FLOOR_PERCENT = -25;
+
+/** ATR stop-loss ceiling — never tighter than -6% regardless of ATR */
+export const ATR_STOP_CEILING_PERCENT = -6;
+
+/** Trail activates after position is +1×ATR% in profit */
+export const ATR_TRAIL_ACTIVATION_MULTIPLIER = 1.0;
+
+/** Per-sector ATR multipliers — higher = wider stop for that sector */
+export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
+  MEME_COINS: 2.0,   // Meme coins: volatile, use 2× ATR
+  AI_TOKENS: 2.5,     // AI tokens: moderate vol, use 2.5× ATR
+  DEFI: 2.5,          // DeFi: moderate vol, use 2.5× ATR
+  BLUE_CHIP: 3.0,     // Blue chips: low vol, wider multiple needed
+};
+
+/** ATR-relative profit harvest tiers: [atrMultiple, sellPercent] */
+export const ATR_PROFIT_TIERS = [
+  { atrMultiple: 3,  sellPercent: 15, label: "ATR_EARLY" },
+  { atrMultiple: 5,  sellPercent: 20, label: "ATR_MID" },
+  { atrMultiple: 8,  sellPercent: 30, label: "ATR_STRONG" },
+  { atrMultiple: 12, sellPercent: 40, label: "ATR_MAJOR" },
+] as const;
+
+/** How many ATR comparison log entries to emit (for debugging first N cycles) */
+export const ATR_COMPARISON_LOG_COUNT = 20;
 
 // ============================================================================
 // v8.0: PHASE 1 — INSTITUTIONAL POSITION SIZING & CAPITAL PROTECTION
