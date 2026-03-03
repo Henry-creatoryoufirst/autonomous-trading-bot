@@ -125,6 +125,25 @@ import {
   CAPITAL_FLOOR_PERCENT,
   CAPITAL_FLOOR_ABSOLUTE_USD,
   SECTOR_STOP_LOSS_OVERRIDES,
+  // v8.0: Phase 1 — Institutional Position Sizing & Capital Protection
+  KELLY_FRACTION,
+  KELLY_MIN_TRADES,
+  KELLY_ROLLING_WINDOW,
+  KELLY_POSITION_FLOOR_USD,
+  KELLY_POSITION_CEILING_PCT,
+  VOL_TARGET_DAILY_PCT,
+  VOL_HIGH_THRESHOLD,
+  VOL_HIGH_REDUCTION,
+  VOL_LOW_THRESHOLD,
+  VOL_LOW_BOOST,
+  VOL_LOOKBACK_DAYS,
+  BREAKER_CONSECUTIVE_LOSSES,
+  BREAKER_DAILY_DD_PCT,
+  BREAKER_WEEKLY_DD_PCT,
+  BREAKER_SINGLE_TRADE_LOSS_PCT,
+  BREAKER_PAUSE_HOURS,
+  BREAKER_SIZE_REDUCTION,
+  BREAKER_SIZE_REDUCTION_HOURS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -1610,6 +1629,11 @@ function loadTradeHistory() {
           shadowProposals = parsed.shadowProposals;
           console.log(`  🔬 Restored ${shadowProposals.length} shadow proposals`);
         }
+        // v8.0: Restore institutional breaker state
+        if (parsed.breakerState) {
+          breakerState = { ...DEFAULT_BREAKER_STATE, ...parsed.breakerState };
+          console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses${breakerState.lastBreakerTriggered ? `, last triggered ${breakerState.lastBreakerTriggered}` : ''}`);
+        }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
         return;
@@ -1658,6 +1682,8 @@ function saveTradeHistory() {
       shadowProposals: shadowProposals.filter(p => p.status === "PENDING").slice(-50),
       // v6.1: Persist token discovery state
       tokenDiscovery: tokenDiscoveryEngine?.getState() || null,
+      // v8.0: Persist institutional breaker state
+      breakerState,
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -2401,6 +2427,261 @@ function loadPriceCache() {
 
 // Load on module init
 loadPriceCache();
+
+// ============================================================================
+// v8.0: PHASE 1 — INSTITUTIONAL POSITION SIZING & CAPITAL PROTECTION ENGINE
+// ============================================================================
+
+/**
+ * Portfolio-wide circuit breaker state.
+ * Tracks consecutive losses, daily/weekly drawdown baselines, and breaker events.
+ * Persisted in saveTradeHistory / loadTradeHistory.
+ */
+interface BreakerState {
+  consecutiveLosses: number;
+  lastBreakerTriggered: string | null;    // ISO timestamp when breaker last fired
+  lastBreakerReason: string | null;
+  breakerSizeReductionUntil: string | null; // ISO timestamp — 50% size reduction expires
+  dailyBaseline: { date: string; value: number };   // Reset at midnight UTC
+  weeklyBaseline: { weekStart: string; value: number }; // Reset Monday midnight UTC
+}
+
+const DEFAULT_BREAKER_STATE: BreakerState = {
+  consecutiveLosses: 0,
+  lastBreakerTriggered: null,
+  lastBreakerReason: null,
+  breakerSizeReductionUntil: null,
+  dailyBaseline: { date: '', value: 0 },
+  weeklyBaseline: { weekStart: '', value: 0 },
+};
+
+let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
+
+/**
+ * Quarter Kelly Position Sizing
+ * Uses rolling window of recent trades to calculate mathematically optimal bet size.
+ * Returns the dollar amount to trade.
+ */
+function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number; kellyPct: number; rawKelly: number; winRate: number; avgWin: number; avgLoss: number } {
+  const recentTrades = state.tradeHistory.slice(-KELLY_ROLLING_WINDOW);
+  const sells = recentTrades.filter(t => t.action === 'SELL' && t.success);
+
+  // Need minimum sample size for statistical validity
+  if (sells.length < KELLY_MIN_TRADES) {
+    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (KELLY_POSITION_CEILING_PCT / 100));
+    return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
+  }
+
+  const wins: number[] = [];
+  const losses: number[] = [];
+
+  for (const trade of sells) {
+    const cb = state.costBasis[trade.fromToken];
+    if (!cb || cb.averageCostBasis <= 0) continue;
+    const sellPrice = trade.amountUSD / (trade.tokenAmount || 1);
+    const pnlPct = (sellPrice - cb.averageCostBasis) / cb.averageCostBasis;
+    if (pnlPct >= 0) wins.push(pnlPct);
+    else losses.push(Math.abs(pnlPct));
+  }
+
+  if (wins.length + losses.length < KELLY_MIN_TRADES) {
+    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (KELLY_POSITION_CEILING_PCT / 100));
+    return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
+  }
+
+  const winRate = wins.length / (wins.length + losses.length);
+  const avgWin = wins.length > 0 ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
+  const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
+
+  // Kelly formula: (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
+  const rawKelly = avgWin > 0 ? (winRate * avgWin - (1 - winRate) * avgLoss) / avgWin : 0;
+
+  // Quarter Kelly for safety, then clamp
+  const quarterKelly = Math.max(0, rawKelly * KELLY_FRACTION);
+  const kellyPct = Math.min(quarterKelly * 100, KELLY_POSITION_CEILING_PCT);
+  const kellyUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(portfolioValue * (kellyPct / 100), portfolioValue * (KELLY_POSITION_CEILING_PCT / 100)));
+
+  return { kellyUSD, kellyPct, rawKelly, winRate, avgWin, avgLoss };
+}
+
+/**
+ * Volatility-Adjusted Position Sizing
+ * Scales position size inversely with recent portfolio volatility.
+ * Returns a multiplier (0.4 to 1.5) to apply to Kelly size.
+ */
+function calculateVolatilityMultiplier(): { multiplier: number; realizedVol: number } {
+  const trades = state.tradeHistory.slice(-100);
+  const portfolioValues = trades
+    .map(t => t.portfolioValueAfter || t.portfolioValueBefore || 0)
+    .filter(v => v > 0);
+
+  if (portfolioValues.length < 5) {
+    return { multiplier: 1.0, realizedVol: VOL_TARGET_DAILY_PCT };
+  }
+
+  // Calculate daily returns from portfolio snapshots
+  const returns: number[] = [];
+  for (let i = 1; i < portfolioValues.length; i++) {
+    if (portfolioValues[i - 1] > 0) {
+      returns.push((portfolioValues[i] - portfolioValues[i - 1]) / portfolioValues[i - 1] * 100);
+    }
+  }
+
+  if (returns.length < 3) {
+    return { multiplier: 1.0, realizedVol: VOL_TARGET_DAILY_PCT };
+  }
+
+  // Standard deviation of returns = realized volatility
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+  const realizedVol = Math.sqrt(variance);
+
+  let multiplier: number;
+  if (realizedVol > VOL_HIGH_THRESHOLD) {
+    multiplier = VOL_HIGH_REDUCTION; // 0.4 — cut size by 60%
+  } else if (realizedVol < VOL_LOW_THRESHOLD) {
+    multiplier = VOL_LOW_BOOST; // 1.5 — increase size by 50%
+  } else {
+    // Linear scaling: TargetVol / CurrentVol
+    multiplier = Math.max(0.4, Math.min(1.5, VOL_TARGET_DAILY_PCT / realizedVol));
+  }
+
+  return { multiplier, realizedVol };
+}
+
+/**
+ * Master position sizer — combines Kelly + Volatility + Breaker state.
+ * This replaces the flat $25 maxBuySize.
+ */
+function calculateInstitutionalPositionSize(portfolioValue: number): {
+  sizeUSD: number; kellyPct: number; rawKelly: number; volMultiplier: number;
+  realizedVol: number; breakerReduction: boolean; winRate: number;
+} {
+  const kelly = calculateKellyPositionSize(portfolioValue);
+  const vol = calculateVolatilityMultiplier();
+
+  let sizeUSD = kelly.kellyUSD * vol.multiplier;
+
+  // Check if breaker size reduction is active
+  let breakerReduction = false;
+  if (breakerState.breakerSizeReductionUntil) {
+    const until = new Date(breakerState.breakerSizeReductionUntil).getTime();
+    if (Date.now() < until) {
+      sizeUSD *= BREAKER_SIZE_REDUCTION; // 50% reduction
+      breakerReduction = true;
+    }
+  }
+
+  // Hard floor and ceiling
+  sizeUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(sizeUSD, portfolioValue * (KELLY_POSITION_CEILING_PCT / 100)));
+
+  return {
+    sizeUSD: Math.round(sizeUSD * 100) / 100,
+    kellyPct: kelly.kellyPct,
+    rawKelly: kelly.rawKelly,
+    volMultiplier: vol.multiplier,
+    realizedVol: vol.realizedVol,
+    breakerReduction,
+    winRate: kelly.winRate,
+  };
+}
+
+/**
+ * Update daily/weekly baselines if date has changed.
+ */
+function updateDrawdownBaselines(portfolioValue: number) {
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
+
+  // Daily reset
+  if (breakerState.dailyBaseline.date !== todayStr) {
+    breakerState.dailyBaseline = { date: todayStr, value: portfolioValue };
+  }
+
+  // Weekly reset (Monday)
+  const dayOfWeek = now.getUTCDay();
+  const mondayDate = new Date(now);
+  mondayDate.setUTCDate(now.getUTCDate() - ((dayOfWeek + 6) % 7));
+  const weekStr = mondayDate.toISOString().split('T')[0];
+  if (breakerState.weeklyBaseline.weekStart !== weekStr) {
+    breakerState.weeklyBaseline = { weekStart: weekStr, value: portfolioValue };
+  }
+}
+
+/**
+ * Check all circuit breaker conditions.
+ * Returns null if clear, or a reason string if breaker should fire.
+ */
+function checkCircuitBreaker(portfolioValue: number, lastTradeResult?: { success: boolean; pnlUSD?: number }): string | null {
+  // Update baselines
+  updateDrawdownBaselines(portfolioValue);
+
+  // Check if still in pause from previous breaker
+  if (breakerState.lastBreakerTriggered) {
+    const pauseEnd = new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000);
+    if (Date.now() < pauseEnd) {
+      const remaining = Math.ceil((pauseEnd - Date.now()) / 60000);
+      return `PAUSED: ${breakerState.lastBreakerReason} (${remaining}m remaining)`;
+    }
+  }
+
+  // 1. Consecutive losses
+  if (breakerState.consecutiveLosses >= BREAKER_CONSECUTIVE_LOSSES) {
+    return `${breakerState.consecutiveLosses} consecutive losing trades`;
+  }
+
+  // 2. Daily drawdown
+  if (breakerState.dailyBaseline.value > 0) {
+    const dailyDD = ((breakerState.dailyBaseline.value - portfolioValue) / breakerState.dailyBaseline.value) * 100;
+    if (dailyDD >= BREAKER_DAILY_DD_PCT) {
+      return `Daily drawdown ${dailyDD.toFixed(1)}% exceeds ${BREAKER_DAILY_DD_PCT}% limit`;
+    }
+  }
+
+  // 3. Weekly drawdown
+  if (breakerState.weeklyBaseline.value > 0) {
+    const weeklyDD = ((breakerState.weeklyBaseline.value - portfolioValue) / breakerState.weeklyBaseline.value) * 100;
+    if (weeklyDD >= BREAKER_WEEKLY_DD_PCT) {
+      return `Weekly drawdown ${weeklyDD.toFixed(1)}% exceeds ${BREAKER_WEEKLY_DD_PCT}% limit`;
+    }
+  }
+
+  // 4. Single trade loss check (checked when lastTradeResult provided)
+  if (lastTradeResult?.pnlUSD && lastTradeResult.pnlUSD < 0) {
+    const lossAsPct = (Math.abs(lastTradeResult.pnlUSD) / portfolioValue) * 100;
+    if (lossAsPct >= BREAKER_SINGLE_TRADE_LOSS_PCT) {
+      return `Single trade loss $${Math.abs(lastTradeResult.pnlUSD).toFixed(2)} (${lossAsPct.toFixed(1)}%) exceeds ${BREAKER_SINGLE_TRADE_LOSS_PCT}% limit`;
+    }
+  }
+
+  return null; // All clear
+}
+
+/**
+ * Fire the circuit breaker — pause trading and activate size reduction.
+ */
+function triggerCircuitBreaker(reason: string) {
+  const now = new Date().toISOString();
+  breakerState.lastBreakerTriggered = now;
+  breakerState.lastBreakerReason = reason;
+  breakerState.breakerSizeReductionUntil = new Date(Date.now() + BREAKER_SIZE_REDUCTION_HOURS * 3600000).toISOString();
+  console.log(`\n🚨🚨 CIRCUIT BREAKER TRIGGERED 🚨🚨`);
+  console.log(`   Reason: ${reason}`);
+  console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
+  console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
+}
+
+/**
+ * Record a trade result for consecutive loss tracking.
+ */
+function recordTradeResultForBreaker(success: boolean, pnlUSD?: number) {
+  if (success && (pnlUSD === undefined || pnlUSD >= 0)) {
+    breakerState.consecutiveLosses = 0; // Reset on win
+  } else {
+    breakerState.consecutiveLosses++;
+    console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
+  }
+}
 
 // Cache for macro data (only fetch once per hour since most data is daily/monthly)
 let macroCache: { data: MacroData | null; lastFetch: number } = { data: null, lastFetch: 0 };
@@ -4008,7 +4289,10 @@ async function makeTradeDecision(
   }
 
   const totalTokenValue = balances.filter(b => b.symbol !== "USDC").reduce((sum, b) => sum + b.usdValue, 0);
-  const maxBuyAmount = Math.min(CONFIG.trading.maxBuySize, availableUSDC);
+  // v8.0: Institutional position sizing replaces flat $25 maxBuySize
+  const instSize = calculateInstitutionalPositionSize(totalPortfolioValue);
+  const maxBuyAmount = Math.min(instSize.sizeUSD, availableUSDC);
+  console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 50% CUT' : ''}`);
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
   // v6.1: Merge static tokens with dynamically discovered tokens
   const discoveredTokensList = tokenDiscoveryEngine?.getTradableTokens() || [];
@@ -4100,7 +4384,7 @@ ${Object.entries(marketBySector).map(([sector, tokens]) =>
 ${tradeHistorySummary}
 
 ${discoveryIntel}═══ TRADING LIMITS ═══
-- Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
+- Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 50%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
 ═══ STRATEGY FRAMEWORK v5.1.1 ═══
@@ -5075,6 +5359,22 @@ async function runTradingCycle() {
       console.log(`\n⚠️ CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% — caution mode active, position sizes halved`);
     }
 
+    // === v8.0: INSTITUTIONAL CIRCUIT BREAKER CHECK ===
+    // Checks: consecutive losses, daily DD, weekly DD — blocks NEW buys but allows stop-loss/profit-take sells
+    const breakerCheck = checkCircuitBreaker(state.trading.totalPortfolioValue);
+    let institutionalBreakerActive = false;
+    if (breakerCheck) {
+      if (breakerCheck.startsWith('PAUSED:')) {
+        console.log(`\n🚨🚨 INSTITUTIONAL BREAKER: ${breakerCheck}`);
+        console.log(`   Stop-loss and profit-take sells still allowed. New buys blocked.`);
+        institutionalBreakerActive = true;
+      } else {
+        // Fresh trigger — fire the breaker
+        triggerCircuitBreaker(breakerCheck);
+        institutionalBreakerActive = true;
+      }
+    }
+
     console.log(`\n💰 Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
     console.log(`   P&L: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(1)}%)`);
     console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${drawdown.toFixed(1)}%`);
@@ -5146,6 +5446,9 @@ async function runTradingCycle() {
       } else {
         clearTradeFailures(stopLossDecision.fromToken);
       }
+      // v8.0: Record stop-loss as a loss for breaker tracking
+      recordTradeResultForBreaker(slResult.success, -(stopLossDecision.amountUSD * 0.05)); // Estimate ~5% loss on stop-loss
+      saveTradeHistory();
       state.trading.lastCheck = new Date();
       return; // Skip AI decision this cycle
     }
@@ -5164,6 +5467,9 @@ async function runTradingCycle() {
         } else {
           clearTradeFailures(profitTakeDecision.fromToken);
         }
+        // v8.0: Profit-take is a win for breaker tracking
+        recordTradeResultForBreaker(ptResult.success, ptResult.success ? profitTakeDecision.amountUSD * 0.05 : 0);
+        saveTradeHistory();
         state.trading.lastCheck = new Date();
         return; // Skip AI decision this cycle
       }
@@ -5210,8 +5516,22 @@ async function runTradingCycle() {
       decision.reasoning = `Capital floor active: portfolio at $${state.trading.totalPortfolioValue.toFixed(2)} is below ${CAPITAL_FLOOR_PERCENT}% of peak ($${capitalFloorValue.toFixed(2)}). Holding until recovery or funding.`;
     }
 
-    // === PHASE 3: CONFIDENCE-WEIGHTED POSITION SIZING ===
+    // === v8.0: INSTITUTIONAL BREAKER — BLOCK NEW BUYS ===
+    if (institutionalBreakerActive && decision.action === "BUY") {
+      console.log(`   🚨 INSTITUTIONAL BREAKER: Blocking BUY — ${breakerCheck}`);
+      decision.action = "HOLD";
+      decision.reasoning = `Institutional circuit breaker active: ${breakerCheck}. Only sells allowed until breaker clears.`;
+    }
+
+    // === v8.0: INSTITUTIONAL POSITION SIZING (Kelly × Vol × Breaker × Confidence) ===
     if (decision.action === "BUY" && decision.amountUSD > 0) {
+      // Compute Kelly-based max position size for this cycle
+      const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue);
+      const kellyMax = Math.min(instSizeCycle.sizeUSD, balances.find(b => b.symbol === 'USDC')?.balance || 0);
+      decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
+      console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}% × Vol×${instSizeCycle.volMultiplier.toFixed(2)}${instSizeCycle.breakerReduction ? ' × BREAKER' : ''})`);
+
+      // Still apply pattern confidence as a multiplier on top
       const tradePatternId = [
         "BUY",
         marketData.indicators[decision.toToken]?.rsi14 !== undefined
@@ -5222,15 +5542,15 @@ async function runTradingCycle() {
         marketData.indicators[decision.toToken]?.overallSignal || "NEUTRAL",
       ].join("_");
       const confidence = calculatePatternConfidence(tradePatternId, marketData.marketRegime);
-      const originalAmount = decision.amountUSD;
+      const preConfAmount = decision.amountUSD;
       decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * confidence * 100) / 100);
       const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
-      console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
+      console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${preConfAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
 
-      // Circuit breaker: halve position size in caution zone
+      // v6.2 legacy circuit breaker (drawdown >= 12%) still applies as extra safety
       if (circuitBreakerActive) {
         decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * 0.5 * 100) / 100);
-        console.log(`   🚨 Circuit breaker applied: size reduced to $${decision.amountUSD.toFixed(2)}`);
+        console.log(`   🚨 Legacy circuit breaker (DD≥12%): size reduced to $${decision.amountUSD.toFixed(2)}`);
       }
     }
 
@@ -5284,6 +5604,21 @@ async function runTradingCycle() {
         recordTradeFailure(tradeToken);
       } else {
         clearTradeFailures(tradeToken);
+      }
+
+      // v8.0: Track for institutional breaker
+      if (decision.action === "SELL" && tradeResult.success) {
+        // Estimate P&L from cost basis
+        const cb = state.costBasis[decision.fromToken];
+        const sellPrice = decision.amountUSD / (decision.tokenAmount || 1);
+        const avgCost = cb?.averageCostBasis || sellPrice;
+        const pnlEstimate = (sellPrice - avgCost) * (decision.tokenAmount || 0);
+        recordTradeResultForBreaker(true, pnlEstimate);
+      } else if (decision.action === "BUY" && tradeResult.success) {
+        // Buys are neutral for breaker — don't count as win or loss yet
+        // Loss/win determined on sell
+      } else if (!tradeResult.success) {
+        recordTradeResultForBreaker(false, 0);
       }
 
       // v6.0: Set cooldown for traded token
@@ -5649,9 +5984,9 @@ async function main() {
   }, 5 * 60 * 1000);
 
   const { tier: startTier } = getPortfolioSensitivity(state.trading.totalPortfolioValue || 0);
-  console.log(`\n🚀 Agent v6.2 running! Adaptive Cycles + Real-Time Streaming + Portfolio-Scaled Intelligence.\n`);
+  console.log(`\n🚀 Agent v8.0 running! Kelly Sizing + Institutional Breakers + Adaptive Cycles.\n`);
   console.log(`   📂 State persistence: ${CONFIG.logFile}`);
-  console.log(`   💰 Max buy size: ${CONFIG.trading.maxBuySize} | Min trade: $5`);
+  console.log(`   💰 Position sizing: Quarter Kelly (${KELLY_FRACTION}×) | Ceiling: ${KELLY_POSITION_CEILING_PCT}% | Floor: $${KELLY_POSITION_FLOOR_USD} | Legacy max: $${CONFIG.trading.maxBuySize}`);
   console.log(`   ⚡ Adaptive tempo: ${ADAPTIVE_MIN_INTERVAL_SEC}s – ${ADAPTIVE_MAX_INTERVAL_SEC}s | Emergency: ${EMERGENCY_INTERVAL_SEC}s`);
   console.log(`   🎯 Portfolio tier: ${startTier} | Emergency drop trigger: ${(EMERGENCY_DROP_THRESHOLD * 100).toFixed(0)}%`);
   console.log(`   📡 Real-time price stream: ACTIVE (10s polling)`);
@@ -6014,6 +6349,26 @@ const healthServer = http.createServer(async (req, res) => {
             light: cycleStats.totalLight,
             heavy: cycleStats.totalHeavy,
             lastHeavyReason: cycleStats.lastHeavyReason,
+          },
+          // v8.0: Institutional breaker state
+          institutionalBreaker: {
+            consecutiveLosses: breakerState.consecutiveLosses,
+            maxConsecutive: BREAKER_CONSECUTIVE_LOSSES,
+            lastTriggered: breakerState.lastBreakerTriggered,
+            lastReason: breakerState.lastBreakerReason,
+            sizeReductionUntil: breakerState.breakerSizeReductionUntil,
+            dailyBaseline: breakerState.dailyBaseline,
+            weeklyBaseline: breakerState.weeklyBaseline,
+            isPaused: breakerState.lastBreakerTriggered ? Date.now() < new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000) : false,
+            isSizeReduced: breakerState.breakerSizeReductionUntil ? Date.now() < new Date(breakerState.breakerSizeReductionUntil).getTime() : false,
+          },
+          // v8.0: Position sizing info
+          positionSizing: {
+            method: 'QUARTER_KELLY',
+            kellyFraction: KELLY_FRACTION,
+            minTrades: KELLY_MIN_TRADES,
+            ceilingPct: KELLY_POSITION_CEILING_PCT,
+            floorUSD: KELLY_POSITION_FLOOR_USD,
           },
           config: {
             minIntervalSec: ADAPTIVE_MIN_INTERVAL_SEC,

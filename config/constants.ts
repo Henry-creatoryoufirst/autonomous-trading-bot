@@ -260,3 +260,41 @@ export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTr
   DEFI:        { maxLoss: -15, maxTrailing: -12, maxPositionPercent: 25 },
   BLUE_CHIP:   { maxLoss: -20, maxTrailing: -15, maxPositionPercent: 30 },
 } as const;
+
+// ============================================================================
+// v8.0: PHASE 1 — INSTITUTIONAL POSITION SIZING & CAPITAL PROTECTION
+// ============================================================================
+
+/**
+ * Quarter Kelly Position Sizing
+ * Kelly % = (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
+ * Position = Kelly% × KELLY_FRACTION × Portfolio
+ */
+export const KELLY_FRACTION = 0.25;           // Quarter Kelly — crypto-appropriate conservatism
+export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
+export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
+export const KELLY_POSITION_FLOOR_USD = 5;    // Minimum viable trade
+export const KELLY_POSITION_CEILING_PCT = 5;  // Hard cap: 5% of portfolio per trade
+
+/**
+ * Volatility-Adjusted Sizing
+ * Size = BaseSize × (TargetVol / CurrentVol)
+ */
+export const VOL_TARGET_DAILY_PCT = 2;         // Target 2% daily portfolio volatility
+export const VOL_HIGH_THRESHOLD = 5;           // >5% daily vol → reduce size by 60%
+export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
+export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%
+export const VOL_LOW_BOOST = 1.5;              // Multiplier when vol < threshold
+export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calculation
+
+/**
+ * Portfolio-Wide Drawdown Circuit Breaker
+ * Triggers on ANY of these conditions
+ */
+export const BREAKER_CONSECUTIVE_LOSSES = 3;   // 3 consecutive losing trades → pause
+export const BREAKER_DAILY_DD_PCT = 5;         // 5% daily drawdown → pause
+export const BREAKER_WEEKLY_DD_PCT = 10;       // 10% weekly drawdown → pause
+export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
+export const BREAKER_PAUSE_HOURS = 2;          // Pause duration after breaker triggers
+export const BREAKER_SIZE_REDUCTION = 0.5;     // 50% size reduction for 24h after breaker
+export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
