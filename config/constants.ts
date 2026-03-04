@@ -102,6 +102,10 @@ export const CACHE_TTL = {
 
 // ============================================================================
 // COOLDOWN DURATIONS (milliseconds) — Per-Token Cooldown System v6.0
+// NOTE: TRADE_EXECUTED (90s) > HEAVY_CYCLE_FORCED_INTERVAL (60s), so a traded
+// token will miss exactly 1 heavy cycle before becoming eligible again (~120s
+// effective blind spot). This is intentional — the 3% price-move override in
+// cooldown-manager.ts still fast-tracks re-evaluation if the token moves hard.
 // ============================================================================
 
 export const COOLDOWN_DURATIONS = {

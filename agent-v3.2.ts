@@ -107,7 +107,6 @@ import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } 
 import { cacheManager, CacheKeys } from "./services/cache-manager.js";
 import { CACHE_TTL } from "./config/constants.js";
 import { cooldownManager } from "./services/cooldown-manager.js";
-import { tradeQueue } from "./services/trade-queue.js"; // v7.0: parallel trade execution queue
 import {
   HEAVY_CYCLE_FORCED_INTERVAL_MS,
   PRICE_CHANGE_THRESHOLD,
@@ -242,13 +241,13 @@ const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.40, // 40% of portfolio
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
     targetAllocation: 0.20, // 20% of portfolio
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -260,7 +259,7 @@ const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.20, // 20% of portfolio
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL"],
+    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "PENDLE", "RSR"],
   },
 };
 
