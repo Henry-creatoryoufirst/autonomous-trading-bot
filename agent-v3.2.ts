@@ -1861,7 +1861,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "5.2",
+      version: "10.1",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -8193,7 +8193,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "9.0",
+    version: "10.1",
     // v8.2: Deposit tracking — separate injected capital from trading gains
     totalDeposited: state.totalDeposited,
     depositCount: state.depositHistory.length,
@@ -8358,7 +8358,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "10.0",
+    version: "10.1",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -8398,7 +8398,7 @@ function apiPatterns() {
   const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
   const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
   return {
-    version: "5.1",
+    version: "10.1",
     totalPatterns: patterns.length,
     patternsWithData: patterns.filter(p => p.stats.sampleSize >= 3).length,
     topPerformers,
@@ -8410,7 +8410,7 @@ function apiPatterns() {
 function apiReviews() {
   const reviews = state.performanceReviews.slice(-10);
   return {
-    version: "5.1",
+    version: "10.1",
     totalReviews: state.performanceReviews.length,
     latestReview: reviews.length > 0 ? reviews[reviews.length - 1] : null,
     recentReviews: reviews,
@@ -8421,7 +8421,7 @@ function apiReviews() {
 
 function apiThresholds() {
   return {
-    version: "5.1",
+    version: "10.1",
     currentThresholds: state.adaptiveThresholds,
     bounds: THRESHOLD_BOUNDS,
     defaults: DEFAULT_ADAPTIVE_THRESHOLDS,
