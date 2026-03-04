@@ -707,14 +707,22 @@ function checkEmergencyConditions(currentPrices: Map<string, number>): {
   token?: string;
   dropPercent?: number;
 } {
+  // v10.2: Require at least 2 tokens dropping for emergency (filters single-token flash crashes)
+  let droppingTokens = 0;
+  let worstDrop = { symbol: '', change: 0 };
   for (const [symbol, price] of currentPrices) {
     const lastCheck = adaptiveCycle.lastPriceCheck.get(symbol);
     if (lastCheck && lastCheck > 0) {
       const change = (price - lastCheck) / lastCheck;
       if (change <= EMERGENCY_DROP_THRESHOLD) {
-        return { emergency: true, token: symbol, dropPercent: change * 100 };
+        droppingTokens++;
+        if (change < worstDrop.change) worstDrop = { symbol, change };
       }
     }
+  }
+  // Single token flash crash = likely price feed issue; 2+ tokens = real market move
+  if (droppingTokens >= 2 || (droppingTokens === 1 && worstDrop.change <= EMERGENCY_DROP_THRESHOLD * 2)) {
+    return { emergency: true, token: worstDrop.symbol, dropPercent: worstDrop.change * 100 };
   }
   return { emergency: false };
 }
@@ -2064,11 +2072,10 @@ function computeAtrStopLevels(
   const adaptiveStopMult = state.adaptiveThresholds.atrStopMultiplier;
   const adaptiveTrailMult = state.adaptiveThresholds.atrTrailMultiplier;
 
-  // Compute raw ATR-based stop: -(sectorMult × adaptiveStopMult × atrPercent)
-  // e.g. MEME with 4% ATR: -(2.0 × 2.5 × 4) = -20%
-  const rawStop = -(sectorMult * adaptiveStopMult * atrPercent / sectorMult);
-  // Simplify: rawStop = -(adaptiveStopMult × atrPercent)
-  const computedStop = -(adaptiveStopMult * atrPercent);
+  // v10.2: ATR stop includes sector multiplier — riskier sectors get wider stops
+  // e.g. MEME (sectorMult=2.0) with 4% ATR, adaptiveStop=2.5: -(2.0 × 2.5 × 4) = -20%
+  //      BLUE_CHIP (sectorMult=1.5) with 2% ATR, adaptiveStop=2.5: -(1.5 × 2.5 × 2) = -7.5%
+  const computedStop = -(sectorMult * adaptiveStopMult * atrPercent);
 
   // Clamp to floor/ceiling
   const clampedStop = Math.max(ATR_STOP_FLOOR_PERCENT, Math.min(ATR_STOP_CEILING_PERCENT, computedStop));
@@ -2208,14 +2215,8 @@ function checkProfitTaking(
     // v5.3.3: Skip tokens blocked by circuit breaker
     if (isTokenBlocked(b.symbol)) continue;
 
-    // v5.3.3: Check stop-loss cooldown (1 hour between attempts per token)
-    const slCooldown = state.stopLossCooldowns[b.symbol];
-    if (slCooldown) {
-      const hoursSinceLast = (Date.now() - new Date(slCooldown).getTime()) / (1000 * 60 * 60);
-      if (hoursSinceLast < 1) {
-        continue; // Skip — cooldown active
-      }
-    }
+    // v10.2: Stop-loss cooldown removed from profit-taking — they're independent actions.
+    // Profit-taking has its own per-tier cooldown at line ~2246.
 
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
@@ -2706,8 +2707,9 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
       axios.get("https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
     ]);
 
-    let btcFundingRate = 0;
-    let ethFundingRate = 0;
+    // v10.2: Use null to distinguish "data unavailable" from "genuinely 0"
+    let btcFundingRate: number | null = null;
+    let ethFundingRate: number | null = null;
     let btcOpenInterest = 0;
     let ethOpenInterest = 0;
 
@@ -2738,7 +2740,9 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
     const ethTopTraderPositionRatio = parseLSRatio(ethTopPosRes);
 
     // Interpret funding rates — extreme values indicate crowded positions
-    const interpretFunding = (rate: number): "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL" => {
+    // v10.2: null = data unavailable, distinct from 0 = genuinely neutral
+    const interpretFunding = (rate: number | null): "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL" | "UNAVAILABLE" => {
+      if (rate === null) return "UNAVAILABLE";
       if (rate > 0.03) return "LONG_CROWDED";
       if (rate < -0.03) return "SHORT_CROWDED";
       return "NEUTRAL";
@@ -2792,7 +2796,7 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
     derivativesCache.btcOI = btcOpenInterest;
     derivativesCache.ethOI = ethOpenInterest;
 
-    console.log(`  📈 Derivatives: BTC funding ${btcFundingRate >= 0 ? "+" : ""}${btcFundingRate.toFixed(4)}% (${btcFundingSignal}) | ETH funding ${ethFundingRate >= 0 ? "+" : ""}${ethFundingRate.toFixed(4)}% (${ethFundingSignal})`);
+    console.log(`  📈 Derivatives: BTC funding ${btcFundingRate !== null ? `${btcFundingRate >= 0 ? "+" : ""}${btcFundingRate.toFixed(4)}%` : "N/A"} (${btcFundingSignal}) | ETH funding ${ethFundingRate !== null ? `${ethFundingRate >= 0 ? "+" : ""}${ethFundingRate.toFixed(4)}%` : "N/A"} (${ethFundingSignal})`);
     console.log(`     BTC OI: ${btcOpenInterest.toFixed(0)} BTC | ETH OI: ${ethOpenInterest.toFixed(0)} ETH`);
     console.log(`     BTC L/S: Global ${btcLongShortRatio?.toFixed(2) ?? "N/A"} | TopTrader ${btcTopTraderLSRatio?.toFixed(2) ?? "N/A"} → ${btcPositioningSignal}`);
     console.log(`     ETH L/S: Global ${ethLongShortRatio?.toFixed(2) ?? "N/A"} | TopTrader ${ethTopTraderLSRatio?.toFixed(2) ?? "N/A"} → ${ethPositioningSignal}`);
@@ -2904,6 +2908,8 @@ function computeSmartRetailDivergence(derivatives: DerivativesData | null): Smar
  */
 function computeFundingMeanReversion(derivatives: DerivativesData | null): FundingRateMeanReversion | null {
   if (!derivatives) return null;
+  // v10.2: Guard against null funding rates contaminating history
+  if (derivatives.btcFundingRate === null || derivatives.ethFundingRate === null) return null;
 
   fundingRateHistory.btc.push(derivatives.btcFundingRate);
   fundingRateHistory.eth.push(derivatives.ethFundingRate);
@@ -2920,8 +2926,8 @@ function computeFundingMeanReversion(derivatives: DerivativesData | null): Fundi
 
   const btc = stats(fundingRateHistory.btc);
   const eth = stats(fundingRateHistory.eth);
-  const btcZ = btc.stdDev > 0 ? (derivatives.btcFundingRate - btc.mean) / btc.stdDev : 0;
-  const ethZ = eth.stdDev > 0 ? (derivatives.ethFundingRate - eth.mean) / eth.stdDev : 0;
+  const btcZ = btc.stdDev > 0 && isFinite(btc.mean) ? (derivatives.btcFundingRate! - btc.mean) / btc.stdDev : 0;
+  const ethZ = eth.stdDev > 0 && isFinite(eth.mean) ? (derivatives.ethFundingRate! - eth.mean) / eth.stdDev : 0;
 
   const classifyZ = (z: number): "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL" => {
     if (z > FUNDING_RATE_STD_DEV_THRESHOLD) return "CROWDED_LONGS_REVERSAL";
@@ -3122,6 +3128,16 @@ const PRICE_CACHE_FILE = "./logs/price-cache.json";
 
 function savePriceCache() {
   try {
+    // v10.2: Evict stale entries — keep only active tokens + last 200 discovered
+    const activeSymbols = new Set(Object.keys(TOKEN_REGISTRY));
+    const keys = Object.keys(lastKnownPrices);
+    if (keys.length > 300) {
+      const sorted = keys.sort((a, b) => (activeSymbols.has(b) ? 1 : 0) - (activeSymbols.has(a) ? 1 : 0));
+      const keep = sorted.slice(0, 200);
+      const pruned: typeof lastKnownPrices = {};
+      for (const k of keep) pruned[k] = lastKnownPrices[k];
+      lastKnownPrices = pruned;
+    }
     if (!fs.existsSync("./logs")) fs.mkdirSync("./logs", { recursive: true });
     fs.writeFileSync(PRICE_CACHE_FILE, JSON.stringify({ lastUpdated: new Date().toISOString(), prices: lastKnownPrices }));
   } catch { /* non-critical */ }
@@ -3723,8 +3739,10 @@ async function getTokenBalance(tokenSymbol: string): Promise<number> {
 }
 
 // Cache for macro data (only fetch once per hour since most data is daily/monthly)
-let macroCache: { data: MacroData | null; lastFetch: number } = { data: null, lastFetch: 0 };
-const MACRO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+// v10.2: Track success separately — retry failures in 5min, cache success for 1hr
+let macroCache: { data: MacroData | null; lastFetch: number; lastSuccess: number } = { data: null, lastFetch: 0, lastSuccess: 0 };
+const MACRO_CACHE_TTL = 60 * 60 * 1000; // 1 hour (success)
+const MACRO_CACHE_RETRY_TTL = 5 * 60 * 1000; // 5 min (failure retry)
 
 // Cache for news sentiment (fetch every cycle but with fallback)
 let newsCache: { data: NewsSentimentData | null; lastFetch: number } = { data: null, lastFetch: 0 };
@@ -3974,9 +3992,13 @@ async function fetchCrossAssetData(fredKey: string | undefined): Promise<MacroDa
 }
 
 async function fetchMacroData(): Promise<MacroData | null> {
-  // Return cached data if fresh enough
-  if (macroCache.data && Date.now() - macroCache.lastFetch < MACRO_CACHE_TTL) {
+  // v10.2: Use success TTL for good data, retry TTL for failures
+  const ttl = macroCache.data ? MACRO_CACHE_TTL : MACRO_CACHE_RETRY_TTL;
+  if (macroCache.data && Date.now() - macroCache.lastSuccess < MACRO_CACHE_TTL) {
     return macroCache.data;
+  }
+  if (!macroCache.data && Date.now() - macroCache.lastFetch < MACRO_CACHE_RETRY_TTL) {
+    return macroCache.data; // Don't spam retries on failure
   }
 
   const FRED_KEY = process.env.FRED_API_KEY;
@@ -4118,10 +4140,11 @@ async function fetchMacroData(): Promise<MacroData | null> {
     console.log(`  🏦 Macro Data: ${macroSignal} | Fed: ${fedFundsRate?.value ?? "N/A"}% (${rateDirection}) | 10Y: ${treasury10Y?.value ?? "N/A"}% | Curve: ${yieldCurve?.value ?? "N/A"}`);
     if (cpi) console.log(`     CPI: ${cpi.value.toFixed(1)} (${cpi.yoyChange !== null ? `${cpi.yoyChange.toFixed(1)}% YoY` : "N/A"}) | M2: ${m2MoneySupply?.yoyChange !== null ? `${m2MoneySupply?.yoyChange?.toFixed(1)}% YoY` : "N/A"} | Dollar: ${dollarIndex?.value?.toFixed(1) ?? "N/A"}`);
 
-    macroCache = { data: result, lastFetch: Date.now() };
+    macroCache = { data: result, lastFetch: Date.now(), lastSuccess: Date.now() };
     return result;
   } catch (error: any) {
     console.warn(`  ⚠️ Macro data fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    macroCache.lastFetch = Date.now(); // Track failure time for retry throttle
     return macroCache.data; // Return stale cache if available
   }
 }
@@ -4543,17 +4566,14 @@ async function getMarketData(): Promise<MarketData> {
       marketResult = { status: "fulfilled", value: cachedCoinGecko };
       console.log(`  ♻️  CoinGecko: using cached data (${((cacheManager.getAge(CacheKeys.COINGECKO_PRICES) || 0) / 1000).toFixed(0)}s old)`);
     } else {
-    // Free tier rate limit window is ~60s, so retries need substantial delays
-    const retryDelays = [15000, 45000]; // 15s after 1st fail, 45s after 2nd fail
+    // v10.2: Exponential backoff with jitter for CoinGecko rate limits
     marketResult = { status: "rejected", reason: new Error("No attempt") } as PromiseRejectedResult;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         const res = await axios.get(coingeckoUrl, { timeout: 15000 });
         if (res.data && Array.isArray(res.data) && res.data.length > 0) {
           marketResult = { status: "fulfilled", value: res };
-          // v6.0: Cache the successful response
           cacheManager.set(CacheKeys.COINGECKO_PRICES, res, CACHE_TTL.PRICE);
-          // Update last-known-prices cache on success
           for (const coin of res.data) {
             const registryEntry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.coingeckoId === coin.id);
             const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
@@ -4567,15 +4587,17 @@ async function getMarketData(): Promise<MarketData> {
           savePriceCache();
           break;
         } else {
-          console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}/3: empty response, retrying in ${(retryDelays[attempt - 1] || 0) / 1000}s...`);
-          if (attempt < 3) await new Promise(r => setTimeout(r, retryDelays[attempt - 1]));
+          const backoff = Math.pow(2, attempt) * 10000 + Math.random() * 5000; // 20s, 40s, 80s + jitter
+          console.warn(`  ⚠️ CoinGecko attempt ${attempt}/3: empty response, retrying in ${(backoff / 1000).toFixed(0)}s...`);
+          if (attempt < 3) await new Promise(r => setTimeout(r, backoff));
         }
       } catch (err: any) {
         const status = err?.response?.status;
-        console.warn(`  \u26a0\ufe0f CoinGecko attempt ${attempt}/3: ${status === 429 ? "rate limited (429)" : err?.message?.substring(0, 80) || err}`);
+        const backoff = Math.pow(2, attempt) * 10000 + Math.random() * 5000;
+        console.warn(`  ⚠️ CoinGecko attempt ${attempt}/3: ${status === 429 ? "rate limited (429)" : err?.message?.substring(0, 80) || err}`);
         if (attempt < 3) {
-          console.log(`     Waiting ${retryDelays[attempt - 1] / 1000}s before retry...`);
-          await new Promise(r => setTimeout(r, retryDelays[attempt - 1]));
+          console.log(`     Waiting ${(backoff / 1000).toFixed(0)}s before retry (exponential backoff)...`);
+          await new Promise(r => setTimeout(r, backoff));
         }
         if (attempt === 3) marketResult = { status: "rejected", reason: err } as PromiseRejectedResult;
       }
@@ -6173,8 +6195,6 @@ async function executeSingleSwap(
       fromAmount = parseUnits(tokenAmount.toFixed(Math.min(fromDecimals, 8)), fromDecimals);
     }
 
-    // v10.1.1: Always use account.swap() — wallet IS a CoinbaseSmartWallet
-    const useSmartAccount = false; // Disabled: wallet is already a SmartWallet, no wrapper needed
     console.log(`\n  🔄 EXECUTING TRADE via CDP SDK (CoinbaseSmartWallet):`);
     console.log(`     ${decision.fromToken} (${fromTokenAddress})`);
     console.log(`     → ${decision.toToken} (${toTokenAddress})`);
@@ -6182,14 +6202,12 @@ async function executeSingleSwap(
     console.log(`     Slippage: ${CONFIG.trading.slippageBps / 100}%`);
     console.log(`     Network: Base Mainnet`);
 
-    // Get the CDP-managed EOA account (needed for both paths)
+    // Get the CDP-managed account (wallet IS a CoinbaseSmartWallet — no wrapper needed)
     const account = await cdpClient.evm.getOrCreateAccount({
       name: "henry-trading-bot",
     });
-
-    // Determine which address holds the tokens
-    const swapperAddress = useSmartAccount ? smartAccountAddress : account.address;
-    console.log(`     ${useSmartAccount ? 'Smart Account' : 'Account'}: ${swapperAddress}`);
+    const swapperAddress = account.address;
+    console.log(`     Account: ${swapperAddress}`);
 
     // Approve Permit2 contract to spend the fromToken (one-time per token)
     const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -6213,30 +6231,15 @@ async function executeSingleSwap(
         PERMIT2_ADDRESS.slice(2).padStart(64, "0") +
         MAX_UINT256.slice(2);
 
-      if (useSmartAccount) {
-        // Smart Account: approve via sendUserOperation (gasless)
-        const approveOp = await smartAccount.sendUserOperation({
-          network: "base",
-          calls: [{
-            to: fromTokenAddress,
-            data: approveData as `0x${string}`,
-            value: BigInt(0),
-          }],
-        });
-        await smartAccount.waitForUserOperation({ userOpHash: approveOp.userOpHash });
-        console.log(`     ✅ Permit2 approved via Smart Account (gasless)`);
-      } else {
-        // EOA: approve via sendTransaction (requires gas)
-        const approveTx = await account.sendTransaction({
-          network: "base",
-          transaction: {
-            to: fromTokenAddress,
-            data: approveData as `0x${string}`,
-            value: BigInt(0),
-          },
-        });
-        console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
-      }
+      const approveTx = await account.sendTransaction({
+        network: "base",
+        transaction: {
+          to: fromTokenAddress,
+          data: approveData as `0x${string}`,
+          value: BigInt(0),
+        },
+      });
+      console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
       justApproved = true;
       // Wait for the approval to propagate — CDP API needs time to see the on-chain state
       console.log(`     ⏳ Waiting 10s for approval to propagate...`);
@@ -6282,31 +6285,16 @@ async function executeSingleSwap(
     const maxRetries = justApproved ? 3 : 1;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}${useSmartAccount ? ' (gasless)' : ''}...`);
+        console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}...`);
 
-        if (useSmartAccount) {
-          // v10.1: Smart Account swap — gasless via bundler + paymaster
-          result = await smartAccount.swap({
-            network: "base",
-            fromToken: fromTokenAddress,
-            toToken: toTokenAddress,
-            fromAmount,
-            slippageBps: adaptiveSlippage,
-          });
-          // Wait for the user operation to complete
-          const receipt = await smartAccount.waitForUserOperation({ userOpHash: result.userOpHash });
-          txHash = receipt.transactionHash || result.userOpHash;
-        } else {
-          // Legacy EOA swap — requires ETH gas
-          result = await account.swap({
-            network: "base",
-            fromToken: fromTokenAddress,
-            toToken: toTokenAddress,
-            fromAmount,
-            slippageBps: adaptiveSlippage,
-          });
-          txHash = result.transactionHash;
-        }
+        result = await account.swap({
+          network: "base",
+          fromToken: fromTokenAddress,
+          toToken: toTokenAddress,
+          fromAmount,
+          slippageBps: adaptiveSlippage,
+        });
+        txHash = result.transactionHash;
         break; // Success — exit retry loop
       } catch (swapError: any) {
         const swapMsg = swapError?.message || "";
@@ -6332,19 +6320,22 @@ async function executeSingleSwap(
     state.trading.totalTrades++;
     state.trading.successfulTrades++;
 
-    // v8.1: Read actual token balance AFTER swap for accurate cost basis
+    // v8.1 + v10.2: Read actual token balance AFTER swap with retry for accurate cost basis
     let postSwapBalance = 0;
     let actualTokens = 0;
-    try {
-      // Small delay to let the on-chain state settle
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      postSwapBalance = await getTokenBalance(balanceToken);
-      actualTokens = Math.abs(postSwapBalance - preSwapBalance);
-      if (actualTokens > 0) {
-        console.log(`     📊 Actual tokens ${decision.action === 'BUY' ? 'received' : 'sent'}: ${actualTokens.toFixed(8)} ${balanceToken} (balance: ${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
+    for (let balAttempt = 1; balAttempt <= 5; balAttempt++) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? 2000 : 3000));
+        postSwapBalance = await getTokenBalance(balanceToken);
+        actualTokens = Math.abs(postSwapBalance - preSwapBalance);
+        if (actualTokens > 0) {
+          console.log(`     📊 Actual tokens ${decision.action === 'BUY' ? 'received' : 'sent'}: ${actualTokens.toFixed(8)} ${balanceToken} (balance: ${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
+          break; // Got a real balance change
+        }
+        if (balAttempt < 5) console.log(`     ⏳ Balance unchanged (attempt ${balAttempt}/5), retrying...`);
+      } catch (e: any) {
+        if (balAttempt === 5) console.warn(`     ⚠️ Post-swap balance check failed: ${e.message?.substring(0, 60)} — using estimate`);
       }
-    } catch (e: any) {
-      console.warn(`     ⚠️ Post-swap balance check failed: ${e.message?.substring(0, 60)} — using estimate`);
     }
 
     // Update cost basis — prefer actual tokens, fall back to estimated
@@ -6405,6 +6396,8 @@ async function executeSingleSwap(
       },
     };
     state.tradeHistory.push(record);
+    // v10.2: Cap trade history to prevent unbounded memory growth
+    if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
     saveTradeHistory();
 
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
@@ -6544,6 +6537,10 @@ async function executeDailyPayout(): Promise<void> {
     return;
   }
 
+  // v10.2: Persist payout date BEFORE executing transfers to prevent double-payout on crash
+  state.lastDailyPayoutDate = yesterdayStr;
+  saveTradeHistory();
+
   // Check USDC balance and ETH for gas
   const payoutWalletAddr = CONFIG.walletAddress;
   const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, payoutWalletAddr, 6);
@@ -6641,7 +6638,7 @@ async function executeDailyPayout(): Promise<void> {
   if (state.dailyPayouts.length > 90) state.dailyPayouts = state.dailyPayouts.slice(-90);
   state.totalDailyPayoutsUSD += totalSent;
   if (totalSent > 0) state.dailyPayoutCount++;
-  state.lastDailyPayoutDate = yesterdayStr;
+  // lastDailyPayoutDate already persisted above (pre-transfer idempotency guard)
   state.lastAutoHarvestTime = now.toISOString();
   saveTradeHistory();
 
@@ -7093,8 +7090,9 @@ async function runTradingCycle() {
       console.log(`   Review #${state.performanceReviews.length} stored | Next review after ${state.lastReviewTradeIndex + 10} trades or 24h`);
     }
 
-    // === PHASE 3: ANALYZE STRATEGY PATTERNS (rebuild every cycle for accuracy) ===
-    if (state.tradeHistory.length > 0 && state.totalCycles <= 1) {
+    // === PHASE 3: ANALYZE STRATEGY PATTERNS ===
+    // v10.2: Rebuild every 50 heavy cycles (not just cycle 1) so patterns reflect recent trading
+    if (state.tradeHistory.length > 0 && (state.totalCycles <= 1 || state.totalCycles % 50 === 0)) {
       console.log(`\n🧬 SELF-IMPROVEMENT: Building strategy pattern memory from ${state.tradeHistory.length} trades...`);
       analyzeStrategyPatterns();
       const validPatterns = Object.values(state.strategyPatterns).filter(p => !p.patternId.startsWith("UNKNOWN"));
@@ -7145,13 +7143,13 @@ async function runTradingCycle() {
     state.trading.balances = balances;
     const newPortfolioValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
 
-    // v7.1: Phantom drop detection — if portfolio drops >15% in a single cycle,
+    // v7.1 + v10.2: Phantom drop detection — if portfolio drops >10% in a single cycle,
     // it's almost certainly a price feed failure, not a real loss.
-    // (Even a flash crash rarely moves 15% in under 2 minutes across a diversified portfolio)
+    // (Even a flash crash rarely moves 10% in under 2 minutes across a diversified portfolio)
     // Protect peakValue and use last known portfolio value instead.
     const prevValue = state.trading.totalPortfolioValue;
     const dropPercent = prevValue > 0 ? ((prevValue - newPortfolioValue) / prevValue) * 100 : 0;
-    if (dropPercent > 15 && prevValue > 100) {
+    if (dropPercent > 10 && prevValue > 100) {
       console.warn(`\n🛡️ PHANTOM DROP DETECTED: Portfolio $${prevValue.toFixed(2)} → $${newPortfolioValue.toFixed(2)} (-${dropPercent.toFixed(1)}% in one cycle)`);
       console.warn(`   This is almost certainly a price feed outage — keeping previous value.`);
       console.warn(`   Tokens missing prices: ${balances.filter(b => b.symbol !== 'USDC' && b.balance > 0 && !b.price).map(b => b.symbol).join(', ') || 'none'}`);
@@ -7170,7 +7168,8 @@ async function runTradingCycle() {
     // Detect deposit: USDC jumped by >$50, and no trade was executed in the last 60 seconds
     // (sell trades also increase USDC, but they happen within the cycle and are tracked by lastTrade)
     const lastTradeAge = state.trading.lastTrade ? Date.now() - new Date(state.trading.lastTrade).getTime() : Infinity;
-    const recentSellTrade = lastTradeAge < 300_000; // Within last 5 minutes (covers cycle delays)
+    // v10.2: Widened to 15 minutes — slow cycles or batched sells can delay USDC visibility
+    const recentSellTrade = lastTradeAge < 900_000; // Within last 15 minutes
     if (usdcIncrease > 50 && prevUSDCBalance > 0 && !recentSellTrade) {
       const depositAmount = usdcIncrease;
       state.totalDeposited += depositAmount;
@@ -7497,9 +7496,10 @@ async function runTradingCycle() {
           recordTradeFailure(tradeToken);
         } else {
           clearTradeFailures(tradeToken);
-          // v9.2: Deduct spent USDC from remaining pool for multi-trade
+          // v9.2 + v10.2: Deduct spent USDC + buffer for gas/slippage from remaining pool
           if (decision.action === "BUY") {
-            remainingUSDC -= decision.amountUSD;
+            const slippageBuffer = decision.amountUSD * 0.02; // 2% buffer for slippage + gas
+            remainingUSDC -= (decision.amountUSD + slippageBuffer);
           }
           anyTradeExecuted = true;
         }
@@ -7966,9 +7966,25 @@ main().catch((err) => {
 // ============================================================================
 import http from 'http';
 
-function sendJSON(res: http.ServerResponse, status: number, data: any) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+// v10.2: Restrict CORS to localhost only — prevents external sites from reading portfolio data
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173',
+  'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://127.0.0.1:5173',
+]);
+
+function sendJSON(res: http.ServerResponse, status: number, data: any, req?: http.IncomingMessage) {
+  const origin = req?.headers?.origin || '';
+  const corsOrigin = ALLOWED_ORIGINS.has(origin) ? origin : '';
+  res.writeHead(status, { 'Content-Type': 'application/json', ...(corsOrigin ? { 'Access-Control-Allow-Origin': corsOrigin } : {}) });
   res.end(JSON.stringify(data));
+}
+
+// v10.2: Auth token for sensitive endpoints (set API_AUTH_TOKEN env var, or defaults to random)
+const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN || '';
+function isAuthorized(req: http.IncomingMessage): boolean {
+  if (!API_AUTH_TOKEN) return true; // No token configured = open (backward-compat)
+  const authHeader = req.headers['authorization'] || '';
+  return authHeader === `Bearer ${API_AUTH_TOKEN}`;
 }
 
 /**
@@ -8307,8 +8323,13 @@ function getDashboardHTML(): string {
 
 const healthServer = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // v10.2: Restrict CORS to known origins
+  const reqOrigin = req.headers.origin || '';
+  if (ALLOWED_ORIGINS.has(reqOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
@@ -8387,12 +8408,16 @@ const healthServer = http.createServer(async (req, res) => {
         });
         break;
       case '/api/auto-harvest/trigger':
+        // v10.2: Require auth token for payout trigger — prevents unauthorized wallet drain
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — set API_AUTH_TOKEN env var and pass Bearer token' }, req);
+          break;
+        }
         if (CONFIG.autoHarvest.enabled) {
-          // v9.3: Trigger daily payout manually
-          sendJSON(res, 200, { message: 'Daily payout triggered manually' });
+          sendJSON(res, 200, { message: 'Daily payout triggered manually' }, req);
           executeDailyPayout().catch((err: any) => console.error(`[Daily Payout] Manual trigger error: ${err?.message}`));
         } else {
-          sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
+          sendJSON(res, 400, { error: 'Auto-harvest is not enabled' }, req);
         }
         break;
       // === v6.2: ADAPTIVE CYCLE API ENDPOINT ===
