@@ -11,7 +11,7 @@
 export const DEFAULT_TRADING_INTERVAL_MINUTES = 2;
 
 /** Force a heavy cycle at least this often (milliseconds) */
-export const HEAVY_CYCLE_FORCED_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+export const HEAVY_CYCLE_FORCED_INTERVAL_MS = 8 * 60 * 1000; // v9.2: 8 minutes (was 15)
 
 /** Price change threshold to trigger a heavy cycle */
 export const PRICE_CHANGE_THRESHOLD = 0.02; // 2%
@@ -101,11 +101,11 @@ export const CACHE_TTL = {
 
 export const COOLDOWN_DURATIONS = {
   /** After executing a trade (buy/sell) — give position time to develop */
-  TRADE_EXECUTED: 10 * 60 * 1000,    // 10 minutes (reduced from 30min — signal-weighted cooldown)
-  /** After explicit HOLD decision — skip 5 cycles then re-evaluate */
-  HOLD_DECISION: 6 * 60 * 1000,     // 6 minutes (reduced from 10min)
+  TRADE_EXECUTED: 5 * 60 * 1000,    // v9.2: 5 minutes (was 10min — faster re-evaluation)
+  /** After explicit HOLD decision — skip a few cycles then re-evaluate */
+  HOLD_DECISION: 3 * 60 * 1000,     // v9.2: 3 minutes (was 6min)
   /** Signal was too weak — almost triggered, check again soon */
-      WEAK_SIGNAL: 3 * 60 * 1000,         // 3 minutes (reduced from 6min)
+      WEAK_SIGNAL: 2 * 60 * 1000,         // v9.2: 2 minutes (was 3min)
 } as const;
 
 /** Price move threshold to override cooldown (3% in either direction) */
@@ -222,7 +222,7 @@ export const MAX_CONCURRENT_TRADES = 5;
 export const TRADE_EXECUTION_GAP_MS = 2000; // 2 seconds
 
 /** Absolute minimum cooldown after ANY trade — prevents same-candle flip */
-export const TRADE_MINIMUM_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+export const TRADE_MINIMUM_COOLDOWN_MS = 3 * 60 * 1000; // v9.2: 3 minutes (was 5min)
 
 /** How often each token watcher re-checks price when in cooldown */
 export const TOKEN_WATCH_INTERVAL_MS = 30 * 1000; // 30 seconds
@@ -314,7 +314,7 @@ export const KELLY_FRACTION = 0.25;           // Quarter Kelly — crypto-approp
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
 export const KELLY_POSITION_FLOOR_USD = 5;    // Minimum viable trade
-export const KELLY_POSITION_CEILING_PCT = 5;  // Hard cap: 5% of portfolio per trade
+export const KELLY_POSITION_CEILING_PCT = 8;  // v9.2: Hard cap: 8% of portfolio per trade (was 5%)
 
 /**
  * Volatility-Adjusted Sizing

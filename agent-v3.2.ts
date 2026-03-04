@@ -469,7 +469,7 @@ const CONFIG = {
   // Trading Parameters
   trading: {
     enabled: process.env.TRADING_ENABLED === "true",
-    maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "25"),
+    maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "100"), // v9.2: raised from $25 to $100 default
     maxSellPercent: parseFloat(process.env.MAX_SELL_PERCENT || "50"),
     intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || String(DEFAULT_TRADING_INTERVAL_MINUTES)),
     // V3.1: Risk-adjusted position sizing
@@ -5306,7 +5306,7 @@ async function makeTradeDecision(
   marketData: MarketData,
   totalPortfolioValue: number,
   sectorAllocations: SectorAllocation[]
-): Promise<TradeDecision> {
+): Promise<TradeDecision[]> {
   const usdcBalance = balances.find(b => b.symbol === "USDC");
   const availableUSDC = usdcBalance?.balance || 0;
 
@@ -5493,16 +5493,20 @@ For BUYING: fromToken = USDC, toToken = token symbol
 DIVERSIFICATION RULE: NEVER buy the same token more than 2 cycles in a row. Rotate across sectors and tokens.
 If a token already holds >20% of portfolio, do NOT buy more — pick a different underweight token or HOLD.
 
-CRITICAL: Respond with ONLY a raw JSON object. NO prose, NO explanation outside JSON, NO markdown.
-Your ENTIRE response must be exactly one JSON object:
-{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold at 28, MACD bullish crossover, Base TVL +3.2%, WELL protocol TVL rising, BTC shorts crowded, macro RISK_ON, news bullish +45","sector":"DEFI"}` + formatSelfImprovementPrompt();
+CRITICAL: Respond with ONLY raw JSON. NO prose, NO explanation outside JSON, NO markdown.
+v9.2 MULTI-TRADE: You may return a JSON ARRAY of up to 3 actions per cycle to deploy capital faster across multiple tokens.
+Return a single object for 1 trade, or an array for multiple. HOLD can be a single object (no array needed).
+Examples:
+Single: {"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold, MACD bullish","sector":"DEFI"}
+Multi: [{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":15,"reasoning":"RSI oversold","sector":"DEFI"},{"action":"BUY","fromToken":"USDC","toToken":"VIRTUAL","amountUSD":12,"reasoning":"AI sector underweight","sector":"AI_TOKENS"}]
+HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals"}` + formatSelfImprovementPrompt();
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 700,
+        max_tokens: 1200, // v9.2: increased for multi-trade array responses
         messages: [{ role: "user", content: systemPrompt }],
       });
 
@@ -5513,48 +5517,67 @@ Your ENTIRE response must be exactly one JSON object:
         if (text.startsWith("```")) {
           text = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
         }
-        // If AI wrapped JSON in prose, extract the JSON object
-        if (!text.startsWith("{")) {
-          const jsonMatch = text.match(/\{[\s\S]*"action"[\s\S]*\}/);
+        // v9.2: Handle both JSON objects and arrays
+        if (!text.startsWith("{") && !text.startsWith("[")) {
+          const jsonMatch = text.match(/(\[[\s\S]*"action"[\s\S]*\]|\{[\s\S]*"action"[\s\S]*\})/);
           if (jsonMatch) {
             console.log(`   ⚠️ AI returned prose wrapper — extracted JSON from response`);
             text = jsonMatch[0];
           } else {
             console.log(`   ⚠️ AI returned non-JSON response: "${text.substring(0, 80)}..."`);
-            return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "AI returned prose instead of JSON — HOLD" };
+            return [{ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "AI returned prose instead of JSON — HOLD" }];
           }
         }
-        const decision = JSON.parse(text);
+        const parsed = JSON.parse(text);
+
+        // v9.2: Normalize to array — single object becomes [object], array stays as-is
+        const rawDecisions: any[] = Array.isArray(parsed) ? parsed.slice(0, 3) : [parsed];
+        if (Array.isArray(parsed)) {
+          console.log(`   🚀 Multi-trade: AI returned ${rawDecisions.length} action(s)`);
+        }
 
         const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens];
-        console.log(`   AI raw response: action=${decision.action} from=${decision.fromToken} to=${decision.toToken} amt=$${decision.amountUSD}`);
-        if (decision.action === "HOLD") {
-          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: decision.reasoning || "AI chose HOLD" };
-        }
-        if (!validTokens.includes(decision.fromToken) || !validTokens.includes(decision.toToken)) {
-          console.log(`   ⚠️ Invalid tokens: from="${decision.fromToken}" to="${decision.toToken}" — not in valid list`);
-          return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Invalid token: ${decision.fromToken}→${decision.toToken}` };
+        const validatedDecisions: TradeDecision[] = [];
+
+        for (const decision of rawDecisions) {
+          console.log(`   AI raw response: action=${decision.action} from=${decision.fromToken} to=${decision.toToken} amt=$${decision.amountUSD}`);
+          if (decision.action === "HOLD") {
+            // HOLD doesn't need further validation — include it but don't block other actions
+            validatedDecisions.push({ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: decision.reasoning || "AI chose HOLD" });
+            continue;
+          }
+          if (!validTokens.includes(decision.fromToken) || !validTokens.includes(decision.toToken)) {
+            console.log(`   ⚠️ Invalid tokens: from="${decision.fromToken}" to="${decision.toToken}" — not in valid list`);
+            continue; // Skip invalid entries, don't block valid ones
+          }
+
+          if (decision.action === "BUY" || decision.action === "REBALANCE") {
+            decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
+            if (decision.amountUSD < 5.00) {
+              console.log(`   ⚠️ Trade amount ($${decision.amountUSD.toFixed(2)}) too small — skipping`);
+              continue;
+            }
+          } else if (decision.action === "SELL") {
+            const holding = balances.find(b => b.symbol === decision.fromToken);
+            if (!holding || holding.usdValue < 1) {
+              console.log(`   ⚠️ No ${decision.fromToken} to sell — skipping`);
+              continue;
+            }
+            const maxSellForToken = holding.usdValue * (CONFIG.trading.maxSellPercent / 100);
+            decision.amountUSD = Math.min(decision.amountUSD, maxSellForToken);
+            decision.tokenAmount = decision.amountUSD / (holding.price || 1);
+          }
+
+          validatedDecisions.push(decision as TradeDecision);
         }
 
-        if (decision.action === "BUY" || decision.action === "REBALANCE") {
-          decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
-          if (decision.amountUSD < 5.00) {  // v5.2: raised from $1 to $5
-            decision.action = "HOLD";
-            decision.reasoning = `Trade amount ($${decision.amountUSD.toFixed(2)}) too small. Minimum $1.00. Holding.`;
-          }
-        } else if (decision.action === "SELL") {
-          const holding = balances.find(b => b.symbol === decision.fromToken);
-          if (!holding || holding.usdValue < 1) {
-            return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `No ${decision.fromToken} to sell` };
-          }
-          const maxSellForToken = holding.usdValue * (CONFIG.trading.maxSellPercent / 100);
-          decision.amountUSD = Math.min(decision.amountUSD, maxSellForToken);
-          decision.tokenAmount = decision.amountUSD / (holding.price || 1);
+        // If no valid actions survived, return HOLD
+        if (validatedDecisions.length === 0) {
+          return [{ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "All AI actions filtered out — HOLD" }];
         }
-
-        return decision;
+        return validatedDecisions;
       }
-      return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Parse error" };
+      return [{ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Parse error" }];
     } catch (error: any) {
       const status = error?.status || error?.response?.status;
       if (status === 429 && attempt < 3) {
@@ -5564,10 +5587,10 @@ Your ENTIRE response must be exactly one JSON object:
         continue;
       }
       console.error("AI decision failed:", error.message);
-      return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Error: ${error.message}` };
+      return [{ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Error: ${error.message}` }];
     }
   }
-  return { action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Max retries exceeded" };
+  return [{ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: "Max retries exceeded" }];
 }
 
 // ============================================================================
@@ -6678,148 +6701,167 @@ async function runTradingCycle() {
 
     // AI decision
     console.log("\n🧠 AI analyzing portfolio & market...");
-    const decision = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations);
+    const decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations);
 
-    console.log(`\n   Decision: ${decision.action}`);
-    if (decision.action !== "HOLD") {
-      console.log(`   Trade: $${decision.amountUSD.toFixed(2)} ${decision.fromToken} → ${decision.toToken}`);
-      if (decision.sector) console.log(`   Sector: ${decision.sector}`);
-    }
-    console.log(`   Reasoning: ${decision.reasoning}`);
+    // v9.2: Track remaining USDC across multi-trade to prevent overspend
+    let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+    let anyTradeExecuted = false;
 
-    // === v6.2: CAPITAL FLOOR — BLOCK NEW BUYS ===
-    // When below capital floor, only allow SELL and HOLD (stop-losses still fire above)
-    if (belowCapitalFloor && decision.action === "BUY") {
-      console.log(`   🚫 CAPITAL FLOOR: Blocking BUY — portfolio $${state.trading.totalPortfolioValue.toFixed(2)} below floor $${capitalFloorValue.toFixed(2)}. Only sells allowed.`);
-      decision.action = "HOLD";
-      decision.reasoning = `Capital floor active: portfolio at $${state.trading.totalPortfolioValue.toFixed(2)} is below ${CAPITAL_FLOOR_PERCENT}% of peak ($${capitalFloorValue.toFixed(2)}). Holding until recovery or funding.`;
-    }
+    for (let di = 0; di < decisions.length; di++) {
+      const decision = decisions[di];
+      if (decisions.length > 1) console.log(`\n   --- Trade ${di + 1}/${decisions.length} ---`);
 
-    // === v8.0: INSTITUTIONAL BREAKER — BLOCK NEW BUYS ===
-    if (institutionalBreakerActive && decision.action === "BUY") {
-      console.log(`   🚨 INSTITUTIONAL BREAKER: Blocking BUY — ${breakerCheck}`);
-      decision.action = "HOLD";
-      decision.reasoning = `Institutional circuit breaker active: ${breakerCheck}. Only sells allowed until breaker clears.`;
-    }
-
-    // === v8.0: INSTITUTIONAL POSITION SIZING (Kelly × Vol × Breaker × Confidence) ===
-    if (decision.action === "BUY" && decision.amountUSD > 0) {
-      // Compute Kelly-based max position size for this cycle
-      const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue);
-      const kellyMax = Math.min(instSizeCycle.sizeUSD, balances.find(b => b.symbol === 'USDC')?.balance || 0);
-      decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
-      console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}% × Vol×${instSizeCycle.volMultiplier.toFixed(2)}${instSizeCycle.breakerReduction ? ' × BREAKER' : ''})`);
-
-      // Still apply pattern confidence as a multiplier on top
-      const tradePatternId = [
-        "BUY",
-        marketData.indicators[decision.toToken]?.rsi14 !== undefined
-          ? (marketData.indicators[decision.toToken].rsi14 < state.adaptiveThresholds.rsiOversold ? "OVERSOLD"
-             : marketData.indicators[decision.toToken].rsi14 > state.adaptiveThresholds.rsiOverbought ? "OVERBOUGHT" : "NEUTRAL")
-          : "UNKNOWN",
-        marketData.marketRegime,
-        marketData.indicators[decision.toToken]?.overallSignal || "NEUTRAL",
-      ].join("_");
-      const confidence = calculatePatternConfidence(tradePatternId, marketData.marketRegime);
-      const preConfAmount = decision.amountUSD;
-      decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * confidence * 100) / 100);
-      const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
-      console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${preConfAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
-
-      // v6.2 legacy circuit breaker (drawdown >= 12%) still applies as extra safety
-      if (circuitBreakerActive) {
-        decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * 0.5 * 100) / 100);
-        console.log(`   🚨 Legacy circuit breaker (DD≥12%): size reduced to $${decision.amountUSD.toFixed(2)}`);
+      console.log(`\n   Decision: ${decision.action}`);
+      if (decision.action !== "HOLD") {
+        console.log(`   Trade: $${decision.amountUSD.toFixed(2)} ${decision.fromToken} → ${decision.toToken}`);
+        if (decision.sector) console.log(`   Sector: ${decision.sector}`);
       }
-    }
+      console.log(`   Reasoning: ${decision.reasoning}`);
 
-    // === POSITION SIZE GUARD ===
-    // Hard enforcement: block BUY if target token already exceeds maxPositionPercent
-    // v6.2: Uses sector-specific limits (meme coins capped at 15%, blue chips at 30%)
-    if (decision.action === "BUY" && decision.toToken !== "USDC" && state.trading.totalPortfolioValue > 0) {
-      const targetHolding = balances.find(b => b.symbol === decision.toToken);
-      const currentValue = targetHolding?.usdValue || 0;
-      const afterBuyValue = currentValue + decision.amountUSD;
-      const afterBuyPercent = (afterBuyValue / state.trading.totalPortfolioValue) * 100;
-
-      const tokenSector = TOKEN_REGISTRY[decision.toToken]?.sector;
-      const sectorLimit = tokenSector && SECTOR_STOP_LOSS_OVERRIDES[tokenSector]
-        ? SECTOR_STOP_LOSS_OVERRIDES[tokenSector].maxPositionPercent
-        : CONFIG.trading.maxPositionPercent;
-
-      if (afterBuyPercent > sectorLimit) {
-        console.log(`   🚫 POSITION GUARD: ${decision.toToken} (${tokenSector}) would be ${afterBuyPercent.toFixed(1)}% of portfolio (max ${sectorLimit}%). Current: $${currentValue.toFixed(2)}. Blocked.`);
+      // === v6.2: CAPITAL FLOOR — BLOCK NEW BUYS ===
+      if (belowCapitalFloor && decision.action === "BUY") {
+        console.log(`   🚫 CAPITAL FLOOR: Blocking BUY — portfolio $${state.trading.totalPortfolioValue.toFixed(2)} below floor $${capitalFloorValue.toFixed(2)}. Only sells allowed.`);
         decision.action = "HOLD";
-        decision.reasoning = `Position guard: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — exceeds ${tokenSector} sector limit of ${sectorLimit}%. Holding.`;
+        decision.reasoning = `Capital floor active: portfolio at $${state.trading.totalPortfolioValue.toFixed(2)} is below ${CAPITAL_FLOOR_PERCENT}% of peak ($${capitalFloorValue.toFixed(2)}). Holding until recovery or funding.`;
       }
-    }
 
-    // === DIVERSIFICATION GUARD ===
-    // If we've bought the same token in the last 3 consecutive trades, force diversification
-    const last3Trades = state.tradeHistory.slice(-3);
-    if (decision.action === "BUY" && last3Trades.length >= 3) {
-      const allSameToken = last3Trades.every(t => t.action === "BUY" && t.toToken === decision.toToken);
-      if (allSameToken) {
-        console.log(`   🔄 DIVERSITY GUARD: Bought ${decision.toToken} 3x in a row. Forcing HOLD to avoid concentration.`);
+      // === v8.0: INSTITUTIONAL BREAKER — BLOCK NEW BUYS ===
+      if (institutionalBreakerActive && decision.action === "BUY") {
+        console.log(`   🚨 INSTITUTIONAL BREAKER: Blocking BUY — ${breakerCheck}`);
         decision.action = "HOLD";
-        decision.reasoning = `Diversity guard: ${decision.toToken} bought 3 consecutive times. Cooling off.`;
-      }
-    }
-
-    // v5.3.3: Circuit breaker guard — block trades on tokens with consecutive failures
-    if (["SELL", "REBALANCE"].includes(decision.action) && decision.fromToken && isTokenBlocked(decision.fromToken)) {
-      console.log(`   🚫 CIRCUIT BREAKER: Skipping ${decision.action} for ${decision.fromToken} — too many consecutive failures`);
-      decision.action = "HOLD";
-      decision.reasoning = `Circuit breaker: ${decision.fromToken} blocked after repeated failures. Cooling off.`;
-    }
-
-    // Execute if needed
-    if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
-      const tradeResult = await executeTrade(decision, marketData);
-
-      // v5.3.3: Track consecutive failures / clear on success
-      const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
-      if (!tradeResult.success) {
-        recordTradeFailure(tradeToken);
-      } else {
-        clearTradeFailures(tradeToken);
+        decision.reasoning = `Institutional circuit breaker active: ${breakerCheck}. Only sells allowed until breaker clears.`;
       }
 
-      // v8.0: Track for institutional breaker
-      if (decision.action === "SELL" && tradeResult.success) {
-        // Estimate P&L from cost basis
-        const cb = state.costBasis[decision.fromToken];
-        const sellPrice = decision.amountUSD / (decision.tokenAmount || 1);
-        const avgCost = cb?.averageCostBasis || sellPrice;
-        const pnlEstimate = (sellPrice - avgCost) * (decision.tokenAmount || 0);
-        recordTradeResultForBreaker(true, pnlEstimate);
-      } else if (decision.action === "BUY" && tradeResult.success) {
-        // Buys are neutral for breaker — don't count as win or loss yet
-        // Loss/win determined on sell
-      } else if (!tradeResult.success) {
-        recordTradeResultForBreaker(false, 0);
+      // v9.2: Check remaining USDC for BUY actions in multi-trade
+      if (decision.action === "BUY" && decision.amountUSD > remainingUSDC) {
+        if (remainingUSDC < 5) {
+          console.log(`   🚫 USDC exhausted ($${remainingUSDC.toFixed(2)} left) — skipping BUY`);
+          decision.action = "HOLD";
+          decision.reasoning = `Insufficient USDC remaining ($${remainingUSDC.toFixed(2)}) after prior trades this cycle.`;
+        } else {
+          console.log(`   ⚠️ Capping BUY to remaining USDC: $${decision.amountUSD.toFixed(2)} → $${remainingUSDC.toFixed(2)}`);
+          decision.amountUSD = remainingUSDC;
+        }
       }
 
-      // v6.0: Set cooldown for traded token
-      const cooldownToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
-      const tokenPrice = currentPrices.get(cooldownToken) || 0;
-      cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as CooldownDecision, tokenPrice, marketData.indicators[cooldownToken]?.confluenceScore);
+      // === v8.0: INSTITUTIONAL POSITION SIZING (Kelly × Vol × Breaker × Confidence) ===
+      if (decision.action === "BUY" && decision.amountUSD > 0) {
+        const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue);
+        const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
+        decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
+        console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}% × Vol×${instSizeCycle.volMultiplier.toFixed(2)}${instSizeCycle.breakerReduction ? ' × BREAKER' : ''})`);
 
-      // === PHASE 3: UPDATE PATTERN MEMORY AFTER TRADE ===
+        const tradePatternId = [
+          "BUY",
+          marketData.indicators[decision.toToken]?.rsi14 !== undefined
+            ? (marketData.indicators[decision.toToken].rsi14 < state.adaptiveThresholds.rsiOversold ? "OVERSOLD"
+               : marketData.indicators[decision.toToken].rsi14 > state.adaptiveThresholds.rsiOverbought ? "OVERBOUGHT" : "NEUTRAL")
+            : "UNKNOWN",
+          marketData.marketRegime,
+          marketData.indicators[decision.toToken]?.overallSignal || "NEUTRAL",
+        ].join("_");
+        const confidence = calculatePatternConfidence(tradePatternId, marketData.marketRegime);
+        const preConfAmount = decision.amountUSD;
+        decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * confidence * 100) / 100);
+        const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
+        console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${preConfAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
+
+        if (circuitBreakerActive) {
+          decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * 0.5 * 100) / 100);
+          console.log(`   🚨 Legacy circuit breaker (DD≥12%): size reduced to $${decision.amountUSD.toFixed(2)}`);
+        }
+      }
+
+      // === POSITION SIZE GUARD ===
+      if (decision.action === "BUY" && decision.toToken !== "USDC" && state.trading.totalPortfolioValue > 0) {
+        const targetHolding = balances.find(b => b.symbol === decision.toToken);
+        const currentValue = targetHolding?.usdValue || 0;
+        const afterBuyValue = currentValue + decision.amountUSD;
+        const afterBuyPercent = (afterBuyValue / state.trading.totalPortfolioValue) * 100;
+
+        const tokenSector = TOKEN_REGISTRY[decision.toToken]?.sector;
+        const sectorLimit = tokenSector && SECTOR_STOP_LOSS_OVERRIDES[tokenSector]
+          ? SECTOR_STOP_LOSS_OVERRIDES[tokenSector].maxPositionPercent
+          : CONFIG.trading.maxPositionPercent;
+
+        if (afterBuyPercent > sectorLimit) {
+          console.log(`   🚫 POSITION GUARD: ${decision.toToken} (${tokenSector}) would be ${afterBuyPercent.toFixed(1)}% of portfolio (max ${sectorLimit}%). Current: $${currentValue.toFixed(2)}. Blocked.`);
+          decision.action = "HOLD";
+          decision.reasoning = `Position guard: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — exceeds ${tokenSector} sector limit of ${sectorLimit}%. Holding.`;
+        }
+      }
+
+      // === DIVERSIFICATION GUARD ===
+      const last3Trades = state.tradeHistory.slice(-3);
+      if (decision.action === "BUY" && last3Trades.length >= 3) {
+        const allSameToken = last3Trades.every(t => t.action === "BUY" && t.toToken === decision.toToken);
+        if (allSameToken) {
+          console.log(`   🔄 DIVERSITY GUARD: Bought ${decision.toToken} 3x in a row. Forcing HOLD to avoid concentration.`);
+          decision.action = "HOLD";
+          decision.reasoning = `Diversity guard: ${decision.toToken} bought 3 consecutive times. Cooling off.`;
+        }
+      }
+
+      // v5.3.3: Circuit breaker guard
+      if (["SELL", "REBALANCE"].includes(decision.action) && decision.fromToken && isTokenBlocked(decision.fromToken)) {
+        console.log(`   🚫 CIRCUIT BREAKER: Skipping ${decision.action} for ${decision.fromToken} — too many consecutive failures`);
+        decision.action = "HOLD";
+        decision.reasoning = `Circuit breaker: ${decision.fromToken} blocked after repeated failures. Cooling off.`;
+      }
+
+      // Execute if needed
+      if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
+        const tradeResult = await executeTrade(decision, marketData);
+
+        // v5.3.3: Track consecutive failures / clear on success
+        const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
+        if (!tradeResult.success) {
+          recordTradeFailure(tradeToken);
+        } else {
+          clearTradeFailures(tradeToken);
+          // v9.2: Deduct spent USDC from remaining pool for multi-trade
+          if (decision.action === "BUY") {
+            remainingUSDC -= decision.amountUSD;
+          }
+          anyTradeExecuted = true;
+        }
+
+        // v8.0: Track for institutional breaker
+        if (decision.action === "SELL" && tradeResult.success) {
+          const cb = state.costBasis[decision.fromToken];
+          const sellPrice = decision.amountUSD / (decision.tokenAmount || 1);
+          const avgCost = cb?.averageCostBasis || sellPrice;
+          const pnlEstimate = (sellPrice - avgCost) * (decision.tokenAmount || 0);
+          recordTradeResultForBreaker(true, pnlEstimate);
+        } else if (decision.action === "BUY" && tradeResult.success) {
+          // Buys are neutral for breaker — determined on sell
+        } else if (!tradeResult.success) {
+          recordTradeResultForBreaker(false, 0);
+        }
+
+        // v6.0: Set cooldown for traded token
+        const cooldownToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
+        const tokenPrice = currentPrices.get(cooldownToken) || 0;
+        cooldownManager.setCooldown(cooldownToken, decision.action === "HOLD" ? "HOLD" : decision.action as CooldownDecision, tokenPrice, marketData.indicators[cooldownToken]?.confluenceScore);
+
+      } else if (decision.action === "HOLD") {
+        // v6.0: Set HOLD cooldown for tokens to skip re-evaluation
+        if (decision.toToken && decision.toToken !== "USDC") {
+          const holdPrice = currentPrices.get(decision.toToken) || 0;
+          cooldownManager.setCooldown(decision.toToken, "HOLD", holdPrice, marketData.indicators[decision.toToken]?.confluenceScore);
+        }
+      }
+    } // end multi-trade loop
+
+    // Post-trade bookkeeping (runs once after all trades)
+    if (anyTradeExecuted) {
       analyzeStrategyPatterns();
-      // Update exploration state
       state.explorationState.lastTradeTimestamp = new Date().toISOString();
       state.explorationState.consecutiveHolds = 0;
       state.explorationState.totalExploitationTrades++;
       saveTradeHistory();
-
-    } else if (decision.action === "HOLD") {} else if (decision.action === "HOLD") {
-      // v6.0: Set HOLD cooldown for all tokens to skip re-evaluation
-      if (decision.toToken && decision.toToken !== "USDC") {
-        const holdPrice = currentPrices.get(decision.toToken) || 0;
-        cooldownManager.setCooldown(decision.toToken, "HOLD", holdPrice, marketData.indicators[decision.toToken]?.confluenceScore);
-      }
-      // Track consecutive holds for stagnation detection
+    } else {
+      // All decisions were HOLD
       state.explorationState.consecutiveHolds++;
     }
 
