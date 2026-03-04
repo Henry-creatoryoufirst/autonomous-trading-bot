@@ -190,6 +190,11 @@ export const CacheKeys = {
   MACRO_DATA: 'macro:fred',
   /** CryptoPanic news */
   NEWS_SENTIMENT: 'news:cryptopanic',
+  // v10.0: Market Intelligence Engine
+  /** CoinGecko global market data (BTC dominance, total mcap) */
+  COINGECKO_GLOBAL: 'coingecko:global',
+  /** Stablecoin supply tracking */
+  STABLECOIN_SUPPLY: 'stablecoin:supply',
 } as const;
 
 // Singleton instance for the whole application

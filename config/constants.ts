@@ -93,6 +93,11 @@ export const CACHE_TTL = {
   PRICE_HISTORY: 4 * 60 * 60 * 1000, // 4 hours
   /** Derivatives data (Binance funding/OI) */
   DERIVATIVES: 5 * 60 * 1000,        // 5 minutes
+  // v10.0: Market Intelligence Engine
+  /** CoinGecko /global endpoint — BTC dominance, total market cap */
+  COINGECKO_GLOBAL: 15 * 60 * 1000,       // 15 minutes
+  /** Stablecoin supply tracking (USDT + USDC market caps) */
+  STABLECOIN_SUPPLY: 30 * 60 * 1000,      // 30 minutes
 } as const;
 
 // ============================================================================
@@ -171,6 +176,44 @@ export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxSte
   atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR stop multiplier tuning
   atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR trail multiplier tuning
 };
+
+// ============================================================================
+// v10.0: MARKET INTELLIGENCE ENGINE — Signal Thresholds
+// ============================================================================
+
+/** BTC dominance change over 7 days to trigger altseason/dominance signals (percentage points) */
+export const BTC_DOMINANCE_CHANGE_THRESHOLD = 2.0;
+
+/** Smart money vs retail divergence threshold for high-conviction signals (percentage points) */
+export const SMART_RETAIL_DIVERGENCE_THRESHOLD = 20;
+
+/** Funding rate mean-reversion: std devs from mean to trigger signal */
+export const FUNDING_RATE_STD_DEV_THRESHOLD = 2.0;
+
+/** Funding rate history length (8h periods: 21 entries ≈ 7 days) */
+export const FUNDING_RATE_HISTORY_LENGTH = 21;
+
+/** TVL-Price divergence threshold (%) */
+export const TVL_PRICE_DIVERGENCE_THRESHOLD = 5.0;
+
+/** Stablecoin supply change threshold for bullish/bearish signal (% over 7 days) */
+export const STABLECOIN_SUPPLY_CHANGE_THRESHOLD = 2.0;
+
+/** Altseason sector allocation adjustments (added to base targets) */
+export const ALTSEASON_SECTOR_BOOST = {
+  AI_TOKENS: 0.05,
+  MEME_COINS: 0.05,
+  BLUE_CHIP: -0.10,
+  DEFI: 0.00,
+} as const;
+
+/** BTC dominance sector allocation adjustments (added to base targets) */
+export const BTC_DOMINANCE_SECTOR_BOOST = {
+  BLUE_CHIP: 0.10,
+  AI_TOKENS: -0.03,
+  MEME_COINS: -0.05,
+  DEFI: -0.02,
+} as const;
 
 // ============================================================================
 // PROFIT HARVESTING DEFAULTS

@@ -180,6 +180,15 @@ import {
   DAILY_PAYOUT_MIN_TRANSFER_USD,
   DAILY_PAYOUT_MIN_ETH_RESERVE,
   DAILY_PAYOUT_USDC_BUFFER,
+  // v10.0: Market Intelligence Engine
+  BTC_DOMINANCE_CHANGE_THRESHOLD,
+  SMART_RETAIL_DIVERGENCE_THRESHOLD,
+  FUNDING_RATE_STD_DEV_THRESHOLD,
+  FUNDING_RATE_HISTORY_LENGTH,
+  TVL_PRICE_DIVERGENCE_THRESHOLD,
+  STABLECOIN_SUPPLY_CHANGE_THRESHOLD,
+  ALTSEASON_SECTOR_BOOST,
+  BTC_DOMINANCE_SECTOR_BOOST,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -1727,6 +1736,10 @@ let state: AgentState = {
   totalDeposited: 1200,
   lastKnownUSDCBalance: 0,
   depositHistory: [{ timestamp: '2026-03-03T00:00:00Z', amountUSD: 1200, newTotal: 1200 }],
+  // v10.0: Market Intelligence Engine — persisted historical data
+  fundingRateHistory: { btc: [] as number[], eth: [] as number[] },
+  btcDominanceHistory: { values: [] as { timestamp: string; dominance: number }[] },
+  stablecoinSupplyHistory: { values: [] as { timestamp: string; totalSupply: number }[] },
 };
 
 // ============================================================================
@@ -1789,6 +1802,19 @@ function loadTradeHistory() {
         if (parsed.breakerState) {
           breakerState = { ...DEFAULT_BREAKER_STATE, ...parsed.breakerState };
           console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses${breakerState.lastBreakerTriggered ? `, last triggered ${breakerState.lastBreakerTriggered}` : ''}`);
+        }
+        // v10.0: Restore Market Intelligence Engine historical data
+        if (parsed.fundingRateHistory) {
+          fundingRateHistory = parsed.fundingRateHistory;
+          state.fundingRateHistory = parsed.fundingRateHistory;
+        }
+        if (parsed.btcDominanceHistory) {
+          btcDominanceHistory = parsed.btcDominanceHistory;
+          state.btcDominanceHistory = parsed.btcDominanceHistory;
+        }
+        if (parsed.stablecoinSupplyHistory) {
+          stablecoinSupplyHistory = parsed.stablecoinSupplyHistory;
+          state.stablecoinSupplyHistory = parsed.stablecoinSupplyHistory;
         }
         // v8.2: Restore deposit tracking
         state.totalDeposited = parsed.totalDeposited || 0;
@@ -1874,6 +1900,10 @@ function saveTradeHistory() {
       totalDeposited: state.totalDeposited,
       lastKnownUSDCBalance: state.lastKnownUSDCBalance,
       depositHistory: state.depositHistory.slice(-50),
+      // v10.0: Market Intelligence Engine historical data
+      fundingRateHistory,
+      btcDominanceHistory: { values: btcDominanceHistory.values.slice(-504) },
+      stablecoinSupplyHistory: { values: stablecoinSupplyHistory.values.slice(-504) },
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -2500,6 +2530,59 @@ interface MacroData {
 
 type MarketRegime = "TRENDING_UP" | "TRENDING_DOWN" | "RANGING" | "VOLATILE" | "UNKNOWN";
 
+// ============================================================================
+// v10.0: MARKET INTELLIGENCE ENGINE — New Data Types
+// ============================================================================
+
+type AltseasonSignal = "ALTSEASON_ROTATION" | "BTC_DOMINANCE_FLIGHT" | "NEUTRAL";
+
+interface GlobalMarketData {
+  btcDominance: number;
+  ethDominance: number;
+  totalMarketCap: number;
+  totalVolume24h: number;
+  defiMarketCap: number | null;
+  defiVolume24h: number | null;
+  btcDominanceChange7d: number;
+  altseasonSignal: AltseasonSignal;
+  lastUpdated: string;
+}
+
+interface SmartRetailDivergence {
+  btcDivergence: number | null;
+  ethDivergence: number | null;
+  btcSignal: "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL";
+  ethSignal: "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL";
+}
+
+interface FundingRateMeanReversion {
+  btcMean: number;
+  btcStdDev: number;
+  btcZScore: number;
+  btcSignal: "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL";
+  ethMean: number;
+  ethStdDev: number;
+  ethZScore: number;
+  ethSignal: "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL";
+}
+
+interface TVLPriceDivergence {
+  divergences: Record<string, {
+    tvlChange: number;
+    priceChange: number;
+    signal: "UNDERVALUED" | "OVERVALUED" | "ALIGNED";
+  }>;
+}
+
+interface StablecoinSupplyData {
+  usdtMarketCap: number;
+  usdcMarketCap: number;
+  totalStablecoinSupply: number;
+  supplyChange7d: number;
+  signal: "CAPITAL_INFLOW" | "CAPITAL_OUTFLOW" | "STABLE";
+  lastUpdated: string;
+}
+
 interface MarketData {
   tokens: {
     symbol: string; name: string; price: number;
@@ -2508,12 +2591,18 @@ interface MarketData {
   }[];
   fearGreed: { value: number; classification: string };
   trendingTokens: string[];
-  indicators: Record<string, TechnicalIndicators>;  // Technical indicators per token
-  defiLlama: DefiLlamaData | null;                   // DeFi intelligence layer
-  derivatives: DerivativesData | null;                // Derivatives/funding rate layer
-  newsSentiment: NewsSentimentData | null;            // Phase 2: News sentiment layer
-  macroData: MacroData | null;                        // Phase 2: Macro economic data layer
-  marketRegime: MarketRegime;                         // Overall market regime assessment
+  indicators: Record<string, TechnicalIndicators>;
+  defiLlama: DefiLlamaData | null;
+  derivatives: DerivativesData | null;
+  newsSentiment: NewsSentimentData | null;
+  macroData: MacroData | null;
+  marketRegime: MarketRegime;
+  // v10.0: Market Intelligence Engine
+  globalMarket: GlobalMarketData | null;
+  smartRetailDivergence: SmartRetailDivergence | null;
+  fundingMeanReversion: FundingRateMeanReversion | null;
+  tvlPriceDivergence: TVLPriceDivergence | null;
+  stablecoinSupply: StablecoinSupplyData | null;
 }
 
 /**
@@ -2715,6 +2804,206 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
 
 // Cache for derivatives OI comparison + price change tracking for divergence detection
 const derivativesCache = { btcOI: 0, ethOI: 0, btcPriceChange: 0, ethPriceChange: 0 };
+
+// v10.0: Historical tracking caches for mean-reversion signals
+let fundingRateHistory: { btc: number[]; eth: number[] } = { btc: [], eth: [] };
+let btcDominanceHistory: { values: { timestamp: string; dominance: number }[] } = { values: [] };
+let stablecoinSupplyHistory: { values: { timestamp: string; totalSupply: number }[] } = { values: [] };
+let currentAltseasonSignal: AltseasonSignal = "NEUTRAL";
+
+// ============================================================================
+// v10.0: MARKET INTELLIGENCE ENGINE — Fetch & Compute Functions
+// ============================================================================
+
+/**
+ * v10.0: Fetch CoinGecko global market data — BTC dominance, total market cap, volumes
+ */
+async function fetchCoinGeckoGlobal(): Promise<GlobalMarketData | null> {
+  try {
+    const [globalRes, defiRes] = await Promise.allSettled([
+      axios.get("https://api.coingecko.com/api/v3/global", { timeout: 10000 }),
+      axios.get("https://api.coingecko.com/api/v3/global/decentralized_finance_defi", { timeout: 10000 }),
+    ]);
+
+    let btcDominance = 0, ethDominance = 0, totalMarketCap = 0, totalVolume24h = 0;
+    if (globalRes.status === "fulfilled" && globalRes.value.data?.data) {
+      const g = globalRes.value.data.data;
+      btcDominance = g.market_cap_percentage?.btc || 0;
+      ethDominance = g.market_cap_percentage?.eth || 0;
+      totalMarketCap = g.total_market_cap?.usd || 0;
+      totalVolume24h = g.total_volume?.usd || 0;
+    }
+
+    let defiMarketCap: number | null = null, defiVolume24h: number | null = null;
+    if (defiRes.status === "fulfilled" && defiRes.value.data?.data) {
+      const d = defiRes.value.data.data;
+      defiMarketCap = parseFloat(d.defi_market_cap) || null;
+      defiVolume24h = parseFloat(d.trading_volume_24h) || null;
+    }
+
+    const now = new Date().toISOString();
+    btcDominanceHistory.values.push({ timestamp: now, dominance: btcDominance });
+    if (btcDominanceHistory.values.length > 504) btcDominanceHistory.values = btcDominanceHistory.values.slice(-504);
+
+    let btcDominanceChange7d = 0;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const oldEntry = btcDominanceHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
+    if (oldEntry) btcDominanceChange7d = btcDominance - oldEntry.dominance;
+
+    let altseasonSignal: AltseasonSignal = "NEUTRAL";
+    if (btcDominanceChange7d < -BTC_DOMINANCE_CHANGE_THRESHOLD) altseasonSignal = "ALTSEASON_ROTATION";
+    else if (btcDominanceChange7d > BTC_DOMINANCE_CHANGE_THRESHOLD) altseasonSignal = "BTC_DOMINANCE_FLIGHT";
+
+    console.log(`  🌐 Global: BTC.D ${btcDominance.toFixed(1)}% (${btcDominanceChange7d >= 0 ? "+" : ""}${btcDominanceChange7d.toFixed(1)}pp 7d) → ${altseasonSignal}`);
+    console.log(`     Total mcap: $${(totalMarketCap / 1e12).toFixed(2)}T | Volume: $${(totalVolume24h / 1e9).toFixed(0)}B`);
+
+    return { btcDominance, ethDominance, totalMarketCap, totalVolume24h, defiMarketCap, defiVolume24h, btcDominanceChange7d, altseasonSignal, lastUpdated: now };
+  } catch (error: any) {
+    console.warn(`  ⚠️ CoinGecko Global fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    return null;
+  }
+}
+
+/**
+ * v10.0: Compute Smart Money vs Retail Divergence Score from existing Binance data
+ */
+function computeSmartRetailDivergence(derivatives: DerivativesData | null): SmartRetailDivergence | null {
+  if (!derivatives) return null;
+  const toLongPct = (ratio: number | null): number | null => ratio === null ? null : (ratio / (1 + ratio)) * 100;
+
+  const btcRetailLong = toLongPct(derivatives.btcLongShortRatio);
+  const btcSmartLong = toLongPct(derivatives.btcTopTraderLSRatio);
+  const ethRetailLong = toLongPct(derivatives.ethLongShortRatio);
+  const ethSmartLong = toLongPct(derivatives.ethTopTraderLSRatio);
+
+  const btcDiv = (btcSmartLong !== null && btcRetailLong !== null) ? btcSmartLong - btcRetailLong : null;
+  const ethDiv = (ethSmartLong !== null && ethRetailLong !== null) ? ethSmartLong - ethRetailLong : null;
+
+  const classify = (div: number | null): "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL" => {
+    if (div === null) return "NEUTRAL";
+    if (div > SMART_RETAIL_DIVERGENCE_THRESHOLD) return "STRONG_BUY";
+    if (div < -SMART_RETAIL_DIVERGENCE_THRESHOLD) return "STRONG_SELL";
+    return "NEUTRAL";
+  };
+
+  return { btcDivergence: btcDiv, ethDivergence: ethDiv, btcSignal: classify(btcDiv), ethSignal: classify(ethDiv) };
+}
+
+/**
+ * v10.0: Funding Rate Mean-Reversion Signal — tracks 7 days, detects z-score extremes
+ */
+function computeFundingMeanReversion(derivatives: DerivativesData | null): FundingRateMeanReversion | null {
+  if (!derivatives) return null;
+
+  fundingRateHistory.btc.push(derivatives.btcFundingRate);
+  fundingRateHistory.eth.push(derivatives.ethFundingRate);
+  if (fundingRateHistory.btc.length > FUNDING_RATE_HISTORY_LENGTH) fundingRateHistory.btc = fundingRateHistory.btc.slice(-FUNDING_RATE_HISTORY_LENGTH);
+  if (fundingRateHistory.eth.length > FUNDING_RATE_HISTORY_LENGTH) fundingRateHistory.eth = fundingRateHistory.eth.slice(-FUNDING_RATE_HISTORY_LENGTH);
+
+  if (fundingRateHistory.btc.length < 5) return null;
+
+  const stats = (arr: number[]) => {
+    const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+    const variance = arr.reduce((s, x) => s + Math.pow(x - mean, 2), 0) / arr.length;
+    return { mean, stdDev: Math.sqrt(variance) };
+  };
+
+  const btc = stats(fundingRateHistory.btc);
+  const eth = stats(fundingRateHistory.eth);
+  const btcZ = btc.stdDev > 0 ? (derivatives.btcFundingRate - btc.mean) / btc.stdDev : 0;
+  const ethZ = eth.stdDev > 0 ? (derivatives.ethFundingRate - eth.mean) / eth.stdDev : 0;
+
+  const classifyZ = (z: number): "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL" => {
+    if (z > FUNDING_RATE_STD_DEV_THRESHOLD) return "CROWDED_LONGS_REVERSAL";
+    if (z < -FUNDING_RATE_STD_DEV_THRESHOLD) return "CROWDED_SHORTS_BOUNCE";
+    return "NEUTRAL";
+  };
+
+  return {
+    btcMean: btc.mean, btcStdDev: btc.stdDev, btcZScore: btcZ, btcSignal: classifyZ(btcZ),
+    ethMean: eth.mean, ethStdDev: eth.stdDev, ethZScore: ethZ, ethSignal: classifyZ(ethZ),
+  };
+}
+
+/**
+ * v10.0: TVL-Price Divergence per Token — uses existing DefiLlama + CoinGecko data
+ */
+function computeTVLPriceDivergence(defi: DefiLlamaData | null, tokens: MarketData["tokens"]): TVLPriceDivergence | null {
+  if (!defi || !defi.protocolTVLByToken || Object.keys(defi.protocolTVLByToken).length === 0) return null;
+
+  const divergences: TVLPriceDivergence["divergences"] = {};
+  for (const [symbol, tvlData] of Object.entries(defi.protocolTVLByToken)) {
+    const tokenData = tokens.find(t => t.symbol === symbol);
+    if (!tokenData) continue;
+    const tvlChange = tvlData.change24h;
+    const priceChange = tokenData.priceChange24h;
+    let signal: "UNDERVALUED" | "OVERVALUED" | "ALIGNED" = "ALIGNED";
+    if (tvlChange > TVL_PRICE_DIVERGENCE_THRESHOLD && priceChange < 0) signal = "UNDERVALUED";
+    else if (tvlChange < -TVL_PRICE_DIVERGENCE_THRESHOLD && priceChange > 0) signal = "OVERVALUED";
+    divergences[symbol] = { tvlChange, priceChange, signal };
+  }
+  return { divergences };
+}
+
+/**
+ * v10.0: Stablecoin Supply Tracking — USDT + USDC market cap as capital flow indicator
+ */
+async function fetchStablecoinSupply(): Promise<StablecoinSupplyData | null> {
+  try {
+    const res = await axios.get(
+      "https://api.coingecko.com/api/v3/simple/price?ids=tether,usd-coin&vs_currencies=usd&include_market_cap=true",
+      { timeout: 10000 }
+    );
+    const usdtMarketCap = res.data?.tether?.usd_market_cap || 0;
+    const usdcMarketCap = res.data?.["usd-coin"]?.usd_market_cap || 0;
+    const totalSupply = usdtMarketCap + usdcMarketCap;
+    const now = new Date().toISOString();
+
+    stablecoinSupplyHistory.values.push({ timestamp: now, totalSupply });
+    if (stablecoinSupplyHistory.values.length > 504) stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.slice(-504);
+
+    let supplyChange7d = 0;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const oldEntry = stablecoinSupplyHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
+    if (oldEntry && oldEntry.totalSupply > 0) supplyChange7d = ((totalSupply - oldEntry.totalSupply) / oldEntry.totalSupply) * 100;
+
+    let signal: StablecoinSupplyData["signal"] = "STABLE";
+    if (supplyChange7d > STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = "CAPITAL_INFLOW";
+    else if (supplyChange7d < -STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = "CAPITAL_OUTFLOW";
+
+    console.log(`  💵 Stablecoin supply: $${(totalSupply / 1e9).toFixed(1)}B (${supplyChange7d >= 0 ? "+" : ""}${supplyChange7d.toFixed(2)}% 7d) → ${signal}`);
+    return { usdtMarketCap, usdcMarketCap, totalStablecoinSupply: totalSupply, supplyChange7d, signal, lastUpdated: now };
+  } catch (error: any) {
+    console.warn(`  ⚠️ Stablecoin supply fetch failed: ${error?.message?.substring(0, 100) || error}`);
+    return null;
+  }
+}
+
+/**
+ * v10.0: Dynamic sector targets based on altseason/dominance signal
+ */
+function getAdjustedSectorTargets(signal: AltseasonSignal): Record<string, number> {
+  const adjusted: Record<string, number> = {};
+  for (const [key, sector] of Object.entries(SECTORS)) {
+    adjusted[key] = sector.targetAllocation;
+  }
+  if (signal === "ALTSEASON_ROTATION") {
+    adjusted.AI_TOKENS = Math.min(0.30, (adjusted.AI_TOKENS || 0) + ALTSEASON_SECTOR_BOOST.AI_TOKENS);
+    adjusted.MEME_COINS = Math.min(0.30, (adjusted.MEME_COINS || 0) + ALTSEASON_SECTOR_BOOST.MEME_COINS);
+    adjusted.BLUE_CHIP = Math.max(0.25, (adjusted.BLUE_CHIP || 0) + ALTSEASON_SECTOR_BOOST.BLUE_CHIP);
+    adjusted.DEFI = (adjusted.DEFI || 0) + ALTSEASON_SECTOR_BOOST.DEFI;
+  } else if (signal === "BTC_DOMINANCE_FLIGHT") {
+    adjusted.BLUE_CHIP = Math.min(0.55, (adjusted.BLUE_CHIP || 0) + BTC_DOMINANCE_SECTOR_BOOST.BLUE_CHIP);
+    adjusted.AI_TOKENS = Math.max(0.15, (adjusted.AI_TOKENS || 0) + BTC_DOMINANCE_SECTOR_BOOST.AI_TOKENS);
+    adjusted.MEME_COINS = Math.max(0.10, (adjusted.MEME_COINS || 0) + BTC_DOMINANCE_SECTOR_BOOST.MEME_COINS);
+    adjusted.DEFI = Math.max(0.15, (adjusted.DEFI || 0) + BTC_DOMINANCE_SECTOR_BOOST.DEFI);
+  }
+  const sum = Object.values(adjusted).reduce((a, b) => a + b, 0);
+  if (sum > 0 && Math.abs(sum - 1.0) > 0.001) {
+    for (const key of Object.keys(adjusted)) adjusted[key] = adjusted[key] / sum;
+  }
+  return adjusted;
+}
 
 // Cache for CoinGecko last-known prices — prevents $0 portfolio when rate limited
 let lastKnownPrices: Record<string, { price: number; change24h: number; change7d: number; volume: number; marketCap: number; name: string; sector: string }> = {};
@@ -3912,6 +4201,11 @@ function formatIntelligenceForPrompt(
   regime: MarketRegime,
   news: NewsSentimentData | null,
   macro: MacroData | null,
+  globalMarket: GlobalMarketData | null,
+  smartRetailDiv: SmartRetailDivergence | null,
+  fundingMR: FundingRateMeanReversion | null,
+  tvlPriceDiv: TVLPriceDivergence | null,
+  stablecoinData: StablecoinSupplyData | null,
 ): string {
   const lines: string[] = [];
 
@@ -4101,6 +4395,93 @@ function formatIntelligenceForPrompt(
     lines.push("");
   }
 
+  // ── v10.0: Global Market Intelligence ──
+  if (globalMarket) {
+    lines.push(`═══ GLOBAL MARKET INTELLIGENCE ═══`);
+    lines.push(`BTC Dominance: ${globalMarket.btcDominance.toFixed(1)}% | ETH Dominance: ${globalMarket.ethDominance.toFixed(1)}%`);
+    lines.push(`Total Crypto Market Cap: $${(globalMarket.totalMarketCap / 1e9).toFixed(1)}B | 24h Volume: $${(globalMarket.totalVolume24h / 1e9).toFixed(1)}B`);
+    if (globalMarket.defiMarketCap) lines.push(`DeFi Market Cap: $${(globalMarket.defiMarketCap / 1e9).toFixed(1)}B`);
+    lines.push(`BTC Dominance 7d Change: ${globalMarket.btcDominanceChange7d >= 0 ? '+' : ''}${globalMarket.btcDominanceChange7d.toFixed(2)}pp`);
+    switch (globalMarket.altseasonSignal) {
+      case 'ALTSEASON_ROTATION':
+        lines.push(`🔥 ALTSEASON SIGNAL: BTC dominance dropping >2pp — capital rotating into alts. BOOST AI/Meme allocation, REDUCE Blue Chip.`);
+        break;
+      case 'BTC_DOMINANCE_FLIGHT':
+        lines.push(`⚠️ BTC DOMINANCE FLIGHT: Capital fleeing alts back to BTC. BOOST Blue Chip allocation, REDUCE speculative alts.`);
+        break;
+      default:
+        lines.push(`→ Dominance stable — no strong altseason or BTC flight signal`);
+    }
+    lines.push('');
+  }
+
+  // ── v10.0: Smart Money vs Retail Divergence ──
+  if (smartRetailDiv) {
+    lines.push(`═══ SMART MONEY vs RETAIL DIVERGENCE ═══`);
+    if (smartRetailDiv.btcDivergence !== null) {
+      lines.push(`BTC: Smart-Retail divergence = ${smartRetailDiv.btcDivergence >= 0 ? '+' : ''}${smartRetailDiv.btcDivergence.toFixed(1)}pp → ${smartRetailDiv.btcSignal}`);
+    }
+    if (smartRetailDiv.ethDivergence !== null) {
+      lines.push(`ETH: Smart-Retail divergence = ${smartRetailDiv.ethDivergence >= 0 ? '+' : ''}${smartRetailDiv.ethDivergence.toFixed(1)}pp → ${smartRetailDiv.ethSignal}`);
+    }
+    if (smartRetailDiv.btcSignal === 'STRONG_BUY' || smartRetailDiv.ethSignal === 'STRONG_BUY') {
+      lines.push(`🟢 Smart money is MORE long than retail — institutions see opportunity. High conviction BUY signal.`);
+    } else if (smartRetailDiv.btcSignal === 'STRONG_SELL' || smartRetailDiv.ethSignal === 'STRONG_SELL') {
+      lines.push(`🔴 Retail is MORE long than smart money — institutions are hedging. High conviction SELL/reduce signal.`);
+    } else {
+      lines.push(`→ Smart money and retail broadly aligned — no divergence edge`);
+    }
+    lines.push('');
+  }
+
+  // ── v10.0: Funding Rate Mean-Reversion ──
+  if (fundingMR) {
+    lines.push(`═══ FUNDING RATE MEAN-REVERSION ═══`);
+    lines.push(`BTC funding: mean=${(fundingMR.btcMean * 100).toFixed(4)}% | z-score=${fundingMR.btcZScore.toFixed(2)} → ${fundingMR.btcSignal}`);
+    lines.push(`ETH funding: mean=${(fundingMR.ethMean * 100).toFixed(4)}% | z-score=${fundingMR.ethZScore.toFixed(2)} → ${fundingMR.ethSignal}`);
+    if (fundingMR.btcSignal === 'CROWDED_LONGS_REVERSAL' || fundingMR.ethSignal === 'CROWDED_LONGS_REVERSAL') {
+      lines.push(`⚠️ CROWDED LONGS: Funding rates >2σ above mean — leveraged longs are overcrowded. Correction risk elevated. Consider taking profit or hedging.`);
+    } else if (fundingMR.btcSignal === 'CROWDED_SHORTS_BOUNCE' || fundingMR.ethSignal === 'CROWDED_SHORTS_BOUNCE') {
+      lines.push(`🟢 CROWDED SHORTS: Funding rates >2σ below mean — leveraged shorts overcrowded. Short squeeze likely. BUY opportunity.`);
+    } else {
+      lines.push(`→ Funding rates within normal range — no mean-reversion signal`);
+    }
+    lines.push('');
+  }
+
+  // ── v10.0: TVL-Price Divergence ──
+  if (tvlPriceDiv && Object.keys(tvlPriceDiv.divergences).length > 0) {
+    lines.push(`═══ TVL-PRICE DIVERGENCE ═══`);
+    const undervalued: string[] = [];
+    const overvalued: string[] = [];
+    for (const [token, d] of Object.entries(tvlPriceDiv.divergences)) {
+      if (d.signal === 'UNDERVALUED') undervalued.push(`${token} (TVL ${d.tvlChange >= 0 ? '+' : ''}${d.tvlChange.toFixed(1)}% / Price ${d.priceChange >= 0 ? '+' : ''}${d.priceChange.toFixed(1)}%)`);
+      if (d.signal === 'OVERVALUED') overvalued.push(`${token} (TVL ${d.tvlChange >= 0 ? '+' : ''}${d.tvlChange.toFixed(1)}% / Price ${d.priceChange >= 0 ? '+' : ''}${d.priceChange.toFixed(1)}%)`);
+    }
+    if (undervalued.length > 0) lines.push(`🟢 UNDERVALUED (TVL up, price flat): ${undervalued.join(', ')}`);
+    if (overvalued.length > 0) lines.push(`🔴 OVERVALUED (TVL down, price up): ${overvalued.join(', ')}`);
+    if (undervalued.length === 0 && overvalued.length === 0) lines.push(`→ TVL and price broadly aligned — no divergence detected`);
+    lines.push('');
+  }
+
+  // ── v10.0: Stablecoin Supply / Capital Flow ──
+  if (stablecoinData) {
+    lines.push(`═══ STABLECOIN SUPPLY / CAPITAL FLOW ═══`);
+    lines.push(`Total Stablecoin Supply: $${(stablecoinData.totalStablecoinSupply / 1e9).toFixed(1)}B (USDT: $${(stablecoinData.usdtMarketCap / 1e9).toFixed(1)}B | USDC: $${(stablecoinData.usdcMarketCap / 1e9).toFixed(1)}B)`);
+    lines.push(`7-Day Supply Change: ${stablecoinData.supplyChange7d >= 0 ? '+' : ''}${stablecoinData.supplyChange7d.toFixed(2)}%`);
+    switch (stablecoinData.signal) {
+      case 'CAPITAL_INFLOW':
+        lines.push(`🟢 CAPITAL INFLOW: Stablecoin supply growing >2% — fresh capital entering crypto. Bullish for prices.`);
+        break;
+      case 'CAPITAL_OUTFLOW':
+        lines.push(`🔴 CAPITAL OUTFLOW: Stablecoin supply shrinking >2% — capital leaving crypto. Bearish headwind.`);
+        break;
+      default:
+        lines.push(`→ Stablecoin supply stable — no strong capital flow signal`);
+    }
+    lines.push('');
+  }
+
   lines.push(`═══ MARKET REGIME ═══`);
   lines.push(`Current Regime: ${regime}`);
   switch (regime) {
@@ -4133,11 +4514,14 @@ async function getMarketData(): Promise<MarketData> {
         cacheManager.getOrFetch(CacheKeys.DEFI_LLAMA_TVL, CACHE_TTL.DEFI_LLAMA, fetchDefiLlamaData),
         cacheManager.getOrFetch(CacheKeys.BINANCE_FUNDING, CACHE_TTL.DERIVATIVES, fetchDerivativesData),
       ]);
-      const [news, macro] = await Promise.allSettled([
+      const [news, macro, globalMkt, stablecoin] = await Promise.allSettled([
         cacheManager.getOrFetch(CacheKeys.NEWS_SENTIMENT, CACHE_TTL.NEWS, fetchNewsSentiment),
         cacheManager.getOrFetch(CacheKeys.MACRO_DATA, CACHE_TTL.MACRO, fetchMacroData),
+        // v10.0: Market Intelligence Engine
+        cacheManager.getOrFetch(CacheKeys.COINGECKO_GLOBAL, CACHE_TTL.COINGECKO_GLOBAL, fetchCoinGeckoGlobal),
+        cacheManager.getOrFetch(CacheKeys.STABLECOIN_SUPPLY, CACHE_TTL.STABLECOIN_SUPPLY, fetchStablecoinSupply),
       ]);
-      return { fng, defi, deriv, news, macro };
+      return { fng, defi, deriv, news, macro, globalMkt, stablecoin };
     })();
 
     // v6.0: CoinGecko with smart cache + retry — critical data source for portfolio pricing
@@ -4188,7 +4572,7 @@ async function getMarketData(): Promise<MarketData> {
     } // end of cache miss else block
 
     // Await intelligence data (likely already resolved during CoinGecko retries)
-    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult } = await intelligencePromise;
+    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult, globalMkt: globalMktResult, stablecoin: stablecoinResult } = await intelligencePromise;
 
     const fearGreed = fngResult.status === "fulfilled"
       ? { value: parseInt(fngResult.value.data.data[0].value), classification: fngResult.value.data.data[0].value_classification }
@@ -4351,6 +4735,23 @@ async function getMarketData(): Promise<MarketData> {
     console.log(`  🌐 Market Regime: ${marketRegime}`);
 
     // v9.2: Signal health tracker — monitor which data sources are live vs degraded
+    // v10.0: Extract new intelligence layers
+    const globalMarket = globalMktResult.status === "fulfilled" ? globalMktResult.value : null;
+    const stablecoinSupply = stablecoinResult.status === "fulfilled" ? stablecoinResult.value : null;
+
+    // v10.0: Compute derived signals from existing data (no new API calls)
+    const smartRetailDivergence = computeSmartRetailDivergence(derivatives);
+    const fundingMeanReversion = computeFundingMeanReversion(derivatives);
+    const tvlPriceDivergence = computeTVLPriceDivergence(defiLlama, tokens);
+
+    // v10.0: Update altseason signal for dynamic sector allocation
+    currentAltseasonSignal = globalMarket?.altseasonSignal || "NEUTRAL";
+
+    // v10.0: Sync history to state for persistence
+    state.fundingRateHistory = fundingRateHistory;
+    state.btcDominanceHistory = btcDominanceHistory;
+    state.stablecoinSupplyHistory = stablecoinSupplyHistory;
+
     lastSignalHealth = {
       coingecko: marketResult.status === 'fulfilled' ? 'LIVE' : Object.keys(lastKnownPrices).length > 0 ? 'STALE' : 'DOWN',
       fearGreed: fngResult.status === 'fulfilled' ? 'LIVE' : 'DOWN',
@@ -4359,19 +4760,23 @@ async function getMarketData(): Promise<MarketData> {
       news: newsResult.status === 'fulfilled' && newsResult.value ? 'LIVE' : 'DOWN',
       macro: macroResult.status === 'fulfilled' && macroResult.value ? 'LIVE' : 'DOWN',
       momentum: lastMomentumSignal.dataAvailable ? 'LIVE' : 'DOWN',
+      // v10.0: New intelligence sources
+      globalMarket: globalMktResult.status === 'fulfilled' && globalMktResult.value ? 'LIVE' : 'DOWN',
+      stablecoinSupply: stablecoinResult.status === 'fulfilled' && stablecoinResult.value ? 'LIVE' : 'DOWN',
+      fundingHistory: fundingRateHistory.btc.length >= 5 ? 'LIVE' : 'BUILDING',
       lastUpdated: new Date().toISOString(),
     };
     const liveCount = Object.values(lastSignalHealth).filter(v => v === 'LIVE').length;
-    const totalSources = 7;
+    const totalSources = 10;
     console.log(`  📡 Signal Health: ${liveCount}/${totalSources} sources live`);
 
-    return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, newsSentiment, macroData, marketRegime };
+    return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, newsSentiment, macroData, marketRegime, globalMarket, smartRetailDivergence, fundingMeanReversion, tvlPriceDivergence, stablecoinSupply };
   } catch (error: any) {
     const msg = error?.response?.status
       ? `HTTP ${error.response.status}: ${error.message}`
       : error?.message || String(error);
     console.error("Failed to fetch market data:", msg);
-    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {}, defiLlama: null, derivatives: null, newsSentiment: null, macroData: null, marketRegime: "UNKNOWN" };
+    return { tokens: [], fearGreed: { value: 50, classification: "Neutral" }, trendingTokens: [], indicators: {}, defiLlama: null, derivatives: null, newsSentiment: null, macroData: null, marketRegime: "UNKNOWN", globalMarket: null, smartRetailDivergence: null, fundingMeanReversion: null, tvlPriceDivergence: null, stablecoinSupply: null };
   }
 }
 
@@ -5292,6 +5697,8 @@ function calculateSectorAllocations(
   balances: { symbol: string; balance: number; usdValue: number; sector?: string }[],
   totalValue: number
 ): SectorAllocation[] {
+  // v10.0: Dynamic sector targets based on altseason/BTC dominance signals
+  const adjustedTargets = getAdjustedSectorTargets(currentAltseasonSignal);
   const allocations: SectorAllocation[] = [];
   for (const [sectorKey, sectorInfo] of Object.entries(SECTORS)) {
     const sectorTokens = balances.filter(b =>
@@ -5299,7 +5706,9 @@ function calculateSectorAllocations(
     );
     const sectorValue = sectorTokens.reduce((sum, t) => sum + t.usdValue, 0);
     const currentPercent = totalValue > 0 ? (sectorValue / totalValue) * 100 : 0;
-    const targetPercent = sectorInfo.targetAllocation * 100;
+    // v10.0: Use dynamically adjusted target if available, else static
+    const dynamicTarget = adjustedTargets[sectorKey as keyof typeof adjustedTargets];
+    const targetPercent = (dynamicTarget !== undefined ? dynamicTarget : sectorInfo.targetAllocation) * 100;
     const drift = currentPercent - targetPercent;
     allocations.push({
       name: sectorInfo.name, targetPercent, currentPercent,
@@ -5400,7 +5809,7 @@ async function makeTradeDecision(
     : "  No trades yet";
 
   // V4.0: Build intelligence layers
-  const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData);
+  const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData, marketData.globalMarket, marketData.smartRetailDivergence, marketData.fundingMeanReversion, marketData.tvlPriceDivergence, marketData.stablecoinSupply);
 
   // V4.0: Performance stats for self-awareness
   const perfStats = calculateTradePerformance();
@@ -5408,8 +5817,8 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v5.1.1 on Base network.
-You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + OI + long/short ratios + top trader positioning), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), and market regime analysis. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to SMART MONEY positioning divergence from retail and OI-Price divergence signals — these are your highest-conviction indicators.
+  const systemPrompt = `You are Henry's autonomous crypto trading agent v10.0 "Market Intelligence Engine" on Base network.
+You are an 11-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + OI + long/short ratios + top trader positioning), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), market regime analysis, BTC dominance & altseason rotation, smart money vs retail divergence, funding rate mean-reversion, TVL-price divergence, and stablecoin capital flow. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to SMART MONEY positioning divergence from retail, OI-Price divergence, altseason rotation signals, and funding rate mean-reversion — these are your highest-conviction indicators.
 
 ═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}
@@ -5456,7 +5865,7 @@ ${discoveryIntel}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 50%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
-═══ STRATEGY FRAMEWORK v5.1.1 ═══
+═══ STRATEGY FRAMEWORK v10.0 ═══
 
 ENTRY RULES (when to BUY):
 1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
@@ -5472,6 +5881,12 @@ ENTRY RULES (when to BUY):
 11. CONTRARIAN NEWS: If news sentiment is extremely BEARISH (score <-50) but technical indicators show oversold, this is a high-conviction contrarian buy — fear is priced in
 12. MOMENTUM DEPLOYMENT: When momentum bias is AGGRESSIVE (BTC/ETH moving +4%+ in 24h with F&G >50), deploy USDC more readily. Don't sit in 70%+ USDC when the market is ripping — a rising tide lifts all boats. Lower confluence requirements by 1 tier in aggressive momentum
 13. FEAR & GREED SIZING: When F&G >70 (Greed), use larger position sizes for buys — market conviction is high. When F&G <25 (Extreme Fear), use smaller sizes but more entries — accumulate across dips
+14. ALTSEASON ROTATION: When ALTSEASON_ROTATION signal fires (BTC.D dropping >2pp over 7d), aggressively buy AI tokens and meme coins — capital is rotating from BTC into alts. This is the best environment for small-cap gains
+15. BTC DOMINANCE FLIGHT: When BTC_DOMINANCE_FLIGHT fires (BTC.D rising >2pp), favor blue chip positions (ETH, major L2s) and reduce speculative alt exposure. Capital is concentrating into BTC
+16. SMART-RETAIL DIVERGENCE: When smart money is MORE long than retail (STRONG_BUY signal), this is a high-conviction buy — institutions see something retail doesn't. Increase position size by 1 tier
+17. FUNDING MEAN-REVERSION: When funding rate z-score < -2σ (CROWDED_SHORTS_BOUNCE), this is a contrarian buy — short squeeze is likely. When z-score > +2σ (CROWDED_LONGS_REVERSAL), take profits and reduce exposure
+18. TVL-PRICE DIVERGENCE: When a DeFi token shows UNDERVALUED (TVL rising >5% but price flat), prioritize buying it — fundamental value is growing faster than price. When OVERVALUED (TVL dropping but price rising), trim the position
+19. STABLECOIN CAPITAL FLOW: When CAPITAL_INFLOW signal fires (stablecoin supply growing >2%), be more aggressive on buys — fresh money is entering crypto. When CAPITAL_OUTFLOW fires, reduce exposure and tighten stops
 
 EXIT RULES (when to SELL):
 1. TIERED PROFIT HARVESTING (v5.1.1): The bot automatically harvests profits in tranches:
@@ -5512,7 +5927,7 @@ RISK RULES:
 6. SELF-IMPROVEMENT: Your strategy patterns, adaptive thresholds, and performance insights are provided below. FAVOR proven winning patterns and AVOID known losing patterns. Trust the confidence-weighted sizing
 7. NEWS NOISE FILTER: Ignore news sentiment if it contradicts strong technical + DeFi signals. Headlines lag price action
 
-DECISION PRIORITY: Market Regime > Macro Environment > Technical signals + DeFi flows > Derivatives signals > News sentiment > Sector rebalancing
+DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Smart-Retail Divergence > Technical signals + DeFi flows > Funding Mean-Reversion > TVL-Price Divergence > Stablecoin Capital Flow > Derivatives signals > News sentiment > Sector rebalancing
 
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
@@ -6566,7 +6981,7 @@ async function runTradingCycle() {
       await consolidateDustPositions(balances, marketData);
     }
 
-    // V4.5: Store intelligence data for API endpoint (now includes news + macro)
+    // V4.5: Store intelligence data for API endpoint (now includes news + macro + v10.0)
     lastIntelligenceData = {
       defi: marketData.defiLlama,
       derivatives: marketData.derivatives,
@@ -6574,6 +6989,12 @@ async function runTradingCycle() {
       macro: marketData.macroData,
       regime: marketData.marketRegime,
       performance: calculateTradePerformance(),
+      // v10.0: Market Intelligence Engine
+      globalMarket: marketData.globalMarket,
+      smartRetailDivergence: marketData.smartRetailDivergence,
+      fundingMeanReversion: marketData.fundingMeanReversion,
+      tvlPriceDivergence: marketData.tvlPriceDivergence,
+      stablecoinSupply: marketData.stablecoinSupply,
     };
 
     // === PHASE 3: PERFORMANCE REVIEW TRIGGER ===
@@ -7172,13 +7593,13 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v6.0                              ║
-║   ════════════════════════════════════════                              ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v10.0                             ║
+║   ═══════════════════════════════════════════                           ║
 ║                                                                        ║
-║   PHASE 4: DERIVATIVES MODULE — Spot + Perps + Commodities             ║
-║   LIVE TRADING | Base Network + Coinbase Advanced Trade                ║
+║   MARKET INTELLIGENCE ENGINE — 11-Dimensional Trading                  ║
+║   LIVE TRADING | Base Network | Capital Compounding Mindset            ║
 ║                                                                        ║
-║   Intelligence Stack:                                                  ║
+║   Intelligence Stack (11 Dimensions):                                  ║
 ║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
 ║   • DeFi Intel: Base TVL, DEX Volume, Protocol TVL (DefiLlama)        ║
 ║   • Derivatives: Funding + OI + Long/Short Ratios + Top Traders       ║
@@ -7187,13 +7608,9 @@ function displayBanner() {
 ║   • Macro: Fed Rate, 10Y Yield, CPI, M2, Dollar Index (FRED)         ║
 ║   • Cross-Asset: Gold, Oil, VIX, S&P 500 correlation signals         ║
 ║   • Sentiment: Fear & Greed Index + Market Regime Detection           ║
-║   • Self-Learning: Trade performance scoring + signal attribution     ║
-║                                                                        ║
-║   v5.1 Upgrades:                                                       ║
-║   • Shadow Model Validation: changes need 3+ confirmations to go live ║
-║   • MEV Protection: adaptive slippage by trade size + conditions      ║
-║   • Cross-Asset Engine: RISK_ON/OFF/FLIGHT_TO_SAFETY from TradFi     ║
-║   • Smart Money Tracking: top trader positioning vs retail divergence ║
+║   • BTC Dominance: Altseason rotation + dominance flight signals      ║
+║   • Funding MR: Mean-reversion z-scores for crowding detection        ║
+║   • Capital Flow: Stablecoin supply tracking + TVL-price divergence   ║
 ║                                                                        ║
 ╚══════════════════════════════════════════════════════════════════════════╝
   `);
@@ -7201,8 +7618,8 @@ function displayBanner() {
   console.log(`   Wallet: ${CONFIG.walletAddress}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
   console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
-  console.log(`   Brain: v5.1 — Technicals + DeFi + Derivatives + Positioning + News + Macro + Cross-Asset + Regime + Self-Improvement + Shadow Validation`);
-  console.log(`   AI Strategy: Macro-aware regime-adapted (regime > macro > technicals + DeFi > derivatives > news > sectors)`);
+  console.log(`   Brain: v10.0 — 11-Dimensional (Technicals + DeFi + Derivatives + Positioning + News + Macro + Cross-Asset + Regime + BTC Dominance + Funding MR + Capital Flow)`);
+  console.log(`   AI Strategy: 11-dim regime-adapted (regime > altseason > macro > smart-retail > technicals+DeFi > funding MR > TVL-price > stablecoin > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
   console.log(`   Max Sell: ${CONFIG.trading.maxSellPercent}% of position`);
   console.log(`   Slippage: ${CONFIG.trading.slippageBps / 100}%`);
@@ -7705,12 +8122,18 @@ let lastIntelligenceData: {
   macro: MacroData | null;
   regime: MarketRegime;
   performance: TradePerformanceStats;
+  // v10.0: Market Intelligence Engine
+  globalMarket: GlobalMarketData | null;
+  smartRetailDivergence: SmartRetailDivergence | null;
+  fundingMeanReversion: FundingRateMeanReversion | null;
+  tvlPriceDivergence: TVLPriceDivergence | null;
+  stablecoinSupply: StablecoinSupplyData | null;
 } | null = null;
 
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "5.1",
+    version: "10.0",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -7718,14 +8141,27 @@ function apiIntelligence() {
     marketRegime: lastIntelligenceData?.regime || "UNKNOWN",
     tradePerformance: perf,
     shadowProposals: shadowProposals,
+    // v10.0: Market Intelligence Engine
+    globalMarket: lastIntelligenceData?.globalMarket || null,
+    smartRetailDivergence: lastIntelligenceData?.smartRetailDivergence || null,
+    fundingMeanReversion: lastIntelligenceData?.fundingMeanReversion || null,
+    tvlPriceDivergence: lastIntelligenceData?.tvlPriceDivergence || null,
+    stablecoinSupply: lastIntelligenceData?.stablecoinSupply || null,
+    altseasonSignal: currentAltseasonSignal,
     dataSources: [
-      "CoinGecko", "Fear & Greed Index",
+      "CoinGecko (Prices + Global + Stablecoin Supply)",
+      "Fear & Greed Index",
       "DefiLlama (TVL/DEX/Protocols)",
       "Binance (Funding/OI/Long-Short Ratios/Top Trader Positioning)",
       "Binance (PAXG for real-time Gold)",
       "CryptoPanic (News Sentiment)",
       "FRED (Fed Rates/Yield Curve/CPI/M2/Dollar/Gold/Oil/VIX/S&P 500)",
       "Technical Indicators (RSI/MACD/BB/SMA)",
+      "BTC Dominance & Altseason Rotation (CoinGecko Global)",
+      "Smart Money vs Retail Divergence (Binance Derived)",
+      "Funding Rate Mean-Reversion (Binance Derived)",
+      "TVL-Price Divergence (DefiLlama + CoinGecko Derived)",
+      "Stablecoin Capital Flow (CoinGecko)",
     ],
   };
 }
