@@ -627,7 +627,7 @@ tr:hover td { background: var(--bg-subtle); }
   <div class="grid g-3">
     <div class="card"><div class="card-label">Total Value</div><div class="card-value" id="hold-total">--</div><div class="card-sub" id="hold-total-sub">--</div></div>
     <div class="card"><div class="card-label">Unrealized P&L</div><div class="card-value" id="hold-upnl">--</div><div class="card-sub">Open positions</div></div>
-    <div class="card"><div class="card-label">Realized P&L</div><div class="card-value" id="hold-rpnl">--</div><div class="card-sub">Closed trades</div></div>
+    <div class="card"><div class="card-label">Realized P&L</div><div class="card-value" id="hold-rpnl">--</div><div class="card-sub" id="hold-rpnl-sub">Closed trades</div></div>
   </div>
   <div class="holdings-grid" style="margin-top: var(--space-5)" id="holdingsGrid"><div class="loading">Loading...</div></div>
 
@@ -1648,12 +1648,19 @@ function renderHoldings() {
   $('hold-total').textContent = fmtUSD(p.totalValue);
   $('hold-total-sub').textContent = 'Peak: ' + fmtUSD(p.peakValue);
 
-  let totalUnreal = 0, totalReal = 0;
-  holdings.forEach(h => { totalUnreal += (h.unrealizedPnL || 0); totalReal += (h.realizedPnL || 0); });
+  let totalUnreal = 0;
+  holdings.forEach(h => { totalUnreal += (h.unrealizedPnL || 0); });
   $('hold-upnl').textContent = fmtUSD(totalUnreal);
   $('hold-upnl').className = 'card-value ' + clsPnl(totalUnreal);
+
+  // v9.2: Use portfolio-level realizedPnL (includes fully-sold tokens, not just active holdings)
+  const totalReal = p.realizedPnL || 0;
+  const distributed = (Store.data.autoHarvest || p.autoHarvest || {}).totalTransferredUSD || 0;
   $('hold-rpnl').textContent = fmtUSD(totalReal);
   $('hold-rpnl').className = 'card-value ' + clsPnl(totalReal);
+  $('hold-rpnl-sub').textContent = distributed > 0
+    ? 'Incl. ' + fmtUSD(distributed) + ' distributed to you'
+    : 'Closed trades';
 
   $('holdingsGrid').innerHTML = holdings.length === 0 ? '<div class="loading">No holdings</div>' :
     holdings.sort((a,b) => (b.currentHolding * (b.currentPrice||0)) - (a.currentHolding * (a.currentPrice||0))).map(h => {
