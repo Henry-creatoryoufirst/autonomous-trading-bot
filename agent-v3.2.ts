@@ -6483,6 +6483,14 @@ async function runTradingCycle() {
       console.log(`   This will NOT count as trading profit.`);
       // Adjust initialValue upward so P&L stays accurate
       state.trading.initialValue += depositAmount;
+      // v9.2: Adjust peakValue and breaker baselines so deposit doesn't create false drawdown
+      // Without this, a $1400 deposit sets peak to $5300, then a normal dip to $5000
+      // shows 5.7% drawdown even though no trading loss occurred.
+      state.trading.peakValue += depositAmount;
+      // Also bump daily/weekly breaker baselines so circuit breakers don't false-trigger
+      if (breakerState.dailyBaseline.value > 0) breakerState.dailyBaseline.value += depositAmount;
+      if (breakerState.weeklyBaseline.value > 0) breakerState.weeklyBaseline.value += depositAmount;
+      console.log(`   Peak value adjusted: $${state.trading.peakValue.toFixed(2)} (deposit-aware baseline)`);
       saveTradeHistory();
     }
     state.lastKnownUSDCBalance = currentUSDCBalance;
