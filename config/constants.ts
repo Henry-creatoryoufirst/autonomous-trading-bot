@@ -11,7 +11,7 @@
 export const DEFAULT_TRADING_INTERVAL_MINUTES = 2;
 
 /** Force a heavy cycle at least this often (milliseconds) */
-export const HEAVY_CYCLE_FORCED_INTERVAL_MS = 8 * 60 * 1000; // v9.2: 8 minutes (was 15)
+export const HEAVY_CYCLE_FORCED_INTERVAL_MS = 3 * 60 * 1000; // v10.3: 3 minutes (was 8) — bot is always-on, should always be thinking
 
 /** Price change threshold to trigger a heavy cycle */
 export const PRICE_CHANGE_THRESHOLD = 0.02; // 2%
