@@ -4089,10 +4089,10 @@ function formatIntelligenceForPrompt(
           lines.push(`🟢 CROSS-ASSET: Traditional risk assets support crypto upside — gold retreating, equities strong, VIX low`);
           break;
         case "RISK_OFF":
-          lines.push(`🔴 CROSS-ASSET: Risk-off environment in traditional markets — headwind for crypto`);
+          lines.push(`🔴 CROSS-ASSET: Risk-off in traditional markets — crypto may face headwinds but also creates buying opportunities at lower prices`);
           break;
         case "FLIGHT_TO_SAFETY":
-          lines.push(`🚨 CROSS-ASSET: Flight to safety — gold surging, VIX spiking. Reduce exposure, protect capital.`);
+          lines.push(`🚨 CROSS-ASSET: Flight to safety in TradFi — gold surging, VIX spiking. Reduce position sizes but look for oversold crypto entries at panic prices.`);
           break;
         default:
           lines.push(`→ Cross-asset signals mixed — no strong directional bias from traditional markets`);
@@ -4104,11 +4104,11 @@ function formatIntelligenceForPrompt(
   lines.push(`═══ MARKET REGIME ═══`);
   lines.push(`Current Regime: ${regime}`);
   switch (regime) {
-    case "TRENDING_UP": lines.push(`→ Favor buying dips, ride momentum, widen stops`); break;
-    case "TRENDING_DOWN": lines.push(`→ Favor selling rallies, tighten stops, preserve capital`); break;
-    case "RANGING": lines.push(`→ Mean-revert: buy oversold, sell overbought, smaller positions`); break;
-    case "VOLATILE": lines.push(`→ Reduce position sizes, widen stops, wait for clarity`); break;
-    default: lines.push(`→ Mixed signals — use standard rules, stay disciplined`); break;
+    case "TRENDING_UP": lines.push(`→ Deploy capital aggressively on dips — ride momentum, let winners run`); break;
+    case "TRENDING_DOWN": lines.push(`→ Hunt discounted entries — accumulate oversold tokens, trim only clear losers`); break;
+    case "RANGING": lines.push(`→ Active mean-reversion — buy oversold, sell overbought, keep capital working`); break;
+    case "VOLATILE": lines.push(`→ Volatility = opportunity — smaller positions, more trades, exploit dislocations`); break;
+    default: lines.push(`→ Mixed signals — stay active, look for individual token setups`); break;
   }
 
   return lines.join("\n");
@@ -5491,17 +5491,17 @@ EXIT RULES (when to SELL):
 9. SMART MONEY WARNING: If derivatives show SMART_MONEY_SHORT while you're holding a token, this is a high-priority sell signal
 10. TIME-BASED HARVEST: Positions held 72+ hours with +5% gain get a 10% trim — don't let stale winners sit forever
 
-REGIME-ADAPTED STRATEGY:
-- TRENDING_UP: Be aggressive on dips. Favor momentum entries. Let winners run longer
-- TRENDING_DOWN: Be defensive. Tighter stops. Favor HOLD or sell rallies. Preserve capital
-- RANGING: Mean-revert. Buy oversold tokens, sell overbought. Keep positions smaller
-- VOLATILE: Reduce position sizes by 50%. Wait for clearer signals. Only trade strong confluence
+REGIME-ADAPTED STRATEGY (CAPITAL COMPOUNDING MINDSET — always look for ways to grow):
+- TRENDING_UP: Maximum aggression. Buy dips hard. Favor momentum entries. Let winners run. Deploy idle USDC
+- TRENDING_DOWN: Selective buying — downtrends create the best entry prices. Hunt for oversold bounces and accumulation setups. Sell only clear losers, not everything. Cash is a TEMPORARY state, not a goal
+- RANGING: Active mean-reversion. Buy oversold tokens aggressively, sell overbought. Ranges are profit machines for active traders
+- VOLATILE: Volatility = opportunity. Use it to enter positions at dislocated prices. Reduce size per trade but INCREASE trade count. More bets, smaller each
 
 MACRO-AWARE ADJUSTMENTS:
-- RISK_ON macro + TRENDING_UP regime = Maximum aggression. Deploy capital on dips. This is the best environment for crypto
-- RISK_OFF macro + TRENDING_DOWN regime = Maximum defense. Preserve capital. Hold USDC. Only buy extreme oversold
-- RISK_ON macro + RANGING regime = Lean bullish. Buy oversold more aggressively, hold longer before selling
-- RISK_OFF macro + VOLATILE regime = Stay defensive. Smaller positions. Wait for clarity
+- RISK_ON macro + TRENDING_UP regime = Maximum aggression. Deploy all available capital on dips. This is the best environment for crypto
+- RISK_OFF macro + TRENDING_DOWN regime = Contrarian accumulation. Best future returns come from buying when others panic. Selectively accumulate high-conviction tokens at discount. Keep 30-40% USDC reserve, deploy the rest into strength
+- RISK_ON macro + RANGING regime = Lean bullish. Buy oversold more aggressively, hold longer before selling. Deploy USDC into pullbacks
+- RISK_OFF macro + VOLATILE regime = Tactical. Smaller position sizes but keep trading. Look for oversold snaps and mean-reversion plays. Sitting in 100% USDC is NOT compounding
 
 RISK RULES:
 1. No single token > 25% of portfolio
