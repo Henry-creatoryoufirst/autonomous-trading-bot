@@ -375,6 +375,22 @@ export const GAS_QUEUE_MAX_WAIT_MS = 30 * 60 * 1000; // Max 30 min wait for lowe
 export const GAS_CHECK_INTERVAL_MS = 30_000;        // Re-check gas every 30s when queued
 export const GAS_COST_MAX_PCT_OF_TRADE = 5;         // Skip if gas > 5% of trade value
 
+// ============================================================================
+// v9.2: AUTO GAS REFUEL — Keep ETH balance topped up for tx fees
+// ============================================================================
+
+/** ETH balance (in ETH) below which auto-refuel triggers */
+export const GAS_REFUEL_THRESHOLD_ETH = 0.0003; // ~$0.80 at $2700/ETH
+
+/** Amount of USDC to swap into WETH when refueling */
+export const GAS_REFUEL_AMOUNT_USDC = 1.00; // $1 USDC → ~0.00037 ETH
+
+/** Minimum USDC balance required before refuel is allowed (don't drain last dollar) */
+export const GAS_REFUEL_MIN_USDC = 5.00;
+
+/** Cooldown between gas refuels to prevent rapid-fire refueling on errors */
+export const GAS_REFUEL_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
 /**
  * Fallback RPC Endpoints — try in order
  */

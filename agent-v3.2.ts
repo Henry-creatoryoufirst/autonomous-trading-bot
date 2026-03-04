@@ -170,6 +170,11 @@ import {
   SECTOR_ATR_MULTIPLIERS,
   ATR_PROFIT_TIERS,
   ATR_COMPARISON_LOG_COUNT,
+  // v9.2: Auto Gas Refuel
+  GAS_REFUEL_THRESHOLD_ETH,
+  GAS_REFUEL_AMOUNT_USDC,
+  GAS_REFUEL_MIN_USDC,
+  GAS_REFUEL_COOLDOWN_MS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -1957,6 +1962,7 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
     const cb = state.costBasis[b.symbol];
     cb.currentHolding = b.balance;
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    (cb as any).currentPrice = currentPrice;
     cb.unrealizedPnL = cb.averageCostBasis > 0 ? (currentPrice - cb.averageCostBasis) * b.balance : 0;
     // Update peak price for trailing stop
     if (currentPrice > cb.peakPrice) {
@@ -2686,6 +2692,105 @@ const derivativesCache = { btcOI: 0, ethOI: 0, btcPriceChange: 0, ethPriceChange
 // Cache for CoinGecko last-known prices — prevents $0 portfolio when rate limited
 let lastKnownPrices: Record<string, { price: number; change24h: number; change7d: number; volume: number; marketCap: number; name: string; sector: string }> = {};
 
+// ============================================================================
+// v9.2: MARKET MOMENTUM OVERLAY — Detects strong market moves to deploy USDC
+// ============================================================================
+
+interface MarketMomentumSignal {
+  score: number;           // -100 to +100 composite momentum score
+  btcChange24h: number;    // BTC 24h % change
+  ethChange24h: number;    // ETH 24h % change
+  fearGreedValue: number;  // 0-100
+  positionMultiplier: number; // 0.5 to 1.5 — applied to position sizing
+  deploymentBias: 'AGGRESSIVE' | 'NORMAL' | 'CAUTIOUS';
+  dataAvailable: boolean;  // false if data sources are down — degrades to NORMAL
+}
+
+function calculateMarketMomentum(): MarketMomentumSignal {
+  const defaultSignal: MarketMomentumSignal = {
+    score: 0, btcChange24h: 0, ethChange24h: 0, fearGreedValue: 50,
+    positionMultiplier: 1.0, deploymentBias: 'NORMAL', dataAvailable: false,
+  };
+
+  // Gather data — each source is optional, missing data degrades gracefully
+  const btcData = lastKnownPrices['ETH'] ? null : null; // placeholder
+  const btc24h = lastKnownPrices['cbBTC']?.change24h ?? lastKnownPrices['BTC']?.change24h ?? null;
+  const eth24h = lastKnownPrices['WETH']?.change24h ?? lastKnownPrices['ETH']?.change24h ?? null;
+  const fg = lastFearGreedValue > 0 ? lastFearGreedValue : null;
+
+  // If we have no price data at all, return default (graceful degradation)
+  if (btc24h === null && eth24h === null && fg === null) {
+    return defaultSignal;
+  }
+
+  let score = 0;
+  let dataPoints = 0;
+
+  // BTC momentum component (weight: 40%)
+  if (btc24h !== null) {
+    // Scale: +5% BTC move = +40 score, -5% = -40 score, capped at ±50
+    score += Math.max(-50, Math.min(50, btc24h * 8)) * 0.4;
+    dataPoints++;
+  }
+
+  // ETH momentum component (weight: 35%)
+  if (eth24h !== null) {
+    score += Math.max(-50, Math.min(50, eth24h * 8)) * 0.35;
+    dataPoints++;
+  }
+
+  // Fear & Greed component (weight: 25%)
+  if (fg !== null) {
+    // Map 0-100 to -25 to +25: neutral at 50
+    score += ((fg - 50) / 2) * 0.25;
+    dataPoints++;
+  }
+
+  // Normalize if we have partial data
+  if (dataPoints > 0 && dataPoints < 3) {
+    score = score * (3 / dataPoints) * 0.8; // Scale up but discount for incomplete data
+  }
+
+  // Clamp to -100 to +100
+  score = Math.max(-100, Math.min(100, score));
+
+  // Calculate position multiplier based on momentum score
+  // Score > +30: market is moving, deploy more aggressively (up to 1.5x)
+  // Score < -30: market is dropping, be cautious (down to 0.5x)
+  // Between -30 and +30: normal sizing (1.0x)
+  let positionMultiplier = 1.0;
+  if (score > 30) {
+    positionMultiplier = 1.0 + Math.min(0.5, (score - 30) / 140); // +30 to +100 → 1.0 to 1.5
+  } else if (score < -30) {
+    positionMultiplier = 1.0 + Math.max(-0.5, (score + 30) / 140); // -30 to -100 → 1.0 to 0.5
+  }
+
+  const deploymentBias = score > 30 ? 'AGGRESSIVE' : score < -30 ? 'CAUTIOUS' : 'NORMAL';
+
+  return {
+    score: Math.round(score * 10) / 10,
+    btcChange24h: btc24h ?? 0,
+    ethChange24h: eth24h ?? 0,
+    fearGreedValue: fg ?? 50,
+    positionMultiplier: Math.round(positionMultiplier * 100) / 100,
+    deploymentBias,
+    dataAvailable: dataPoints > 0,
+  };
+}
+
+// Store last momentum signal for dashboard access
+let lastMomentumSignal: MarketMomentumSignal = {
+  score: 0, btcChange24h: 0, ethChange24h: 0, fearGreedValue: 50,
+  positionMultiplier: 1.0, deploymentBias: 'NORMAL', dataAvailable: false,
+};
+
+// v9.2: Signal health tracker — monitors which external data sources are operational
+let lastSignalHealth: Record<string, string> = {
+  coingecko: 'UNKNOWN', fearGreed: 'UNKNOWN', defiLlama: 'UNKNOWN',
+  derivatives: 'UNKNOWN', news: 'UNKNOWN', macro: 'UNKNOWN',
+  momentum: 'UNKNOWN', lastUpdated: '',
+};
+
 // v7.1: Persist price cache to disk so deploys don't start with empty prices
 const PRICE_CACHE_FILE = "./logs/price-cache.json";
 
@@ -2843,11 +2948,16 @@ function calculateVolatilityMultiplier(): { multiplier: number; realizedVol: num
 function calculateInstitutionalPositionSize(portfolioValue: number): {
   sizeUSD: number; kellyPct: number; rawKelly: number; volMultiplier: number;
   realizedVol: number; breakerReduction: boolean; winRate: number;
+  momentumMultiplier: number; momentumBias: string;
 } {
   const kelly = calculateKellyPositionSize(portfolioValue);
   const vol = calculateVolatilityMultiplier();
 
-  let sizeUSD = kelly.kellyUSD * vol.multiplier;
+  // v9.2: Market momentum overlay — boost sizing when market is trending strongly
+  const momentum = calculateMarketMomentum();
+  lastMomentumSignal = momentum;
+
+  let sizeUSD = kelly.kellyUSD * vol.multiplier * momentum.positionMultiplier;
 
   // Check if breaker size reduction is active
   let breakerReduction = false;
@@ -2870,6 +2980,8 @@ function calculateInstitutionalPositionSize(portfolioValue: number): {
     realizedVol: vol.realizedVol,
     breakerReduction,
     winRate: kelly.winRate,
+    momentumMultiplier: momentum.positionMultiplier,
+    momentumBias: momentum.deploymentBias,
   };
 }
 
@@ -3730,7 +3842,12 @@ function determineMarketRegime(
     ? atrIndicators.reduce((sum, i) => sum + (i.atrPercent || 0), 0) / atrIndicators.length
     : 0;
 
-  // v8.3: Enhanced regime classification — ADX + ATR + BB + directional ratios + F&G
+  // v9.2: BTC/ETH momentum overlay — override RANGING when majors are moving
+  const btcMom = lastKnownPrices['cbBTC']?.change24h ?? lastKnownPrices['BTC']?.change24h ?? 0;
+  const ethMom = lastKnownPrices['WETH']?.change24h ?? lastKnownPrices['ETH']?.change24h ?? 0;
+  const majorMomentum = (btcMom + ethMom) / 2;
+
+  // v8.3: Enhanced regime classification — ADX + ATR + BB + directional ratios + F&G + momentum
   // Priority 1: High volatility (ATR% > 5 OR BB bandwidth > 15)
   if (avgATRPct > 5 && avgBandwidth > 12) return "VOLATILE";
   if (avgBandwidth > 15) return "VOLATILE";
@@ -3739,9 +3856,18 @@ function determineMarketRegime(
   if (avgADX > 25 && upRatio > 0.5) return "TRENDING_UP";
   if (avgADX > 25 && downRatio > 0.5) return "TRENDING_DOWN";
 
+  // v9.2 Priority 2.5: Strong BTC/ETH momentum overrides weak ADX
+  // If BTC+ETH average 24h change is >4%, the market IS moving regardless of altcoin ADX
+  if (majorMomentum > 4 && fearGreed > 45) return "TRENDING_UP";
+  if (majorMomentum < -4 && fearGreed < 45) return "TRENDING_DOWN";
+
   // Priority 3: Weak-signal trending (ADX 15-25, rely more on ratios + F&G as tiebreaker)
   if (upRatio > 0.6 && fearGreed > 40) return "TRENDING_UP";
   if (downRatio > 0.6 && fearGreed < 40) return "TRENDING_DOWN";
+
+  // v9.2: Moderate BTC/ETH momentum with greed — don't sit in RANGING when market is running
+  if (majorMomentum > 2.5 && fearGreed > 55) return "TRENDING_UP";
+  if (majorMomentum < -2.5 && fearGreed < 35) return "TRENDING_DOWN";
 
   // Priority 4: ADX < 20 = trendless market → ranging
   if (avgADX > 0 && avgADX < 20) return "RANGING";
@@ -4196,6 +4322,21 @@ async function getMarketData(): Promise<MarketData> {
     // Determine market regime
     const marketRegime = determineMarketRegime(fearGreed.value, indicators, derivatives);
     console.log(`  🌐 Market Regime: ${marketRegime}`);
+
+    // v9.2: Signal health tracker — monitor which data sources are live vs degraded
+    lastSignalHealth = {
+      coingecko: marketResult.status === 'fulfilled' ? 'LIVE' : Object.keys(lastKnownPrices).length > 0 ? 'STALE' : 'DOWN',
+      fearGreed: fngResult.status === 'fulfilled' ? 'LIVE' : 'DOWN',
+      defiLlama: defiResult.status === 'fulfilled' && defiResult.value ? 'LIVE' : 'DOWN',
+      derivatives: derivResult.status === 'fulfilled' && derivResult.value ? 'LIVE' : 'DOWN',
+      news: newsResult.status === 'fulfilled' && newsResult.value ? 'LIVE' : 'DOWN',
+      macro: macroResult.status === 'fulfilled' && macroResult.value ? 'LIVE' : 'DOWN',
+      momentum: lastMomentumSignal.dataAvailable ? 'LIVE' : 'DOWN',
+      lastUpdated: new Date().toISOString(),
+    };
+    const liveCount = Object.values(lastSignalHealth).filter(v => v === 'LIVE').length;
+    const totalSources = 7;
+    console.log(`  📡 Signal Health: ${liveCount}/${totalSources} sources live`);
 
     return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, newsSentiment, macroData, marketRegime };
   } catch (error: any) {
@@ -4974,6 +5115,60 @@ async function getERC20Balance(tokenAddress: string, walletAddress: string, deci
   return parseInt(result, 16) / Math.pow(10, decimals);
 }
 
+// ============================================================================
+// v9.2: AUTO GAS REFUEL — Swap USDC→WETH when ETH gas balance is low
+// ============================================================================
+
+let lastGasRefuelTime = 0;
+let lastKnownETHBalance = 0;
+
+async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
+  try {
+    const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+    const ethBalance = await getETHBalance(account.address);
+    lastKnownETHBalance = ethBalance;
+
+    // Not low enough to refuel
+    if (ethBalance >= GAS_REFUEL_THRESHOLD_ETH) {
+      return { refueled: false, ethBalance };
+    }
+
+    // Cooldown check — don't refuel too frequently
+    if (Date.now() - lastGasRefuelTime < GAS_REFUEL_COOLDOWN_MS) {
+      return { refueled: false, ethBalance, error: 'Gas refuel on cooldown' };
+    }
+
+    // Check USDC balance — don't drain the last few dollars
+    const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", account.address, 6);
+    if (usdcBalance < GAS_REFUEL_MIN_USDC) {
+      return { refueled: false, ethBalance, error: `USDC balance ($${usdcBalance.toFixed(2)}) below minimum for gas refuel` };
+    }
+
+    // Execute USDC → WETH swap for gas
+    console.log(`\n  ⛽ AUTO GAS REFUEL: ETH balance ${ethBalance.toFixed(6)} below threshold ${GAS_REFUEL_THRESHOLD_ETH}`);
+    console.log(`     Swapping $${GAS_REFUEL_AMOUNT_USDC.toFixed(2)} USDC → WETH for gas...`);
+
+    const fromAmount = parseUnits(GAS_REFUEL_AMOUNT_USDC.toFixed(6), 6); // USDC has 6 decimals
+    await account.swap({
+      network: "base",
+      fromToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC
+      toToken: "0x4200000000000000000000000000000000000006",   // WETH on Base
+      fromAmount,
+      slippageBps: 100, // 1% slippage — not critical, just need gas
+    });
+
+    lastGasRefuelTime = Date.now();
+    const newEthBalance = await getETHBalance(account.address);
+    lastKnownETHBalance = newEthBalance;
+    console.log(`     ✅ Gas refueled: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
+    return { refueled: true, ethBalance: newEthBalance };
+  } catch (err: any) {
+    const msg = err?.message?.substring(0, 200) || 'Unknown error';
+    console.warn(`  ⛽ Gas refuel failed: ${msg}`);
+    return { refueled: false, ethBalance: lastKnownETHBalance, error: msg };
+  }
+}
+
 async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
   const walletAddress = CONFIG.walletAddress;
   const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
@@ -5212,6 +5407,7 @@ ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
 ═══ MARKET SENTIMENT ═══
 - Fear & Greed: ${marketData.fearGreed.value}/100 (${marketData.fearGreed.classification})
 - Trending: ${marketData.trendingTokens.join(", ") || "None"}
+- Momentum: score=${lastMomentumSignal.score} bias=${lastMomentumSignal.deploymentBias} | BTC 24h: ${lastMomentumSignal.btcChange24h >= 0 ? '+' : ''}${lastMomentumSignal.btcChange24h.toFixed(1)}% | ETH 24h: ${lastMomentumSignal.ethChange24h >= 0 ? '+' : ''}${lastMomentumSignal.ethChange24h.toFixed(1)}%
 
 ═══ TECHNICAL INDICATORS ═══
 ${indicatorsSummary || "  No indicator data available"}
@@ -5230,7 +5426,7 @@ ${Object.entries(marketBySector).map(([sector, tokens]) =>
 ${tradeHistorySummary}
 
 ${discoveryIntel}═══ TRADING LIMITS ═══
-- Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 50%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
+- Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 50%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
 ═══ STRATEGY FRAMEWORK v5.1.1 ═══
@@ -5247,6 +5443,8 @@ ENTRY RULES (when to BUY):
 9. NEWS CATALYST: If news sentiment is BULLISH (score >+30) and a token has bullish mentions, it's a buy signal amplifier
 10. MACRO TAILWIND: If macro signal is RISK_ON (rate cuts, expanding liquidity, weak dollar), be more aggressive on buys. Increase conviction on dip buys
 11. CONTRARIAN NEWS: If news sentiment is extremely BEARISH (score <-50) but technical indicators show oversold, this is a high-conviction contrarian buy — fear is priced in
+12. MOMENTUM DEPLOYMENT: When momentum bias is AGGRESSIVE (BTC/ETH moving +4%+ in 24h with F&G >50), deploy USDC more readily. Don't sit in 70%+ USDC when the market is ripping — a rising tide lifts all boats. Lower confluence requirements by 1 tier in aggressive momentum
+13. FEAR & GREED SIZING: When F&G >70 (Greed), use larger position sizes for buys — market conviction is high. When F&G <25 (Extreme Fear), use smaller sizes but more entries — accumulate across dips
 
 EXIT RULES (when to SELL):
 1. TIERED PROFIT HARVESTING (v5.1.1): The bot automatically harvests profits in tranches:
@@ -6108,6 +6306,13 @@ async function runTradingCycle() {
     adaptiveCycle.volatilityLevel = lightInterval.volatilityLevel;
     adaptiveCycle.lastPriceCheck = new Map(currentPrices);
 
+    // v9.2: Sync costBasis.currentPrice on light cycles so dashboard stays fresh
+    for (const [symbol, price] of currentPrices) {
+      if (state.costBasis[symbol] && price > 0) {
+        (state.costBasis[symbol] as any).currentPrice = price;
+      }
+    }
+
     console.log(`[CYCLE #${state.totalCycles}] LIGHT | Portfolio: $${portfolioValue.toFixed(2)} | Cooldowns: ${cooldownCount} | Cache: ${cacheStats.entries} entries (${cacheStats.hitRate} hit rate) | ${(Date.now() - cycleStart)}ms | ⚡ Next: ${lightInterval.intervalSec}s (${lightInterval.volatilityLevel})`);
     return; // Skip full analysis
   }
@@ -6122,6 +6327,14 @@ async function runTradingCycle() {
   console.log("═".repeat(70));
 
   try {
+    // v9.2: Auto gas refuel check — ensure ETH for tx fees before any trades
+    if (cdpClient && CONFIG.trading.enabled) {
+      const gasResult = await checkAndRefuelGas();
+      if (gasResult.error) {
+        console.log(`  ⛽ Gas: ${gasResult.ethBalance.toFixed(6)} ETH — ${gasResult.error}`);
+      }
+    }
+
     console.log("\n📊 Fetching balances...");
     const balances = await getBalances();
 
@@ -7370,6 +7583,28 @@ const healthServer = http.createServer(async (req, res) => {
             minTrades: KELLY_MIN_TRADES,
             ceilingPct: KELLY_POSITION_CEILING_PCT,
             floorUSD: KELLY_POSITION_FLOOR_USD,
+          },
+          // v9.2: Signal health — which data feeds are live/stale/down
+          signalHealth: lastSignalHealth,
+          // v9.2: Market momentum overlay
+          momentum: {
+            score: lastMomentumSignal.score,
+            btcChange24h: lastMomentumSignal.btcChange24h,
+            ethChange24h: lastMomentumSignal.ethChange24h,
+            fearGreedValue: lastMomentumSignal.fearGreedValue,
+            positionMultiplier: lastMomentumSignal.positionMultiplier,
+            deploymentBias: lastMomentumSignal.deploymentBias,
+            dataAvailable: lastMomentumSignal.dataAvailable,
+          },
+          // v9.2: Gas tank status
+          gasTank: {
+            ethBalance: lastKnownETHBalance,
+            thresholdETH: GAS_REFUEL_THRESHOLD_ETH,
+            lastRefuelTime: lastGasRefuelTime > 0 ? new Date(lastGasRefuelTime).toISOString() : null,
+            autoRefuelEnabled: CONFIG.trading.enabled,
+            status: lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH * 3 ? 'HEALTHY'
+              : lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH ? 'LOW'
+              : 'CRITICAL',
           },
           config: {
             minIntervalSec: ADAPTIVE_MIN_INTERVAL_SEC,

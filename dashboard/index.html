@@ -184,6 +184,18 @@ body {
 }
 .banner.visible { display: flex; }
 .banner-emergency { background: var(--red-soft); color: var(--red); border: 1px solid rgba(220, 38, 38, 0.20); }
+.rapid-cycle-chip {
+  display: none; font-size: var(--fs-xs); font-weight: 600;
+  padding: 2px 8px; border-radius: var(--radius-full);
+  background: var(--amber-soft); color: var(--amber);
+  border: 1px solid rgba(217, 119, 6, 0.20);
+  align-items: center; gap: 4px; white-space: nowrap;
+}
+.rapid-cycle-chip.visible { display: inline-flex; }
+.gas-gauge { display: flex; align-items: center; gap: 6px; margin-top: var(--space-2); }
+.gas-bar-track { flex: 1; height: 6px; background: var(--bg-subtle); border-radius: 3px; overflow: hidden; }
+.gas-bar-fill { height: 100%; border-radius: 3px; transition: width var(--dur-norm) var(--ease-out), background var(--dur-norm); }
+.gas-label { font-size: var(--fs-xs); color: var(--text-muted); font-weight: 500; min-width: 48px; }
 .banner-floor { background: var(--amber-soft); color: var(--accent-warm); border: 1px solid rgba(180, 83, 9, 0.15); }
 
 /* ============================================================================
@@ -490,7 +502,7 @@ tr:hover td { background: var(--bg-subtle); }
 <div class="main-content">
 
   <!-- BANNERS -->
-  <div class="banner banner-emergency" id="emergencyBanner">EMERGENCY MODE ACTIVE</div>
+  <div class="banner banner-emergency" id="emergencyBanner" style="display:none"></div>
   <div class="banner banner-floor" id="capitalFloorBanner"></div>
 
   <!-- ================================================================
@@ -528,10 +540,37 @@ tr:hover td { background: var(--bg-subtle); }
       <canvas class="kpi-spark" id="spark-trades"></canvas>
     </div>
     <div class="card" id="kpiCard-engine">
-      <div class="card-label">Engine Pulse</div>
+      <div class="card-label" style="display:flex;align-items:center;gap:6px">Engine Pulse <span class="rapid-cycle-chip" id="rapidCycleChip">Rapid Cycle</span></div>
       <div class="card-value sm" id="kpi-engine">--</div>
       <div class="card-sub" id="kpi-engine-sub">--</div>
       <div class="bar-track" style="margin-top:var(--space-2)"><div class="bar-fill" id="engine-pulse-bar" style="width:50%;background:var(--accent)"></div></div>
+      <div class="gas-gauge">
+        <div class="gas-label" id="gas-label">Gas --</div>
+        <div class="gas-bar-track"><div class="gas-bar-fill" id="gas-bar" style="width:50%;background:var(--green)"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v9.2: Momentum + Signal Health Bar -->
+  <div class="card" style="padding:var(--space-3) var(--space-5);margin-top:var(--space-3)">
+    <div style="display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:var(--space-2)">
+          <span style="font-size:var(--fs-xs);color:var(--text-muted);font-weight:600">MOMENTUM</span>
+          <span class="badge" id="momentum-badge" style="font-size:var(--fs-xs)">--</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:var(--space-3);font-size:var(--fs-xs);color:var(--text-secondary)">
+          <span>BTC <strong id="mom-btc">--</strong></span>
+          <span>ETH <strong id="mom-eth">--</strong></span>
+          <span>F&G <strong id="mom-fg">--</strong></span>
+          <span>Score <strong id="mom-score">--</strong></span>
+          <span>Size <strong id="mom-mult">1.0x</strong></span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--space-2)">
+        <span style="font-size:var(--fs-xs);color:var(--text-muted);font-weight:600">SIGNALS</span>
+        <span id="signal-dots" style="display:flex;gap:3px"></span>
+      </div>
     </div>
   </div>
 
@@ -846,10 +885,10 @@ tr:hover td { background: var(--bg-subtle); }
 
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
-const fmt = (n, d=2) => n != null ? Number(n).toFixed(d) : '--';
-const fmtUSD = n => n != null ? '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '--';
-const fmtK = n => n != null ? (Math.abs(n) >= 1e9 ? '$'+(n/1e9).toFixed(2)+'B' : Math.abs(n) >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M' : Math.abs(n) >= 1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+Number(n).toFixed(2)) : '--';
-const fmtPct = n => n != null ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '%' : '--';
+const fmt = (n, d=2) => (n != null && !isNaN(n)) ? Number(n).toFixed(d) : '--';
+const fmtUSD = n => (n != null && !isNaN(n)) ? '$' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '--';
+const fmtK = n => (n != null && !isNaN(n)) ? (Math.abs(n) >= 1e9 ? '$'+(n/1e9).toFixed(2)+'B' : Math.abs(n) >= 1e6 ? '$'+(n/1e6).toFixed(1)+'M' : Math.abs(n) >= 1e3 ? '$'+(n/1e3).toFixed(1)+'K' : '$'+Number(n).toFixed(2)) : '--';
+const fmtPct = n => (n != null && !isNaN(n)) ? (n >= 0 ? '+' : '') + Number(n).toFixed(1) + '%' : '--';
 const fmtTime = ts => { if (!ts) return '--'; const d = new Date(ts); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}); };
 const fmtAgo = ts => {
   if (!ts) return '--';
@@ -1250,11 +1289,55 @@ function renderBadges() {
   $('regimeBadge').textContent = Store.data.intelligence?.marketRegime || '--';
   $('versionTag').textContent = 'v' + (p.version || '8.1');
 
+  // v9.2: Subtle rapid-cycle chip instead of big red emergency banner
   if (a.emergencyMode) {
-    $('emergencyBanner').classList.add('visible');
-    $('emergencyBanner').textContent = 'EMERGENCY MODE — Rapid-fire cycles until ' + fmtTime(a.emergencyUntil);
+    $('rapidCycleChip').classList.add('visible');
+    $('rapidCycleChip').textContent = 'Rapid until ' + fmtTime(a.emergencyUntil);
+    $('rapidCycleChip').title = 'Emergency rapid-fire cycles active — a held token dropped significantly';
   } else {
-    $('emergencyBanner').classList.remove('visible');
+    $('rapidCycleChip').classList.remove('visible');
+  }
+
+  // v9.2: Signal health dots
+  const sh = a.signalHealth || {};
+  const sigLabels = { coingecko: 'CG', fearGreed: 'F&G', defiLlama: 'DeFi', derivatives: 'Deriv', news: 'News', macro: 'Macro', momentum: 'Mom' };
+  const sigDots = Object.entries(sigLabels).map(([key, label]) => {
+    const status = sh[key] || 'UNKNOWN';
+    const color = status === 'LIVE' ? 'var(--green)' : status === 'STALE' ? 'var(--amber)' : status === 'DOWN' ? 'var(--red)' : 'var(--text-muted)';
+    return '<span title="' + label + ': ' + status + '" style="width:8px;height:8px;border-radius:50%;background:' + color + ';display:inline-block"></span>';
+  }).join('');
+  $('signal-dots').innerHTML = sigDots;
+
+  // v9.2: Momentum indicator
+  const mom = a.momentum || {};
+  if (mom.dataAvailable) {
+    const mBadge = $('momentum-badge');
+    const biasMap = { AGGRESSIVE: ['badge-live', 'AGGRESSIVE'], CAUTIOUS: ['badge-danger', 'CAUTIOUS'], NORMAL: ['badge-tier', 'NORMAL'] };
+    const [cls, label] = biasMap[mom.deploymentBias] || biasMap.NORMAL;
+    mBadge.className = 'badge ' + cls;
+    mBadge.textContent = label;
+    $('mom-btc').textContent = (mom.btcChange24h >= 0 ? '+' : '') + (mom.btcChange24h || 0).toFixed(1) + '%';
+    $('mom-btc').style.color = mom.btcChange24h >= 0 ? 'var(--green)' : 'var(--red)';
+    $('mom-eth').textContent = (mom.ethChange24h >= 0 ? '+' : '') + (mom.ethChange24h || 0).toFixed(1) + '%';
+    $('mom-eth').style.color = mom.ethChange24h >= 0 ? 'var(--green)' : 'var(--red)';
+    $('mom-fg').textContent = (mom.fearGreedValue || 50) + '/100';
+    $('mom-score').textContent = (mom.score >= 0 ? '+' : '') + (mom.score || 0).toFixed(0);
+    $('mom-score').style.color = mom.score > 30 ? 'var(--green)' : mom.score < -30 ? 'var(--red)' : 'var(--text-secondary)';
+    $('mom-mult').textContent = (mom.positionMultiplier || 1).toFixed(2) + 'x';
+  }
+
+  // v9.2: Gas tank gauge
+  const gas = a.gasTank || {};
+  if (gas.ethBalance != null) {
+    const ethBal = gas.ethBalance;
+    const threshold = gas.thresholdETH || 0.0003;
+    const healthyLevel = threshold * 10; // ~0.003 ETH = $8 at $2700 = plenty of gas
+    const pct = Math.min(100, Math.max(2, (ethBal / healthyLevel) * 100));
+    const gasColor = gas.status === 'HEALTHY' ? 'var(--green)' : gas.status === 'LOW' ? 'var(--amber)' : 'var(--red)';
+    $('gas-bar').style.width = pct + '%';
+    $('gas-bar').style.background = gasColor;
+    $('gas-label').textContent = ethBal.toFixed(4) + ' ETH';
+    $('gas-label').style.color = gasColor;
   }
 
   const pv = p.totalValue || 0;
