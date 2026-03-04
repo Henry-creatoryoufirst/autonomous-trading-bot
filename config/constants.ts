@@ -391,6 +391,22 @@ export const GAS_REFUEL_MIN_USDC = 5.00;
 /** Cooldown between gas refuels to prevent rapid-fire refueling on errors */
 export const GAS_REFUEL_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
+// ============================================================================
+// v9.3: DAILY PAYOUT — Scheduled profit distribution replacing opportunistic harvest
+// ============================================================================
+
+/** Cron expression: 8:00 AM UTC daily */
+export const DAILY_PAYOUT_CRON = '0 8 * * *';
+
+/** Minimum payout per recipient (skip if share is less) */
+export const DAILY_PAYOUT_MIN_TRANSFER_USD = 1.00;
+
+/** Minimum ETH for gas before payout is allowed */
+export const DAILY_PAYOUT_MIN_ETH_RESERVE = 0.0003;
+
+/** USDC buffer to keep in wallet after payout */
+export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
+
 /**
  * Fallback RPC Endpoints — try in order
  */

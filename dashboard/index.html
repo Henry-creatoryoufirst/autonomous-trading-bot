@@ -644,8 +644,8 @@ tr:hover td { background: var(--bg-subtle); }
   <div class="section-hdr">Harvested Profits</div>
   <div class="grid g-3">
     <div class="card"><div class="card-label">Total Harvested</div><div class="card-value positive" id="harvest-total">--</div><div class="card-sub" id="harvest-count">--</div></div>
-    <div class="card"><div class="card-label">Auto-Transfer</div><div class="card-value" id="harvest-auto">--</div><div class="card-sub" id="harvest-auto-sub">--</div></div>
-    <div class="card"><div class="card-label">Last Harvest</div><div class="card-value" id="harvest-last">--</div><div class="card-sub" id="harvest-last-sub">--</div></div>
+    <div class="card"><div class="card-label">Daily Payouts</div><div class="card-value" id="harvest-auto">--</div><div class="card-sub" id="harvest-auto-sub">--</div></div>
+    <div class="card"><div class="card-label">Last Payout</div><div class="card-value" id="harvest-last">--</div><div class="card-sub" id="harvest-last-sub">--</div></div>
   </div>
 
   <hr class="section-divider">
@@ -1691,9 +1691,19 @@ function renderHoldings() {
   $('harvest-total').textContent = fmtUSD(p.harvestedProfits);
   $('harvest-count').textContent = (p.harvestCount || 0) + ' operations';
   $('harvest-auto').textContent = fmtUSD(ah.totalTransferredUSD || 0);
-  $('harvest-auto-sub').textContent = ah.enabled ? 'Enabled — ' + (ah.transferCount || ah.totalTransfers || 0) + ' transfers' : 'Disabled';
-  $('harvest-last').textContent = fmtTime(ah.lastTransfer || ah.lastHarvestTime);
-  $('harvest-last-sub').textContent = ah.destinationWallet ? 'To ' + ah.destinationWallet : '--';
+  if (ah.mode === 'daily') {
+    $('harvest-auto-sub').textContent = ah.enabled
+      ? 'Daily 8AM UTC — ' + (ah.dailyPayoutCount || 0) + ' payouts'
+      : 'Disabled';
+    $('harvest-last').textContent = ah.lastPayoutDate || fmtTime(ah.lastTransfer || ah.lastHarvestTime);
+    $('harvest-last-sub').textContent = ah.lastPayoutDate
+      ? 'Daily payout — ' + fmtUSD(ah.totalDailyPayoutsUSD || 0) + ' total'
+      : ah.destinationWallet ? 'To ' + ah.destinationWallet : '--';
+  } else {
+    $('harvest-auto-sub').textContent = ah.enabled ? 'Enabled — ' + (ah.transferCount || ah.totalTransfers || 0) + ' transfers' : 'Disabled';
+    $('harvest-last').textContent = fmtTime(ah.lastTransfer || ah.lastHarvestTime);
+    $('harvest-last-sub').textContent = ah.destinationWallet ? 'To ' + ah.destinationWallet : '--';
+  }
 }
 
 // ============================================================================

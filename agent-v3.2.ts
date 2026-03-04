@@ -175,6 +175,11 @@ import {
   GAS_REFUEL_AMOUNT_USDC,
   GAS_REFUEL_MIN_USDC,
   GAS_REFUEL_COOLDOWN_MS,
+  // v9.3: Daily Payout
+  DAILY_PAYOUT_CRON,
+  DAILY_PAYOUT_MIN_TRANSFER_USD,
+  DAILY_PAYOUT_MIN_ETH_RESERVE,
+  DAILY_PAYOUT_USDC_BUFFER,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -1701,6 +1706,16 @@ let state: AgentState = {
   lastAutoHarvestTime: null as string | null,
   autoHarvestCount: 0,
   autoHarvestByRecipient: {} as Record<string, number>, // v9.1: total USD sent per recipient label
+  // v9.3: Daily Payout System
+  dailyPayouts: [] as Array<{
+    date: string; payoutDate: string; realizedPnL: number; payoutPercent: number;
+    totalDistributed: number; transfers: Array<{ label: string; wallet: string; amount: number; txHash?: string; error?: string }>;
+    skippedReason?: string;
+  }>,
+  totalDailyPayoutsUSD: 0,
+  dailyPayoutCount: 0,
+  lastDailyPayoutDate: null as string | null,
+  dailyPayoutByRecipient: {} as Record<string, number>,
   // Phase 3: Self-Improvement Engine
   strategyPatterns: {},
   adaptiveThresholds: { ...DEFAULT_ADAPTIVE_THRESHOLDS },
@@ -1759,6 +1774,12 @@ function loadTradeHistory() {
             state.autoHarvestByRecipient[lbl] = (state.autoHarvestByRecipient[lbl] || 0) + (t.amountUSD || 0);
           }
         }
+        // v9.3: Restore daily payout state
+        state.dailyPayouts = parsed.dailyPayouts || [];
+        state.totalDailyPayoutsUSD = parsed.totalDailyPayoutsUSD || 0;
+        state.dailyPayoutCount = parsed.dailyPayoutCount || 0;
+        state.lastDailyPayoutDate = parsed.lastDailyPayoutDate || null;
+        state.dailyPayoutByRecipient = parsed.dailyPayoutByRecipient || {};
         // v5.2: Restore shadow proposals
         if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
           shadowProposals = parsed.shadowProposals;
@@ -1830,6 +1851,12 @@ function saveTradeHistory() {
       lastAutoHarvestTime: state.lastAutoHarvestTime,
       autoHarvestCount: state.autoHarvestCount,
       autoHarvestByRecipient: state.autoHarvestByRecipient,
+      // v9.3: Daily Payout persistence
+      dailyPayouts: state.dailyPayouts.slice(-90),
+      totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
+      dailyPayoutCount: state.dailyPayoutCount,
+      lastDailyPayoutDate: state.lastDailyPayoutDate,
+      dailyPayoutByRecipient: state.dailyPayoutByRecipient,
       // Phase 3: Self-Improvement Engine
       strategyPatterns: state.strategyPatterns,
       adaptiveThresholds: state.adaptiveThresholds,
@@ -5984,10 +6011,174 @@ async function executeSingleSwap(
 
 
 /**
- * v5.3.0: Auto-Harvest Transfer (USDC)
- * Checks if accumulated harvested profits exceed the threshold,
- * then sends USDC directly to the owner's wallet.
- * Profits are already in USDC (harvests sell tokens → USDC), so we transfer USDC directly.
+ * v9.3: Daily Payout — distributes a percentage of yesterday's realized P&L
+ * to configured recipients. Runs once per day at 8 AM UTC via cron.
+ * Idempotent: uses state.lastDailyPayoutDate as dedup key (YYYY-MM-DD).
+ */
+async function executeDailyPayout(): Promise<void> {
+  const recipients = CONFIG.autoHarvest.recipients;
+  if (!recipients || recipients.length === 0) {
+    console.log(`[Daily Payout] No recipients configured — skipping`);
+    return;
+  }
+
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  console.log(`\n========================================`);
+  console.log(`💰 [Daily Payout] Settlement for ${yesterdayStr}`);
+  console.log(`========================================`);
+
+  // Idempotency — already paid this day?
+  if (state.lastDailyPayoutDate === yesterdayStr) {
+    console.log(`[Daily Payout] Already paid for ${yesterdayStr} — skipping (restart-safe)`);
+    return;
+  }
+
+  // Compute yesterday's realized P&L
+  const dailyData = apiDailyPnL();
+  const yesterdayEntry = dailyData.days.find(d => d.date === yesterdayStr);
+  const realizedPnL = yesterdayEntry?.realized || 0;
+
+  console.log(`[Daily Payout] Realized P&L: $${realizedPnL.toFixed(2)}`);
+  if (yesterdayEntry) {
+    console.log(`   Trades: ${yesterdayEntry.trades} | Sells: ${yesterdayEntry.sells} | Wins: ${yesterdayEntry.wins}`);
+  }
+
+  // Negative day — record and skip
+  if (realizedPnL <= 0) {
+    console.log(`[Daily Payout] No profit ($${realizedPnL.toFixed(2)}) — no payout`);
+    state.dailyPayouts.push({
+      date: yesterdayStr, payoutDate: now.toISOString(), realizedPnL,
+      payoutPercent: 0, totalDistributed: 0, transfers: [], skippedReason: 'NEGATIVE_PNL',
+    });
+    state.lastDailyPayoutDate = yesterdayStr;
+    saveTradeHistory();
+    return;
+  }
+
+  // Capital floor check
+  const capitalFloor = CONFIG.autoHarvest.minTradingCapitalUSD || 500;
+  const currentPortfolio = state.trading.totalPortfolioValue || 0;
+  const headroom = Math.max(0, currentPortfolio - capitalFloor);
+  if (headroom <= 0) {
+    console.log(`[Daily Payout] Portfolio ($${currentPortfolio.toFixed(2)}) at capital floor ($${capitalFloor}) — skipping`);
+    state.dailyPayouts.push({
+      date: yesterdayStr, payoutDate: now.toISOString(), realizedPnL,
+      payoutPercent: 0, totalDistributed: 0, transfers: [], skippedReason: 'BELOW_FLOOR',
+    });
+    state.lastDailyPayoutDate = yesterdayStr;
+    saveTradeHistory();
+    return;
+  }
+
+  // Check USDC balance and ETH for gas
+  const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, CONFIG.walletAddress, 6);
+  const ethBalance = await getETHBalance(CONFIG.walletAddress);
+
+  if (ethBalance < DAILY_PAYOUT_MIN_ETH_RESERVE) {
+    console.log(`[Daily Payout] ETH (${ethBalance.toFixed(6)}) below gas reserve — skipping`);
+    state.dailyPayouts.push({
+      date: yesterdayStr, payoutDate: now.toISOString(), realizedPnL,
+      payoutPercent: 0, totalDistributed: 0, transfers: [], skippedReason: 'LOW_GAS',
+    });
+    state.lastDailyPayoutDate = yesterdayStr;
+    saveTradeHistory();
+    return;
+  }
+
+  const sendableUSDC = Math.max(0, usdcBalance - DAILY_PAYOUT_USDC_BUFFER);
+  const totalRecipientPct = recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+
+  console.log(`[Daily Payout] USDC: $${usdcBalance.toFixed(2)} (sendable: $${sendableUSDC.toFixed(2)}) | ETH: ${ethBalance.toFixed(6)}`);
+  console.log(`[Daily Payout] Recipients: ${recipients.map((r: HarvestRecipient) => `${r.label}(${r.percent}%)`).join(', ')}`);
+
+  const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+
+  const transferResults: Array<{ label: string; wallet: string; amount: number; txHash?: string; error?: string }> = [];
+  let totalSent = 0;
+
+  for (const recipient of recipients) {
+    const share = realizedPnL * (recipient.percent / 100);
+
+    if (share < DAILY_PAYOUT_MIN_TRANSFER_USD) {
+      transferResults.push({
+        label: recipient.label,
+        wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
+        amount: 0, error: `Share $${share.toFixed(2)} below min $${DAILY_PAYOUT_MIN_TRANSFER_USD}`,
+      });
+      continue;
+    }
+
+    const remainingSendable = sendableUSDC - totalSent;
+    const remainingHeadroom = headroom - totalSent;
+    const transferAmount = Math.min(share, remainingSendable, remainingHeadroom);
+
+    if (transferAmount < DAILY_PAYOUT_MIN_TRANSFER_USD) {
+      transferResults.push({
+        label: recipient.label,
+        wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
+        amount: 0, error: `Capped to $${transferAmount.toFixed(2)} — below minimum`,
+      });
+      continue;
+    }
+
+    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${realizedPnL.toFixed(2)})`);
+
+    try {
+      const txHash = await sendUSDCTransfer(account, recipient.wallet, transferAmount);
+      console.log(`[Daily Payout] ✅ ${recipient.label}: TX ${txHash}`);
+      console.log(`[Daily Payout] 🔍 https://basescan.org/tx/${txHash}`);
+
+      transferResults.push({
+        label: recipient.label,
+        wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
+        amount: transferAmount, txHash,
+      });
+      totalSent += transferAmount;
+      state.dailyPayoutByRecipient[recipient.label] =
+        (state.dailyPayoutByRecipient[recipient.label] || 0) + transferAmount;
+
+      // Update legacy counters for backward compat
+      state.totalAutoHarvestedUSD += transferAmount;
+      state.autoHarvestCount++;
+      state.autoHarvestByRecipient[recipient.label] =
+        (state.autoHarvestByRecipient[recipient.label] || 0) + transferAmount;
+    } catch (err: any) {
+      console.error(`[Daily Payout] ❌ ${recipient.label}: ${err.message}`);
+      transferResults.push({
+        label: recipient.label,
+        wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
+        amount: 0, error: err.message,
+      });
+    }
+  }
+
+  // Record payout
+  state.dailyPayouts.push({
+    date: yesterdayStr, payoutDate: now.toISOString(), realizedPnL,
+    payoutPercent: totalRecipientPct, totalDistributed: totalSent,
+    transfers: transferResults,
+    skippedReason: totalSent === 0 ? 'ALL_TRANSFERS_FAILED' : undefined,
+  });
+  if (state.dailyPayouts.length > 90) state.dailyPayouts = state.dailyPayouts.slice(-90);
+  state.totalDailyPayoutsUSD += totalSent;
+  if (totalSent > 0) state.dailyPayoutCount++;
+  state.lastDailyPayoutDate = yesterdayStr;
+  state.lastAutoHarvestTime = now.toISOString();
+  saveTradeHistory();
+
+  const reinvestPct = 100 - totalRecipientPct;
+  console.log(`[Daily Payout] DONE: Sent $${totalSent.toFixed(2)} | Reinvested $${(realizedPnL - totalSent).toFixed(2)} (${reinvestPct}%)`);
+  console.log(`[Daily Payout] Lifetime: $${state.totalDailyPayoutsUSD.toFixed(2)} over ${state.dailyPayoutCount} days`);
+  console.log(`========================================\n`);
+}
+
+/**
+ * v5.3.0: Auto-Harvest Transfer (USDC) — LEGACY, replaced by v9.3 Daily Payout
+ * Kept for backward compatibility. No longer called from heavy cycle.
  */
 async function checkAutoHarvestTransfer(
   account: any,
@@ -6866,21 +7057,8 @@ async function runTradingCycle() {
       state.explorationState.consecutiveHolds++;
     }
 
-    // v9.1: Multi-wallet profit distribution — runs every heavy cycle
-    if (CONFIG.autoHarvest.enabled && CONFIG.autoHarvest.recipients.length > 0) {
-      try {
-        const ethBal = await getETHBalance(CONFIG.walletAddress);
-        const ethPriceUSD = lastKnownPrices['WETH']?.price || lastKnownPrices['ETH']?.price || 2700;
-        const harvestAccount = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-        const harvestResult = await checkAutoHarvestTransfer(harvestAccount, cdpClient, ethPriceUSD, ethBal);
-        if (harvestResult.sent) {
-          const summary = harvestResult.transfers.filter(t => t.txHash).map(t => `${t.label}=$${t.amount.toFixed(2)}`).join(', ');
-          console.log(`Distributed profits: ${summary}`);
-        }
-      } catch (harvestErr: any) {
-        console.warn('Auto-harvest check failed:', harvestErr.message);
-      }
-    }
+    // v9.3: Auto-harvest transfer replaced by Daily Payout cron (8 AM UTC)
+    // Legacy checkAutoHarvestTransfer no longer called here — see executeDailyPayout()
 
     state.trading.lastCheck = new Date();
 
@@ -7207,6 +7385,38 @@ async function main() {
     }
   });
 
+  // v9.3: Daily Payout cron — runs at 8 AM UTC every day
+  if (CONFIG.autoHarvest.enabled && CONFIG.autoHarvest.recipients.length > 0) {
+    cron.schedule(DAILY_PAYOUT_CRON, async () => {
+      try {
+        console.log(`\n[Daily Payout] Cron triggered at ${new Date().toISOString()}`);
+        await executeDailyPayout();
+      } catch (err: any) {
+        console.error(`[Daily Payout] Cron error: ${err?.message?.substring(0, 300) || err}`);
+      }
+    }, { timezone: 'UTC' });
+    console.log(`  ✅ Daily Payout cron registered: ${DAILY_PAYOUT_CRON} (8 AM UTC)`);
+
+    // Startup catch-up: if bot starts after 8 AM UTC and yesterday hasn't been paid
+    const nowUTC = new Date();
+    const hourUTC = nowUTC.getUTCHours();
+    if (hourUTC >= 8) {
+      const yesterday = new Date(nowUTC);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+      if (state.lastDailyPayoutDate !== yesterdayStr) {
+        console.log(`  ⏰ Daily Payout catch-up: yesterday (${yesterdayStr}) not yet paid — scheduling in 30s`);
+        setTimeout(async () => {
+          try {
+            await executeDailyPayout();
+          } catch (err: any) {
+            console.error(`[Daily Payout] Catch-up error: ${err?.message?.substring(0, 300) || err}`);
+          }
+        }, 30_000);
+      }
+    }
+  }
+
   // Heartbeat every 5 minutes to confirm process is alive
   setInterval(() => {
     const adaptiveInfo = `Interval: ${adaptiveCycle.currentIntervalSec}s | Vol: ${adaptiveCycle.volatilityLevel} | Tier: ${adaptiveCycle.portfolioTier} | Stream: ${adaptiveCycle.wsConnected ? 'LIVE' : 'OFF'}${adaptiveCycle.emergencyMode ? ' | 🚨 EMERGENCY' : ''}`;
@@ -7363,6 +7573,7 @@ function apiPortfolio() {
       // v5.3.0: Auto-harvest info
       autoHarvest: {
         enabled: CONFIG.autoHarvest.enabled,
+        mode: 'daily',
         totalTransferredUSD: state.totalAutoHarvestedUSD,
         totalTransferredETH: state.totalAutoHarvestedETH,
         transferCount: state.autoHarvestCount,
@@ -7377,6 +7588,10 @@ function apiPortfolio() {
           totalTransferred: state.autoHarvestByRecipient[r.label] || 0,
         })),
         reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
+        // v9.3: Daily Payout
+        lastPayoutDate: state.lastDailyPayoutDate,
+        dailyPayoutCount: state.dailyPayoutCount,
+        totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
       },
   };
 }
@@ -7621,8 +7836,14 @@ const healthServer = http.createServer(async (req, res) => {
         sendJSON(res, 200, apiThresholds());
         break;
       case '/api/auto-harvest':
+        // Compute next payout time (next 8 AM UTC)
+        const nextPayoutDate = new Date();
+        nextPayoutDate.setUTCHours(8, 0, 0, 0);
+        if (nextPayoutDate.getTime() <= Date.now()) nextPayoutDate.setUTCDate(nextPayoutDate.getUTCDate() + 1);
+
         sendJSON(res, 200, {
           enabled: CONFIG.autoHarvest.enabled,
+          mode: 'daily',
           thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
           cooldownHours: CONFIG.autoHarvest.cooldownHours,
           minETHReserve: CONFIG.autoHarvest.minETHReserve,
@@ -7637,14 +7858,22 @@ const healthServer = http.createServer(async (req, res) => {
             totalTransferred: state.autoHarvestByRecipient[r.label] || 0,
           })),
           reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
+          // v9.3: Daily Payout info
+          dailyPayout: {
+            lastPayoutDate: state.lastDailyPayoutDate,
+            dailyPayoutCount: state.dailyPayoutCount,
+            totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
+            nextPayoutUTC: nextPayoutDate.toISOString(),
+            recentPayouts: (state.dailyPayouts || []).slice(-7),
+            byRecipient: state.dailyPayoutByRecipient || {},
+          },
         });
         break;
       case '/api/auto-harvest/trigger':
         if (CONFIG.autoHarvest.enabled) {
-          const cooldownMs = CONFIG.autoHarvest.cooldownHours * 60 * 60 * 1000;
-          CONFIG.autoHarvest.cooldownHours = 0;
-          sendJSON(res, 200, { message: 'Auto-harvest cooldown reset, will trigger on next cycle' });
-          setTimeout(() => { CONFIG.autoHarvest.cooldownHours = cooldownMs / (60 * 60 * 1000); }, 60000);
+          // v9.3: Trigger daily payout manually
+          sendJSON(res, 200, { message: 'Daily payout triggered manually' });
+          executeDailyPayout().catch((err: any) => console.error(`[Daily Payout] Manual trigger error: ${err?.message}`));
         } else {
           sendJSON(res, 400, { error: 'Auto-harvest is not enabled' });
         }
