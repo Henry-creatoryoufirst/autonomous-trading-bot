@@ -795,7 +795,7 @@ tr:hover td { background: var(--bg-subtle); }
     <div class="card"><div class="card-label">Current Interval</div><div class="card-value sm" id="eng-interval">--</div><div class="card-sub">seconds</div></div>
     <div class="card"><div class="card-label">Volatility</div><div class="card-value sm" id="eng-vol">--</div><div class="card-sub" id="eng-vol-sub">--</div></div>
     <div class="card"><div class="card-label">Portfolio Tier</div><div class="card-value sm" id="eng-tier">--</div><div class="card-sub" id="eng-tier-sub">--</div></div>
-    <div class="card"><div class="card-label">Emergency</div><div class="card-value sm" id="eng-emerg">OFF</div><div class="card-sub" id="eng-emerg-sub">Normal</div></div>
+    <div class="card"><div class="card-label">Token Coverage</div><div class="card-value sm" id="eng-tokens">--</div><div class="card-sub" id="eng-tokens-sub">--</div></div>
   </div>
 
   <!-- Phase 1/2 Engine Data -->
@@ -813,6 +813,7 @@ tr:hover td { background: var(--bg-subtle); }
       <div class="card-label">Position Sizing (Kelly)</div>
       <div class="kv"><span class="kv-label">Kelly %</span><span class="kv-value" id="kelly-pct">--</span></div>
       <div class="kv"><span class="kv-label">Max Trade Size</span><span class="kv-value" id="kelly-max">--</span></div>
+      <div class="kv"><span class="kv-label">Ceiling</span><span class="kv-value" id="kelly-ceiling">--</span></div>
       <div class="kv"><span class="kv-label">Vol Multiplier</span><span class="kv-value" id="kelly-vol-mult">--</span></div>
       <div class="kv"><span class="kv-label">Trade Sample</span><span class="kv-value" id="kelly-sample">--</span></div>
       <div class="kv"><span class="kv-label">Win Rate (Rolling)</span><span class="kv-value" id="kelly-winrate">--</span></div>
@@ -838,6 +839,7 @@ tr:hover td { background: var(--bg-subtle); }
       <div class="kv"><span class="kv-label">Cache Entries</span><span class="kv-value" id="cyc-cache-n">--</span></div>
       <div class="kv"><span class="kv-label">Cache Hit Rate</span><span class="kv-value" id="cyc-cache-r">--</span></div>
       <div class="kv"><span class="kv-label">Active Cooldowns</span><span class="kv-value" id="cyc-cooldowns">--</span></div>
+      <div id="cyc-cooldown-detail" style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:4px"></div>
     </div>
   </div>
 
@@ -1630,6 +1632,11 @@ function renderIntelSnapshot() {
   const defi = intel.defiLlama || {};
   const deriv = intel.derivatives || {};
   const macro = intel.macroData || {};
+  const global = intel.globalMarket || {};
+  const smartRetail = intel.smartRetailDivergence || {};
+  const funding = intel.fundingMeanReversion || {};
+  const stablecoin = intel.stablecoinSupply || {};
+  const altseason = intel.altseasonSignal || null;
 
   let html = '<div style="display:flex;flex-direction:column;gap:8px">';
   html += '<div class="kv"><span class="kv-label">Regime</span><span class="pill ' + regimePill(regime) + '">' + regime + '</span></div>';
@@ -1637,7 +1644,34 @@ function renderIntelSnapshot() {
   if (macro.fedRate != null) html += '<div class="kv"><span class="kv-label">Fed Rate</span><span class="kv-value">' + fmt(macro.fedRate, 2) + '%</span></div>';
   if (deriv.btcFunding != null) html += '<div class="kv"><span class="kv-label">BTC Fund.</span><span class="kv-value">' + fmt(deriv.btcFunding * 100, 4) + '%</span></div>';
   if (defi.baseTVL) html += '<div class="kv"><span class="kv-label">Base TVL</span><span class="kv-value">' + fmtK(defi.baseTVL) + '</span></div>';
-  if (defi.baseDEXVolume24h) html += '<div class="kv"><span class="kv-label">DEX Vol</span><span class="kv-value">' + fmtK(defi.baseDEXVolume24h) + '</span></div>';
+
+  // v10.0: BTC Dominance & Altseason
+  if (global.btcDominance != null) {
+    var altCls = altseason === 'ALTSEASON_ROTATION' ? 'positive' : altseason === 'BTC_DOMINANCE_FLIGHT' ? 'negative' : '';
+    html += '<div class="kv"><span class="kv-label">BTC.D</span><span class="kv-value">' + fmt(global.btcDominance, 1) + '%</span></div>';
+    if (altseason && altseason !== 'NEUTRAL') html += '<div class="kv"><span class="kv-label">Rotation</span><span class="kv-value ' + altCls + '">' + altseason.replace(/_/g, ' ') + '</span></div>';
+  }
+
+  // v10.0: Smart Money vs Retail
+  if (smartRetail.btcDivergence != null) {
+    var smSignal = smartRetail.signal || '';
+    var smCls = smSignal.indexOf('BUY') >= 0 ? 'positive' : smSignal.indexOf('SELL') >= 0 ? 'negative' : '';
+    html += '<div class="kv"><span class="kv-label">Smart $ Gap</span><span class="kv-value ' + smCls + '">' + fmt(smartRetail.btcDivergence, 1) + 'pp</span></div>';
+  }
+
+  // v10.0: Funding Mean-Reversion
+  if (funding.btcZScore != null) {
+    var frCls = Math.abs(funding.btcZScore) > 2 ? 'negative' : '';
+    html += '<div class="kv"><span class="kv-label">Fund. Z</span><span class="kv-value ' + frCls + '">' + fmt(funding.btcZScore, 2) + '\u03C3</span></div>';
+  }
+
+  // v10.0: Stablecoin Capital Flow
+  if (stablecoin.change7dPercent != null) {
+    var scCls = stablecoin.change7dPercent > 0 ? 'positive' : stablecoin.change7dPercent < -1 ? 'negative' : '';
+    var flowLabel = stablecoin.signal || (stablecoin.change7dPercent > 0 ? 'INFLOW' : 'OUTFLOW');
+    html += '<div class="kv"><span class="kv-label">Stablecoin</span><span class="kv-value ' + scCls + '">' + (stablecoin.change7dPercent > 0 ? '+' : '') + fmt(stablecoin.change7dPercent, 1) + '% 7d</span></div>';
+  }
+
   html += '</div>';
   $('intelSnapshot').innerHTML = html;
 }
@@ -1922,9 +1956,11 @@ function renderEngine() {
   $('eng-vol-sub').textContent = 'Threshold: ' + (a.dynamicPriceThreshold ? fmt(a.dynamicPriceThreshold * 100, 2) + '%' : '--');
   $('eng-tier').textContent = a.portfolioTier || '--';
   $('eng-tier-sub').textContent = a.dynamicPriceThreshold ? 'Threshold: ' + fmt(a.dynamicPriceThreshold * 100, 2) + '%' : 'Sensitivity tier';
-  $('eng-emerg').textContent = a.emergencyMode ? 'ACTIVE' : 'OFF';
-  $('eng-emerg').className = 'card-value sm' + (a.emergencyMode ? ' negative' : ' positive');
-  $('eng-emerg-sub').textContent = a.emergencyMode ? 'Until ' + fmtTime(a.emergencyUntil) : 'Normal';
+  const bal = Store.data.balances?.balances || [];
+  const tokenCount = bal.filter(function(b) { return b.symbol !== 'USDC' && b.symbol !== 'ETH'; }).length;
+  const totalTokens = Store.data.intelligence?.dataSources ? 23 : '--';
+  $('eng-tokens').textContent = tokenCount + '/' + totalTokens;
+  $('eng-tokens-sub').textContent = tokenCount > 0 ? tokenCount + ' held, ' + totalTokens + ' tracked' : '4 sectors';
 
   // Institutional Breaker (Phase 1)
   const brk = a.institutionalBreaker || {};
@@ -1940,6 +1976,9 @@ function renderEngine() {
   const ps = a.positionSizing || {};
   $('kelly-pct').textContent = ps.kellyPct != null ? fmt(ps.kellyPct, 2) + '%' : '--';
   $('kelly-max').textContent = ps.maxTradeUSD != null ? fmtUSD(ps.maxTradeUSD) : '--';
+  const isBoosted = ps.ceilingPct != null && ps.baseCeilingPct != null && ps.ceilingPct > ps.baseCeilingPct;
+  $('kelly-ceiling').textContent = ps.ceilingPct != null ? ps.ceilingPct + '%' + (isBoosted ? ' (boosted)' : '') : '--';
+  $('kelly-ceiling').className = 'kv-value' + (isBoosted ? ' positive' : '');
   $('kelly-vol-mult').textContent = ps.volMultiplier != null ? fmt(ps.volMultiplier, 2) + 'x' : '--';
   $('kelly-sample').textContent = ps.sampleSize != null ? ps.sampleSize + ' trades' : '--';
   $('kelly-winrate').textContent = ps.rollingWinRate != null ? fmt(ps.rollingWinRate, 1) + '%' : '--';
@@ -1963,6 +2002,15 @@ function renderEngine() {
   $('cyc-cache-r').textContent = cStats.hitRate != null ? fmt(cStats.hitRate, 1) + '%' : '--';
   const cd = c.cooldowns || {};
   $('cyc-cooldowns').textContent = cd.active != null ? cd.active + ' active' : '--';
+  const cdEntries = cd.entries || [];
+  if (cdEntries.length > 0) {
+    $('cyc-cooldown-detail').innerHTML = cdEntries.map(function(e) {
+      const mins = Math.max(0, (e.remainingMs || 0) / 60000);
+      return '<span style="margin-right:8px">' + e.symbol + ' <span style="color:var(--text-secondary)">' + e.decision + ' ' + (mins < 1 ? Math.round(mins * 60) + 's' : fmt(mins, 0) + 'm') + '</span></span>';
+    }).join('');
+  } else {
+    $('cyc-cooldown-detail').innerHTML = '';
+  }
 
   const tiers = cfg.portfolioTiers || [];
   if (Array.isArray(tiers) && tiers.length > 0) {

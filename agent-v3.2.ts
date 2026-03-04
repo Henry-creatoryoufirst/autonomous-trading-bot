@@ -8624,6 +8624,11 @@ const healthServer = http.createServer(async (req, res) => {
           cooldowns: {
             active: cooldownManager.getActiveCount(),
             summary: cooldownManager.getSummary(),
+            entries: cooldownManager.getActiveCooldowns().map(e => ({
+              symbol: e.symbol,
+              decision: e.decision,
+              remainingMs: Math.max(0, e.cooldownMs - (Date.now() - e.decidedAt)),
+            })),
           },
           cycleStats,
         });
