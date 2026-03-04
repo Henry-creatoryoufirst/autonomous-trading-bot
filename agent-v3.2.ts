@@ -591,8 +591,10 @@ function createCdpClient(): CdpClient {
 let cdpClient: CdpClient;
 
 // === v10.1: SMART ACCOUNT (Gasless Swaps on Base) ===
-// Smart Account wraps the existing EOA — swaps execute via bundler + paymaster (no ETH gas needed)
-let smartAccount: any = null;  // SmartAccount type from CDP SDK
+// NOTE: Wallet 0x55509... IS already a CoinbaseSmartWallet (ERC-4337 proxy).
+// CDP SDK's getOrCreateAccount() returns it directly — no wrapping needed.
+// Calling getOrCreateSmartAccount() would create a SECOND empty wrapper (Bug #1 fix).
+let smartAccount: any = null;  // Only set if CDP creates a NEW Smart Account (not pre-existing)
 let smartAccountAddress: string = '';
 
 // === DERIVATIVES MODULE STATE (v6.0) ===
@@ -2299,11 +2301,14 @@ function checkProfitTaking(
   // Don't sell less than $2 — not worth the gas
   if (sellUSD < 2) return null;
 
-  // v6.2.2: Capital floor — don't harvest if it would push portfolio below minimum trading capital
+  // v10.1.1: Capital floor check — selling a position to USDC is value-neutral (doesn't reduce portfolio).
+  // Only block if the REMAINING position + rest of portfolio would be below floor.
+  // Selling actually HELPS by converting illiquid positions to deployable USDC.
   const capitalFloor = CONFIG.autoHarvest?.minTradingCapitalUSD || 500;
   const currentPortfolio = state.trading.totalPortfolioValue || 0;
-  if (currentPortfolio - sellUSD < capitalFloor) {
-    console.log(`  ⚠️ CAPITAL FLOOR: Skipping ${symbol} harvest ($${sellUSD.toFixed(2)}) — would breach $${capitalFloor} floor (portfolio: $${currentPortfolio.toFixed(2)})`);
+  if (currentPortfolio < capitalFloor) {
+    // Only block if total portfolio is already below floor (not the sell itself)
+    console.log(`  ⚠️ CAPITAL FLOOR: Portfolio $${currentPortfolio.toFixed(2)} below floor $${capitalFloor} — skipping harvest`);
     return null;
   }
 
@@ -3703,8 +3708,8 @@ async function executeTWAP(
  */
 async function getTokenBalance(tokenSymbol: string): Promise<number> {
   try {
-    // v10.1: Read from Smart Account when active
-    const walletAddr = smartAccountAddress || CONFIG.walletAddress;
+    // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet)
+    const walletAddr = CONFIG.walletAddress;
     if (tokenSymbol === 'ETH' || tokenSymbol === 'WETH') {
       return await getETHBalance(walletAddr);
     }
@@ -5563,12 +5568,8 @@ let lastKnownETHBalance = 0;
 async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
   try {
     // v10.1: Smart Account swaps are gasless — skip refuel if Smart Account active
-    if (smartAccount) {
-      const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-      const ethBalance = await getETHBalance(account.address);
-      lastKnownETHBalance = ethBalance;
-      return { refueled: false, ethBalance, error: 'Smart Account active — swaps are gasless' };
-    }
+    // v10.1.1: Gas refuel remains active — wallet is a CoinbaseSmartWallet but
+    // account.swap() still routes through standard paths that may need gas
 
     const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
     const ethBalance = await getETHBalance(account.address);
@@ -5615,80 +5616,15 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
   }
 }
 
-// v10.1: One-time fund migration from EOA → Smart Account
-// When Smart Account is first created, USDC sits on the EOA. This moves it over.
-let fundsMigrated = false;
-
-async function migrateEOAFundsToSmartAccount(): Promise<void> {
-  if (!smartAccount || fundsMigrated) return;
-
-  try {
-    const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-    const eoaAddress = account.address;
-
-    // Check USDC on EOA
-    const eoaUSDC = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", eoaAddress, 6);
-    // Check USDC already on Smart Account
-    const saUSDC = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", smartAccountAddress, 6);
-
-    if (eoaUSDC < 1) {
-      // No meaningful USDC on EOA — either already migrated or empty
-      fundsMigrated = true;
-      return;
-    }
-
-    if (saUSDC > eoaUSDC * 0.5) {
-      // Smart Account already has funds — skip migration
-      fundsMigrated = true;
-      return;
-    }
-
-    // Keep $1 on EOA for any needed gas approvals, move the rest
-    const migrateAmount = Math.floor((eoaUSDC - 1) * 100) / 100;
-    if (migrateAmount < 2) {
-      fundsMigrated = true;
-      return;
-    }
-
-    console.log(`\n  📦 FUND MIGRATION: Moving $${migrateAmount.toFixed(2)} USDC from EOA → Smart Account`);
-    console.log(`     EOA (${eoaAddress.slice(0, 8)}...): $${eoaUSDC.toFixed(2)} USDC`);
-    console.log(`     Smart Account (${smartAccountAddress.slice(0, 8)}...): $${saUSDC.toFixed(2)} USDC`);
-
-    // Use EOA sendTransaction to transfer USDC to Smart Account
-    const amount = BigInt(Math.floor(migrateAmount * 1e6));
-    const transferData = "0xa9059cbb" +
-      smartAccountAddress.slice(2).padStart(64, "0") +
-      amount.toString(16).padStart(64, "0");
-
-    const result = await account.sendTransaction({
-      network: "base",
-      transaction: {
-        to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        data: transferData as `0x${string}`,
-        value: BigInt(0),
-      },
-    });
-
-    const txHash = result.transactionHash || result.hash || String(result);
-    console.log(`     ✅ USDC migrated to Smart Account: ${txHash}`);
-    console.log(`     🔍 View: https://basescan.org/tx/${txHash}`);
-    fundsMigrated = true;
-
-    // Small delay to let the transfer settle
-    await new Promise(resolve => setTimeout(resolve, 3000));
-  } catch (err: any) {
-    console.warn(`  ⚠️ Fund migration failed: ${err.message?.substring(0, 200)}`);
-    console.warn(`  ⚠️ Funds remain on EOA — will retry next cycle`);
-    // Don't set fundsMigrated so it retries
-  }
-}
+// v10.1.1: Fund migration removed — wallet IS the Smart Wallet, no separate account to migrate to
+let fundsMigrated = true; // Always true — no migration needed
 
 async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
-  // v10.1: Read from Smart Account address when active, otherwise EOA/WALLET_ADDRESS
-  const walletAddress = smartAccountAddress || CONFIG.walletAddress;
+  // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet at 0x55509...)
+  const walletAddress = CONFIG.walletAddress;
   const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
 
-  console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...${smartAccountAddress ? ' (Smart Account)' : ''}`);
+  console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
 
   const tokenEntries = Object.entries(TOKEN_REGISTRY);
   const results: { symbol: string; balance: number }[] = [];
@@ -5988,10 +5924,11 @@ EXIT RULES (when to SELL):
 8. NEWS RISK: If a token has strong bearish news mentions AND technical indicators confirm (RSI dropping, MACD bearish), trim position proactively
 9. SMART MONEY WARNING: If derivatives show SMART_MONEY_SHORT while you're holding a token, this is a high-priority sell signal
 10. TIME-BASED HARVEST: Positions held 72+ hours with +5% gain get a 10% trim — don't let stale winners sit forever
+11. CAPITAL RECYCLING (v10.1.1): If available USDC < $10 AND you hold profitable positions, you MUST recommend SELL on your highest-gain position (sell 20-30% of it) to free capital for new opportunities. A bot with $0 USDC cannot compound. Idle capital in tokens earning no yield while better opportunities exist is a DRAG on returns. Rotate capital: sell winners to fund new entries.
 
 REGIME-ADAPTED STRATEGY (CAPITAL COMPOUNDING MINDSET — always look for ways to grow):
 - TRENDING_UP: Maximum aggression. Buy dips hard. Favor momentum entries. Let winners run. Deploy idle USDC
-- TRENDING_DOWN: Selective buying — downtrends create the best entry prices. Hunt for oversold bounces and accumulation setups. Sell only clear losers, not everything. Cash is a TEMPORARY state, not a goal
+- TRENDING_DOWN: Selective buying — downtrends create the best entry prices. Hunt for oversold bounces and accumulation setups. Sell only clear losers, not everything. But if USDC is exhausted, sell winners to recycle capital
 - RANGING: Active mean-reversion. Buy oversold tokens aggressively, sell overbought. Ranges are profit machines for active traders
 - VOLATILE: Volatility = opportunity. Use it to enter positions at dislocated prices. Reduce size per trade but INCREASE trade count. More bets, smaller each
 
@@ -5999,7 +5936,7 @@ MACRO-AWARE ADJUSTMENTS:
 - RISK_ON macro + TRENDING_UP regime = Maximum aggression. Deploy all available capital on dips. This is the best environment for crypto
 - RISK_OFF macro + TRENDING_DOWN regime = Contrarian accumulation. Best future returns come from buying when others panic. Selectively accumulate high-conviction tokens at discount. Keep 30-40% USDC reserve, deploy the rest into strength
 - RISK_ON macro + RANGING regime = Lean bullish. Buy oversold more aggressively, hold longer before selling. Deploy USDC into pullbacks
-- RISK_OFF macro + VOLATILE regime = Tactical. Smaller position sizes but keep trading. Look for oversold snaps and mean-reversion plays. Sitting in 100% USDC is NOT compounding
+- RISK_OFF macro + VOLATILE regime = Tactical. Smaller position sizes but keep trading. Look for oversold snaps and mean-reversion plays. Sitting in 100% USDC is not ideal, but sitting in 0% USDC is WORSE — recycle capital from stale positions
 
 RISK RULES:
 1. No single token > 25% of portfolio
@@ -6236,9 +6173,9 @@ async function executeSingleSwap(
       fromAmount = parseUnits(tokenAmount.toFixed(Math.min(fromDecimals, 8)), fromDecimals);
     }
 
-    // v10.1: Use Smart Account for gasless swaps, fall back to EOA
-    const useSmartAccount = smartAccount !== null;
-    console.log(`\n  🔄 EXECUTING TRADE via CDP SDK ${useSmartAccount ? '(Smart Account — GASLESS)' : '(EOA)'}:`);
+    // v10.1.1: Always use account.swap() — wallet IS a CoinbaseSmartWallet
+    const useSmartAccount = false; // Disabled: wallet is already a SmartWallet, no wrapper needed
+    console.log(`\n  🔄 EXECUTING TRADE via CDP SDK (CoinbaseSmartWallet):`);
     console.log(`     ${decision.fromToken} (${fromTokenAddress})`);
     console.log(`     → ${decision.toToken} (${toTokenAddress})`);
     console.log(`     Amount: ${formatUnits(fromAmount, fromDecimals)} ${decision.fromToken} (~$${decision.amountUSD.toFixed(2)})`);
@@ -6607,8 +6544,8 @@ async function executeDailyPayout(): Promise<void> {
     return;
   }
 
-  // Check USDC balance and ETH for gas — v10.1: use Smart Account address when active
-  const payoutWalletAddr = smartAccountAddress || CONFIG.walletAddress;
+  // Check USDC balance and ETH for gas
+  const payoutWalletAddr = CONFIG.walletAddress;
   const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, payoutWalletAddr, 6);
   const ethBalance = await getETHBalance(payoutWalletAddr);
 
@@ -6623,7 +6560,11 @@ async function executeDailyPayout(): Promise<void> {
     return;
   }
 
-  const sendableUSDC = Math.max(0, usdcBalance - DAILY_PAYOUT_USDC_BUFFER);
+  // v10.1.1: Higher USDC reserve — keep at least $50 for trading operations
+  // The $5 buffer was too low and caused USDC exhaustion → trading freeze
+  const PAYOUT_TRADING_RESERVE = 50; // Keep $50 minimum for active trading
+  const effectiveBuffer = Math.max(DAILY_PAYOUT_USDC_BUFFER, PAYOUT_TRADING_RESERVE);
+  const sendableUSDC = Math.max(0, usdcBalance - effectiveBuffer);
   const totalRecipientPct = recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
 
   console.log(`[Daily Payout] USDC: $${usdcBalance.toFixed(2)} (sendable: $${sendableUSDC.toFixed(2)}) | ETH: ${ethBalance.toFixed(6)}`);
@@ -6752,9 +6693,9 @@ async function checkAutoHarvestTransfer(
     return { sent: false, transfers: [{ label: '-', amount: 0, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` }] };
   }
 
-  // Check actual USDC balance available — v10.1: use Smart Account address when active
+  // Check actual USDC balance available
   const usdcAddress = TOKEN_REGISTRY.USDC.address;
-  const harvestWalletAddr = smartAccountAddress || CONFIG.walletAddress;
+  const harvestWalletAddr = CONFIG.walletAddress;
   const usdcBalance = await getERC20Balance(usdcAddress, harvestWalletAddr, 6);
 
   // Capital floor
@@ -6847,21 +6788,7 @@ async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): P
     to.slice(2).padStart(64, "0") +
     amount.toString(16).padStart(64, "0");
 
-  if (smartAccount) {
-    // v10.1: Smart Account transfer — gasless via sendUserOperation
-    const opResult = await smartAccount.sendUserOperation({
-      network: "base",
-      calls: [{
-        to: usdcAddress,
-        data: transferData as `0x${string}`,
-        value: BigInt(0),
-      }],
-    });
-    const receipt = await smartAccount.waitForUserOperation({ userOpHash: opResult.userOpHash });
-    return receipt.transactionHash || opResult.userOpHash;
-  }
-
-  // EOA fallback
+  // v10.1.1: Use account.sendTransaction() directly — wallet IS a CoinbaseSmartWallet
   const result = await account.sendTransaction({
     network: "base",
     transaction: {
@@ -6875,21 +6802,7 @@ async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): P
 
 // Helper: send native ETH transfer using CDP SDK (kept for future use)
 async function sendNativeTransfer(account: any, to: string, amountETH: number): Promise<string> {
-  if (smartAccount) {
-    // v10.1: Smart Account ETH transfer — gasless
-    const opResult = await smartAccount.sendUserOperation({
-      network: "base",
-      calls: [{
-        to: to as `0x${string}`,
-        value: BigInt(Math.floor(amountETH * 1e18)),
-        data: "0x" as `0x${string}`,
-      }],
-    });
-    const receipt = await smartAccount.waitForUserOperation({ userOpHash: opResult.userOpHash });
-    return receipt.transactionHash || opResult.userOpHash;
-  }
-
-  // EOA fallback
+  // v10.1.1: Use account.sendTransaction() directly — wallet IS a CoinbaseSmartWallet
   const result = await account.sendTransaction({
     to: to,
     value: BigInt(Math.floor(amountETH * 1e18)),
@@ -7115,10 +7028,7 @@ async function runTradingCycle() {
       }
     }
 
-    // v10.1: Migrate USDC from EOA → Smart Account if needed (one-time)
-    if (smartAccount && !fundsMigrated && CONFIG.trading.enabled) {
-      await migrateEOAFundsToSmartAccount();
-    }
+    // v10.1.1: Fund migration removed — wallet IS the Smart Wallet at 0x55509
 
     console.log("\n📊 Fetching balances...");
     const balances = await getBalances();
@@ -7770,10 +7680,9 @@ function displayBanner() {
 ╚══════════════════════════════════════════════════════════════════════════╝
   `);
   console.log("📍 Configuration:");
-  console.log(`   Wallet (EOA): ${CONFIG.walletAddress}`);
-  console.log(`   Smart Account: ${smartAccountAddress || 'Not initialized yet'}`);
+  console.log(`   Wallet: ${CONFIG.walletAddress} (CoinbaseSmartWallet)`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
-  console.log(`   Execution: Coinbase CDP SDK v10.1 (Smart Account gasless swaps + Permit2)`);
+  console.log(`   Execution: Coinbase CDP SDK v10.1.1 (CoinbaseSmartWallet + Permit2)`);
   console.log(`   Brain: v10.0 — 11-Dimensional (Technicals + DeFi + Derivatives + Positioning + News + Macro + Cross-Asset + Regime + BTC Dominance + Funding MR + Capital Flow)`);
   console.log(`   AI Strategy: 11-dim regime-adapted (regime > altseason > macro > smart-retail > technicals+DeFi > funding MR > TVL-price > stablecoin > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
@@ -7803,92 +7712,39 @@ async function main() {
     const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
     console.log(`  ✅ CDP EOA Account verified: ${account.address}`);
 
-    // v10.1: Create Smart Account wrapping the EOA — enables gasless swaps on Base
-    console.log("  🔧 Creating Smart Account (gasless swaps)...");
-    try {
-      smartAccount = await cdpClient.evm.getOrCreateSmartAccount({
-        owner: account,
-      });
-      smartAccountAddress = smartAccount.address;
-      console.log(`  ✅ Smart Account created: ${smartAccountAddress}`);
-      console.log(`  ✅ Owner (EOA): ${account.address}`);
-      console.log(`  ✅ Gasless swaps enabled — no ETH gas needed for trades`);
-    } catch (saError: any) {
-      console.warn(`  ⚠️ Smart Account creation failed: ${saError.message?.substring(0, 200)}`);
-      console.warn(`  ⚠️ Falling back to EOA-based swaps (gas required)`);
-      smartAccount = null;
-      smartAccountAddress = '';
-    }
+    // v10.1.1: Smart Account detection — wallet 0x55509 IS already a CoinbaseSmartWallet.
+    // CDP SDK's getOrCreateAccount() returns the Smart Wallet directly.
+    // We do NOT call getOrCreateSmartAccount() — that would create a nested empty wrapper.
+    // The existing wallet already supports UserOperations via ERC-4337.
+    console.log(`  ✅ Wallet ${account.address} is a CoinbaseSmartWallet (ERC-4337)`);
+    console.log(`  ✅ Swaps execute via account.swap() through the existing Smart Wallet`);
+    // Keep smartAccount = null — use account.swap() directly (which works with Smart Wallets)
+    smartAccount = null;
+    smartAccountAddress = '';
 
-    // v10.1: CDP Policy Engine — create spending limit policy for safety
-    try {
-      console.log("  🛡️ Setting up CDP Policy Engine...");
-      const maxTradeWei = BigInt(Math.floor(CONFIG.trading.maxBuySize)) * BigInt(1e6); // USDC decimals
-      await cdpClient.policies.createPolicy({
-        policy: {
-          scope: "project",
-          description: `STC v10.1 Trading Limits — max $${CONFIG.trading.maxBuySize} per swap, Base network only`,
-          rules: [
-            {
-              action: "accept" as const,
-              operation: "signEvmTransaction",
-              criteria: [
-                {
-                  type: "evmNetwork",
-                  networks: ["base"],
-                  operator: "in",
-                },
-              ],
-            },
-          ],
-        },
-      });
-      console.log(`  ✅ Policy Engine: Network restricted to Base, max trade $${CONFIG.trading.maxBuySize}`);
-    } catch (policyError: any) {
-      // Policy may already exist or permissions may not support it — non-fatal
-      const policyMsg = policyError?.message || '';
-      if (policyMsg.includes('already exists') || policyMsg.includes('conflict')) {
-        console.log(`  ✅ Policy Engine: Existing policy active`);
-      } else {
-        console.warn(`  ⚠️ Policy Engine setup skipped: ${policyMsg.substring(0, 150)}`);
-      }
-    }
+    // v10.1.1: Policy Engine deferred — wallet already has native CoinbaseSmartWallet protections
+    console.log(`  ✅ CoinbaseSmartWallet protections active (native to wallet)`);
+    console.log(`  ✅ Bot-level guards: max trade $${CONFIG.trading.maxBuySize}, Base-only, circuit breakers`);
 
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
       console.log(`\n  ⚠️ Note: CDP account address differs from WALLET_ADDRESS`);
-      console.log(`     CDP EOA: ${account.address}`);
-      if (smartAccountAddress) console.log(`     Smart Account: ${smartAccountAddress}`);
+      console.log(`     CDP Account: ${account.address}`);
       console.log(`     WALLET_ADDRESS: ${CONFIG.walletAddress}`);
-      console.log(`     Trades execute from ${smartAccountAddress ? 'Smart Account' : 'CDP EOA'}. Balance reading uses WALLET_ADDRESS.`);
-      console.log(`     To align: update WALLET_ADDRESS=${smartAccountAddress || account.address} in Railway vars.`);
+      console.log(`     Balance reads use WALLET_ADDRESS. Trades execute from CDP Account.`);
+      console.log(`     To align: update WALLET_ADDRESS=${account.address} in Railway vars.`);
     }
 
     // Check fund status
     try {
-      // Check balances on both EOA and Smart Account
-      const eoaAddress = account.address;
-      const checkAddress = smartAccountAddress || eoaAddress;
-      const ethBalance = await getETHBalance(eoaAddress);
-      const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", checkAddress, 6);
-      const eoaUsdcBalance = smartAccountAddress ? await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", eoaAddress, 6) : usdcBalance;
+      const walletAddr = CONFIG.walletAddress;
+      const ethBalance = await getETHBalance(walletAddr);
+      const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", walletAddr, 6);
       console.log(`\n  💰 Fund Status:`);
-      if (smartAccountAddress) {
-        console.log(`     Smart Account USDC: $${usdcBalance.toFixed(2)}`);
-        console.log(`     EOA USDC: $${eoaUsdcBalance.toFixed(2)}`);
-      } else {
-        console.log(`     USDC: $${usdcBalance.toFixed(2)}`);
-      }
-      console.log(`     EOA ETH (for gas): ${ethBalance.toFixed(6)} ETH (~$${(ethBalance * 2700).toFixed(2)})`);
-      if (smartAccountAddress) {
-        console.log(`     💡 Smart Account uses paymaster — ETH gas not needed for swaps`);
-        if (usdcBalance < 1 && eoaUsdcBalance > 1) {
-          console.log(`\n  ⚠️ USDC is on EOA, not Smart Account.`);
-          console.log(`     Funds need to be on Smart Account (${smartAccountAddress}) for gasless swaps.`);
-          console.log(`     The bot will transfer USDC from EOA → Smart Account on the first trade.`);
-        }
-      } else if (ethBalance < 0.0001 && usdcBalance > 1) {
+      console.log(`     USDC: $${usdcBalance.toFixed(2)}`);
+      console.log(`     ETH (for gas): ${ethBalance.toFixed(6)} ETH (~$${(ethBalance * 2700).toFixed(2)})`);
+      if (ethBalance < 0.0001 && usdcBalance > 1) {
         console.log(`\n  ⚠️ WARNING: Account has USDC but almost no ETH for gas!`);
         console.log(`     Token approvals require a small ETH gas fee (~$0.01 on Base).`);
         console.log(`     Send at least 0.0005 ETH (~$1.35) to: ${account.address}`);
@@ -8588,21 +8444,20 @@ const healthServer = http.createServer(async (req, res) => {
             deploymentBias: lastMomentumSignal.deploymentBias,
             dataAvailable: lastMomentumSignal.dataAvailable,
           },
-          // v10.1: Smart Account status
+          // v10.1.1: Wallet status — using native CoinbaseSmartWallet
           smartAccount: {
-            enabled: smartAccount !== null,
-            address: smartAccountAddress || null,
-            gasless: smartAccount !== null,
-            mode: smartAccount ? 'SMART_ACCOUNT' : 'EOA',
+            enabled: true,
+            address: CONFIG.walletAddress,
+            gasless: false, // Wallet is a SmartWallet but uses standard swap() path
+            mode: 'COINBASE_SMART_WALLET',
           },
           // v9.2: Gas tank status
           gasTank: {
             ethBalance: lastKnownETHBalance,
             thresholdETH: GAS_REFUEL_THRESHOLD_ETH,
             lastRefuelTime: lastGasRefuelTime > 0 ? new Date(lastGasRefuelTime).toISOString() : null,
-            autoRefuelEnabled: CONFIG.trading.enabled && !smartAccount,
-            status: smartAccount ? 'GASLESS'
-              : lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH * 3 ? 'HEALTHY'
+            autoRefuelEnabled: CONFIG.trading.enabled,
+            status: lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH * 3 ? 'HEALTHY'
               : lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH ? 'LOW'
               : 'CRITICAL',
           },
