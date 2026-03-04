@@ -1529,9 +1529,9 @@ function calculatePatternConfidence(patternId: string, regime: MarketRegime): nu
     if (daysSince > 30) conf *= 0.8;
   }
 
-  // v10.3: Floor raised from 0.2 → 0.5 — prevents extreme reductions that killed capital deployment
-  // Worst case: confidence halves the trade size (50%), not obliterates it (80%)
-  return Math.max(0.5, Math.min(1.0, conf));
+  // v10.3: Floor raised from 0.2 → 0.6 — max 40% reduction, never more
+  // If 11 dimensions say buy, pattern history shouldn't override that by 80%
+  return Math.max(0.6, Math.min(1.0, conf));
 }
 
 /**

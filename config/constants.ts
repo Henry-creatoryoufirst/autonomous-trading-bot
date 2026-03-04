@@ -105,12 +105,12 @@ export const CACHE_TTL = {
 // ============================================================================
 
 export const COOLDOWN_DURATIONS = {
-  /** After executing a trade (buy/sell) — matches TRADE_MINIMUM_COOLDOWN_MS hard lock */
-  TRADE_EXECUTED: 2 * 60 * 1000,    // v10.3: 2 minutes — real protection is the 3min hard lock + stop-losses
-  /** After explicit HOLD decision — near-continuous re-evaluation */
-  HOLD_DECISION: 30 * 1000,         // v10.3: 30 seconds — HOLD just means "not now", re-check immediately
-  /** Signal was too weak — re-evaluate next cycle */
-      WEAK_SIGNAL: 15 * 1000,            // v10.3: 15 seconds — weak signals can strengthen within one candle
+  /** After executing a trade (buy/sell) — brief pause, stop-losses handle real risk */
+  TRADE_EXECUTED: 90 * 1000,        // v10.3: 90 seconds — let chain confirm, then re-evaluate
+  /** After explicit HOLD decision — re-evaluate almost immediately */
+  HOLD_DECISION: 15 * 1000,         // v10.3: 15 seconds — conditions change fast
+  /** Signal was too weak — check again next cycle */
+      WEAK_SIGNAL: 10 * 1000,            // v10.3: 10 seconds — near-continuous, weak signals flip quickly
 } as const;
 
 /** Price move threshold to override cooldown (3% in either direction) */
@@ -249,8 +249,8 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  * Normal SELL entry: confluence <= -20
  * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
  */
-export const REENTRY_CONFLUENCE_BUY = 32;   // v10.3: Lowered from 40 — was blocking 60% of re-entry opportunities
-export const REENTRY_CONFLUENCE_SELL = -30;  // v10.3: Lowered from -35
+export const REENTRY_CONFLUENCE_BUY = 30;   // v10.3: Midpoint — trust the signal but require slight conviction above normal (25)
+export const REENTRY_CONFLUENCE_SELL = -28;  // v10.3: Midpoint — slight conviction above normal (-20)
 export const NORMAL_CONFLUENCE_BUY = 25;
 export const NORMAL_CONFLUENCE_SELL = -20;
 
@@ -265,7 +265,7 @@ export const MAX_CONCURRENT_TRADES = 5;
 export const TRADE_EXECUTION_GAP_MS = 2000; // 2 seconds
 
 /** Absolute minimum cooldown after ANY trade — prevents same-candle flip */
-export const TRADE_MINIMUM_COOLDOWN_MS = 2 * 60 * 1000; // v10.3: 2 minutes (was 3min) — stop-losses handle risk, this just prevents flip-flop
+export const TRADE_MINIMUM_COOLDOWN_MS = 90 * 1000; // v10.3: 90 seconds — prevents same-candle flip, stop-losses handle real risk
 
 /** How often each token watcher re-checks price when in cooldown */
 export const TOKEN_WATCH_INTERVAL_MS = 30 * 1000; // 30 seconds
@@ -358,7 +358,7 @@ export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before 
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
 export const KELLY_POSITION_FLOOR_USD = 5;    // Minimum viable trade
 export const KELLY_POSITION_CEILING_PCT = 8;  // v9.2: Hard cap: 8% of portfolio per trade (was 5%)
-export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 12; // v10.3: Boost for <$10K portfolios — allows larger positions when capital is limited
+export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 15; // v10.3: Boost for <$10K portfolios — $5K × 15% = $750 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**
