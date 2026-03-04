@@ -302,6 +302,16 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "cbETH", name: "Coinbase Staked ETH", coingeckoId: "coinbase-wrapped-staked-eth",
     sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
   },
+  wstETH: {
+    address: "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452",
+    symbol: "wstETH", name: "Wrapped Lido Staked ETH", coingeckoId: "wrapped-steth",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+  },
+  LINK: {
+    address: "0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196",
+    symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+  },
   // === AI & AGENT TOKENS (20%) ===
   VIRTUAL: {
     address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
@@ -317,6 +327,11 @@ const TOKEN_REGISTRY: Record<string, {
   HIGHER: {
     address: "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+  },
+  VVV: {
+    address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
+    symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
   },
   // === MEME COINS (20%) ===
@@ -369,6 +384,21 @@ const TOKEN_REGISTRY: Record<string, {
   BAL: {
     address: "0x4158734D47Fc9692176B5085E0F52ee0Da5d47F1",
     symbol: "BAL", name: "Balancer", coingeckoId: "balancer",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+  },
+  MORPHO: {
+    address: "0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842",
+    symbol: "MORPHO", name: "Morpho", coingeckoId: "morpho",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+  },
+  PENDLE: {
+    address: "0xa99F6E6785da0F5d6FB42495Fe424BCE029Eeb3E",
+    symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+  },
+  RSR: {
+    address: "0xaB36452DbAC151bE02b16Ca17d8919826072f64a",
+    symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
   },
 };
