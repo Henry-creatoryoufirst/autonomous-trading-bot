@@ -8461,6 +8461,8 @@ const healthServer = http.createServer(async (req, res) => {
           thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
           cooldownHours: CONFIG.autoHarvest.cooldownHours,
           minETHReserve: CONFIG.autoHarvest.minETHReserve,
+          totalTransferredUSD: state.totalAutoHarvestedUSD + (state.totalDailyPayoutsUSD || 0),
+          transferCount: (state.autoHarvestCount || 0) + (state.dailyPayoutCount || 0),
           totalTransfers: (state.autoHarvestTransfers || []).length,
           recentTransfers: (state.autoHarvestTransfers || []).slice(-5),
           lastHarvestTime: (state.lastAutoHarvestTime || null),
@@ -8469,7 +8471,7 @@ const healthServer = http.createServer(async (req, res) => {
             label: r.label,
             wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
             percent: r.percent,
-            totalTransferred: state.autoHarvestByRecipient[r.label] || 0,
+            totalTransferred: (state.autoHarvestByRecipient[r.label] || 0) + (state.dailyPayoutByRecipient[r.label] || 0),
           })),
           reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
           // v9.3: Daily Payout info

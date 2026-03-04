@@ -854,12 +854,14 @@ tr:hover td { background: var(--bg-subtle); }
   </div>
 
   <div class="section-hdr">Profit Distribution</div>
-  <div class="grid g-3">
+  <div class="grid g-4">
     <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="ah-status">--</div><div class="card-sub" id="ah-status-sub">--</div></div>
     <div class="card"><div class="card-label">Total Distributed</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
     <div class="card"><div class="card-label">Reinvested</div><div class="card-value sm" id="ah-reinvest" style="color:var(--positive)">--</div><div class="card-sub" id="ah-reinvest-sub">Compounding in portfolio</div></div>
+    <div class="card"><div class="card-label">Next Payout</div><div class="card-value sm" id="ah-next">--</div><div class="card-sub" id="ah-next-sub">8:00 AM UTC daily</div></div>
   </div>
   <div id="ah-recipients" style="margin-top:var(--space-3)"></div>
+  <div id="ah-recent-payouts" style="margin-top:var(--space-3)"></div>
 
   <hr class="section-divider">
 
@@ -2026,12 +2028,21 @@ function renderEngine() {
   $('ah-status').className = 'card-value sm ' + (ah.enabled ? 'positive' : 'neutral');
   $('ah-status-sub').textContent = ah.enabled ? 'Threshold: $' + (ah.thresholdUSD || '--') : 'Not configured';
   $('ah-total').textContent = fmtUSD(ah.totalTransferredUSD || 0);
-  $('ah-total-sub').textContent = (ah.transferCount || ah.totalTransfers || 0) + ' transfers';
+  $('ah-total-sub').textContent = (ah.transferCount || ah.totalTransfers || 0) + ' payouts';
 
   // v9.1: Reinvest percentage and recipients
   const reinvest = ah.reinvestPercent != null ? ah.reinvestPercent : 100;
   $('ah-reinvest').textContent = reinvest + '%';
   $('ah-reinvest-sub').textContent = 'Compounding in portfolio';
+
+  // Next payout countdown
+  const dp = ah.dailyPayout || {};
+  if (dp.nextPayoutUTC) {
+    var nextT = new Date(dp.nextPayoutUTC).getTime();
+    var hoursLeft = Math.max(0, (nextT - Date.now()) / 3600000);
+    $('ah-next').textContent = hoursLeft < 1 ? Math.round(hoursLeft * 60) + 'm' : fmt(hoursLeft, 1) + 'h';
+    $('ah-next-sub').textContent = dp.lastPayoutDate ? 'Last: ' + dp.lastPayoutDate : '8:00 AM UTC daily';
+  }
 
   const recipientsEl = $('ah-recipients');
   const recipients = ah.recipients || [];
@@ -2043,7 +2054,24 @@ function renderEngine() {
           '<div class="card-sub">' + r.wallet + '</div></div>';
       }).join('') + '</div>';
   } else {
-    recipientsEl.innerHTML = '';
+    recipientsEl.innerHTML = '<div class="card" style="padding:var(--space-3);text-align:center;color:var(--text-muted)">' +
+      'No recipients configured. Set <code>HARVEST_RECIPIENTS</code> env var in Railway.</div>';
+  }
+
+  // Recent daily payouts
+  const recentPayouts = dp.recentPayouts || [];
+  const payoutsEl = $('ah-recent-payouts');
+  if (recentPayouts.length > 0) {
+    payoutsEl.innerHTML = '<div class="card"><div class="card-label">Recent Payouts</div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>P&L</th><th>Distributed</th><th>Status</th></tr></thead><tbody>' +
+      recentPayouts.slice().reverse().map(function(p) {
+        var status = p.skippedReason ? '<span style="color:var(--text-muted)">' + p.skippedReason.replace(/_/g, ' ') + '</span>' :
+          p.totalDistributed > 0 ? '<span class="positive">' + fmtUSD(p.totalDistributed) + '</span>' : '<span style="color:var(--text-muted)">$0</span>';
+        return '<tr><td>' + p.date + '</td><td class="' + clsPnl(p.realizedPnL || 0) + '">' + fmtUSD(p.realizedPnL || 0) + '</td>' +
+          '<td>' + fmtUSD(p.totalDistributed || 0) + '</td><td>' + status + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+  } else {
+    payoutsEl.innerHTML = '';
   }
 }
 
