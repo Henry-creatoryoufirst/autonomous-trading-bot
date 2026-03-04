@@ -6923,9 +6923,9 @@ async function fetchQuickPrices(): Promise<Map<string, number>> {
 async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<{ isHeavy: boolean; reason: string }> {
   const now = Date.now();
 
-  // 1. Forced interval: at least one heavy cycle every 3 minutes (v10.3)
+  // 1. Forced interval: heavy cycle every 60s — always thinking (v10.3)
   if (now - lastHeavyCycleAt > HEAVY_CYCLE_FORCED_INTERVAL_MS) {
-    return { isHeavy: true, reason: `Forced interval (${((now - lastHeavyCycleAt) / 60000).toFixed(0)}m since last heavy)` };
+    return { isHeavy: true, reason: `Forced interval (${((now - lastHeavyCycleAt) / 1000).toFixed(0)}s since last heavy)` };
   }
 
   // 2. First cycle is always heavy
