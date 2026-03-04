@@ -131,6 +131,8 @@ import {
   KELLY_ROLLING_WINDOW,
   KELLY_POSITION_FLOOR_USD,
   KELLY_POSITION_CEILING_PCT,
+  KELLY_SMALL_PORTFOLIO_CEILING_PCT,
+  KELLY_SMALL_PORTFOLIO_THRESHOLD,
   VOL_TARGET_DAILY_PCT,
   VOL_HIGH_THRESHOLD,
   VOL_HIGH_REDUCTION,
@@ -1527,7 +1529,9 @@ function calculatePatternConfidence(patternId: string, regime: MarketRegime): nu
     if (daysSince > 30) conf *= 0.8;
   }
 
-  return Math.max(0.2, Math.min(1.0, conf));
+  // v10.3: Floor raised from 0.2 → 0.5 — prevents extreme reductions that killed capital deployment
+  // Worst case: confidence halves the trade size (50%), not obliterates it (80%)
+  return Math.max(0.5, Math.min(1.0, conf));
 }
 
 /**
@@ -3192,17 +3196,29 @@ const DEFAULT_BREAKER_STATE: BreakerState = {
 let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
 
 /**
+ * v10.3: Effective Kelly ceiling — scales up for small portfolios.
+ * Under $10K, use 12% ceiling (more capital per trade to overcome minimums and fees).
+ * Over $10K, use the standard 8% ceiling.
+ */
+function getEffectiveKellyCeiling(portfolioValue: number): number {
+  return portfolioValue < KELLY_SMALL_PORTFOLIO_THRESHOLD
+    ? KELLY_SMALL_PORTFOLIO_CEILING_PCT
+    : KELLY_POSITION_CEILING_PCT;
+}
+
+/**
  * Quarter Kelly Position Sizing
  * Uses rolling window of recent trades to calculate mathematically optimal bet size.
  * Returns the dollar amount to trade.
  */
 function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number; kellyPct: number; rawKelly: number; winRate: number; avgWin: number; avgLoss: number } {
+  const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue); // v10.3: dynamic ceiling
   const recentTrades = state.tradeHistory.slice(-KELLY_ROLLING_WINDOW);
   const sells = recentTrades.filter(t => t.action === 'SELL' && t.success);
 
   // Need minimum sample size for statistical validity
   if (sells.length < KELLY_MIN_TRADES) {
-    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (KELLY_POSITION_CEILING_PCT / 100));
+    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (effectiveCeiling / 100));
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
@@ -3219,7 +3235,7 @@ function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number;
   }
 
   if (wins.length + losses.length < KELLY_MIN_TRADES) {
-    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (KELLY_POSITION_CEILING_PCT / 100));
+    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (effectiveCeiling / 100));
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
@@ -3230,10 +3246,10 @@ function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number;
   // Kelly formula: (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
   const rawKelly = avgWin > 0 ? (winRate * avgWin - (1 - winRate) * avgLoss) / avgWin : 0;
 
-  // Quarter Kelly for safety, then clamp
+  // Quarter Kelly for safety, then clamp — v10.3: uses dynamic ceiling for small portfolios
   const quarterKelly = Math.max(0, rawKelly * KELLY_FRACTION);
-  const kellyPct = Math.min(quarterKelly * 100, KELLY_POSITION_CEILING_PCT);
-  const kellyUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(portfolioValue * (kellyPct / 100), portfolioValue * (KELLY_POSITION_CEILING_PCT / 100)));
+  const kellyPct = Math.min(quarterKelly * 100, effectiveCeiling);
+  const kellyUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(portfolioValue * (kellyPct / 100), portfolioValue * (effectiveCeiling / 100)));
 
   return { kellyUSD, kellyPct, rawKelly, winRate, avgWin, avgLoss };
 }
@@ -3311,8 +3327,9 @@ function calculateInstitutionalPositionSize(portfolioValue: number): {
     }
   }
 
-  // Hard floor and ceiling
-  sizeUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(sizeUSD, portfolioValue * (KELLY_POSITION_CEILING_PCT / 100)));
+  // Hard floor and ceiling — v10.3: uses dynamic ceiling for small portfolios
+  const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue);
+  sizeUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(sizeUSD, portfolioValue * (effectiveCeiling / 100)));
 
   return {
     sizeUSD: Math.round(sizeUSD * 100) / 100,
@@ -7926,7 +7943,8 @@ async function main() {
   const { tier: startTier } = getPortfolioSensitivity(state.trading.totalPortfolioValue || 0);
   console.log(`\n🚀 Agent v8.1 running! Kelly Sizing + VWS Liquidity + TWAP + Fallback RPCs.\n`);
   console.log(`   📂 State persistence: ${CONFIG.logFile}`);
-  console.log(`   💰 Position sizing: Quarter Kelly (${KELLY_FRACTION}×) | Ceiling: ${KELLY_POSITION_CEILING_PCT}% | Floor: $${KELLY_POSITION_FLOOR_USD}`);
+  const startCeiling = getEffectiveKellyCeiling(state.trading.totalPortfolioValue || 0);
+  console.log(`   💰 Position sizing: Quarter Kelly (${KELLY_FRACTION}×) | Ceiling: ${startCeiling}% (${(state.trading.totalPortfolioValue || 0) < KELLY_SMALL_PORTFOLIO_THRESHOLD ? 'small-portfolio boost' : 'standard'}) | Floor: $${KELLY_POSITION_FLOOR_USD}`);
   console.log(`   💧 VWS: Min pool $${(VWS_MIN_LIQUIDITY_USD / 1000).toFixed(0)}K | Max trade ${VWS_TRADE_AS_POOL_PCT_MAX}% of pool | TWAP > $${TWAP_THRESHOLD_USD}`);
   console.log(`   🔗 RPC: ${BASE_RPC_ENDPOINTS.length} endpoints (${BASE_RPC_ENDPOINTS[0].replace('https://', '')}${BASE_RPC_ENDPOINTS.length > 1 ? ` +${BASE_RPC_ENDPOINTS.length - 1} fallbacks` : ''})`);
   console.log(`   ⚡ Adaptive tempo: ${ADAPTIVE_MIN_INTERVAL_SEC}s – ${ADAPTIVE_MAX_INTERVAL_SEC}s | Emergency: ${EMERGENCY_INTERVAL_SEC}s`);
@@ -8454,7 +8472,9 @@ const healthServer = http.createServer(async (req, res) => {
             method: 'QUARTER_KELLY',
             kellyFraction: KELLY_FRACTION,
             minTrades: KELLY_MIN_TRADES,
-            ceilingPct: KELLY_POSITION_CEILING_PCT,
+            ceilingPct: getEffectiveKellyCeiling(state.trading.totalPortfolioValue || 0),
+            baseCeilingPct: KELLY_POSITION_CEILING_PCT,
+            smallPortfolioCeilingPct: KELLY_SMALL_PORTFOLIO_CEILING_PCT,
             floorUSD: KELLY_POSITION_FLOOR_USD,
           },
           // v9.2: Signal health — which data feeds are live/stale/down
