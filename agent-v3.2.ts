@@ -7225,8 +7225,15 @@ async function runTradingCycle() {
     const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
 
     // === v6.2: CAPITAL FLOOR ENFORCEMENT ===
+    // v10.3: Skip floor checks when portfolio value is 0 — this is always a cold-start artifact
+    // (balance hasn't been fetched yet after a redeploy), never a real scenario.
+    // Real protection kicks in once the first balance fetch populates a real number.
+    if (state.trading.totalPortfolioValue <= 0) {
+      console.log(`\n⏳ COLD START: Portfolio value $0 — skipping capital floor (waiting for first balance fetch)`);
+    }
+
     // Absolute minimum: if portfolio is below $50, halt ALL trading (prevent dust churn)
-    if (state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
+    if (state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
       console.log(`\n🚨 CAPITAL FLOOR BREACH: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < absolute minimum $${CAPITAL_FLOOR_ABSOLUTE_USD}`);
       console.log(`   ALL TRADING HALTED — wallet needs funding or manual intervention.`);
       state.trading.lastCheck = new Date();
@@ -7235,22 +7242,23 @@ async function runTradingCycle() {
 
     // Percentage floor: if portfolio < 60% of peak, HOLD-ONLY mode (stop-losses still fire)
     const capitalFloorValue = state.trading.peakValue * (CAPITAL_FLOOR_PERCENT / 100);
-    const belowCapitalFloor = state.trading.totalPortfolioValue < capitalFloorValue;
+    const belowCapitalFloor = state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
     if (belowCapitalFloor) {
       console.log(`\n⚠️ CAPITAL FLOOR: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < floor $${capitalFloorValue.toFixed(2)} (${CAPITAL_FLOOR_PERCENT}% of peak $${state.trading.peakValue.toFixed(2)})`);
       console.log(`   HOLD-ONLY mode active — no new buys, only stop-loss sells allowed.`);
     }
 
     // === CIRCUIT BREAKERS ===
+    // v10.3: Skip breakers when portfolio is $0 — cold-start artifact, not real drawdown
     // Hard halt: if drawdown exceeds 20% from peak, stop all trading this cycle
-    if (drawdown >= 20 && !belowCapitalFloor) {
+    if (drawdown >= 20 && !belowCapitalFloor && state.trading.totalPortfolioValue > 0) {
       console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% exceeds 20% threshold. Halting trading this cycle.`);
       console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Current: $${state.trading.totalPortfolioValue.toFixed(2)}`);
       state.trading.lastCheck = new Date();
       return;
     }
     // Caution zone: if drawdown exceeds 12%, reduce max position size by 50%
-    const circuitBreakerActive = drawdown >= 12;
+    const circuitBreakerActive = state.trading.totalPortfolioValue > 0 && drawdown >= 12;
     if (circuitBreakerActive) {
       console.log(`\n⚠️ CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% — caution mode active, position sizes halved`);
     }
@@ -7769,6 +7777,27 @@ async function main() {
       }
     } catch (balError: any) {
       console.log(`  ⚠️ Balance check failed: ${balError.message?.substring(0, 150)}`);
+    }
+
+    // v10.3: Warm up portfolio value on startup — prevents capital floor false trigger after redeploy.
+    // Without this, totalPortfolioValue stays at $0 from persisted state until first heavy cycle,
+    // which triggers HOLD-ONLY mode and blocks all buys.
+    try {
+      console.log(`\n  📊 Warming up portfolio value...`);
+      const startupBalances = await getBalances();
+      const startupValue = startupBalances.reduce((sum, b) => sum + b.usdValue, 0);
+      if (startupValue > 0) {
+        state.trading.totalPortfolioValue = startupValue;
+        state.trading.balances = startupBalances;
+        if (startupValue > state.trading.peakValue) {
+          state.trading.peakValue = startupValue;
+        }
+        console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
+      } else {
+        console.log(`  ⚠️ Startup balance fetch returned $0 — first heavy cycle will hydrate`);
+      }
+    } catch (warmupErr: any) {
+      console.log(`  ⚠️ Startup warmup failed: ${warmupErr.message?.substring(0, 150)} — first heavy cycle will hydrate`);
     }
 
   } catch (error: any) {
