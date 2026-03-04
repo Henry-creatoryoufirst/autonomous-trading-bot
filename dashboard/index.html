@@ -1120,6 +1120,67 @@ function renderEquityCurve() {
   ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
   ctx.fillStyle = positive ? '#16A34A' : '#DC2626';
   ctx.fill();
+
+  // v9.2: 1D P&L box — top-right corner of equity curve
+  const now = Date.now();
+  const oneDayAgo = now - 24 * 60 * 60 * 1000;
+  const reversedTrades = trades.slice().reverse();
+  // Find the portfolio value at ~24h ago (earliest trade within window, or oldest trade if all within 24h)
+  let dayStartValue = null;
+  for (const t of reversedTrades) {
+    const ts = new Date(t.timestamp).getTime();
+    if (ts <= oneDayAgo) {
+      dayStartValue = t.portfolioValueAfter || t.portfolioValueBefore || 0;
+      break;
+    }
+  }
+  // If no trade is older than 24h, use the oldest available trade's portfolioValueBefore
+  if (dayStartValue === null && reversedTrades.length > 0) {
+    dayStartValue = reversedTrades[0].portfolioValueBefore || reversedTrades[0].portfolioValueAfter || 0;
+  }
+  const currentValue = pts[pts.length - 1];
+  if (dayStartValue && dayStartValue > 0 && currentValue > 0) {
+    const dayPnL = currentValue - dayStartValue;
+    const dayPnLPct = ((dayPnL / dayStartValue) * 100);
+    const dayPositive = dayPnL >= 0;
+    const sign = dayPositive ? '+' : '';
+    const pnlText = sign + '$' + dayPnL.toFixed(2);
+    const pctText = '(' + sign + dayPnLPct.toFixed(2) + '%)';
+
+    // Draw rounded box background
+    const boxW = 130, boxH = 38, boxX = w - pad.right - boxW - 4, boxY = pad.top + 4, boxR = 6;
+    ctx.beginPath();
+    ctx.moveTo(boxX + boxR, boxY);
+    ctx.lineTo(boxX + boxW - boxR, boxY);
+    ctx.quadraticCurveTo(boxX + boxW, boxY, boxX + boxW, boxY + boxR);
+    ctx.lineTo(boxX + boxW, boxY + boxH - boxR);
+    ctx.quadraticCurveTo(boxX + boxW, boxY + boxH, boxX + boxW - boxR, boxY + boxH);
+    ctx.lineTo(boxX + boxR, boxY + boxH);
+    ctx.quadraticCurveTo(boxX, boxY + boxH, boxX, boxY + boxH - boxR);
+    ctx.lineTo(boxX, boxY + boxR);
+    ctx.quadraticCurveTo(boxX, boxY, boxX + boxR, boxY);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(28, 25, 23, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = dayPositive ? 'rgba(22,163,74,0.3)' : 'rgba(220,38,38,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#A8A29E';
+    ctx.font = '9px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('24h P&L', boxX + 8, boxY + 13);
+
+    // Value
+    ctx.fillStyle = dayPositive ? '#16A34A' : '#DC2626';
+    ctx.font = 'bold 13px -apple-system, system-ui, sans-serif';
+    ctx.fillText(pnlText, boxX + 8, boxY + 28);
+
+    // Percent
+    ctx.font = '10px -apple-system, system-ui, sans-serif';
+    ctx.fillText(pctText, boxX + 8 + ctx.measureText(pnlText).width + 4, boxY + 28);
+  }
 }
 
 // ============================================================================
