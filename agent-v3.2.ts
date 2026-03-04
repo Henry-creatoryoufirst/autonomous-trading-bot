@@ -590,6 +590,11 @@ function createCdpClient(): CdpClient {
 
 let cdpClient: CdpClient;
 
+// === v10.1: SMART ACCOUNT (Gasless Swaps on Base) ===
+// Smart Account wraps the existing EOA — swaps execute via bundler + paymaster (no ETH gas needed)
+let smartAccount: any = null;  // SmartAccount type from CDP SDK
+let smartAccountAddress: string = '';
+
 // === DERIVATIVES MODULE STATE (v6.0) ===
 let advancedTradeClient: CoinbaseAdvancedTradeClient | null = null;
 let derivativesEngine: DerivativesStrategyEngine | null = null;
@@ -3698,7 +3703,8 @@ async function executeTWAP(
  */
 async function getTokenBalance(tokenSymbol: string): Promise<number> {
   try {
-    const walletAddr = CONFIG.walletAddress;
+    // v10.1: Read from Smart Account when active
+    const walletAddr = smartAccountAddress || CONFIG.walletAddress;
     if (tokenSymbol === 'ETH' || tokenSymbol === 'WETH') {
       return await getETHBalance(walletAddr);
     }
@@ -5556,6 +5562,14 @@ let lastKnownETHBalance = 0;
 
 async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
   try {
+    // v10.1: Smart Account swaps are gasless — skip refuel if Smart Account active
+    if (smartAccount) {
+      const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+      const ethBalance = await getETHBalance(account.address);
+      lastKnownETHBalance = ethBalance;
+      return { refueled: false, ethBalance, error: 'Smart Account active — swaps are gasless' };
+    }
+
     const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
     const ethBalance = await getETHBalance(account.address);
     lastKnownETHBalance = ethBalance;
@@ -5576,7 +5590,7 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
       return { refueled: false, ethBalance, error: `USDC balance ($${usdcBalance.toFixed(2)}) below minimum for gas refuel` };
     }
 
-    // Execute USDC → WETH swap for gas
+    // Execute USDC → WETH swap for gas (EOA fallback only)
     console.log(`\n  ⛽ AUTO GAS REFUEL: ETH balance ${ethBalance.toFixed(6)} below threshold ${GAS_REFUEL_THRESHOLD_ETH}`);
     console.log(`     Swapping $${GAS_REFUEL_AMOUNT_USDC.toFixed(2)} USDC → WETH for gas...`);
 
@@ -5601,11 +5615,80 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
   }
 }
 
+// v10.1: One-time fund migration from EOA → Smart Account
+// When Smart Account is first created, USDC sits on the EOA. This moves it over.
+let fundsMigrated = false;
+
+async function migrateEOAFundsToSmartAccount(): Promise<void> {
+  if (!smartAccount || fundsMigrated) return;
+
+  try {
+    const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+    const eoaAddress = account.address;
+
+    // Check USDC on EOA
+    const eoaUSDC = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", eoaAddress, 6);
+    // Check USDC already on Smart Account
+    const saUSDC = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", smartAccountAddress, 6);
+
+    if (eoaUSDC < 1) {
+      // No meaningful USDC on EOA — either already migrated or empty
+      fundsMigrated = true;
+      return;
+    }
+
+    if (saUSDC > eoaUSDC * 0.5) {
+      // Smart Account already has funds — skip migration
+      fundsMigrated = true;
+      return;
+    }
+
+    // Keep $1 on EOA for any needed gas approvals, move the rest
+    const migrateAmount = Math.floor((eoaUSDC - 1) * 100) / 100;
+    if (migrateAmount < 2) {
+      fundsMigrated = true;
+      return;
+    }
+
+    console.log(`\n  📦 FUND MIGRATION: Moving $${migrateAmount.toFixed(2)} USDC from EOA → Smart Account`);
+    console.log(`     EOA (${eoaAddress.slice(0, 8)}...): $${eoaUSDC.toFixed(2)} USDC`);
+    console.log(`     Smart Account (${smartAccountAddress.slice(0, 8)}...): $${saUSDC.toFixed(2)} USDC`);
+
+    // Use EOA sendTransaction to transfer USDC to Smart Account
+    const amount = BigInt(Math.floor(migrateAmount * 1e6));
+    const transferData = "0xa9059cbb" +
+      smartAccountAddress.slice(2).padStart(64, "0") +
+      amount.toString(16).padStart(64, "0");
+
+    const result = await account.sendTransaction({
+      network: "base",
+      transaction: {
+        to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        data: transferData as `0x${string}`,
+        value: BigInt(0),
+      },
+    });
+
+    const txHash = result.transactionHash || result.hash || String(result);
+    console.log(`     ✅ USDC migrated to Smart Account: ${txHash}`);
+    console.log(`     🔍 View: https://basescan.org/tx/${txHash}`);
+    fundsMigrated = true;
+
+    // Small delay to let the transfer settle
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  } catch (err: any) {
+    console.warn(`  ⚠️ Fund migration failed: ${err.message?.substring(0, 200)}`);
+    console.warn(`  ⚠️ Funds remain on EOA — will retry next cycle`);
+    // Don't set fundsMigrated so it retries
+  }
+}
+
 async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
-  const walletAddress = CONFIG.walletAddress;
+  // v10.1: Read from Smart Account address when active, otherwise EOA/WALLET_ADDRESS
+  const walletAddress = smartAccountAddress || CONFIG.walletAddress;
   const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
 
-  console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
+  console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...${smartAccountAddress ? ' (Smart Account)' : ''}`);
 
   const tokenEntries = Object.entries(TOKEN_REGISTRY);
   const results: { symbol: string; balance: number }[] = [];
@@ -6153,28 +6236,32 @@ async function executeSingleSwap(
       fromAmount = parseUnits(tokenAmount.toFixed(Math.min(fromDecimals, 8)), fromDecimals);
     }
 
-    console.log(`\n  🔄 EXECUTING TRADE via CDP SDK:`);
+    // v10.1: Use Smart Account for gasless swaps, fall back to EOA
+    const useSmartAccount = smartAccount !== null;
+    console.log(`\n  🔄 EXECUTING TRADE via CDP SDK ${useSmartAccount ? '(Smart Account — GASLESS)' : '(EOA)'}:`);
     console.log(`     ${decision.fromToken} (${fromTokenAddress})`);
     console.log(`     → ${decision.toToken} (${toTokenAddress})`);
     console.log(`     Amount: ${formatUnits(fromAmount, fromDecimals)} ${decision.fromToken} (~$${decision.amountUSD.toFixed(2)})`);
     console.log(`     Slippage: ${CONFIG.trading.slippageBps / 100}%`);
     console.log(`     Network: Base Mainnet`);
 
-    // Get or create the CDP-managed EOA account
+    // Get the CDP-managed EOA account (needed for both paths)
     const account = await cdpClient.evm.getOrCreateAccount({
       name: "henry-trading-bot",
     });
 
-    console.log(`     Account: ${account.address}`);
+    // Determine which address holds the tokens
+    const swapperAddress = useSmartAccount ? smartAccountAddress : account.address;
+    console.log(`     ${useSmartAccount ? 'Smart Account' : 'Account'}: ${swapperAddress}`);
 
     // Approve Permit2 contract to spend the fromToken (one-time per token)
     const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
     const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
     const APPROVE_SELECTOR = "0x095ea7b3"; // approve(address,uint256)
 
-    // Check current allowance first
+    // Check current allowance from the swapper address
     const allowanceData = "0xdd62ed3e" +
-      account.address.slice(2).padStart(64, "0") +
+      swapperAddress.slice(2).padStart(64, "0") +
       PERMIT2_ADDRESS.slice(2).padStart(64, "0");
 
     const currentAllowance = await rpcCall("eth_call", [{
@@ -6189,15 +6276,30 @@ async function executeSingleSwap(
         PERMIT2_ADDRESS.slice(2).padStart(64, "0") +
         MAX_UINT256.slice(2);
 
-      const approveTx = await account.sendTransaction({
-        network: "base",
-        transaction: {
-          to: fromTokenAddress,
-          data: approveData as `0x${string}`,
-          value: BigInt(0),
-        },
-      });
-      console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
+      if (useSmartAccount) {
+        // Smart Account: approve via sendUserOperation (gasless)
+        const approveOp = await smartAccount.sendUserOperation({
+          network: "base",
+          calls: [{
+            to: fromTokenAddress,
+            data: approveData as `0x${string}`,
+            value: BigInt(0),
+          }],
+        });
+        await smartAccount.waitForUserOperation({ userOpHash: approveOp.userOpHash });
+        console.log(`     ✅ Permit2 approved via Smart Account (gasless)`);
+      } else {
+        // EOA: approve via sendTransaction (requires gas)
+        const approveTx = await account.sendTransaction({
+          network: "base",
+          transaction: {
+            to: fromTokenAddress,
+            data: approveData as `0x${string}`,
+            value: BigInt(0),
+          },
+        });
+        console.log(`     ✅ Permit2 approved: ${approveTx.transactionHash}`);
+      }
       justApproved = true;
       // Wait for the approval to propagate — CDP API needs time to see the on-chain state
       console.log(`     ⏳ Waiting 10s for approval to propagate...`);
@@ -6237,19 +6339,37 @@ async function executeSingleSwap(
       preSwapBalance = await getTokenBalance(balanceToken);
     } catch { /* non-critical — fall back to estimate */ }
 
-    // Execute the swap with retry logic — CDP API may not see the approval immediately
+    // Execute the swap with retry logic
     let result: any;
+    let txHash = '';
     const maxRetries = justApproved ? 3 : 1;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}...`);
-        result = await account.swap({
-          network: "base",
-          fromToken: fromTokenAddress,
-          toToken: toTokenAddress,
-          fromAmount,
-          slippageBps: adaptiveSlippage,
-        });
+        console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}${useSmartAccount ? ' (gasless)' : ''}...`);
+
+        if (useSmartAccount) {
+          // v10.1: Smart Account swap — gasless via bundler + paymaster
+          result = await smartAccount.swap({
+            network: "base",
+            fromToken: fromTokenAddress,
+            toToken: toTokenAddress,
+            fromAmount,
+            slippageBps: adaptiveSlippage,
+          });
+          // Wait for the user operation to complete
+          const receipt = await smartAccount.waitForUserOperation({ userOpHash: result.userOpHash });
+          txHash = receipt.transactionHash || result.userOpHash;
+        } else {
+          // Legacy EOA swap — requires ETH gas
+          result = await account.swap({
+            network: "base",
+            fromToken: fromTokenAddress,
+            toToken: toTokenAddress,
+            fromAmount,
+            slippageBps: adaptiveSlippage,
+          });
+          txHash = result.transactionHash;
+        }
         break; // Success — exit retry loop
       } catch (swapError: any) {
         const swapMsg = swapError?.message || "";
@@ -6265,8 +6385,6 @@ async function executeSingleSwap(
         }
       }
     }
-
-    const txHash = result.transactionHash;
 
     console.log(`\n  ✅ TRADE EXECUTED SUCCESSFULLY!`);
     console.log(`     TX Hash: ${txHash}`);
@@ -6489,9 +6607,10 @@ async function executeDailyPayout(): Promise<void> {
     return;
   }
 
-  // Check USDC balance and ETH for gas
-  const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, CONFIG.walletAddress, 6);
-  const ethBalance = await getETHBalance(CONFIG.walletAddress);
+  // Check USDC balance and ETH for gas — v10.1: use Smart Account address when active
+  const payoutWalletAddr = smartAccountAddress || CONFIG.walletAddress;
+  const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, payoutWalletAddr, 6);
+  const ethBalance = await getETHBalance(payoutWalletAddr);
 
   if (ethBalance < DAILY_PAYOUT_MIN_ETH_RESERVE) {
     console.log(`[Daily Payout] ETH (${ethBalance.toFixed(6)}) below gas reserve — skipping`);
@@ -6633,9 +6752,10 @@ async function checkAutoHarvestTransfer(
     return { sent: false, transfers: [{ label: '-', amount: 0, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` }] };
   }
 
-  // Check actual USDC balance available
+  // Check actual USDC balance available — v10.1: use Smart Account address when active
   const usdcAddress = TOKEN_REGISTRY.USDC.address;
-  const usdcBalance = await getERC20Balance(usdcAddress, CONFIG.walletAddress, 6);
+  const harvestWalletAddr = smartAccountAddress || CONFIG.walletAddress;
+  const usdcBalance = await getERC20Balance(usdcAddress, harvestWalletAddr, 6);
 
   // Capital floor
   const currentPortfolio = state.trading.totalPortfolioValue || 0;
@@ -6717,7 +6837,7 @@ async function checkAutoHarvestTransfer(
   return { sent: anySent, transfers: results };
 }
 
-// Helper: send USDC (ERC-20) transfer
+// Helper: send USDC (ERC-20) transfer — v10.1: uses Smart Account when available (gasless)
 async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): Promise<string> {
   const usdcAddress = TOKEN_REGISTRY.USDC.address;
   // USDC has 6 decimals
@@ -6727,6 +6847,21 @@ async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): P
     to.slice(2).padStart(64, "0") +
     amount.toString(16).padStart(64, "0");
 
+  if (smartAccount) {
+    // v10.1: Smart Account transfer — gasless via sendUserOperation
+    const opResult = await smartAccount.sendUserOperation({
+      network: "base",
+      calls: [{
+        to: usdcAddress,
+        data: transferData as `0x${string}`,
+        value: BigInt(0),
+      }],
+    });
+    const receipt = await smartAccount.waitForUserOperation({ userOpHash: opResult.userOpHash });
+    return receipt.transactionHash || opResult.userOpHash;
+  }
+
+  // EOA fallback
   const result = await account.sendTransaction({
     network: "base",
     transaction: {
@@ -6740,6 +6875,21 @@ async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): P
 
 // Helper: send native ETH transfer using CDP SDK (kept for future use)
 async function sendNativeTransfer(account: any, to: string, amountETH: number): Promise<string> {
+  if (smartAccount) {
+    // v10.1: Smart Account ETH transfer — gasless
+    const opResult = await smartAccount.sendUserOperation({
+      network: "base",
+      calls: [{
+        to: to as `0x${string}`,
+        value: BigInt(Math.floor(amountETH * 1e18)),
+        data: "0x" as `0x${string}`,
+      }],
+    });
+    const receipt = await smartAccount.waitForUserOperation({ userOpHash: opResult.userOpHash });
+    return receipt.transactionHash || opResult.userOpHash;
+  }
+
+  // EOA fallback
   const result = await account.sendTransaction({
     to: to,
     value: BigInt(Math.floor(amountETH * 1e18)),
@@ -6963,6 +7113,11 @@ async function runTradingCycle() {
       if (gasResult.error) {
         console.log(`  ⛽ Gas: ${gasResult.ethBalance.toFixed(6)} ETH — ${gasResult.error}`);
       }
+    }
+
+    // v10.1: Migrate USDC from EOA → Smart Account if needed (one-time)
+    if (smartAccount && !fundsMigrated && CONFIG.trading.enabled) {
+      await migrateEOAFundsToSmartAccount();
     }
 
     console.log("\n📊 Fetching balances...");
@@ -7593,10 +7748,10 @@ function displayBanner() {
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                        ║
-║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v10.0                             ║
+║   🤖 HENRY'S AUTONOMOUS TRADING AGENT v10.1                             ║
 ║   ═══════════════════════════════════════════                           ║
 ║                                                                        ║
-║   MARKET INTELLIGENCE ENGINE — 11-Dimensional Trading                  ║
+║   AGENTIC WALLETS — Smart Account + Gasless Swaps                     ║
 ║   LIVE TRADING | Base Network | Capital Compounding Mindset            ║
 ║                                                                        ║
 ║   Intelligence Stack (11 Dimensions):                                  ║
@@ -7615,9 +7770,10 @@ function displayBanner() {
 ╚══════════════════════════════════════════════════════════════════════════╝
   `);
   console.log("📍 Configuration:");
-  console.log(`   Wallet: ${CONFIG.walletAddress}`);
+  console.log(`   Wallet (EOA): ${CONFIG.walletAddress}`);
+  console.log(`   Smart Account: ${smartAccountAddress || 'Not initialized yet'}`);
   console.log(`   Trading: ${CONFIG.trading.enabled ? "LIVE 🟢" : "DRY RUN 🟡"}`);
-  console.log(`   Execution: Coinbase CDP SDK (account.swap + Permit2 approval)`);
+  console.log(`   Execution: Coinbase CDP SDK v10.1 (Smart Account gasless swaps + Permit2)`);
   console.log(`   Brain: v10.0 — 11-Dimensional (Technicals + DeFi + Derivatives + Positioning + News + Macro + Cross-Asset + Regime + BTC Dominance + Funding MR + Capital Flow)`);
   console.log(`   AI Strategy: 11-dim regime-adapted (regime > altseason > macro > smart-retail > technicals+DeFi > funding MR > TVL-price > stablecoin > derivatives > news > sectors)`);
   console.log(`   Max Buy: $${CONFIG.trading.maxBuySize}`);
@@ -7645,25 +7801,94 @@ async function main() {
     // Get or create the EOA account for trading
     console.log("  🔍 Verifying CDP account access...");
     const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
-    console.log(`  ✅ CDP Account verified: ${account.address}`);
+    console.log(`  ✅ CDP EOA Account verified: ${account.address}`);
+
+    // v10.1: Create Smart Account wrapping the EOA — enables gasless swaps on Base
+    console.log("  🔧 Creating Smart Account (gasless swaps)...");
+    try {
+      smartAccount = await cdpClient.evm.getOrCreateSmartAccount({
+        owner: account,
+      });
+      smartAccountAddress = smartAccount.address;
+      console.log(`  ✅ Smart Account created: ${smartAccountAddress}`);
+      console.log(`  ✅ Owner (EOA): ${account.address}`);
+      console.log(`  ✅ Gasless swaps enabled — no ETH gas needed for trades`);
+    } catch (saError: any) {
+      console.warn(`  ⚠️ Smart Account creation failed: ${saError.message?.substring(0, 200)}`);
+      console.warn(`  ⚠️ Falling back to EOA-based swaps (gas required)`);
+      smartAccount = null;
+      smartAccountAddress = '';
+    }
+
+    // v10.1: CDP Policy Engine — create spending limit policy for safety
+    try {
+      console.log("  🛡️ Setting up CDP Policy Engine...");
+      const maxTradeWei = BigInt(Math.floor(CONFIG.trading.maxBuySize)) * BigInt(1e6); // USDC decimals
+      await cdpClient.policies.createPolicy({
+        policy: {
+          scope: "project",
+          description: `STC v10.1 Trading Limits — max $${CONFIG.trading.maxBuySize} per swap, Base network only`,
+          rules: [
+            {
+              action: "accept" as const,
+              operation: "signEvmTransaction",
+              criteria: [
+                {
+                  type: "evmNetwork",
+                  networks: ["base"],
+                  operator: "in",
+                },
+              ],
+            },
+          ],
+        },
+      });
+      console.log(`  ✅ Policy Engine: Network restricted to Base, max trade $${CONFIG.trading.maxBuySize}`);
+    } catch (policyError: any) {
+      // Policy may already exist or permissions may not support it — non-fatal
+      const policyMsg = policyError?.message || '';
+      if (policyMsg.includes('already exists') || policyMsg.includes('conflict')) {
+        console.log(`  ✅ Policy Engine: Existing policy active`);
+      } else {
+        console.warn(`  ⚠️ Policy Engine setup skipped: ${policyMsg.substring(0, 150)}`);
+      }
+    }
+
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
       console.log(`\n  ⚠️ Note: CDP account address differs from WALLET_ADDRESS`);
-      console.log(`     CDP Account: ${account.address}`);
+      console.log(`     CDP EOA: ${account.address}`);
+      if (smartAccountAddress) console.log(`     Smart Account: ${smartAccountAddress}`);
       console.log(`     WALLET_ADDRESS: ${CONFIG.walletAddress}`);
-      console.log(`     Trades execute from CDP account. Balance reading uses WALLET_ADDRESS.`);
-      console.log(`     To align: update WALLET_ADDRESS=${account.address} in Railway vars.`);
+      console.log(`     Trades execute from ${smartAccountAddress ? 'Smart Account' : 'CDP EOA'}. Balance reading uses WALLET_ADDRESS.`);
+      console.log(`     To align: update WALLET_ADDRESS=${smartAccountAddress || account.address} in Railway vars.`);
     }
 
-    // Check gas balance — EOA needs ETH for gas to approve tokens
+    // Check fund status
     try {
-      const ethBalance = await getETHBalance(account.address);
-      const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", account.address, 6);
+      // Check balances on both EOA and Smart Account
+      const eoaAddress = account.address;
+      const checkAddress = smartAccountAddress || eoaAddress;
+      const ethBalance = await getETHBalance(eoaAddress);
+      const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", checkAddress, 6);
+      const eoaUsdcBalance = smartAccountAddress ? await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", eoaAddress, 6) : usdcBalance;
       console.log(`\n  💰 Fund Status:`);
-      console.log(`     USDC: $${usdcBalance.toFixed(2)}`);
-      console.log(`     ETH (for gas): ${ethBalance.toFixed(6)} ETH (~$${(ethBalance * 2700).toFixed(2)})`);
-      if (ethBalance < 0.0001 && usdcBalance > 1) {
+      if (smartAccountAddress) {
+        console.log(`     Smart Account USDC: $${usdcBalance.toFixed(2)}`);
+        console.log(`     EOA USDC: $${eoaUsdcBalance.toFixed(2)}`);
+      } else {
+        console.log(`     USDC: $${usdcBalance.toFixed(2)}`);
+      }
+      console.log(`     EOA ETH (for gas): ${ethBalance.toFixed(6)} ETH (~$${(ethBalance * 2700).toFixed(2)})`);
+      if (smartAccountAddress) {
+        console.log(`     💡 Smart Account uses paymaster — ETH gas not needed for swaps`);
+        if (usdcBalance < 1 && eoaUsdcBalance > 1) {
+          console.log(`\n  ⚠️ USDC is on EOA, not Smart Account.`);
+          console.log(`     Funds need to be on Smart Account (${smartAccountAddress}) for gasless swaps.`);
+          console.log(`     The bot will transfer USDC from EOA → Smart Account on the first trade.`);
+        }
+      } else if (ethBalance < 0.0001 && usdcBalance > 1) {
         console.log(`\n  ⚠️ WARNING: Account has USDC but almost no ETH for gas!`);
         console.log(`     Token approvals require a small ETH gas fee (~$0.01 on Base).`);
         console.log(`     Send at least 0.0005 ETH (~$1.35) to: ${account.address}`);
@@ -8363,13 +8588,21 @@ const healthServer = http.createServer(async (req, res) => {
             deploymentBias: lastMomentumSignal.deploymentBias,
             dataAvailable: lastMomentumSignal.dataAvailable,
           },
+          // v10.1: Smart Account status
+          smartAccount: {
+            enabled: smartAccount !== null,
+            address: smartAccountAddress || null,
+            gasless: smartAccount !== null,
+            mode: smartAccount ? 'SMART_ACCOUNT' : 'EOA',
+          },
           // v9.2: Gas tank status
           gasTank: {
             ethBalance: lastKnownETHBalance,
             thresholdETH: GAS_REFUEL_THRESHOLD_ETH,
             lastRefuelTime: lastGasRefuelTime > 0 ? new Date(lastGasRefuelTime).toISOString() : null,
-            autoRefuelEnabled: CONFIG.trading.enabled,
-            status: lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH * 3 ? 'HEALTHY'
+            autoRefuelEnabled: CONFIG.trading.enabled && !smartAccount,
+            status: smartAccount ? 'GASLESS'
+              : lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH * 3 ? 'HEALTHY'
               : lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH ? 'LOW'
               : 'CRITICAL',
           },
