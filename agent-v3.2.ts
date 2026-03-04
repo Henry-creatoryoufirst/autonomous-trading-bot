@@ -7419,6 +7419,54 @@ function apiTrades(limit: number) {
   };
 }
 
+// v9.2: Daily P&L Scoreboard — realized trading profits grouped by calendar day
+function apiDailyPnL() {
+  const dailyMap: Record<string, { realized: number; trades: number; wins: number; sells: number; buys: number; volume: number }> = {};
+
+  for (const trade of state.tradeHistory) {
+    if (!trade.success || trade.action === "HOLD") continue;
+    const day = trade.timestamp.slice(0, 10); // "YYYY-MM-DD"
+    if (!dailyMap[day]) dailyMap[day] = { realized: 0, trades: 0, wins: 0, sells: 0, buys: 0, volume: 0 };
+    dailyMap[day].trades++;
+    dailyMap[day].volume += trade.amountUSD || 0;
+
+    if (trade.action === "BUY") {
+      dailyMap[day].buys++;
+    } else if (trade.action === "SELL") {
+      dailyMap[day].sells++;
+      // Compute realized P&L: sell proceeds minus cost of tokens sold
+      const cb = state.costBasis[trade.fromToken];
+      if (cb && cb.averageCostBasis > 0) {
+        const tokensSold = trade.tokenAmount || (trade.amountUSD / (cb.averageCostBasis || 1));
+        const costOfSold = tokensSold * cb.averageCostBasis;
+        const pnl = trade.amountUSD - costOfSold;
+        dailyMap[day].realized += pnl;
+        if (pnl > 0) dailyMap[day].wins++;
+      }
+    }
+  }
+
+  // Sort by date descending, return last 30 days
+  const days = Object.entries(dailyMap)
+    .map(([date, d]) => ({
+      date,
+      realized: Math.round(d.realized * 100) / 100,
+      trades: d.trades,
+      sells: d.sells,
+      buys: d.buys,
+      wins: d.wins,
+      winRate: d.sells > 0 ? Math.round((d.wins / d.sells) * 100) : null,
+      volume: Math.round(d.volume * 100) / 100,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 30);
+
+  // Today's unrealized (current holdings minus cost basis)
+  const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
+
+  return { days, unrealized: Math.round(totalUnrealized * 100) / 100 };
+}
+
 function apiIndicators() {
   // Return last known indicator data from state
   return {
@@ -7553,6 +7601,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/trades':
         sendJSON(res, 200, apiTrades(parseInt(url.searchParams.get('limit') || '50')));
+        break;
+      case '/api/daily-pnl':
+        sendJSON(res, 200, apiDailyPnL());
         break;
       case '/api/indicators':
         sendJSON(res, 200, apiIndicators());

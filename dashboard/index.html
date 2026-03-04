@@ -593,6 +593,14 @@ tr:hover td { background: var(--bg-subtle); }
   </div>
 
   <!-- ================================================================
+       2b. DAILY P&L SCOREBOARD
+       ================================================================ -->
+  <div class="card" style="margin-top: var(--space-4)">
+    <div class="card-label">Daily P&L Scoreboard <span style="color:var(--muted);font-weight:400;font-size:11px">(realized trading profits only — excludes deposits)</span></div>
+    <div id="dailyPnlBoard" style="overflow-x:auto"></div>
+  </div>
+
+  <!-- ================================================================
        3. RISK GAUGES + TOP HOLDINGS BAR
        ================================================================ -->
   <div class="grid g-3" style="margin-top: var(--space-5)">
@@ -1183,6 +1191,89 @@ function renderEquityCurve() {
   }
 }
 
+// v9.2: Daily P&L Scoreboard
+function renderDailyPnL() {
+  const el = $('dailyPnlBoard');
+  if (!el) return;
+  const data = Store.data.dailyPnl;
+  if (!data || !data.days || data.days.length === 0) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:12px 0">No completed trades yet — scoreboard populates after first sell</div>';
+    return;
+  }
+
+  const days = data.days;
+  const totalRealized = days.reduce((s, d) => s + d.realized, 0);
+  const totalTrades = days.reduce((s, d) => s + d.trades, 0);
+  const totalSells = days.reduce((s, d) => s + d.sells, 0);
+  const totalWins = days.reduce((s, d) => s + d.wins, 0);
+  const totalVolume = days.reduce((s, d) => s + d.volume, 0);
+  const overallWinRate = totalSells > 0 ? Math.round((totalWins / totalSells) * 100) : null;
+
+  const pnlColor = v => v >= 0 ? '#16A34A' : '#DC2626';
+  const sign = v => v >= 0 ? '+' : '';
+  const fmtDay = d => {
+    const parts = d.split('-');
+    const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[parseInt(parts[1])] + ' ' + parseInt(parts[2]);
+  };
+  const today = new Date().toISOString().slice(0, 10);
+
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<thead><tr style="border-bottom:1px solid rgba(120,100,70,0.1)">';
+  html += '<th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:500">Date</th>';
+  html += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:500">Realized P&L</th>';
+  html += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:500">Trades</th>';
+  html += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:500">Buys</th>';
+  html += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:500">Sells</th>';
+  html += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:500">Win Rate</th>';
+  html += '<th style="text-align:right;padding:6px 8px;color:var(--muted);font-weight:500">Volume</th>';
+  html += '</tr></thead><tbody>';
+
+  for (const d of days) {
+    const isToday = d.date === today;
+    const rowBg = isToday ? 'rgba(120,100,70,0.04)' : 'transparent';
+    const label = isToday ? 'Today' : fmtDay(d.date);
+    const pnl = d.realized;
+    const barWidth = Math.min(Math.abs(pnl) * 2, 60);
+    const barHtml = pnl !== 0
+      ? '<div style="display:inline-block;width:'+barWidth+'px;height:8px;border-radius:4px;background:'+pnlColor(pnl)+';opacity:0.3;vertical-align:middle;margin-left:6px"></div>'
+      : '';
+
+    html += '<tr style="border-bottom:1px solid rgba(120,100,70,0.05);background:'+rowBg+'">';
+    html += '<td style="padding:7px 8px;font-weight:'+(isToday?'600':'400')+'">' + label + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right;color:'+pnlColor(pnl)+';font-weight:600;white-space:nowrap">' + sign(pnl) + '$' + Math.abs(pnl).toFixed(2) + barHtml + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right">' + d.trades + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right">' + d.buys + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right">' + d.sells + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right">' + (d.winRate !== null ? d.winRate + '%' : '—') + '</td>';
+    html += '<td style="padding:7px 8px;text-align:right;color:var(--muted)">$' + d.volume.toFixed(0) + '</td>';
+    html += '</tr>';
+  }
+
+  // Summary row
+  html += '<tr style="border-top:2px solid rgba(120,100,70,0.12);font-weight:600">';
+  html += '<td style="padding:8px">All Time</td>';
+  html += '<td style="padding:8px;text-align:right;color:'+pnlColor(totalRealized)+'">' + sign(totalRealized) + '$' + Math.abs(totalRealized).toFixed(2) + '</td>';
+  html += '<td style="padding:8px;text-align:right">' + totalTrades + '</td>';
+  html += '<td style="padding:8px;text-align:right">' + (totalTrades - totalSells) + '</td>';
+  html += '<td style="padding:8px;text-align:right">' + totalSells + '</td>';
+  html += '<td style="padding:8px;text-align:right">' + (overallWinRate !== null ? overallWinRate + '%' : '—') + '</td>';
+  html += '<td style="padding:8px;text-align:right;color:var(--muted)">$' + totalVolume.toFixed(0) + '</td>';
+  html += '</tr>';
+
+  // Unrealized row
+  if (data.unrealized !== 0) {
+    html += '<tr style="color:var(--muted);font-size:11px">';
+    html += '<td style="padding:4px 8px">Unrealized</td>';
+    html += '<td style="padding:4px 8px;text-align:right;color:'+pnlColor(data.unrealized)+'">' + sign(data.unrealized) + '$' + Math.abs(data.unrealized).toFixed(2) + '</td>';
+    html += '<td colspan="5"></td>';
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
 // ============================================================================
 // SECTOR DONUT
 // ============================================================================
@@ -1291,12 +1382,12 @@ async function fetchAll() {
     'health','api/portfolio','api/balances','api/trades?limit=100',
     'api/indicators','api/intelligence','api/patterns','api/reviews',
     'api/thresholds','api/adaptive','api/derivatives','api/discovery',
-    'api/cache','api/auto-harvest','api/sectors','api/equity'
+    'api/cache','api/auto-harvest','api/sectors','api/equity','api/daily-pnl'
   ];
   const keys = [
     'health','portfolio','balances','trades','indicators','intelligence',
     'patterns','reviews','thresholds','adaptive','derivatives','discovery',
-    'cache','autoHarvest','sectors','equity'
+    'cache','autoHarvest','sectors','equity','dailyPnl'
   ];
 
   const results = await Promise.allSettled(
@@ -1475,6 +1566,7 @@ function renderOverview() {
   }
 
   renderEquityCurve();
+  renderDailyPnL();
   renderSectorDonut();
   renderTradeFeed();
   renderIntelSnapshot();
