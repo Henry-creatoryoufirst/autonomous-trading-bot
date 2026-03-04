@@ -5494,7 +5494,8 @@ DIVERSIFICATION RULE: NEVER buy the same token more than 2 cycles in a row. Rota
 If a token already holds >20% of portfolio, do NOT buy more — pick a different underweight token or HOLD.
 
 CRITICAL: Respond with ONLY raw JSON. NO prose, NO explanation outside JSON, NO markdown.
-v9.2 MULTI-TRADE: You may return a JSON ARRAY of up to 3 actions per cycle to deploy capital faster across multiple tokens.
+v9.2 MULTI-TRADE: You may return a JSON ARRAY of actions per cycle to deploy capital across multiple tokens simultaneously.
+Return as many actions as you see strong signals for — each will be validated independently by position guards, Kelly sizing, and circuit breakers.
 Return a single object for 1 trade, or an array for multiple. HOLD can be a single object (no array needed).
 Examples:
 Single: {"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold, MACD bullish","sector":"DEFI"}
@@ -5506,7 +5507,7 @@ HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reason
     try {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1200, // v9.2: increased for multi-trade array responses
+        max_tokens: 2000, // v9.2: increased for multi-trade array responses
         messages: [{ role: "user", content: systemPrompt }],
       });
 
@@ -5531,7 +5532,7 @@ HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reason
         const parsed = JSON.parse(text);
 
         // v9.2: Normalize to array — single object becomes [object], array stays as-is
-        const rawDecisions: any[] = Array.isArray(parsed) ? parsed.slice(0, 3) : [parsed];
+        const rawDecisions: any[] = Array.isArray(parsed) ? parsed : [parsed];
         if (Array.isArray(parsed)) {
           console.log(`   🚀 Multi-trade: AI returned ${rawDecisions.length} action(s)`);
         }
