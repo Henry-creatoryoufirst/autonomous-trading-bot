@@ -2740,6 +2740,15 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
       axios.get("https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
     ]);
 
+    // v10.3: Log individual endpoint failures for diagnostics (geo-blocking, rate limits)
+    const allResults = [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes, btcLSRes, ethLSRes, btcTopLSRes, ethTopLSRes, btcTopPosRes, ethTopPosRes];
+    const failedCount = allResults.filter(r => r.status === 'rejected').length;
+    if (failedCount > 0) {
+      const firstFail = allResults.find(r => r.status === 'rejected') as PromiseRejectedResult;
+      const errMsg = firstFail?.reason?.response?.status || firstFail?.reason?.code || firstFail?.reason?.message || 'unknown';
+      console.warn(`  ⚠️ Binance derivatives: ${failedCount}/10 endpoints failed (${errMsg})`);
+    }
+
     // v10.2: Use null to distinguish "data unavailable" from "genuinely 0"
     let btcFundingRate: number | null = null;
     let ethFundingRate: number | null = null;
@@ -4845,9 +4854,11 @@ async function getMarketData(): Promise<MarketData> {
       fundingHistory: fundingRateHistory.btc.length >= 5 ? 'LIVE' : 'BUILDING',
       lastUpdated: new Date().toISOString(),
     };
-    const liveCount = Object.values(lastSignalHealth).filter(v => v === 'LIVE').length;
-    const totalSources = 10;
-    console.log(`  📡 Signal Health: ${liveCount}/${totalSources} sources live`);
+    const healthEntries = Object.entries(lastSignalHealth).filter(([k]) => k !== 'lastUpdated');
+    const liveCount = healthEntries.filter(([, v]) => v === 'LIVE').length;
+    const totalSources = healthEntries.length;
+    const downSources = healthEntries.filter(([, v]) => v === 'DOWN').map(([k]) => k);
+    console.log(`  📡 Signal Health: ${liveCount}/${totalSources} sources live${downSources.length > 0 ? ' | DOWN: ' + downSources.join(', ') : ''}`);
 
     return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, newsSentiment, macroData, marketRegime, globalMarket, smartRetailDivergence, fundingMeanReversion, tvlPriceDivergence, stablecoinSupply };
   } catch (error: any) {
@@ -8007,7 +8018,21 @@ async function main() {
   console.log(`   🔗 RPC: ${BASE_RPC_ENDPOINTS.length} endpoints (${BASE_RPC_ENDPOINTS[0].replace('https://', '')}${BASE_RPC_ENDPOINTS.length > 1 ? ` +${BASE_RPC_ENDPOINTS.length - 1} fallbacks` : ''})`);
   console.log(`   ⚡ Adaptive tempo: ${ADAPTIVE_MIN_INTERVAL_SEC}s – ${ADAPTIVE_MAX_INTERVAL_SEC}s | Emergency: ${EMERGENCY_INTERVAL_SEC}s`);
   console.log(`   🎯 Portfolio tier: ${startTier} | Emergency drop trigger: ${(EMERGENCY_DROP_THRESHOLD * 100).toFixed(0)}%`);
-  console.log(`   🔒 Cycle mutex: ACTIVE | Gas: dynamic (RPC query)\n`);
+  console.log(`   🔒 Cycle mutex: ACTIVE | Gas: dynamic (RPC query)`);
+
+  // v10.3: Intelligence data source diagnostic — surface missing env vars at startup
+  const envDiag: string[] = [];
+  if (!process.env.FRED_API_KEY) envDiag.push('FRED_API_KEY (macro: Fed Rate, CPI, M2, DXY — free at fred.stlouisfed.org)');
+  if (!process.env.CRYPTOPANIC_AUTH_TOKEN) envDiag.push('CRYPTOPANIC_AUTH_TOKEN (news sentiment — free at cryptopanic.com)');
+  if (!process.env.ANTHROPIC_API_KEY) envDiag.push('ANTHROPIC_API_KEY (AI trading brain — REQUIRED)');
+  if (envDiag.length > 0) {
+    console.log(`\n   ⚠️  Missing optional API keys (${envDiag.length}):`);
+    envDiag.forEach(d => console.log(`      · ${d}`));
+    console.log(`      → Bot will trade without these signals. Add them in Railway for fuller intelligence.`);
+  } else {
+    console.log(`   ✅ All API keys configured`);
+  }
+  console.log('');
 }
 
 // ============================================================================
@@ -8273,9 +8298,23 @@ function apiDailyPnL() {
 }
 
 function apiIndicators() {
-  // Return last known indicator data from state
+  // Build a price lookup from current balances
+  const priceLookup: Record<string, number> = {};
+  for (const b of state.trading.balances) {
+    if (b.price && b.price > 0) priceLookup[b.symbol] = b.price;
+  }
+
   return {
-    costBasis: Object.values(state.costBasis).filter(cb => cb.currentHolding > 0),
+    costBasis: Object.values(state.costBasis)
+      .filter(cb => cb.currentHolding > 0)
+      .map(cb => ({
+        ...cb,
+        sector: TOKEN_REGISTRY[cb.symbol]?.sector || null,
+        currentPrice: priceLookup[cb.symbol] || null,
+        // Show effective stop even when ATR is null (flat fallback)
+        effectiveStopPercent: cb.atrStopPercent ?? state.adaptiveThresholds.stopLossPercent,
+        effectiveTrailPercent: cb.atrTrailPercent ?? state.adaptiveThresholds.trailingStopPercent,
+      })),
     // v9.0: ATR risk management config
     atrConfig: {
       stopMultiplier: state.adaptiveThresholds.atrStopMultiplier,

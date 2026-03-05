@@ -638,6 +638,7 @@ tr:hover td { background: var(--bg-subtle); }
         <thead><tr><th>Token</th><th>Sector</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Invested</th><th>Unrealized</th><th>Realized</th><th class="hide-mobile">Stop</th><th class="hide-mobile">Trail</th></tr></thead>
         <tbody id="costBasisBody"><tr><td colspan="11" class="loading">Loading...</td></tr></tbody>
       </table>
+      <div style="color:var(--text-secondary);font-size:11px;margin-top:6px">* = flat fallback (no ATR data yet)</div>
     </div>
   </div>
 
@@ -1642,9 +1643,11 @@ function renderIntelSnapshot() {
 
   let html = '<div style="display:flex;flex-direction:column;gap:8px">';
   html += '<div class="kv"><span class="kv-label">Regime</span><span class="pill ' + regimePill(regime) + '">' + regime + '</span></div>';
-  html += '<div class="kv"><span class="kv-label">Sentiment</span><span class="kv-value">' + (news.sentiment || news.overallSentiment || '--') + '</span></div>';
-  if (macro.fedRate != null) html += '<div class="kv"><span class="kv-label">Fed Rate</span><span class="kv-value">' + fmt(macro.fedRate, 2) + '%</span></div>';
-  if (deriv.btcFunding != null) html += '<div class="kv"><span class="kv-label">BTC Fund.</span><span class="kv-value">' + fmt(deriv.btcFunding * 100, 4) + '%</span></div>';
+  html += '<div class="kv"><span class="kv-label">Sentiment</span><span class="kv-value">' + (news.overallSentiment || news.sentiment || '--') + '</span></div>';
+  var fedR = macro.fedFundsRate?.value != null ? macro.fedFundsRate.value : macro.fedRate;
+  if (fedR != null) html += '<div class="kv"><span class="kv-label">Fed Rate</span><span class="kv-value">' + fmt(fedR, 2) + '%</span></div>';
+  var btcF = deriv.btcFundingRate != null ? deriv.btcFundingRate : deriv.btcFunding;
+  if (btcF != null) html += '<div class="kv"><span class="kv-label">BTC Fund.</span><span class="kv-value">' + fmt(btcF, 4) + '%</span></div>';
   if (defi.baseTVL) html += '<div class="kv"><span class="kv-label">Base TVL</span><span class="kv-value">' + fmtK(defi.baseTVL) + '</span></div>';
 
   // v10.0: BTC Dominance & Altseason
@@ -1656,7 +1659,7 @@ function renderIntelSnapshot() {
 
   // v10.0: Smart Money vs Retail
   if (smartRetail.btcDivergence != null) {
-    var smSignal = smartRetail.signal || '';
+    var smSignal = smartRetail.btcSignal || smartRetail.signal || '';
     var smCls = smSignal.indexOf('BUY') >= 0 ? 'positive' : smSignal.indexOf('SELL') >= 0 ? 'negative' : '';
     html += '<div class="kv"><span class="kv-label">Smart $ Gap</span><span class="kv-value ' + smCls + '">' + fmt(smartRetail.btcDivergence, 1) + 'pp</span></div>';
   }
@@ -1668,10 +1671,10 @@ function renderIntelSnapshot() {
   }
 
   // v10.0: Stablecoin Capital Flow
-  if (stablecoin.change7dPercent != null) {
-    var scCls = stablecoin.change7dPercent > 0 ? 'positive' : stablecoin.change7dPercent < -1 ? 'negative' : '';
-    var flowLabel = stablecoin.signal || (stablecoin.change7dPercent > 0 ? 'INFLOW' : 'OUTFLOW');
-    html += '<div class="kv"><span class="kv-label">Stablecoin</span><span class="kv-value ' + scCls + '">' + (stablecoin.change7dPercent > 0 ? '+' : '') + fmt(stablecoin.change7dPercent, 1) + '% 7d</span></div>';
+  var scChg = stablecoin.supplyChange7d != null ? stablecoin.supplyChange7d : stablecoin.change7dPercent;
+  if (scChg != null) {
+    var scCls = scChg > 0 ? 'positive' : scChg < -1 ? 'negative' : '';
+    html += '<div class="kv"><span class="kv-label">Stablecoin</span><span class="kv-value ' + scCls + '">' + (scChg > 0 ? '+' : '') + fmt(scChg, 1) + '% 7d</span></div>';
   }
 
   html += '</div>';
@@ -1733,8 +1736,11 @@ function renderHoldings() {
   $('costBasisBody').innerHTML = holdings.length === 0 ? '<tr><td colspan="11" class="loading">No data</td></tr>' :
     holdings.map(h => {
       const val = h.currentHolding * (h.currentPrice || 0);
-      const stopStr = h.atrStopPercent != null ? h.atrStopPercent.toFixed(1) + '%' : '--';
-      const trailStr = h.atrTrailPercent != null ? (h.trailActivated ? h.atrTrailPercent.toFixed(1) + '%' : '(' + h.atrTrailPercent.toFixed(1) + '%)') : '--';
+      const effStop = h.effectiveStopPercent != null ? h.effectiveStopPercent : h.atrStopPercent;
+      const effTrail = h.effectiveTrailPercent != null ? h.effectiveTrailPercent : h.atrTrailPercent;
+      const isAtr = h.atrStopPercent != null;
+      const stopStr = effStop != null ? effStop.toFixed(1) + '%' + (isAtr ? '' : '*') : '--';
+      const trailStr = effTrail != null ? (h.trailActivated ? effTrail.toFixed(1) + '%' : '(' + effTrail.toFixed(1) + '%)') + (isAtr ? '' : '*') : '--';
       return '<tr><td><strong>' + h.symbol + '</strong></td><td>' + sectorLabel(h.sector) + '</td><td>' +
         fmt(h.currentHolding, 4) + '</td><td>$' + fmt(h.averageCostBasis, 4) + '</td><td>$' +
         fmt(h.currentPrice, 4) + '</td><td>' + fmtUSD(val) + '</td><td>' + fmtUSD(h.totalInvestedUSD) +
@@ -1773,8 +1779,8 @@ function renderIntelligence() {
 
   const news = intel.newsSentiment;
   if (news) {
-    $('intel-news').textContent = news.sentiment || news.overallSentiment || '--';
-    $('intel-news-sub').textContent = (news.articleCount || 0) + ' articles';
+    $('intel-news').textContent = news.overallSentiment || news.sentiment || '--';
+    $('intel-news-sub').textContent = (news.totalCount || news.articleCount || 0) + ' articles';
   }
 
   const defi = intel.defiLlama;
@@ -1786,17 +1792,25 @@ function renderIntelligence() {
 
   const macro = intel.macroData;
   if (macro) {
-    $('macro-fed').textContent = macro.fedRate != null ? fmt(macro.fedRate, 2) + '%' : '--';
-    $('macro-cpi').textContent = macro.cpi != null ? fmt(macro.cpi, 1) + '%' : '--';
-    $('macro-dxy').textContent = macro.dxy != null ? fmt(macro.dxy, 1) : '--';
-    $('macro-m2').textContent = macro.m2 != null ? fmtK(macro.m2) : '--';
+    const fedVal = macro.fedFundsRate?.value != null ? macro.fedFundsRate.value : macro.fedRate;
+    const cpiVal = macro.cpi?.yoyChange != null ? macro.cpi.yoyChange : (macro.cpi?.value != null ? macro.cpi.value : null);
+    const dxyVal = macro.dollarIndex?.value != null ? macro.dollarIndex.value : macro.dxy;
+    const m2Val = macro.m2MoneySupply?.value != null ? macro.m2MoneySupply.value : macro.m2;
+    $('macro-fed').textContent = fedVal != null ? fmt(fedVal, 2) + '%' : '--';
+    $('macro-cpi').textContent = cpiVal != null ? fmt(cpiVal, 1) + '%' : '--';
+    $('macro-dxy').textContent = dxyVal != null ? fmt(dxyVal, 1) : '--';
+    $('macro-m2').textContent = m2Val != null ? fmtK(m2Val) : '--';
+    if (macro.macroSignal) $('macro-fed').title = 'Signal: ' + macro.macroSignal + ' | Rate: ' + macro.rateDirection;
   }
 
   const deriv = intel.derivatives;
   if (deriv) {
-    $('dpos-btc').textContent = deriv.btcFunding != null ? fmt(deriv.btcFunding * 100, 4) + '%' : '--';
-    $('dpos-eth').textContent = deriv.ethFunding != null ? fmt(deriv.ethFunding * 100, 4) + '%' : '--';
-    $('dpos-ls').textContent = deriv.longShortRatio != null ? fmt(deriv.longShortRatio, 2) : '--';
+    const btcFR = deriv.btcFundingRate != null ? deriv.btcFundingRate : deriv.btcFunding;
+    const ethFR = deriv.ethFundingRate != null ? deriv.ethFundingRate : deriv.ethFunding;
+    const lsr = deriv.btcLongShortRatio != null ? deriv.btcLongShortRatio : deriv.longShortRatio;
+    $('dpos-btc').textContent = btcFR != null ? fmt(btcFR, 4) + '%' : '--';
+    $('dpos-eth').textContent = ethFR != null ? fmt(ethFR, 4) + '%' : '--';
+    $('dpos-ls').textContent = lsr != null ? fmt(lsr, 2) : '--';
   }
 
   // v10.0: Advanced intelligence signals
@@ -1813,17 +1827,20 @@ function renderIntelligence() {
   const srd = intel.smartRetailDivergence;
   if (srd) {
     const btcDiv = srd.btcDivergence != null ? fmt(srd.btcDivergence, 1) : '--';
+    const srdSig = srd.btcSignal || srd.signal || 'NEUTRAL';
     $('intel-smartretail').textContent = btcDiv + 'pp';
-    $('intel-smartretail').className = 'card-value sm ' + (srd.signal === 'STRONG_BUY' ? 'positive' : srd.signal === 'STRONG_SELL' ? 'negative' : '');
-    $('intel-smartretail-sub').textContent = srd.signal || 'Divergence';
+    $('intel-smartretail').className = 'card-value sm ' + (srdSig === 'STRONG_BUY' ? 'positive' : srdSig === 'STRONG_SELL' ? 'negative' : '');
+    $('intel-smartretail-sub').textContent = srdSig !== 'NEUTRAL' ? srdSig : 'Divergence';
   }
 
   const sc = intel.stablecoinSupply;
   if (sc) {
-    const flowMap = { CAPITAL_INFLOW: 'INFLOW', CAPITAL_OUTFLOW: 'OUTFLOW', NEUTRAL: 'NEUTRAL' };
-    $('intel-stablecoin').textContent = flowMap[sc.capitalFlowSignal] || sc.capitalFlowSignal || '--';
-    $('intel-stablecoin').className = 'card-value sm ' + (sc.capitalFlowSignal === 'CAPITAL_INFLOW' ? 'positive' : sc.capitalFlowSignal === 'CAPITAL_OUTFLOW' ? 'negative' : '');
-    $('intel-stablecoin-sub').textContent = sc.supplyChange7dPct != null ? (sc.supplyChange7dPct >= 0 ? '+' : '') + fmt(sc.supplyChange7dPct, 2) + '% 7d' : 'Capital flow';
+    const flowMap = { CAPITAL_INFLOW: 'INFLOW', CAPITAL_OUTFLOW: 'OUTFLOW', STABLE: 'STABLE', NEUTRAL: 'NEUTRAL' };
+    const sig = sc.signal || sc.capitalFlowSignal;
+    $('intel-stablecoin').textContent = flowMap[sig] || sig || '--';
+    $('intel-stablecoin').className = 'card-value sm ' + (sig === 'CAPITAL_INFLOW' ? 'positive' : sig === 'CAPITAL_OUTFLOW' ? 'negative' : '');
+    const chg = sc.supplyChange7d != null ? sc.supplyChange7d : sc.supplyChange7dPct;
+    $('intel-stablecoin-sub').textContent = chg != null ? (chg >= 0 ? '+' : '') + fmt(chg, 2) + '% 7d' : 'Capital flow';
   }
 
   const fmr = intel.fundingMeanReversion;
