@@ -1,0 +1,17 @@
+{
+  "name": "stc-mcp-server",
+  "version": "1.0.0",
+  "description": "Schertzinger Trading Command — MCP Server for Claude Code",
+  "main": "server.js",
+  "bin": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["mcp", "trading", "stc"],
+  "author": "Henry Schertzinger",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1"
+  }
+}

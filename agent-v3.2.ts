@@ -7156,7 +7156,7 @@ async function runTradingCycle() {
     // v10.1.1: Fund migration removed — wallet IS the Smart Wallet at 0x55509
 
     console.log("\n📊 Fetching balances...");
-    const balances = await getBalances();
+    let balances = await getBalances();
 
     console.log("📈 Fetching market data for all tracked tokens...");
     const marketData = await getMarketData();
@@ -7469,6 +7469,10 @@ async function runTradingCycle() {
     }
 
     // === PROFIT-TAKING CHECK ===
+    // v10.4: Profit-take no longer returns early — after harvesting, the cycle
+    // continues to the AI decision phase so the bot can also deploy capital.
+    // Previously, this `return` caused a harvest-only loop: every cycle found
+    // something to harvest, sold a slice, and exited before AI could recommend BUYs.
     const profitTakeDecision = checkProfitTaking(balances, marketData.indicators);
     if (profitTakeDecision) {
       // v5.3.3: Check circuit breaker before attempting profit-take
@@ -7485,8 +7489,12 @@ async function runTradingCycle() {
         // v8.0: Profit-take is a win for breaker tracking
         recordTradeResultForBreaker(ptResult.success, ptResult.success ? profitTakeDecision.amountUSD * 0.05 : 0);
         saveTradeHistory();
-        state.trading.lastCheck = new Date();
-        return; // Skip AI decision this cycle
+        // v10.4: Refresh balances after harvest so AI sees updated USDC
+        const refreshedBalances = await getBalances();
+        if (refreshedBalances && refreshedBalances.length > 0) {
+          balances = refreshedBalances;
+        }
+        console.log(`  ✅ Profit harvested — continuing to AI decision phase`);
       }
     }
 
