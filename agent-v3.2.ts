@@ -2745,8 +2745,14 @@ async function fetchDerivativesData(): Promise<DerivativesData | null> {
     const failedCount = allResults.filter(r => r.status === 'rejected').length;
     if (failedCount > 0) {
       const firstFail = allResults.find(r => r.status === 'rejected') as PromiseRejectedResult;
-      const errMsg = firstFail?.reason?.response?.status || firstFail?.reason?.code || firstFail?.reason?.message || 'unknown';
-      console.warn(`  ⚠️ Binance derivatives: ${failedCount}/10 endpoints failed (${errMsg})`);
+      const httpStatus = firstFail?.reason?.response?.status;
+      const errMsg = httpStatus || firstFail?.reason?.code || firstFail?.reason?.message || 'unknown';
+      // v10.4: Explicit geo-block detection
+      if (httpStatus === 403 || httpStatus === 451) {
+        console.warn(`  🚫 Binance derivatives: GEO-BLOCKED (HTTP ${httpStatus}) — ${failedCount}/10 endpoints. Railway IP may be US-restricted. Derivatives signals unavailable.`);
+      } else {
+        console.warn(`  ⚠️ Binance derivatives: ${failedCount}/10 endpoints failed (${errMsg})`);
+      }
     }
 
     // v10.2: Use null to distinguish "data unavailable" from "genuinely 0"
@@ -3220,7 +3226,13 @@ interface BreakerState {
   breakerSizeReductionUntil: string | null; // ISO timestamp — 50% size reduction expires
   dailyBaseline: { date: string; value: number };   // Reset at midnight UTC
   weeklyBaseline: { weekStart: string; value: number }; // Reset Monday midnight UTC
+  // v10.4: Rolling window loss tracker — catches bad streaks even with scattered wins
+  rollingTradeResults: boolean[]; // last N results (true=win, false=loss), capped at BREAKER_ROLLING_WINDOW_SIZE
 }
+
+// v10.4: Rolling window breaker constants
+const BREAKER_ROLLING_WINDOW_SIZE = 8;     // Track last 8 trades
+const BREAKER_ROLLING_LOSS_THRESHOLD = 5;  // 5+ losses in 8 trades = trigger breaker
 
 const DEFAULT_BREAKER_STATE: BreakerState = {
   consecutiveLosses: 0,
@@ -3229,6 +3241,7 @@ const DEFAULT_BREAKER_STATE: BreakerState = {
   breakerSizeReductionUntil: null,
   dailyBaseline: { date: '', value: 0 },
   weeklyBaseline: { weekStart: '', value: 0 },
+  rollingTradeResults: [],
 };
 
 let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
@@ -3365,6 +3378,13 @@ function calculateInstitutionalPositionSize(portfolioValue: number): {
     }
   }
 
+  // v10.4: Derivatives blind-spot reduction — when derivatives data is unavailable,
+  // 3 key trading rules (funding, smart money divergence, mean-reversion) are silenced.
+  // Reduce size by 15% to compensate for reduced signal confidence.
+  if (lastSignalHealth.derivatives === 'DOWN') {
+    sizeUSD *= 0.85;
+  }
+
   // Hard floor and ceiling — v10.3: uses dynamic ceiling for small portfolios
   const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue);
   sizeUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(sizeUSD, portfolioValue * (effectiveCeiling / 100)));
@@ -3426,6 +3446,14 @@ function checkCircuitBreaker(portfolioValue: number, lastTradeResult?: { success
     return `${breakerState.consecutiveLosses} consecutive losing trades`;
   }
 
+  // 1b. v10.4: Rolling window — catches bad streaks with scattered wins (e.g., 20% win rate day)
+  if (breakerState.rollingTradeResults.length >= BREAKER_ROLLING_WINDOW_SIZE) {
+    const rollingLosses = breakerState.rollingTradeResults.filter(r => !r).length;
+    if (rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
+      return `${rollingLosses}/${BREAKER_ROLLING_WINDOW_SIZE} trades lost in rolling window`;
+    }
+  }
+
   // 2. Daily drawdown
   if (breakerState.dailyBaseline.value > 0) {
     const dailyDD = ((breakerState.dailyBaseline.value - portfolioValue) / breakerState.dailyBaseline.value) * 100;
@@ -3461,6 +3489,8 @@ function triggerCircuitBreaker(reason: string) {
   breakerState.lastBreakerTriggered = now;
   breakerState.lastBreakerReason = reason;
   breakerState.breakerSizeReductionUntil = new Date(Date.now() + BREAKER_SIZE_REDUCTION_HOURS * 3600000).toISOString();
+  breakerState.rollingTradeResults = []; // v10.4: Reset rolling window so breaker doesn't re-trigger immediately after pause
+  breakerState.consecutiveLosses = 0;    // v10.4: Also reset consecutive counter
   console.log(`\n🚨🚨 CIRCUIT BREAKER TRIGGERED 🚨🚨`);
   console.log(`   Reason: ${reason}`);
   console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
@@ -3471,11 +3501,22 @@ function triggerCircuitBreaker(reason: string) {
  * Record a trade result for consecutive loss tracking.
  */
 function recordTradeResultForBreaker(success: boolean, pnlUSD?: number) {
-  if (success && (pnlUSD === undefined || pnlUSD >= 0)) {
+  const isWin = success && (pnlUSD === undefined || pnlUSD >= 0);
+  if (isWin) {
     breakerState.consecutiveLosses = 0; // Reset on win
   } else {
     breakerState.consecutiveLosses++;
     console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
+  }
+
+  // v10.4: Rolling window — track last N trade results regardless of outcome
+  breakerState.rollingTradeResults.push(isWin);
+  if (breakerState.rollingTradeResults.length > BREAKER_ROLLING_WINDOW_SIZE) {
+    breakerState.rollingTradeResults = breakerState.rollingTradeResults.slice(-BREAKER_ROLLING_WINDOW_SIZE);
+  }
+  const rollingLosses = breakerState.rollingTradeResults.filter(r => !r).length;
+  if (rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
+    console.log(`   📉 Rolling window: ${rollingLosses}/${breakerState.rollingTradeResults.length} losses in last ${BREAKER_ROLLING_WINDOW_SIZE} trades`);
   }
 }
 
@@ -5370,6 +5411,21 @@ function calculateConfluence(
       score = Math.round(score * 0.85); // 15% dampening — high volatility, uncertain
     } else if (atr.atrPercent < 1) {
       score = Math.round(score * 1.10); // 10% boost — low volatility, potential breakout
+    }
+  }
+
+  // v10.4: Mechanical Fear & Greed adjustment — previously only AI prompt guidance,
+  // now a hard score modifier. Extreme fear is historically a buying opportunity;
+  // extreme greed increases sell conviction. Capped at ±8 to influence without dominating.
+  if (lastFearGreedValue > 0) {
+    if (lastFearGreedValue <= 20) {
+      score += 8;   // Extreme fear — strong contrarian buy boost
+    } else if (lastFearGreedValue <= 30) {
+      score += 5;   // Fear — moderate buy boost
+    } else if (lastFearGreedValue >= 80) {
+      score -= 8;   // Extreme greed — strong contrarian sell boost
+    } else if (lastFearGreedValue >= 70) {
+      score -= 5;   // Greed — moderate sell boost
     }
   }
 

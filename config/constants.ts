@@ -253,8 +253,8 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  * Normal SELL entry: confluence <= -20
  * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
  */
-export const REENTRY_CONFLUENCE_BUY = 30;   // v10.3: Midpoint — trust the signal but require slight conviction above normal (25)
-export const REENTRY_CONFLUENCE_SELL = -28;  // v10.3: Midpoint — slight conviction above normal (-20)
+export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
+export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
 export const NORMAL_CONFLUENCE_BUY = 25;
 export const NORMAL_CONFLUENCE_SELL = -20;
 
