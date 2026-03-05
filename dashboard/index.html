@@ -601,6 +601,19 @@ tr:hover td { background: var(--bg-subtle); }
   </div>
 
   <!-- ================================================================
+       2c. PROFIT DISTRIBUTION
+       ================================================================ -->
+  <div class="section-hdr">Profit Distribution</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="ah-status">--</div><div class="card-sub" id="ah-status-sub">--</div></div>
+    <div class="card"><div class="card-label">Total Distributed</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
+    <div class="card"><div class="card-label">Reinvested</div><div class="card-value sm" id="ah-reinvest" style="color:var(--positive)">--</div><div class="card-sub" id="ah-reinvest-sub">Compounding in portfolio</div></div>
+    <div class="card"><div class="card-label">Next Payout</div><div class="card-value sm" id="ah-next">--</div><div class="card-sub" id="ah-next-sub">8:00 AM UTC daily</div></div>
+  </div>
+  <div id="ah-recipients" style="margin-top:var(--space-3)"></div>
+  <div id="ah-recent-payouts" style="margin-top:var(--space-3)"></div>
+
+  <!-- ================================================================
        3. RISK GAUGES + TOP HOLDINGS BAR
        ================================================================ -->
   <div class="grid g-3" style="margin-top: var(--space-5)">
@@ -853,18 +866,6 @@ tr:hover td { background: var(--bg-subtle); }
       </table>
     </div>
   </div>
-
-  <div class="section-hdr">Profit Distribution</div>
-  <div class="grid g-4">
-    <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="ah-status">--</div><div class="card-sub" id="ah-status-sub">--</div></div>
-    <div class="card"><div class="card-label">Total Distributed</div><div class="card-value sm positive" id="ah-total">--</div><div class="card-sub" id="ah-total-sub">--</div></div>
-    <div class="card"><div class="card-label">Reinvested</div><div class="card-value sm" id="ah-reinvest" style="color:var(--positive)">--</div><div class="card-sub" id="ah-reinvest-sub">Compounding in portfolio</div></div>
-    <div class="card"><div class="card-label">Next Payout</div><div class="card-value sm" id="ah-next">--</div><div class="card-sub" id="ah-next-sub">8:00 AM UTC daily</div></div>
-  </div>
-  <div id="ah-recipients" style="margin-top:var(--space-3)"></div>
-  <div id="ah-recent-payouts" style="margin-top:var(--space-3)"></div>
-
-  <hr class="section-divider">
 
   <!-- ================================================================
        9. TECHNICALS (very bottom)
@@ -2063,12 +2064,22 @@ function renderEngine() {
 
   const recipientsEl = $('ah-recipients');
   const recipients = ah.recipients || [];
+  // v10.4: Regal recipient cards — distinct colors, prominent names
+  var recipientColors = [
+    { bg: 'linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%)', text: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', border: 'rgba(37, 99, 235, 0.3)' },
+    { bg: 'linear-gradient(135deg, #4C1D95 0%, #7C3AED 100%)', text: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', border: 'rgba(124, 58, 237, 0.3)' },
+    { bg: 'linear-gradient(135deg, #92400E 0%, #D97706 100%)', text: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', border: 'rgba(217, 119, 6, 0.3)' },
+  ];
   if (recipients.length > 0) {
     recipientsEl.innerHTML = '<div class="grid g-' + Math.min(recipients.length, 3) + '" style="gap:var(--space-3)">' +
-      recipients.map(function(r) {
-        return '<div class="card"><div class="card-label">' + r.label + ' (' + r.percent + '%)</div>' +
-          '<div class="card-value sm">' + fmtUSD(r.totalTransferred || 0) + '</div>' +
-          '<div class="card-sub">' + r.wallet + '</div></div>';
+      recipients.map(function(r, i) {
+        var c = recipientColors[i % recipientColors.length];
+        var name = (r.label || '').toUpperCase();
+        return '<div class="card" style="background:' + c.bg + ';border-color:' + c.border + ';text-align:center;padding:var(--space-4) var(--space-3)">' +
+          '<div style="font-size:var(--fs-lg);font-weight:800;letter-spacing:0.08em;color:' + c.text + '">' + name + '</div>' +
+          '<div style="font-size:var(--fs-xs);color:' + c.sub + ';margin-top:2px">' + r.percent + '% share</div>' +
+          '<div class="card-value sm" style="color:' + c.text + ';margin-top:var(--space-2)">' + fmtUSD(r.totalTransferred || 0) + '</div>' +
+          '<div style="font-size:var(--fs-xs);color:' + c.sub + ';margin-top:4px;font-family:var(--font-mono)">' + r.wallet + '</div></div>';
       }).join('') + '</div>';
   } else {
     recipientsEl.innerHTML = '<div class="card" style="padding:var(--space-3);text-align:center;color:var(--text-muted)">' +
