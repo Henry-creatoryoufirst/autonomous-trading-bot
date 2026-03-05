@@ -109,16 +109,16 @@ export const CACHE_TTL = {
 // ============================================================================
 
 export const COOLDOWN_DURATIONS = {
-  /** After executing a trade (buy/sell) — brief pause, stop-losses handle real risk */
-  TRADE_EXECUTED: 90 * 1000,        // v10.3: 90 seconds — let chain confirm, then re-evaluate
+  /** After executing a trade (buy/sell) — brief pause, then re-evaluate */
+  TRADE_EXECUTED: 30 * 1000,        // v10.4: 30 seconds — crypto moves fast, don't sit idle
   /** After explicit HOLD decision — re-evaluate almost immediately */
-  HOLD_DECISION: 15 * 1000,         // v10.3: 15 seconds — conditions change fast
+  HOLD_DECISION: 10 * 1000,         // v10.4: 10 seconds — conditions change fast
   /** Signal was too weak — check again next cycle */
-      WEAK_SIGNAL: 10 * 1000,            // v10.3: 10 seconds — near-continuous, weak signals flip quickly
+  WEAK_SIGNAL: 5 * 1000,            // v10.4: 5 seconds — weak signals flip quickly
 } as const;
 
-/** Price move threshold to override cooldown (3% in either direction) */
-export const COOLDOWN_OVERRIDE_THRESHOLD = 0.03;
+/** Price move threshold to override cooldown (2% in either direction) */
+export const COOLDOWN_OVERRIDE_THRESHOLD = 0.02; // v10.4: Lowered from 3% — react faster to moves
 
 // ============================================================================
 // CIRCUIT BREAKER
@@ -361,8 +361,8 @@ export const KELLY_FRACTION = 0.25;           // Quarter Kelly — crypto-approp
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
 export const KELLY_POSITION_FLOOR_USD = 5;    // Minimum viable trade
-export const KELLY_POSITION_CEILING_PCT = 8;  // v9.2: Hard cap: 8% of portfolio per trade (was 5%)
-export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 15; // v10.3: Boost for <$10K portfolios — $5K × 15% = $750 max per position
+export const KELLY_POSITION_CEILING_PCT = 10;  // v10.4: 10% of portfolio per trade (was 8%) — let the AI deploy capital
+export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 20; // v10.4: Boost for <$10K portfolios — $5K × 20% = $1,000 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**

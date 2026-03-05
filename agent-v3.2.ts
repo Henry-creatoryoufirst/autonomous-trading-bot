@@ -7450,6 +7450,9 @@ async function runTradingCycle() {
     }
 
     // === STOP-LOSS CHECK (highest priority) ===
+    // v10.4: Stop-loss no longer returns early — executes the emergency sell, then
+    // continues to profit-take and AI decision phases. A stop-loss on one token
+    // shouldn't prevent the AI from deploying capital into other opportunities.
     const stopLossDecision = checkStopLoss(balances, marketData.indicators);
     if (stopLossDecision) {
       console.log(`\n  🛑 STOP-LOSS GUARD executing sell...`);
@@ -7464,8 +7467,12 @@ async function runTradingCycle() {
       // v8.0: Record stop-loss as a loss for breaker tracking
       recordTradeResultForBreaker(slResult.success, -(stopLossDecision.amountUSD * 0.05)); // Estimate ~5% loss on stop-loss
       saveTradeHistory();
-      state.trading.lastCheck = new Date();
-      return; // Skip AI decision this cycle
+      // v10.4: Refresh balances and continue to AI phase
+      const refreshedAfterSL = await getBalances();
+      if (refreshedAfterSL && refreshedAfterSL.length > 0) {
+        balances = refreshedAfterSL;
+      }
+      console.log(`  ✅ Stop-loss executed — continuing to AI decision phase`);
     }
 
     // === PROFIT-TAKING CHECK ===
@@ -7499,6 +7506,7 @@ async function runTradingCycle() {
     }
 
     // === PHASE 3: STAGNATION CHECK ===
+    // v10.4: Exploration trade no longer returns early — continues to AI phase
     const usdcBal = balances.find(b => b.symbol === "USDC");
     const availableUSDCForExplore = usdcBal?.balance || 0;
     const explorationTrade = checkStagnation(availableUSDCForExplore, marketData.tokens);
@@ -7513,11 +7521,8 @@ async function runTradingCycle() {
         isExploration: true,
       };
       await executeTrade(exploreDecision, marketData);
-      // Update pattern memory after exploration trade
       analyzeStrategyPatterns();
       saveTradeHistory();
-      state.trading.lastCheck = new Date();
-      return;
     }
 
     // AI decision
@@ -7613,13 +7618,16 @@ async function runTradingCycle() {
       }
 
       // === DIVERSIFICATION GUARD ===
-      const last3Trades = state.tradeHistory.slice(-3);
-      if (decision.action === "BUY" && last3Trades.length >= 3) {
-        const allSameToken = last3Trades.every(t => t.action === "BUY" && t.toToken === decision.toToken);
+      // v10.4: Relaxed from 3 to 5 consecutive same-token buys. The position guard
+      // (max % of portfolio) already prevents over-concentration. If the AI has
+      // conviction, let it build the position. The position sizing cap is the real guard.
+      const last5Trades = state.tradeHistory.slice(-5);
+      if (decision.action === "BUY" && last5Trades.length >= 5) {
+        const allSameToken = last5Trades.every(t => t.action === "BUY" && t.toToken === decision.toToken);
         if (allSameToken) {
-          console.log(`   🔄 DIVERSITY GUARD: Bought ${decision.toToken} 3x in a row. Forcing HOLD to avoid concentration.`);
+          console.log(`   🔄 DIVERSITY GUARD: Bought ${decision.toToken} 5x in a row. Forcing HOLD to avoid concentration.`);
           decision.action = "HOLD";
-          decision.reasoning = `Diversity guard: ${decision.toToken} bought 3 consecutive times. Cooling off.`;
+          decision.reasoning = `Diversity guard: ${decision.toToken} bought 5 consecutive times. Cooling off.`;
         }
       }
 
