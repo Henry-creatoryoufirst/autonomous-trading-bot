@@ -201,6 +201,10 @@ import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
 import { aaveYieldService } from './services/aave-yield.js';
 import type { YieldState } from './services/aave-yield.js';
 
+// === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
+import { geckoTerminalService } from './services/gecko-terminal.js';
+import type { DexIntelligence } from './services/gecko-terminal.js';
+
 dotenv.config();
 
 // ============================================================================
@@ -669,6 +673,10 @@ let lastFamilyTradeResults: FamilyTradeResult[] = [];
 let yieldEnabled = process.env.AAVE_YIELD_ENABLED !== 'false'; // default ON
 let lastYieldAction: string | null = null;
 let yieldCycleCount = 0;
+
+// === v11.0: DEX INTELLIGENCE STATE ===
+let lastDexIntelligence: DexIntelligence | null = null;
+let dexIntelFetchCount = 0;
 
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
@@ -6033,6 +6041,8 @@ ${strongSellSignals.length > 0 ? `🔴 STRONGEST SELL SIGNALS: ${strongSellSigna
 
 ${intelligenceSummary}
 
+${lastDexIntelligence?.aiSummary || ''}
+
 ═══ TOKEN PRICES ═══
 ${Object.entries(marketBySector).map(([sector, tokens]) =>
   `${sector}: ${tokens.slice(0, 5).join(" | ")}`
@@ -6067,6 +6077,9 @@ ENTRY RULES (when to BUY):
 17. FUNDING MEAN-REVERSION: When funding rate z-score < -2σ (CROWDED_SHORTS_BOUNCE), this is a contrarian buy — short squeeze is likely. When z-score > +2σ (CROWDED_LONGS_REVERSAL), take profits and reduce exposure
 18. TVL-PRICE DIVERGENCE: When a DeFi token shows UNDERVALUED (TVL rising >5% but price flat), prioritize buying it — fundamental value is growing faster than price. When OVERVALUED (TVL dropping but price rising), trim the position
 19. STABLECOIN CAPITAL FLOW: When CAPITAL_INFLOW signal fires (stablecoin supply growing >2%), be more aggressive on buys — fresh money is entering crypto. When CAPITAL_OUTFLOW fires, reduce exposure and tighten stops
+20. DEX VOLUME SPIKES: When DEX Intelligence shows a tracked token with >2x normal volume AND buy-heavy pressure (>55% buys), this is a strong short-term BUY signal — smart money or whales are accumulating on-chain. Increase conviction by 1 tier
+21. DEX SELL PRESSURE: When DEX Intelligence shows a tracked token with SELL_PRESSURE or STRONG_SELL signal (buy ratio <45%), reduce position or avoid buying — on-chain traders are dumping
+22. DEX TRENDING: If a tracked token appears in the Base DEX trending list AND has positive h1 price change, it has real on-chain momentum behind it — favor it over tokens with similar technical signals but no DEX traction
 
 EXIT RULES (when to SELL):
 1. TIERED PROFIT HARVESTING (v5.1.1): The bot automatically harvests profits in tranches:
@@ -6108,7 +6121,7 @@ RISK RULES:
 6. SELF-IMPROVEMENT: Your strategy patterns, adaptive thresholds, and performance insights are provided below. FAVOR proven winning patterns and AVOID known losing patterns. Trust the confidence-weighted sizing
 7. NEWS NOISE FILTER: Ignore news sentiment if it contradicts strong technical + DeFi signals. Headlines lag price action
 
-DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Smart-Retail Divergence > Technical signals + DeFi flows > Funding Mean-Reversion > TVL-Price Divergence > Stablecoin Capital Flow > Derivatives signals > News sentiment > Sector rebalancing
+DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Smart-Retail Divergence > Technical signals + DeFi flows > DEX Intelligence (volume spikes + buy/sell pressure) > Funding Mean-Reversion > TVL-Price Divergence > Stablecoin Capital Flow > Derivatives signals > News sentiment > Sector rebalancing
 
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
@@ -7213,6 +7226,18 @@ async function runTradingCycle() {
       stablecoinSupply: marketData.stablecoinSupply,
     };
 
+    // === v11.0: DEX INTELLIGENCE (GeckoTerminal) ===
+    try {
+      console.log('🦎 Fetching DEX intelligence (GeckoTerminal)...');
+      lastDexIntelligence = await geckoTerminalService.fetchIntelligence();
+      dexIntelFetchCount++;
+      const spikes = lastDexIntelligence.volumeSpikes.length;
+      const pressure = lastDexIntelligence.buySellPressure.filter(p => p.signal !== 'NEUTRAL').length;
+      console.log(`  ✅ DEX intel: ${lastDexIntelligence.tokenMetrics.length} tokens | ${spikes} volume spikes | ${pressure} pressure signals | ${lastDexIntelligence.errors.length} errors`);
+    } catch (dexErr: any) {
+      console.warn(`  ⚠️ DEX intelligence fetch failed: ${dexErr.message?.substring(0, 150)} — continuing without`);
+    }
+
     // === PHASE 3: PERFORMANCE REVIEW TRIGGER ===
     // Run review every 10 trades or every 24 hours
     const tradesSinceReview = state.tradeHistory.length - state.lastReviewTradeIndex;
@@ -7900,6 +7925,11 @@ async function runTradingCycle() {
   if (yieldEnabled && aaveYieldService.getState().depositedUSDC > 0) {
     const ys = aaveYieldService.getState();
     console.log(`   Yield: $${ys.aTokenBalance.toFixed(2)} in Aave (~${ys.estimatedAPY}% APY) | Earned: $${ys.totalYieldEarned.toFixed(4)}`);
+  }
+  if (lastDexIntelligence) {
+    const di = lastDexIntelligence;
+    const actionableSignals = di.buySellPressure.filter(p => p.signal !== 'NEUTRAL').length;
+    console.log(`   DEX Intel: ${di.tokenMetrics.length} tokens | ${di.volumeSpikes.length} spikes | ${actionableSignals} pressure signals | fetches: ${dexIntelFetchCount}`);
   }
   console.log(`   Cooldowns: ${cooldownManager.getActiveCount()} active | Cache: ${cacheManager.getStats().entries} entries (${cacheManager.getStats().hitRate} hit rate)`);
   console.log(`   Cycle type: HEAVY (${heavyReason}) | Light/Heavy: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H`);
@@ -8936,6 +8966,22 @@ const healthServer = http.createServer(async (req, res) => {
           lastAction: lastYieldAction,
           yieldCycles: yieldCycleCount,
         });
+        break;
+
+      // === v11.0: DEX INTELLIGENCE API ===
+      case '/api/dex-intelligence':
+        if (lastDexIntelligence) {
+          sendJSON(res, 200, {
+            ...lastDexIntelligence,
+            stats: geckoTerminalService.getStats(),
+            fetchCount: dexIntelFetchCount,
+          });
+        } else {
+          sendJSON(res, 200, {
+            message: 'No DEX intelligence data yet — will be available after first heavy cycle',
+            stats: geckoTerminalService.getStats(),
+          });
+        }
         break;
 
       // === v11.0: FAMILY PLATFORM API ENDPOINTS ===

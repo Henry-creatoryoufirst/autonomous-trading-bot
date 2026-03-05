@@ -3,6 +3,10 @@
     "stc": {
       "command": "node",
       "args": ["/Users/henryschertzinger/Desktop/Schertzinger Trading Command/autonomous-trading-bot/mcp/server.js"]
+    },
+    "lunarcrush": {
+      "type": "sse",
+      "url": "https://lunarcrush.ai/sse?key=rszkvcm84tc7dbhkbgaaaaagimmdq6qn4dh5acpr"
     }
   }
 }

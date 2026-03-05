@@ -407,6 +407,18 @@ server.tool(
   }
 );
 
+server.tool(
+  "get_dex_intelligence",
+  "Get real-time Base DEX intelligence from GeckoTerminal: trending pools, token metrics (price, volume, mcap), volume spikes, buy/sell pressure signals, new pools, and AI-ready summary. Updated every heavy cycle.",
+  async () => {
+    try {
+      return jsonResult(await fetchJSON("/api/dex-intelligence"));
+    } catch (e) {
+      return errorResult(e);
+    }
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
