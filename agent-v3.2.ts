@@ -193,6 +193,10 @@ import {
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
+// === v11.0: FAMILY PLATFORM MODULE ===
+import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
+import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
+
 dotenv.config();
 
 // ============================================================================
@@ -651,6 +655,11 @@ let equityEnabled = false;
 
 // === v6.1: TOKEN DISCOVERY STATE ===
 let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
+
+// === v11.0: FAMILY PLATFORM STATE ===
+let familyWalletManager: WalletManager | null = null;
+let familyEnabled = false;
+let lastFamilyTradeResults: FamilyTradeResult[] = [];
 
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
@@ -1904,7 +1913,7 @@ function saveTradeHistory() {
       fs.mkdirSync("./logs", { recursive: true });
     }
     const data = {
-      version: "10.4",
+      version: "11.0",
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -7935,6 +7944,27 @@ async function main() {
     console.error("   Fix: Verify CDP_API_KEY_NAME, CDP_API_KEY_PRIVATE_KEY, CDP_WALLET_SECRET in Railway vars.");
   }
 
+  // === v11.0: FAMILY PLATFORM INITIALIZATION ===
+  try {
+    if (familyManager.isEnabled() || process.env.FAMILY_TRADING_ENABLED === 'true') {
+      console.log("\n👨‍👩‍👧‍👦 Initializing Family Platform...");
+      familyWalletManager = new WalletManager(cdpClient);
+      await familyWalletManager.initializeAll();
+      familyEnabled = true;
+      console.log(`  ✅ Family Platform active: ${familyManager.getActiveMembers().length} member(s)`);
+      console.log(`  📋 Mode: ${familyManager.isDryRun() ? 'DRY RUN (safe)' : 'LIVE TRADING'}`);
+    } else {
+      console.log("\n👨‍👩‍👧‍👦 Family Platform: disabled (set FAMILY_TRADING_ENABLED=true to activate)");
+      // Still create WalletManager for API access, just don't enable trading
+      if (cdpClient) {
+        familyWalletManager = new WalletManager(cdpClient);
+      }
+    }
+  } catch (familyErr: any) {
+    console.error(`  ⚠️ Family Platform init error: ${familyErr.message?.substring(0, 200)}`);
+    console.error(`  Family trading disabled — bot continues in single-wallet mode`);
+  }
+
   // === DERIVATIVES MODULE INITIALIZATION (v6.0) ===
   if (CONFIG.derivatives.enabled) {
     console.log("\n🔧 Initializing Derivatives Module...");
@@ -8257,7 +8287,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "10.4",
+    version: "11.0",
     // v8.2: Deposit tracking — separate injected capital from trading gains
     totalDeposited: state.totalDeposited,
     depositCount: state.depositHistory.length,
@@ -8436,7 +8466,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "10.4",
+    version: "11.0",
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -8476,7 +8506,7 @@ function apiPatterns() {
   const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
   const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
   return {
-    version: "10.4",
+    version: "11.0",
     totalPatterns: patterns.length,
     patternsWithData: patterns.filter(p => p.stats.sampleSize >= 3).length,
     topPerformers,
@@ -8488,7 +8518,7 @@ function apiPatterns() {
 function apiReviews() {
   const reviews = state.performanceReviews.slice(-10);
   return {
-    version: "10.4",
+    version: "11.0",
     totalReviews: state.performanceReviews.length,
     latestReview: reviews.length > 0 ? reviews[reviews.length - 1] : null,
     recentReviews: reviews,
@@ -8499,7 +8529,7 @@ function apiReviews() {
 
 function apiThresholds() {
   return {
-    version: "10.4",
+    version: "11.0",
     currentThresholds: state.adaptiveThresholds,
     bounds: THRESHOLD_BOUNDS,
     defaults: DEFAULT_ADAPTIVE_THRESHOLDS,
@@ -8764,6 +8794,33 @@ const healthServer = http.createServer(async (req, res) => {
           },
           cycleStats,
         });
+        break;
+
+      // === v11.0: FAMILY PLATFORM API ENDPOINTS ===
+      case '/api/family':
+        sendJSON(res, 200, {
+          enabled: familyEnabled,
+          ...familyManager.toJSON(),
+          wallets: familyWalletManager?.toJSON() || { totalWallets: 0, familyTotalValue: 0, wallets: [] },
+          recentFamilyTrades: lastFamilyTradeResults.slice(-20),
+        });
+        break;
+
+      case '/api/family/members':
+        sendJSON(res, 200, {
+          members: familyManager.getMembers(),
+          activeCount: familyManager.getActiveMembers().length,
+        });
+        break;
+
+      case '/api/family/profiles':
+        sendJSON(res, 200, {
+          profiles: familyManager.getRiskProfiles(),
+        });
+        break;
+
+      case '/api/family/wallets':
+        sendJSON(res, 200, familyWalletManager?.toJSON() || { totalWallets: 0, familyTotalValue: 0, wallets: [] });
         break;
 
       default:

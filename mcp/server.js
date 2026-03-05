@@ -341,6 +341,56 @@ server.tool(
   }
 );
 
+// ========================= v11.0: FAMILY PLATFORM =========================
+
+server.tool(
+  "get_family",
+  "Get family platform overview: all members, their wallets, portfolio values, risk profiles, and recent family trades.",
+  async () => {
+    try {
+      return jsonResult(await fetchJSON("/api/family"));
+    } catch (e) {
+      return errorResult(e);
+    }
+  }
+);
+
+server.tool(
+  "get_family_members",
+  "Get list of all family members with their IDs, names, risk profiles, wallet addresses, and status.",
+  async () => {
+    try {
+      return jsonResult(await fetchJSON("/api/family/members"));
+    } catch (e) {
+      return errorResult(e);
+    }
+  }
+);
+
+server.tool(
+  "get_family_profiles",
+  "Get risk profile definitions: Aggressive, Moderate, Conservative — with position limits, stop-losses, and confluence thresholds.",
+  async () => {
+    try {
+      return jsonResult(await fetchJSON("/api/family/profiles"));
+    } catch (e) {
+      return errorResult(e);
+    }
+  }
+);
+
+server.tool(
+  "get_family_wallets",
+  "Get family wallet status: CDP wallet addresses, portfolio values, trade counts, and win rates per member.",
+  async () => {
+    try {
+      return jsonResult(await fetchJSON("/api/family/wallets"));
+    } catch (e) {
+      return errorResult(e);
+    }
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
