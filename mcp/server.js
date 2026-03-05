@@ -392,6 +392,22 @@ server.tool(
 );
 
 // ---------------------------------------------------------------------------
+// v11.0: Aave V3 Yield
+// ---------------------------------------------------------------------------
+
+server.tool(
+  "get_yield",
+  "Get Aave V3 yield status: deposited USDC, aToken balance, accrued yield, estimated APY, supply/withdraw history, and contract addresses.",
+  async () => {
+    try {
+      return jsonResult(await fetchJSON("/api/yield"));
+    } catch (e) {
+      return errorResult(e);
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 

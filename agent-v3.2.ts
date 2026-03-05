@@ -197,6 +197,10 @@ import type { CooldownDecision } from "./types/index.js";
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
 import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
 
+// === v11.0: AAVE V3 YIELD SERVICE ===
+import { aaveYieldService } from './services/aave-yield.js';
+import type { YieldState } from './services/aave-yield.js';
+
 dotenv.config();
 
 // ============================================================================
@@ -660,6 +664,11 @@ let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
 let familyWalletManager: WalletManager | null = null;
 let familyEnabled = false;
 let lastFamilyTradeResults: FamilyTradeResult[] = [];
+
+// === v11.0: AAVE V3 YIELD STATE ===
+let yieldEnabled = process.env.AAVE_YIELD_ENABLED !== 'false'; // default ON
+let lastYieldAction: string | null = null;
+let yieldCycleCount = 0;
 
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
@@ -1873,6 +1882,12 @@ function loadTradeHistory() {
           stablecoinSupplyHistory = parsed.stablecoinSupplyHistory;
           state.stablecoinSupplyHistory = parsed.stablecoinSupplyHistory;
         }
+        // v11.0: Restore Aave yield state
+        if (parsed.aaveYieldState) {
+          aaveYieldService.restoreState(parsed.aaveYieldState);
+          const ys = aaveYieldService.getState();
+          console.log(`  🏦 Aave yield restored: $${ys.depositedUSDC.toFixed(2)} deposited, $${ys.totalYieldEarned.toFixed(4)} earned, ${ys.supplyCount} supplies`);
+        }
         // v8.2: Restore deposit tracking
         state.totalDeposited = parsed.totalDeposited || 0;
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
@@ -1961,6 +1976,8 @@ function saveTradeHistory() {
       fundingRateHistory,
       btcDominanceHistory: { values: btcDominanceHistory.values.slice(-504) },
       stablecoinSupplyHistory: { values: stablecoinSupplyHistory.values.slice(-504) },
+      // v11.0: Aave V3 yield state persistence
+      aaveYieldState: aaveYieldService.getState(),
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -7772,6 +7789,98 @@ async function runTradingCycle() {
       }
     }
 
+    // === v11.0: AAVE V3 YIELD CYCLE ===
+    // Park idle USDC in Aave V3 for yield when markets are ranging/fearful.
+    // Withdraw when AI brain needs capital for active trading.
+    if (yieldEnabled && cdpClient) {
+      try {
+        yieldCycleCount++;
+        const walletAddr = CONFIG.walletAddress;
+        const usdcBalance = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+        const regime = marketData.marketRegime || 'UNKNOWN';
+        const fearGreedVal = marketData.fearGreed?.value || 50;
+
+        // Refresh aToken balance from chain every 3 heavy cycles
+        if (yieldCycleCount % 3 === 1) {
+          await aaveYieldService.refreshBalance(walletAddr);
+        }
+
+        // Check if AI needs capital (any BUY decision was made but USDC is low)
+        const aiNeedsCapital = decisions.some(
+          (d: any) => d.action === 'BUY' && d.amountUSD > usdcBalance * 0.8
+        );
+
+        // Calculate deposit opportunity
+        const depositAmount = aaveYieldService.calculateDepositAmount(usdcBalance, regime, fearGreedVal);
+
+        // Calculate withdrawal need
+        const withdrawAmount = aaveYieldService.calculateWithdrawAmount(usdcBalance, regime, fearGreedVal, aiNeedsCapital);
+
+        if (withdrawAmount > 0) {
+          // WITHDRAW: AI needs capital or market turning bullish
+          console.log(`\n  🏦 AAVE YIELD: Withdrawing $${withdrawAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
+          const withdrawCalldata = aaveYieldService.buildWithdrawCalldata(withdrawAmount, walletAddr);
+          const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+          const tx = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: withdrawCalldata.to as `0x${string}`,
+              data: withdrawCalldata.data as `0x${string}`,
+              value: BigInt(0),
+            },
+          });
+          aaveYieldService.recordWithdraw(withdrawAmount, tx.transactionHash, `${regime} regime, F&G ${fearGreedVal}${aiNeedsCapital ? ', AI needs capital' : ''}`);
+          lastYieldAction = `WITHDRAW $${withdrawAmount.toFixed(2)} @ ${new Date().toISOString()}`;
+          console.log(`  ✅ Aave withdraw: $${withdrawAmount.toFixed(2)} USDC — tx: ${tx.transactionHash}`);
+          saveTradeHistory();
+        } else if (depositAmount > 0 && !anyTradeExecuted) {
+          // DEPOSIT: Only when no trades executed this cycle (don't compete for USDC)
+          console.log(`\n  🏦 AAVE YIELD: Depositing $${depositAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
+          const supplyCalldata = aaveYieldService.buildSupplyCalldata(depositAmount, walletAddr);
+          const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+
+          // Check and set approval if needed
+          const currentAllowance = await aaveYieldService.getAllowance(walletAddr);
+          const depositAmountRaw = BigInt(Math.floor(depositAmount * 1e6));
+          if (currentAllowance < depositAmountRaw) {
+            console.log(`  🔓 Approving Aave Pool to spend USDC...`);
+            const approveTx = await account.sendTransaction({
+              network: "base",
+              transaction: {
+                to: supplyCalldata.approvalTo as `0x${string}`,
+                data: supplyCalldata.approvalData as `0x${string}`,
+                value: BigInt(0),
+              },
+            });
+            console.log(`  ✅ Aave approval: ${approveTx.transactionHash}`);
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for propagation
+          }
+
+          // Execute supply
+          const tx = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: supplyCalldata.to as `0x${string}`,
+              data: supplyCalldata.data as `0x${string}`,
+              value: BigInt(0),
+            },
+          });
+          aaveYieldService.recordSupply(depositAmount, tx.transactionHash, `${regime} regime, F&G ${fearGreedVal}`);
+          lastYieldAction = `SUPPLY $${depositAmount.toFixed(2)} @ ${new Date().toISOString()}`;
+          console.log(`  ✅ Aave supply: $${depositAmount.toFixed(2)} USDC — tx: ${tx.transactionHash}`);
+          saveTradeHistory();
+        } else {
+          const yieldState = aaveYieldService.getState();
+          if (yieldState.depositedUSDC > 0) {
+            console.log(`  🏦 Aave yield: $${yieldState.aTokenBalance.toFixed(2)} earning ~${yieldState.estimatedAPY}% APY | Yield: $${yieldState.totalYieldEarned.toFixed(4)}`);
+          }
+        }
+      } catch (yieldError: any) {
+        console.error(`  ❌ Aave yield cycle error: ${yieldError?.message?.substring(0, 200)}`);
+        // Non-critical — yield is supplementary, bot continues trading normally
+      }
+    }
+
   } catch (error: any) {
     console.error("Cycle error:", error.message);
   }
@@ -7787,6 +7896,10 @@ async function runTradingCycle() {
   console.log(`   Tracking: ${CONFIG.activeTokens.length} tokens across 4 sectors`);
   if (derivativesEngine?.isEnabled()) {
     console.log(`   Derivatives: ACTIVE | Buying Power: $${(derivativesEngine?.getState()?.availableBuyingPower || 0).toFixed(2)}`);
+  }
+  if (yieldEnabled && aaveYieldService.getState().depositedUSDC > 0) {
+    const ys = aaveYieldService.getState();
+    console.log(`   Yield: $${ys.aTokenBalance.toFixed(2)} in Aave (~${ys.estimatedAPY}% APY) | Earned: $${ys.totalYieldEarned.toFixed(4)}`);
   }
   console.log(`   Cooldowns: ${cooldownManager.getActiveCount()} active | Cache: ${cacheManager.getStats().entries} entries (${cacheManager.getStats().hitRate} hit rate)`);
   console.log(`   Cycle type: HEAVY (${heavyReason}) | Light/Heavy: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H`);
@@ -7963,6 +8076,25 @@ async function main() {
   } catch (familyErr: any) {
     console.error(`  ⚠️ Family Platform init error: ${familyErr.message?.substring(0, 200)}`);
     console.error(`  Family trading disabled — bot continues in single-wallet mode`);
+  }
+
+  // === v11.0: AAVE V3 YIELD SERVICE INITIALIZATION ===
+  if (yieldEnabled) {
+    try {
+      aaveYieldService.enable();
+      const walletAddr = CONFIG.walletAddress;
+      await aaveYieldService.refreshBalance(walletAddr);
+      const ys = aaveYieldService.getState();
+      console.log(`\n🏦 Aave V3 Yield Service: ACTIVE`);
+      console.log(`  💰 aBasUSDC balance: $${ys.aTokenBalance.toFixed(2)}`);
+      console.log(`  📈 Deposited: $${ys.depositedUSDC.toFixed(2)} | Yield earned: $${ys.totalYieldEarned.toFixed(4)}`);
+      console.log(`  📊 Estimated APY: ~${ys.estimatedAPY}%`);
+      console.log(`  ⚙️ Config: Keep $500 liquid, min deposit $50, min withdraw $25`);
+    } catch (yieldInitErr: any) {
+      console.warn(`  ⚠️ Aave yield init: ${yieldInitErr.message?.substring(0, 150)} — will retry on first cycle`);
+    }
+  } else {
+    console.log(`\n🏦 Aave V3 Yield: disabled (set AAVE_YIELD_ENABLED=true to activate)`);
   }
 
   // === DERIVATIVES MODULE INITIALIZATION (v6.0) ===
@@ -8793,6 +8925,16 @@ const healthServer = http.createServer(async (req, res) => {
             })),
           },
           cycleStats,
+        });
+        break;
+
+      // === v11.0: AAVE V3 YIELD API ENDPOINT ===
+      case '/api/yield':
+        sendJSON(res, 200, {
+          enabled: yieldEnabled,
+          ...aaveYieldService.toJSON(),
+          lastAction: lastYieldAction,
+          yieldCycles: yieldCycleCount,
         });
         break;
 
