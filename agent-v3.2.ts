@@ -472,9 +472,9 @@ function parseHarvestRecipients(): HarvestRecipient[] {
       const parts = r.trim().split(':');
       // Handle wallet addresses containing colons (shouldn't, but be safe)
       if (parts.length >= 3) {
-        const label = parts[0];
+        const label = parts[0].trim();   // v10.4: Trim label — leading space caused key mismatches in payout tracking
         const pct = parseFloat(parts[parts.length - 1]);
-        const wallet = parts.slice(1, -1).join(':');
+        const wallet = parts.slice(1, -1).join(':').trim(); // v10.4: Trim wallet too
         return { label, wallet, percent: pct };
       }
       return { label: '', wallet: '', percent: 0 };
@@ -6710,13 +6710,28 @@ async function executeDailyPayout(): Promise<void> {
       continue;
     }
 
-    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${realizedPnL.toFixed(2)})`);
+    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${realizedPnL.toFixed(2)}) → ${recipient.wallet.slice(0, 6)}...${recipient.wallet.slice(-4)}`);
 
-    try {
-      const txHash = await sendUSDCTransfer(account, recipient.wallet, transferAmount);
-      console.log(`[Daily Payout] ✅ ${recipient.label}: TX ${txHash}`);
-      console.log(`[Daily Payout] 🔍 https://basescan.org/tx/${txHash}`);
+    // v10.4: Retry once on failure — transient nonce/gas issues shouldn't cause missed payouts
+    let txHash: string | null = null;
+    let lastError: string = '';
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        txHash = await sendUSDCTransfer(account, recipient.wallet, transferAmount);
+        console.log(`[Daily Payout] ✅ ${recipient.label}: TX ${txHash}${attempt > 1 ? ' (retry succeeded)' : ''}`);
+        console.log(`[Daily Payout] 🔍 https://basescan.org/tx/${txHash}`);
+        break;
+      } catch (err: any) {
+        lastError = err.message || String(err);
+        console.error(`[Daily Payout] ❌ ${recipient.label} attempt ${attempt}/2: ${lastError}`);
+        if (attempt < 2) {
+          console.log(`[Daily Payout] ⏳ Retrying ${recipient.label} in 3s...`);
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+    }
 
+    if (txHash) {
       transferResults.push({
         label: recipient.label,
         wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
@@ -6731,12 +6746,12 @@ async function executeDailyPayout(): Promise<void> {
       state.autoHarvestCount++;
       state.autoHarvestByRecipient[recipient.label] =
         (state.autoHarvestByRecipient[recipient.label] || 0) + transferAmount;
-    } catch (err: any) {
-      console.error(`[Daily Payout] ❌ ${recipient.label}: ${err.message}`);
+    } else {
+      console.error(`[Daily Payout] ❌❌ ${recipient.label}: FAILED after 2 attempts — ${lastError}`);
       transferResults.push({
         label: recipient.label,
         wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
-        amount: 0, error: err.message,
+        amount: 0, error: lastError,
       });
     }
   }
@@ -8036,6 +8051,10 @@ async function main() {
       }
     }, { timezone: 'UTC' });
     console.log(`  ✅ Daily Payout cron registered: ${DAILY_PAYOUT_CRON} (8 AM UTC)`);
+    // v10.4: Log parsed recipients at startup for debugging payout issues
+    CONFIG.autoHarvest.recipients.forEach((r: HarvestRecipient, i: number) => {
+      console.log(`     ${i + 1}. "${r.label}" → ${r.wallet.slice(0, 6)}...${r.wallet.slice(-4)} (${r.percent}%)`);
+    });
 
     // Startup catch-up: if bot starts after 8 AM UTC and yesterday hasn't been paid
     const nowUTC = new Date();
