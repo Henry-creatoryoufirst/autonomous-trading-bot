@@ -456,6 +456,33 @@ export const DAILY_PAYOUT_MIN_ETH_RESERVE = 0.0003;
 /** USDC buffer to keep in wallet after payout */
 export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
 
+// ============================================================================
+// v11.1: CASH DEPLOYMENT ENGINE — Put idle USDC to work
+// ============================================================================
+
+/**
+ * When USDC exceeds this percentage of total portfolio, the bot enters
+ * "capital deployment mode" — lowers confluence thresholds to actively
+ * seek entries and bring the portfolio closer to sector targets.
+ *
+ * At 90%+ cash, the bot is structurally underinvested and leaving money
+ * on the table. This trigger treats excess cash as an overweight "sector"
+ * that needs rebalancing.
+ */
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 50; // Trigger when >50% USDC
+
+/** Confluence score reduction when in deployment mode (makes entries easier) */
+export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 10; // e.g. normal BUY=25 → 15 in deployment mode
+
+/** Maximum percentage of excess cash to deploy per cycle (prevents all-in) */
+export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 30; // Deploy up to 30% of excess cash per cycle
+
+/** Minimum USDC to always keep as reserve (gas + emergency buffer) */
+export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 200;
+
+/** Number of tokens to target per deployment cycle (spread across sectors) */
+export const CASH_DEPLOYMENT_MAX_ENTRIES = 4;
+
 /**
  * Fallback RPC Endpoints — try in order
  */

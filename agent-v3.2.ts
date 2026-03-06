@@ -190,6 +190,12 @@ import {
   STABLECOIN_SUPPLY_CHANGE_THRESHOLD,
   ALTSEASON_SECTOR_BOOST,
   BTC_DOMINANCE_SECTOR_BOOST,
+  // v11.1: Cash Deployment Engine
+  CASH_DEPLOYMENT_THRESHOLD_PCT,
+  CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
+  CASH_DEPLOYMENT_MAX_DEPLOY_PCT,
+  CASH_DEPLOYMENT_MIN_RESERVE_USD,
+  CASH_DEPLOYMENT_MAX_ENTRIES,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -708,6 +714,61 @@ const adaptiveCycle: {
 };
 
 let adaptiveCycleTimer: ReturnType<typeof setTimeout> | null = null;
+
+// === v11.1: CASH DEPLOYMENT ENGINE STATE ===
+let cashDeploymentMode = false;
+let cashDeploymentCycles = 0;
+
+/**
+ * v11.1: Cash Deployment Detection
+ * Calculates cash percentage and determines if the bot should enter deployment mode.
+ * When cash exceeds CASH_DEPLOYMENT_THRESHOLD_PCT, returns deployment parameters
+ * including reduced confluence thresholds and a deployment budget.
+ */
+function checkCashDeploymentMode(
+  usdcBalance: number,
+  totalPortfolioValue: number,
+): {
+  active: boolean;
+  cashPercent: number;
+  excessCash: number;
+  deployBudget: number;
+  confluenceDiscount: number;
+} {
+  if (totalPortfolioValue <= 0) return { active: false, cashPercent: 0, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
+
+  const cashPercent = (usdcBalance / totalPortfolioValue) * 100;
+
+  if (cashPercent <= CASH_DEPLOYMENT_THRESHOLD_PCT) {
+    if (cashDeploymentMode) {
+      console.log(`  ✅ Cash deployment mode OFF — USDC at ${cashPercent.toFixed(1)}% (below ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold)`);
+      cashDeploymentMode = false;
+    }
+    return { active: false, cashPercent, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
+  }
+
+  // Calculate excess: how much USDC is above the target threshold
+  const targetCash = totalPortfolioValue * (CASH_DEPLOYMENT_THRESHOLD_PCT / 100);
+  const excessCash = Math.max(0, usdcBalance - Math.max(targetCash, CASH_DEPLOYMENT_MIN_RESERVE_USD));
+
+  if (excessCash < 10) {
+    return { active: false, cashPercent, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
+  }
+
+  // Deploy up to CASH_DEPLOYMENT_MAX_DEPLOY_PCT of excess per cycle
+  const deployBudget = excessCash * (CASH_DEPLOYMENT_MAX_DEPLOY_PCT / 100);
+
+  cashDeploymentMode = true;
+  cashDeploymentCycles++;
+
+  return {
+    active: true,
+    cashPercent,
+    excessCash,
+    deployBudget,
+    confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
+  };
+}
 
 /**
  * v6.2: Determine the portfolio sensitivity tier based on current value.
@@ -5929,7 +5990,8 @@ async function makeTradeDecision(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
   marketData: MarketData,
   totalPortfolioValue: number,
-  sectorAllocations: SectorAllocation[]
+  sectorAllocations: SectorAllocation[],
+  cashDeployment?: { active: boolean; cashPercent: number; excessCash: number; deployBudget: number; confluenceDiscount: number },
 ): Promise<TradeDecision[]> {
   const usdcBalance = balances.find(b => b.symbol === "USDC");
   const availableUSDC = usdcBalance?.balance || 0;
@@ -5956,8 +6018,13 @@ async function makeTradeDecision(
   const totalTokenValue = balances.filter(b => b.symbol !== "USDC").reduce((sum, b) => sum + b.usdValue, 0);
   // v8.0: Institutional position sizing replaces flat $25 maxBuySize
   const instSize = calculateInstitutionalPositionSize(totalPortfolioValue);
-  const maxBuyAmount = Math.min(instSize.sizeUSD, availableUSDC);
-  console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 50% CUT' : ''}`);
+  let maxBuyAmount = Math.min(instSize.sizeUSD, availableUSDC);
+  // v11.1: In cash deployment mode, allow larger per-trade buys (capped by deployment budget / max entries)
+  if (cashDeployment?.active && cashDeployment.deployBudget > 0) {
+    const deployPerTrade = cashDeployment.deployBudget / CASH_DEPLOYMENT_MAX_ENTRIES;
+    maxBuyAmount = Math.min(Math.max(maxBuyAmount, deployPerTrade), availableUSDC);
+  }
+  console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 50% CUT' : ''}${cashDeployment?.active ? ' | 💵 DEPLOY MODE' : ''}`);
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
   // v6.1: Merge static tokens with dynamically discovered tokens
   const discoveredTokensList = tokenDiscoveryEngine?.getTradableTokens() || [];
@@ -6009,11 +6076,12 @@ async function makeTradeDecision(
 You are an 11-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + OI + long/short ratios + top trader positioning), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), market regime analysis, BTC dominance & altseason rotation, smart money vs retail divergence, funding rate mean-reversion, TVL-price divergence, and stablecoin capital flow. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to SMART MONEY positioning divergence from retail, OI-Price divergence, altseason rotation signals, and funding rate mean-reversion — these are your highest-conviction indicators.
 
 ═══ PORTFOLIO ═══
-- USDC Available: $${availableUSDC.toFixed(2)}
+- USDC Available: $${availableUSDC.toFixed(2)}${cashDeployment?.active ? ` ⚠️ CASH OVERWEIGHT (${cashDeployment.cashPercent.toFixed(1)}% of portfolio)` : ''}
 - Token Holdings: $${totalTokenValue.toFixed(2)}
 - Total: $${totalPortfolioValue.toFixed(2)}
 - P&L: ${((totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue * 100).toFixed(1)}% from $${state.trading.initialValue}
-- Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%
+- Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%${cashDeployment?.active ? `
+- 💵 DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
 ═══ YOUR TRADE PERFORMANCE ═══
 ${perfSummary}
@@ -6111,7 +6179,20 @@ MACRO-AWARE ADJUSTMENTS:
 - RISK_OFF macro + TRENDING_DOWN regime = Contrarian accumulation. Best future returns come from buying when others panic. Selectively accumulate high-conviction tokens at discount. Keep 30-40% USDC reserve, deploy the rest into strength
 - RISK_ON macro + RANGING regime = Lean bullish. Buy oversold more aggressively, hold longer before selling. Deploy USDC into pullbacks
 - RISK_OFF macro + VOLATILE regime = Tactical. Smaller position sizes but keep trading. Look for oversold snaps and mean-reversion plays. Sitting in 100% USDC is not ideal, but sitting in 0% USDC is WORSE — recycle capital from stale positions
+${cashDeployment?.active ? `
+═══ 💵 CASH DEPLOYMENT MODE (v11.1) — ACTIVE ═══
+Your portfolio is ${cashDeployment.cashPercent.toFixed(1)}% USDC — this is STRUCTURALLY UNDERINVESTED. Excess cash ($${cashDeployment.excessCash.toFixed(2)}) is an overweight "sector" that needs rebalancing into productive positions.
 
+DEPLOYMENT RULES (override normal entry conservatism):
+1. LOWER YOUR BAR: Accept BUY signals with confluence scores ${cashDeployment.confluenceDiscount} points lower than normal. A score of ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount}+ is sufficient to BUY in deployment mode
+2. SECTOR-FIRST: Prioritize the MOST UNDERWEIGHT sectors. Fill sector gaps before buying into already-allocated sectors
+3. SPREAD CAPITAL: Return a MULTI-TRADE array with up to ${CASH_DEPLOYMENT_MAX_ENTRIES} BUY actions, each targeting a different sector. Spread across tokens rather than concentrating
+4. DEPLOY BUDGET: Target deploying ~$${cashDeployment.deployBudget.toFixed(0)} this cycle across multiple entries. This is your deployment budget — use it
+5. STILL RESPECT RISK: Position size caps, stop-losses, and circuit breakers still apply. Don't chase pumps even in deployment mode
+6. PREFER QUALITY: Even with a lower bar, prefer tokens with at least 1 bullish indicator (RSI trending up, MACD crossing, or BB bounce). Don't buy into clear downtrends just to deploy cash
+
+IMPORTANT: You MUST deploy capital when this mode is active. Returning HOLD with ${cashDeployment.cashPercent.toFixed(0)}% in USDC is not acceptable — the portfolio cannot grow sitting in stablecoins. Find the best entries available and put money to work.
+` : ''}
 RISK RULES:
 1. No single token > 25% of portfolio
 2. HOLD if confluence score is between -15 and +15 (no clear signal)
@@ -7576,9 +7657,21 @@ async function runTradingCycle() {
       saveTradeHistory();
     }
 
+    // === v11.1: CASH DEPLOYMENT ENGINE ===
+    // Check if portfolio is over-concentrated in USDC and needs active deployment
+    const currentUSDCForDeploy = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+    const deploymentCheck = checkCashDeploymentMode(currentUSDCForDeploy, state.trading.totalPortfolioValue);
+    if (deploymentCheck.active) {
+      console.log(`\n💵 CASH DEPLOYMENT MODE ACTIVE`);
+      console.log(`   USDC: $${currentUSDCForDeploy.toFixed(2)} (${deploymentCheck.cashPercent.toFixed(1)}% of portfolio) — exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
+      console.log(`   Excess cash: $${deploymentCheck.excessCash.toFixed(2)} | Deploy budget this cycle: $${deploymentCheck.deployBudget.toFixed(2)}`);
+      console.log(`   Confluence discount: -${deploymentCheck.confluenceDiscount} points (BUY threshold: ${state.adaptiveThresholds.confluenceBuy} → ${state.adaptiveThresholds.confluenceBuy - deploymentCheck.confluenceDiscount})`);
+      console.log(`   Underweight sectors: ${sectorAllocations.filter(s => s.drift < -5).map(s => `${s.name}(${s.drift.toFixed(1)}%)`).join(', ') || 'none'}`);
+    }
+
     // AI decision
     console.log("\n🧠 AI analyzing portfolio & market...");
-    const decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations);
+    const decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
@@ -8491,6 +8584,14 @@ function apiPortfolio() {
         dailyPayoutCount: state.dailyPayoutCount,
         totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
       },
+    // v11.1: Cash deployment engine status
+    cashDeployment: {
+      active: cashDeploymentMode,
+      cyclesActive: cashDeploymentCycles,
+      thresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
+      confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
+      minReserveUSD: CASH_DEPLOYMENT_MIN_RESERVE_USD,
+    },
   };
 }
 
