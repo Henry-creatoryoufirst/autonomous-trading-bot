@@ -483,6 +483,16 @@ export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 200;
 /** Number of tokens to target per deployment cycle (spread across sectors) */
 export const CASH_DEPLOYMENT_MAX_ENTRIES = 4;
 
+// v11.2: CRASH-BUYING OVERRIDE — Let Cash Deployment punch through breaker during extreme fear
+/** Fear & Greed threshold: at or below this, deployment mode can override the institutional breaker */
+export const DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX = 25; // Extreme fear territory
+/** Minimum cash % to qualify for breaker override (must be heavily overweight cash) */
+export const DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT = 60;
+/** Position size multiplier when buying through breaker (reduced size for safety) */
+export const DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT = 0.4; // 40% of normal size — cautious accumulation
+/** Max entries per cycle when overriding breaker (fewer than normal deployment) */
+export const DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES = 2;
+
 /**
  * Fallback RPC Endpoints — try in order
  */

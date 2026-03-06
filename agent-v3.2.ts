@@ -196,6 +196,11 @@ import {
   CASH_DEPLOYMENT_MAX_DEPLOY_PCT,
   CASH_DEPLOYMENT_MIN_RESERVE_USD,
   CASH_DEPLOYMENT_MAX_ENTRIES,
+  // v11.2: Crash-Buying Breaker Override
+  DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX,
+  DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
+  DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
+  DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -767,6 +772,68 @@ function checkCashDeploymentMode(
     excessCash,
     deployBudget,
     confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
+  };
+}
+
+// === v11.2: CRASH-BUYING BREAKER OVERRIDE STATE ===
+let crashBuyingOverrideActive = false;
+let crashBuyingOverrideCycles = 0;
+
+/**
+ * v11.2: Crash-Buying Breaker Override
+ * When Cash Deployment Mode is active AND the market is in extreme fear,
+ * allow deployment buys to punch through the institutional circuit breaker.
+ *
+ * Conditions (ALL must be true):
+ * 1. Cash Deployment Mode is active (>50% USDC)
+ * 2. Cash % exceeds the override minimum (>60%)
+ * 3. Fear & Greed index is at or below extreme fear threshold (<=25)
+ * 4. NOT blocked by capital floor (portfolio above safety minimum)
+ *
+ * When active:
+ * - BUY actions are allowed despite breaker being active
+ * - Position sizes are reduced to 40% of normal (cautious accumulation)
+ * - Max 2 entries per cycle (fewer than normal deployment's 4)
+ * - "Be greedy when others are fearful" — encoded into the system
+ */
+function checkCrashBuyingOverride(
+  deploymentCheck: { active: boolean; cashPercent: number; excessCash: number; deployBudget: number; confluenceDiscount: number },
+  fearGreedValue: number,
+  belowCapitalFloor: boolean,
+): {
+  active: boolean;
+  reason: string;
+  sizeMultiplier: number;
+  maxEntries: number;
+} {
+  const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES };
+
+  // Must be in cash deployment mode
+  if (!deploymentCheck.active) return { ...inactive, reason: 'Cash deployment not active' };
+
+  // Must have heavily overweight cash
+  if (deploymentCheck.cashPercent < DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT) {
+    return { ...inactive, reason: `Cash ${deploymentCheck.cashPercent.toFixed(1)}% below override threshold ${DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT}%` };
+  }
+
+  // Must be extreme fear
+  if (fearGreedValue > DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX) {
+    return { ...inactive, reason: `Fear & Greed ${fearGreedValue} above override threshold ${DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX}` };
+  }
+
+  // Capital floor still blocks everything — non-negotiable safety
+  if (belowCapitalFloor) {
+    return { ...inactive, reason: 'Capital floor active — override blocked' };
+  }
+
+  crashBuyingOverrideActive = true;
+  crashBuyingOverrideCycles++;
+
+  return {
+    active: true,
+    reason: `Extreme fear (F&G=${fearGreedValue}) + ${deploymentCheck.cashPercent.toFixed(1)}% cash → crash-buying override active`,
+    sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
+    maxEntries: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
   };
 }
 
@@ -7669,6 +7736,19 @@ async function runTradingCycle() {
       console.log(`   Underweight sectors: ${sectorAllocations.filter(s => s.drift < -5).map(s => `${s.name}(${s.drift.toFixed(1)}%)`).join(', ') || 'none'}`);
     }
 
+    // === v11.2: CRASH-BUYING BREAKER OVERRIDE ===
+    // When cash-heavy + extreme fear, allow deployment buys through the institutional breaker
+    const crashBuyOverride = checkCrashBuyingOverride(deploymentCheck, marketData.fearGreed.value, belowCapitalFloor);
+    if (crashBuyOverride.active && institutionalBreakerActive) {
+      console.log(`\n🦈 CRASH-BUYING OVERRIDE ACTIVE (v11.2)`);
+      console.log(`   ${crashBuyOverride.reason}`);
+      console.log(`   Position size: ${(crashBuyOverride.sizeMultiplier * 100).toFixed(0)}% of normal | Max entries: ${crashBuyOverride.maxEntries}`);
+      console.log(`   "Be greedy when others are fearful" — breaker bypassed for deployment buys`);
+    } else if (crashBuyOverride.active) {
+      // Deployment active but breaker isn't — no override needed, just log
+      crashBuyingOverrideActive = false;
+    }
+
     // AI decision
     console.log("\n🧠 AI analyzing portfolio & market...");
     const decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
@@ -7676,6 +7756,7 @@ async function runTradingCycle() {
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     let anyTradeExecuted = false;
+    let crashBuyEntriesThisCycle = 0; // v11.2: Track crash-buy entries to enforce max cap
 
     for (let di = 0; di < decisions.length; di++) {
       const decision = decisions[di];
@@ -7696,10 +7777,23 @@ async function runTradingCycle() {
       }
 
       // === v8.0: INSTITUTIONAL BREAKER — BLOCK NEW BUYS ===
+      // v11.2: Crash-buying override — allow deployment buys through breaker during extreme fear
       if (institutionalBreakerActive && decision.action === "BUY") {
-        console.log(`   🚨 INSTITUTIONAL BREAKER: Blocking BUY — ${breakerCheck}`);
-        decision.action = "HOLD";
-        decision.reasoning = `Institutional circuit breaker active: ${breakerCheck}. Only sells allowed until breaker clears.`;
+        if (crashBuyOverride.active && crashBuyEntriesThisCycle < crashBuyOverride.maxEntries) {
+          // Override: allow the BUY but reduce size for cautious accumulation
+          const originalAmount = decision.amountUSD;
+          decision.amountUSD = decision.amountUSD * crashBuyOverride.sizeMultiplier;
+          crashBuyEntriesThisCycle++;
+          console.log(`   🦈 CRASH-BUY OVERRIDE: Allowing BUY through breaker — $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)} (${(crashBuyOverride.sizeMultiplier * 100).toFixed(0)}% size) [${crashBuyEntriesThisCycle}/${crashBuyOverride.maxEntries} entries]`);
+        } else if (crashBuyOverride.active && crashBuyEntriesThisCycle >= crashBuyOverride.maxEntries) {
+          console.log(`   🦈 CRASH-BUY: Max entries reached (${crashBuyOverride.maxEntries}) — blocking additional BUY`);
+          decision.action = "HOLD";
+          decision.reasoning = `Crash-buy override: max ${crashBuyOverride.maxEntries} entries per cycle reached.`;
+        } else {
+          console.log(`   🚨 INSTITUTIONAL BREAKER: Blocking BUY — ${breakerCheck}`);
+          decision.action = "HOLD";
+          decision.reasoning = `Institutional circuit breaker active: ${breakerCheck}. Only sells allowed until breaker clears.`;
+        }
       }
 
       // v9.2: Check remaining USDC for BUY actions in multi-trade
@@ -8591,6 +8685,15 @@ function apiPortfolio() {
       thresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
       confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
       minReserveUSD: CASH_DEPLOYMENT_MIN_RESERVE_USD,
+    },
+    // v11.2: Crash-buying breaker override status
+    crashBuyingOverride: {
+      active: crashBuyingOverrideActive,
+      cyclesActive: crashBuyingOverrideCycles,
+      fearGreedThreshold: DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX,
+      minCashPct: DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
+      sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
+      maxEntriesPerCycle: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
     },
   };
 }
