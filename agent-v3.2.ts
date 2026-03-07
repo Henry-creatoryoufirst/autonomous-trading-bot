@@ -644,6 +644,9 @@ function createCdpClient(): CdpClient {
 
 let cdpClient: CdpClient;
 
+// CDP account name — parameterized for multi-tenant deployments (create-stc-bot CLI)
+const CDP_ACCOUNT_NAME = process.env.CDP_ACCOUNT_NAME || "henry-trading-bot";
+
 // === v10.1: SMART ACCOUNT (Gasless Swaps on Base) ===
 // NOTE: Wallet 0x55509... IS already a CoinbaseSmartWallet (ERC-4337 proxy).
 // CDP SDK's getOrCreateAccount() returns it directly — no wrapping needed.
@@ -5868,7 +5871,7 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     // v10.1.1: Gas refuel remains active — wallet is a CoinbaseSmartWallet but
     // account.swap() still routes through standard paths that may need gas
 
-    const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
     const ethBalance = await getETHBalance(account.address);
     lastKnownETHBalance = ethBalance;
 
@@ -6504,7 +6507,7 @@ async function executeSingleSwap(
 
     // Get the CDP-managed account (wallet IS a CoinbaseSmartWallet — no wrapper needed)
     const account = await cdpClient.evm.getOrCreateAccount({
-      name: "henry-trading-bot",
+      name: CDP_ACCOUNT_NAME,
     });
     const swapperAddress = account.address;
     console.log(`     Account: ${swapperAddress}`);
@@ -6867,7 +6870,7 @@ async function executeDailyPayout(): Promise<void> {
   console.log(`[Daily Payout] USDC: $${usdcBalance.toFixed(2)} (sendable: $${sendableUSDC.toFixed(2)}) | ETH: ${ethBalance.toFixed(6)}`);
   console.log(`[Daily Payout] Recipients: ${recipients.map((r: HarvestRecipient) => `${r.label}(${r.percent}%)`).join(', ')}`);
 
-  const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+  const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
 
   const transferResults: Array<{ label: string; wallet: string; amount: number; txHash?: string; error?: string }> = [];
   let totalSent = 0;
@@ -8032,7 +8035,7 @@ async function runTradingCycle() {
           // WITHDRAW: AI needs capital or market turning bullish
           console.log(`\n  🏦 AAVE YIELD: Withdrawing $${withdrawAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
           const withdrawCalldata = aaveYieldService.buildWithdrawCalldata(withdrawAmount, walletAddr);
-          const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+          const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
           const tx = await account.sendTransaction({
             network: "base",
             transaction: {
@@ -8049,7 +8052,7 @@ async function runTradingCycle() {
           // DEPOSIT: Only when no trades executed this cycle (don't compete for USDC)
           console.log(`\n  🏦 AAVE YIELD: Depositing $${depositAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
           const supplyCalldata = aaveYieldService.buildSupplyCalldata(depositAmount, walletAddr);
-          const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+          const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
 
           // Check and set approval if needed
           const currentAllowance = await aaveYieldService.getAllowance(walletAddr);
@@ -8200,7 +8203,7 @@ async function main() {
 
     // Get or create the EOA account for trading
     console.log("  🔍 Verifying CDP account access...");
-    const account = await cdpClient.evm.getOrCreateAccount({ name: "henry-trading-bot" });
+    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
     console.log(`  ✅ CDP EOA Account verified: ${account.address}`);
 
     // v10.1.1: Smart Account detection — wallet 0x55509 IS already a CoinbaseSmartWallet.
