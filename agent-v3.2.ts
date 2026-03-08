@@ -201,6 +201,7 @@ import {
   DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
   DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
   DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
+  VOLUME_SPIKE_THRESHOLD,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -668,6 +669,7 @@ let lastDerivativesData: {
 // === v6.0: LIGHT/HEAVY CYCLE STATE ===
 let lastHeavyCycleAt = 0;
 let lastPriceSnapshot: Map<string, number> = new Map();
+let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
 let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
 
@@ -5125,15 +5127,13 @@ interface TokenWithIndicators {
   indicators: TechnicalIndicators;
 }
 
-// Cache for historical price data — refreshed every 2 hours
+// Cache for historical price data — refreshed per CACHE_TTL.PRICE_HISTORY (4h)
 const priceHistoryCache: Record<string, {
   prices: number[];        // Hourly close prices (most recent last)
   volumes: number[];       // Hourly volumes
   timestamps: number[];    // Unix timestamps
   lastFetched: number;     // Unix ms when last refreshed
 }> = {};
-
-const HISTORY_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours in ms
 
 /**
  * Fetch hourly price history for a token from CoinGecko (30 days = hourly auto-granularity)
@@ -5164,7 +5164,7 @@ async function getCachedPriceHistory(coingeckoId: string): Promise<{ prices: num
   const cached = priceHistoryCache[coingeckoId];
   const now = Date.now();
 
-  if (cached && (now - cached.lastFetched) < HISTORY_CACHE_TTL && cached.prices.length > 0) {
+  if (cached && (now - cached.lastFetched) < CACHE_TTL.PRICE_HISTORY && cached.prices.length > 0) {
     return cached;
   }
 
@@ -6133,6 +6133,20 @@ async function makeTradeDecision(
       ).join("\n")
     : "  No trades yet";
 
+  // v11.4: Volume spike alert — flag tokens with volume ≥ 2x their 7-day average
+  const volumeSpikeAlerts: string[] = [];
+  for (const [symbol, ind] of Object.entries(marketData.indicators)) {
+    if (ind?.volumeChange24h !== null && ind?.volumeChange24h !== undefined) {
+      const volumeMultiple = 1 + (ind.volumeChange24h / 100);
+      if (volumeMultiple >= VOLUME_SPIKE_THRESHOLD) {
+        volumeSpikeAlerts.push(`⚡ ${symbol}: volume ${volumeMultiple.toFixed(1)}x 7-day avg (+${ind.volumeChange24h.toFixed(0)}%)`);
+      }
+    }
+  }
+  const volumeSpikeSection = volumeSpikeAlerts.length > 0
+    ? `\n═══ VOLUME SPIKE ALERTS ═══\n${volumeSpikeAlerts.join('\n')}\nThese tokens have unusual activity — investigate for accumulation or distribution.\n`
+    : '';
+
   // V4.0: Build intelligence layers
   const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData, marketData.globalMarket, marketData.smartRetailDivergence, marketData.fundingMeanReversion, marketData.tvlPriceDivergence, marketData.stablecoinSupply);
 
@@ -6185,7 +6199,7 @@ ${lastDexIntelligence?.aiSummary || ''}
 ${Object.entries(marketBySector).map(([sector, tokens]) =>
   `${sector}: ${tokens.slice(0, 5).join(" | ")}`
 ).join("\n")}
-
+${volumeSpikeSection}
 ═══ RECENT TRADE HISTORY ═══
 ${tradeHistorySummary}
 
@@ -7229,12 +7243,7 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
     return { isHeavy: true, reason: `Forced interval (${((now - lastHeavyCycleAt) / 1000).toFixed(0)}s since last heavy)` };
   }
 
-  // 2. First cycle is always heavy
-  if (lastHeavyCycleAt === 0) {
-    return { isHeavy: true, reason: 'First cycle' };
-  }
-
-  // 2b. v6.1: Force heavy if pricing is broken (all tokens $0 = only USDC counted)
+  // 2. v6.1: Force heavy if pricing is broken (all tokens $0 = only USDC counted)
   const pricedTokenCount = Array.from(currentPrices.values()).filter(p => p > 0).length;
   if (pricedTokenCount === 0 && Object.keys(lastKnownPrices).length === 0) {
     return { isHeavy: true, reason: 'No token prices available — forcing price refresh' };
@@ -7355,6 +7364,22 @@ async function runTradingCycle() {
     lastHeavyCycleAt = Date.now();
     lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
     lastFearGreedValue = marketData.fearGreed.value;
+
+    // v11.4: Volume spike detection — flag tokens with volume ≥ VOLUME_SPIKE_THRESHOLD × 7d avg
+    const volumeSpikes: { symbol: string; volumeChange: number }[] = [];
+    for (const token of marketData.tokens) {
+      const ind = marketData.indicators[token.symbol];
+      if (ind?.volumeChange24h !== null && ind?.volumeChange24h !== undefined) {
+        const volumeMultiple = 1 + (ind.volumeChange24h / 100);
+        if (volumeMultiple >= VOLUME_SPIKE_THRESHOLD) {
+          volumeSpikes.push({ symbol: token.symbol, volumeChange: ind.volumeChange24h });
+        }
+      }
+    }
+    if (volumeSpikes.length > 0) {
+      console.log(`  📊 VOLUME SPIKES (≥${VOLUME_SPIKE_THRESHOLD}x 7d avg): ${volumeSpikes.map(v => `${v.symbol} +${v.volumeChange.toFixed(0)}%`).join(', ')}`);
+    }
+    lastVolumeSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.volume24h]));
 
     // v5.2: Consolidate dust positions every 10 cycles
     if (state.totalCycles % 10 === 1) {

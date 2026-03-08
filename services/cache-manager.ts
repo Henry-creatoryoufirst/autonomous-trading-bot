@@ -164,28 +164,12 @@ export class CacheManager {
 export const CacheKeys = {
   /** CoinGecko market data for all tokens */
   COINGECKO_PRICES: 'coingecko:prices',
-  /** CoinGecko price history for a specific token */
-  COINGECKO_HISTORY: (coingeckoId: string) => `coingecko:history:${coingeckoId}`,
   /** Fear & Greed Index */
   FEAR_GREED: 'feargreed:index',
   /** DefiLlama Base chain TVL */
   DEFI_LLAMA_TVL: 'defillama:base:tvl',
-  /** DefiLlama protocols */
-  DEFI_LLAMA_PROTOCOLS: 'defillama:base:protocols',
-  /** DefiLlama DEX volumes */
-  DEFI_LLAMA_DEX_VOL: 'defillama:base:dexvol',
   /** Binance funding rates */
   BINANCE_FUNDING: 'binance:funding',
-  /** Binance open interest */
-  BINANCE_OI: (symbol: string) => `binance:oi:${symbol}`,
-  /** Binance global long/short ratio */
-  BINANCE_GLOBAL_LS: (symbol: string) => `binance:globalLS:${symbol}`,
-  /** Binance top trader long/short ratio */
-  BINANCE_TOP_LS: (symbol: string) => `binance:topLS:${symbol}`,
-  /** Binance top trader position ratio */
-  BINANCE_TOP_POS: (symbol: string) => `binance:topPos:${symbol}`,
-  /** Cross-asset data (Gold, Oil, VIX, S&P) */
-  CROSS_ASSET: 'crossasset:all',
   /** FRED macro data */
   MACRO_DATA: 'macro:fred',
   /** CryptoPanic news */

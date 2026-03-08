@@ -81,8 +81,6 @@ export const CACHE_TTL = {
   FEAR_GREED: 15 * 60 * 1000,        // 15 minutes
   /** Binance long/short ratios — fast-moving derivative data */
   BINANCE_RATIOS: 5 * 60 * 1000,     // 5 minutes
-  /** Cross-asset data (Gold, Oil, VIX, S&P) — macro moves slowly */
-  CROSS_ASSET: 30 * 60 * 1000,       // 30 minutes
   /** Macro economic data (FRED) */
   MACRO: 60 * 60 * 1000,             // 60 minutes
   /** DefiLlama TVL data */

@@ -184,6 +184,3 @@ export class MarketHoursEngine {
     return minutesLeftToday + ((daysUntilMonday - 1) * 24 * 60) + 240; // 4:00 AM = 240 minutes
   }
 }
-
-// Singleton
-export const marketHours = new MarketHoursEngine();
