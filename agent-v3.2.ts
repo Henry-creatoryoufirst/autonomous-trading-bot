@@ -7500,7 +7500,14 @@ async function runTradingCycle() {
     const lastTradeAge = state.trading.lastTrade ? Date.now() - new Date(state.trading.lastTrade).getTime() : Infinity;
     // v10.2: Widened to 15 minutes — slow cycles or batched sells can delay USDC visibility
     const recentSellTrade = lastTradeAge < 900_000; // Within last 15 minutes
-    if (usdcIncrease > 50 && prevUSDCBalance > 0 && !recentSellTrade) {
+    // v11.3: Skip deposit detection in first 3 cycles after startup.
+    // After a redeploy, the persisted lastKnownUSDCBalance may be stale (saved before
+    // sells accumulated USDC), causing the first cycle to see a huge USDC jump and
+    // misclassify it as a deposit. The startup warmup now hydrates USDC balance,
+    // but this is a safety net in case warmup fails or balances shift during boot.
+    const uptimeSeconds = (Date.now() - state.startTime.getTime()) / 1000;
+    const tooEarlyForDepositDetection = uptimeSeconds < 600; // Skip first 10 minutes
+    if (usdcIncrease > 50 && prevUSDCBalance > 0 && !recentSellTrade && !tooEarlyForDepositDetection) {
       const depositAmount = usdcIncrease;
       state.totalDeposited += depositAmount;
       state.depositHistory.push({
@@ -8261,6 +8268,15 @@ async function main() {
         if (startupValue > state.trading.peakValue) {
           state.trading.peakValue = startupValue;
         }
+        // v11.3: Hydrate USDC balance on startup to prevent false deposit detection.
+        // Without this, the first heavy cycle sees a huge USDC increase (from accumulated
+        // sells during previous session) and misclassifies it as an external deposit,
+        // inflating peakValue and initialValue and triggering CAPITAL FLOOR erroneously.
+        const startupUSDC = startupBalances.find(b => b.symbol === 'USDC')?.usdValue || 0;
+        if (startupUSDC > 0) {
+          state.lastKnownUSDCBalance = startupUSDC;
+          console.log(`  ✅ USDC balance hydrated: $${startupUSDC.toFixed(2)} (deposit detection baseline set)`);
+        }
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
       } else {
         console.log(`  ⚠️ Startup balance fetch returned $0 — first heavy cycle will hydrate`);
@@ -8933,7 +8949,7 @@ const healthServer = http.createServer(async (req, res) => {
   if (ALLOWED_ORIGINS.has(reqOrigin)) {
     res.setHeader('Access-Control-Allow-Origin', reqOrigin);
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -9217,6 +9233,68 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/family/wallets':
         sendJSON(res, 200, familyWalletManager?.toJSON() || { totalWallets: 0, familyTotalValue: 0, wallets: [] });
         break;
+
+      // v11.3: Admin endpoint to correct corrupted state values (e.g. false deposit detection)
+      case '/api/admin/correct-state': {
+        if (req.method !== 'POST') {
+          sendJSON(res, 405, { error: 'Method not allowed — use POST' });
+          break;
+        }
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+          break;
+        }
+        // Read POST body
+        let body = '';
+        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('end', () => {
+          try {
+            const corrections = JSON.parse(body);
+            const applied: string[] = [];
+            const before = {
+              peakValue: state.trading.peakValue,
+              initialValue: state.trading.initialValue,
+              totalDeposited: state.totalDeposited,
+            };
+            if (typeof corrections.peakValue === 'number') {
+              state.trading.peakValue = corrections.peakValue;
+              applied.push(`peakValue: ${before.peakValue.toFixed(2)} → ${corrections.peakValue.toFixed(2)}`);
+            }
+            if (typeof corrections.initialValue === 'number') {
+              state.trading.initialValue = corrections.initialValue;
+              applied.push(`initialValue: ${before.initialValue.toFixed(2)} → ${corrections.initialValue.toFixed(2)}`);
+            }
+            if (typeof corrections.totalDeposited === 'number') {
+              state.totalDeposited = corrections.totalDeposited;
+              applied.push(`totalDeposited: ${before.totalDeposited.toFixed(2)} → ${corrections.totalDeposited.toFixed(2)}`);
+            }
+            if (corrections.removeLastDeposit === true && state.depositHistory.length > 0) {
+              const removed = state.depositHistory.pop();
+              applied.push(`removed last deposit: $${removed?.amountUSD}`);
+            }
+            // Recalculate derived values
+            const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
+            saveTradeHistory();
+            console.log(`\n🔧 ADMIN STATE CORRECTION applied:`);
+            applied.forEach(a => console.log(`   ${a}`));
+            sendJSON(res, 200, {
+              message: 'State corrected successfully',
+              applied,
+              current: {
+                peakValue: state.trading.peakValue,
+                initialValue: state.trading.initialValue,
+                totalDeposited: state.totalDeposited,
+                totalPortfolioValue: state.trading.totalPortfolioValue,
+                drawdown: drawdown.toFixed(2) + '%',
+                depositCount: state.depositHistory.length,
+              },
+            });
+          } catch (parseErr: any) {
+            sendJSON(res, 400, { error: 'Invalid JSON body: ' + parseErr.message });
+          }
+        });
+        return; // Don't end response here — it's handled in req.on('end')
+      }
 
       default:
         sendJSON(res, 404, { error: 'Not found' });
