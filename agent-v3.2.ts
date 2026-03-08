@@ -7528,47 +7528,20 @@ async function runTradingCycle() {
       state.trading.totalPortfolioValue = newPortfolioValue;
     }
 
-    // v8.2: DEPOSIT DETECTION — detect external capital injections (not trading gains)
-    // If USDC balance increased significantly and no sell trade happened recently,
-    // the increase is a deposit, not a trading gain. Track it separately.
+    // v11.4.3: DEPOSIT DETECTION — disabled automatic inference.
+    // Previous versions tried to detect deposits by watching USDC balance changes and
+    // ruling out sells/withdrawals. This was fundamentally fragile — blockchain settlement
+    // delays, Aave withdrawals, batched sells, and timing edge cases caused false positives
+    // that inflated peakValue (e.g. $4k portfolio showed $10k peak, triggering HOLD-ONLY).
+    //
+    // At SaaS scale with hundreds of wallets, auto-detection is a liability.
+    // Deposits are now handled explicitly:
+    //   1. Initial capital is set via INITIAL_PORTFOLIO_VALUE env var at deploy time
+    //   2. Additional deposits use the /correct-state admin endpoint
+    //   3. The runtime peakValue sanity check catches any residual drift
+    //
+    // We still track USDC balance for logging but do NOT auto-adjust peakValue/initialValue.
     const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
-    const prevUSDCBalance = state.lastKnownUSDCBalance;
-    const usdcIncrease = currentUSDCBalance - prevUSDCBalance;
-    // v11.4.2: Sum all SELL trade amounts from the last 2 hours.
-    // Old approach only checked lastTrade timestamp with a 15-minute window, which missed
-    // delayed USDC settlement from sells — causing false deposit detections that inflated
-    // peakValue to $10k+ on a $4k portfolio. Now we subtract known sell proceeds.
-    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-    const recentSellProceeds = state.tradeHistory
-      .filter(t => t.action === 'SELL' && t.success && new Date(t.timestamp).getTime() > twoHoursAgo)
-      .reduce((sum, t) => sum + (t.amountUSD || 0), 0);
-    const unexplainedUsdcIncrease = usdcIncrease - recentSellProceeds;
-    // v11.3: Skip deposit detection in first 10 minutes after startup.
-    const uptimeSeconds = (Date.now() - state.startTime.getTime()) / 1000;
-    const tooEarlyForDepositDetection = uptimeSeconds < 600; // Skip first 10 minutes
-    if (unexplainedUsdcIncrease > 50 && prevUSDCBalance > 0 && !tooEarlyForDepositDetection) {
-      const depositAmount = unexplainedUsdcIncrease;
-      state.totalDeposited += depositAmount;
-      state.depositHistory.push({
-        timestamp: new Date().toISOString(),
-        amountUSD: Math.round(depositAmount * 100) / 100,
-        newTotal: Math.round(state.totalDeposited * 100) / 100,
-      });
-      console.log(`\n💵 DEPOSIT DETECTED: +$${depositAmount.toFixed(2)} USDC`);
-      console.log(`   Total deposited capital: $${state.totalDeposited.toFixed(2)}`);
-      console.log(`   This will NOT count as trading profit.`);
-      // Adjust initialValue upward so P&L stays accurate
-      state.trading.initialValue += depositAmount;
-      // v9.2: Adjust peakValue and breaker baselines so deposit doesn't create false drawdown
-      // Without this, a $1400 deposit sets peak to $5300, then a normal dip to $5000
-      // shows 5.7% drawdown even though no trading loss occurred.
-      state.trading.peakValue += depositAmount;
-      // Also bump daily/weekly breaker baselines so circuit breakers don't false-trigger
-      if (breakerState.dailyBaseline.value > 0) breakerState.dailyBaseline.value += depositAmount;
-      if (breakerState.weeklyBaseline.value > 0) breakerState.weeklyBaseline.value += depositAmount;
-      console.log(`   Peak value adjusted: $${state.trading.peakValue.toFixed(2)} (deposit-aware baseline)`);
-      saveTradeHistory();
-    }
     state.lastKnownUSDCBalance = currentUSDCBalance;
 
     if (state.trading.totalPortfolioValue > state.trading.peakValue) {
@@ -8345,30 +8318,15 @@ async function main() {
           state.lastKnownUSDCBalance = startupUSDC;
           console.log(`  ✅ USDC balance hydrated: $${startupUSDC.toFixed(2)} (deposit detection baseline set)`);
         }
-        // v11.3.1: Sanity-check peakValue — if totalDeposited exceeds current portfolio
-        // value on a bot that has realized profits, the deposit tracking was corrupted
-        // by false deposit detection. Fix peakValue and totalDeposited.
-        const totalRealized = Object.values(state.costBasis).reduce((s, cb: any) => s + (cb.realizedPnL || 0), 0);
-        const depositsExceedPortfolio = state.totalDeposited > startupValue && totalRealized > 100;
-        const peakUnreasonable = state.trading.peakValue > startupValue * 1.5 && startupValue > 500;
-        if ((depositsExceedPortfolio || peakUnreasonable) && startupValue > 500) {
-          console.log(`  🔧 PEAK VALUE CORRECTION: peakValue $${state.trading.peakValue.toFixed(2)} appears corrupted (portfolio: $${startupValue.toFixed(2)}, deposited: $${state.totalDeposited.toFixed(2)}, realized: $${totalRealized.toFixed(2)})`);
-          console.log(`     (This was likely caused by a false deposit detection inflating the peak)`);
-          state.trading.peakValue = startupValue;
-          // Also fix totalDeposited if it's clearly wrong (more than portfolio value)
-          if (state.totalDeposited > startupValue) {
-            console.log(`  🔧 DEPOSIT TOTAL CORRECTION: totalDeposited $${state.totalDeposited.toFixed(2)} > portfolio $${startupValue.toFixed(2)} — this includes false deposits`);
-            // Remove the last deposit if it looks like the false one (>$1000 and added today)
-            const lastDeposit = state.depositHistory[state.depositHistory.length - 1];
-            if (lastDeposit && lastDeposit.amountUSD > 1000) {
-              const depositAge = Date.now() - new Date(lastDeposit.timestamp).getTime();
-              if (depositAge < 86400000) { // Less than 24 hours old
-                console.log(`  🔧 Removing false deposit: $${lastDeposit.amountUSD} from ${lastDeposit.timestamp}`);
-                state.totalDeposited -= lastDeposit.amountUSD;
-                state.depositHistory.pop();
-              }
-            }
-          }
+        // v11.4.3: Startup peakValue sanity check — same logic as runtime check.
+        // Peak cannot exceed (portfolio + total payouts + 15% buffer).
+        // This catches any historical corruption from the old auto-deposit-detection bug.
+        const totalPayoutsAtStartup = state.totalDailyPayoutsUSD || 0;
+        const maxReasonablePeakAtStartup = (startupValue + totalPayoutsAtStartup) * 1.15;
+        if (state.trading.peakValue > maxReasonablePeakAtStartup && startupValue > 500) {
+          console.log(`  🔧 PEAK VALUE CORRECTION: peak $${state.trading.peakValue.toFixed(2)} > reasonable max $${maxReasonablePeakAtStartup.toFixed(2)} (portfolio $${startupValue.toFixed(2)} + payouts $${totalPayoutsAtStartup.toFixed(2)} + 15%)`);
+          state.trading.peakValue = startupValue + totalPayoutsAtStartup;
+          console.log(`     Corrected peak: $${state.trading.peakValue.toFixed(2)}`);
           saveTradeHistory();
         }
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
@@ -9365,6 +9323,22 @@ const healthServer = http.createServer(async (req, res) => {
             if (corrections.removeLastDeposit === true && state.depositHistory.length > 0) {
               const removed = state.depositHistory.pop();
               applied.push(`removed last deposit: $${removed?.amountUSD}`);
+            }
+            // v11.4.3: Explicit deposit registration — the SaaS-grade way to track deposits.
+            // Atomically adjusts initialValue, peakValue, breaker baselines, and logs the deposit.
+            if (typeof corrections.registerDeposit === 'number' && corrections.registerDeposit > 0) {
+              const amt = corrections.registerDeposit;
+              state.totalDeposited += amt;
+              state.trading.initialValue += amt;
+              state.trading.peakValue += amt;
+              if (breakerState.dailyBaseline.value > 0) breakerState.dailyBaseline.value += amt;
+              if (breakerState.weeklyBaseline.value > 0) breakerState.weeklyBaseline.value += amt;
+              state.depositHistory.push({
+                timestamp: new Date().toISOString(),
+                amountUSD: Math.round(amt * 100) / 100,
+                newTotal: Math.round(state.totalDeposited * 100) / 100,
+              });
+              applied.push(`registerDeposit: +$${amt.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)}, initial: $${state.trading.initialValue.toFixed(2)})`);
             }
             // Recalculate derived values
             const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
