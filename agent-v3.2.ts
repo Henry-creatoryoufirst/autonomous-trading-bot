@@ -8277,6 +8277,29 @@ async function main() {
           state.lastKnownUSDCBalance = startupUSDC;
           console.log(`  ✅ USDC balance hydrated: $${startupUSDC.toFixed(2)} (deposit detection baseline set)`);
         }
+        // v11.3.1: Sanity-check peakValue — if it's more than 2x current portfolio,
+        // it was almost certainly corrupted by a false deposit detection. Reset it to
+        // current portfolio value to prevent a permanent CAPITAL FLOOR lockout.
+        if (state.trading.peakValue > startupValue * 2 && startupValue > 500) {
+          console.log(`  🔧 PEAK VALUE CORRECTION: peakValue $${state.trading.peakValue.toFixed(2)} is >2x current portfolio $${startupValue.toFixed(2)} — resetting to current value`);
+          console.log(`     (This was likely caused by a false deposit detection inflating the peak)`);
+          state.trading.peakValue = startupValue;
+          // Also fix totalDeposited if it's clearly wrong (more than portfolio value)
+          if (state.totalDeposited > startupValue) {
+            console.log(`  🔧 DEPOSIT TOTAL CORRECTION: totalDeposited $${state.totalDeposited.toFixed(2)} > portfolio $${startupValue.toFixed(2)} — this includes false deposits`);
+            // Remove the last deposit if it looks like the false one (>$1000 and added today)
+            const lastDeposit = state.depositHistory[state.depositHistory.length - 1];
+            if (lastDeposit && lastDeposit.amountUSD > 1000) {
+              const depositAge = Date.now() - new Date(lastDeposit.timestamp).getTime();
+              if (depositAge < 86400000) { // Less than 24 hours old
+                console.log(`  🔧 Removing false deposit: $${lastDeposit.amountUSD} from ${lastDeposit.timestamp}`);
+                state.totalDeposited -= lastDeposit.amountUSD;
+                state.depositHistory.pop();
+              }
+            }
+          }
+          saveTradeHistory();
+        }
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
       } else {
         console.log(`  ⚠️ Startup balance fetch returned $0 — first heavy cycle will hydrate`);
