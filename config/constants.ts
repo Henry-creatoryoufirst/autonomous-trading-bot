@@ -495,10 +495,13 @@ export const DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES = 2;
 
 /**
  * Fallback RPC Endpoints — try in order
+ * v11.4: MEV protection — sequencer-direct endpoint first (bypasses public mempool),
+ * then privacy-preserving relays, then public RPCs as fallback.
  */
 export const BASE_RPC_ENDPOINTS = [
-  'https://mainnet.base.org',
-  'https://base.meowrpc.com',
-  'https://base.drpc.org',
-  'https://1rpc.io/base',
+  'https://mainnet-sequencer.base.org',  // Direct sequencer — best MEV protection (bypasses mempool)
+  'https://1rpc.io/base',               // TEE-attested privacy relay — burns metadata after relay
+  'https://mainnet.base.org',            // Coinbase public RPC
+  'https://base.meowrpc.com',            // Community RPC fallback
+  'https://base.drpc.org',               // dRPC fallback
 ] as const;

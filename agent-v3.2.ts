@@ -1962,18 +1962,6 @@ function loadTradeHistory() {
         state.tradeHistory = parsed.trades || [];
         state.trading.initialValue = process.env.INITIAL_PORTFOLIO_VALUE ? parseFloat(process.env.INITIAL_PORTFOLIO_VALUE) : (parsed.initialValue || 4091); // v8.2: $2,891 + $1,200 deposit
         state.trading.peakValue = parsed.peakValue || 374;
-        // v11.3.3: One-time fix for corrupted peakValue from false deposit detection.
-        // If peakValue was inflated to ~$10,416 by the $4,784.75 false deposit, correct it.
-        // This block can be removed after the first successful deploy.
-        if (parsed.peakValue > 9000 && parsed.totalDeposited > 5000) {
-          const falseDepositAmount = 4784.75;
-          console.log(`  🔧 ONE-TIME FIX: Correcting peakValue from $${state.trading.peakValue.toFixed(2)} (removing false deposit of $${falseDepositAmount})`);
-          state.trading.peakValue -= falseDepositAmount;
-          // Also correct totalDeposited and remove the false deposit entry
-          if (parsed.totalDeposited) {
-            state.totalDeposited = (parsed.totalDeposited || 0) - falseDepositAmount;
-          }
-        }
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
         state.costBasis = parsed.costBasis || {};
@@ -2043,15 +2031,6 @@ function loadTradeHistory() {
         state.totalDeposited = parsed.totalDeposited || 0;
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
         state.depositHistory = parsed.depositHistory || [];
-        // v11.3.3: One-time fix — remove the $4,784.75 false deposit from totalDeposited
-        if (state.totalDeposited > 5000 && state.depositHistory.length > 0) {
-          const lastDep = state.depositHistory[state.depositHistory.length - 1];
-          if (lastDep && lastDep.amountUSD > 4000 && lastDep.amountUSD < 5000) {
-            console.log(`  🔧 ONE-TIME FIX: Removing false deposit $${lastDep.amountUSD} from deposit history`);
-            state.totalDeposited -= lastDep.amountUSD;
-            state.depositHistory.pop();
-          }
-        }
         if (state.totalDeposited > 0) {
           console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
         }
@@ -7845,6 +7824,22 @@ async function runTradingCycle() {
         const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
         decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
         console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}% × Vol×${instSizeCycle.volMultiplier.toFixed(2)}${instSizeCycle.breakerReduction ? ' × BREAKER' : ''})`);
+
+        // v11.4: ATR-scaled per-token sizing — size inversely with token volatility vs market average
+        const tokenATR = marketData.indicators[decision.toToken]?.atrPercent;
+        if (tokenATR && tokenATR > 0) {
+          const allATRs = Object.values(marketData.indicators)
+            .map((ind: any) => ind?.atrPercent)
+            .filter((a: any) => a && a > 0) as number[];
+          const avgATR = allATRs.length > 0 ? allATRs.reduce((s, a) => s + a, 0) / allATRs.length : tokenATR;
+          // Scale: avgATR / tokenATR — high-vol tokens get smaller sizes, low-vol get larger
+          const atrMultiplier = Math.max(0.5, Math.min(1.5, avgATR / tokenATR));
+          if (Math.abs(atrMultiplier - 1.0) > 0.05) {
+            const preATR = decision.amountUSD;
+            decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * atrMultiplier * 100) / 100);
+            console.log(`   📊 ATR Scaling: ${decision.toToken} ATR=${tokenATR.toFixed(1)}% vs avg=${avgATR.toFixed(1)}% → ×${atrMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+          }
+        }
 
         const tradePatternId = [
           "BUY",
