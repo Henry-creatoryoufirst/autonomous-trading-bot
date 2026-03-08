@@ -7529,25 +7529,25 @@ async function runTradingCycle() {
     }
 
     // v8.2: DEPOSIT DETECTION — detect external capital injections (not trading gains)
-    // If USDC balance increased significantly and no sell trade happened this cycle,
+    // If USDC balance increased significantly and no sell trade happened recently,
     // the increase is a deposit, not a trading gain. Track it separately.
     const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
     const prevUSDCBalance = state.lastKnownUSDCBalance;
     const usdcIncrease = currentUSDCBalance - prevUSDCBalance;
-    // Detect deposit: USDC jumped by >$50, and no trade was executed in the last 60 seconds
-    // (sell trades also increase USDC, but they happen within the cycle and are tracked by lastTrade)
-    const lastTradeAge = state.trading.lastTrade ? Date.now() - new Date(state.trading.lastTrade).getTime() : Infinity;
-    // v10.2: Widened to 15 minutes — slow cycles or batched sells can delay USDC visibility
-    const recentSellTrade = lastTradeAge < 900_000; // Within last 15 minutes
-    // v11.3: Skip deposit detection in first 3 cycles after startup.
-    // After a redeploy, the persisted lastKnownUSDCBalance may be stale (saved before
-    // sells accumulated USDC), causing the first cycle to see a huge USDC jump and
-    // misclassify it as a deposit. The startup warmup now hydrates USDC balance,
-    // but this is a safety net in case warmup fails or balances shift during boot.
+    // v11.4.2: Sum all SELL trade amounts from the last 2 hours.
+    // Old approach only checked lastTrade timestamp with a 15-minute window, which missed
+    // delayed USDC settlement from sells — causing false deposit detections that inflated
+    // peakValue to $10k+ on a $4k portfolio. Now we subtract known sell proceeds.
+    const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+    const recentSellProceeds = state.tradeHistory
+      .filter(t => t.action === 'SELL' && t.success && new Date(t.timestamp).getTime() > twoHoursAgo)
+      .reduce((sum, t) => sum + (t.amountUSD || 0), 0);
+    const unexplainedUsdcIncrease = usdcIncrease - recentSellProceeds;
+    // v11.3: Skip deposit detection in first 10 minutes after startup.
     const uptimeSeconds = (Date.now() - state.startTime.getTime()) / 1000;
     const tooEarlyForDepositDetection = uptimeSeconds < 600; // Skip first 10 minutes
-    if (usdcIncrease > 50 && prevUSDCBalance > 0 && !recentSellTrade && !tooEarlyForDepositDetection) {
-      const depositAmount = usdcIncrease;
+    if (unexplainedUsdcIncrease > 50 && prevUSDCBalance > 0 && !tooEarlyForDepositDetection) {
+      const depositAmount = unexplainedUsdcIncrease;
       state.totalDeposited += depositAmount;
       state.depositHistory.push({
         timestamp: new Date().toISOString(),
