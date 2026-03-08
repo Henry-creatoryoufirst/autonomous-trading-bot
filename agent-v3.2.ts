@@ -6972,6 +6972,20 @@ async function executeDailyPayout(): Promise<void> {
   if (totalSent > 0) state.dailyPayoutCount++;
   // lastDailyPayoutDate already persisted above (pre-transfer idempotency guard)
   state.lastAutoHarvestTime = now.toISOString();
+
+  // v11.4.2: Adjust peakValue downward after payouts — payouts are intentional capital
+  // outflows, NOT drawdowns. Without this, peakValue stays at pre-payout highs and
+  // eventually triggers CAPITAL FLOOR (HOLD-ONLY) as payouts accumulate.
+  // This mirrors the deposit logic at line ~7551 which adjusts peakValue UP for deposits.
+  if (totalSent > 0 && state.trading.peakValue > totalSent) {
+    const oldPeak = state.trading.peakValue;
+    state.trading.peakValue -= totalSent;
+    // Also adjust breaker baselines so payouts don't trigger circuit breakers
+    if (breakerState.dailyBaseline.value > totalSent) breakerState.dailyBaseline.value -= totalSent;
+    if (breakerState.weeklyBaseline.value > totalSent) breakerState.weeklyBaseline.value -= totalSent;
+    console.log(`[Daily Payout] Peak adjusted: $${oldPeak.toFixed(2)} → $${state.trading.peakValue.toFixed(2)} (payout-aware baseline)`);
+  }
+
   saveTradeHistory();
 
   const reinvestPct = 100 - totalRecipientPct;
@@ -7567,6 +7581,19 @@ async function runTradingCycle() {
     // Display status
     const pnl = state.trading.totalPortfolioValue - state.trading.initialValue;
     const pnlPercent = (pnl / state.trading.initialValue) * 100;
+
+    // v11.4.2: Runtime peakValue sanity check — correct inflated peak without needing restart.
+    // Peak should never exceed (current portfolio + total payouts sent out + reasonable unrealized buffer).
+    // If peakValue is way above that, it was inflated by old payout bug or false deposits.
+    const totalPayoutsSent = state.totalDailyPayoutsUSD || 0;
+    const maxReasonablePeak = state.trading.totalPortfolioValue + totalPayoutsSent;
+    if (state.trading.peakValue > maxReasonablePeak * 1.15 && state.trading.totalPortfolioValue > 500) {
+      console.log(`\n🔧 PEAK VALUE RUNTIME CORRECTION: peak $${state.trading.peakValue.toFixed(2)} exceeds reasonable max $${maxReasonablePeak.toFixed(2)} (portfolio $${state.trading.totalPortfolioValue.toFixed(2)} + payouts $${totalPayoutsSent.toFixed(2)} + 15% buffer)`);
+      state.trading.peakValue = maxReasonablePeak;
+      console.log(`   Corrected peak: $${state.trading.peakValue.toFixed(2)}`);
+      saveTradeHistory();
+    }
+
     const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
 
     // === v6.2: CAPITAL FLOOR ENFORCEMENT ===
