@@ -8277,11 +8277,14 @@ async function main() {
           state.lastKnownUSDCBalance = startupUSDC;
           console.log(`  ✅ USDC balance hydrated: $${startupUSDC.toFixed(2)} (deposit detection baseline set)`);
         }
-        // v11.3.1: Sanity-check peakValue — if it's more than 2x current portfolio,
-        // it was almost certainly corrupted by a false deposit detection. Reset it to
-        // current portfolio value to prevent a permanent CAPITAL FLOOR lockout.
-        if (state.trading.peakValue > startupValue * 2 && startupValue > 500) {
-          console.log(`  🔧 PEAK VALUE CORRECTION: peakValue $${state.trading.peakValue.toFixed(2)} is >2x current portfolio $${startupValue.toFixed(2)} — resetting to current value`);
+        // v11.3.1: Sanity-check peakValue — if totalDeposited exceeds current portfolio
+        // value on a bot that has realized profits, the deposit tracking was corrupted
+        // by false deposit detection. Fix peakValue and totalDeposited.
+        const totalRealized = Object.values(state.costBasis).reduce((s, cb: any) => s + (cb.realizedPnL || 0), 0);
+        const depositsExceedPortfolio = state.totalDeposited > startupValue && totalRealized > 100;
+        const peakUnreasonable = state.trading.peakValue > startupValue * 1.5 && startupValue > 500;
+        if ((depositsExceedPortfolio || peakUnreasonable) && startupValue > 500) {
+          console.log(`  🔧 PEAK VALUE CORRECTION: peakValue $${state.trading.peakValue.toFixed(2)} appears corrupted (portfolio: $${startupValue.toFixed(2)}, deposited: $${state.totalDeposited.toFixed(2)}, realized: $${totalRealized.toFixed(2)})`);
           console.log(`     (This was likely caused by a false deposit detection inflating the peak)`);
           state.trading.peakValue = startupValue;
           // Also fix totalDeposited if it's clearly wrong (more than portfolio value)
