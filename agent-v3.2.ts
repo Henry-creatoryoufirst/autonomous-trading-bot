@@ -8807,6 +8807,57 @@ function apiTrades(limit: number) {
   };
 }
 
+// v11.4.4: Dashboard AI Chat — answers user questions with full live state context
+async function handleChatRequest(userMessage: string, history: { role: string; content: string }[]) {
+  const portfolio = apiPortfolio();
+  const balances = apiBalances();
+  const recentTrades = apiTrades(10);
+  const riskReward = calculateRiskRewardMetrics();
+
+  const context = `LIVE PORTFOLIO (real-time):
+- Total Value: $${portfolio.totalValue.toFixed(2)}
+- Initial: $${portfolio.initialValue.toFixed(2)}
+- P&L: ${portfolio.pnlPercent >= 0 ? '+' : ''}${portfolio.pnlPercent.toFixed(1)}% ($${portfolio.pnl.toFixed(2)})
+- Peak: $${portfolio.peakValue.toFixed(2)} | Drawdown: ${portfolio.drawdown.toFixed(1)}%
+- Trading: ${portfolio.tradingEnabled ? 'ENABLED' : 'DISABLED'}
+- Uptime: ${portfolio.uptime}
+
+CURRENT HOLDINGS:
+${balances.balances.map((b: any) => `- ${b.symbol}: ${Number(b.balance).toFixed(4)} ($${Number(b.usdValue).toFixed(2)})${b.unrealizedPnL ? ` | Unrealized: $${Number(b.unrealizedPnL).toFixed(2)}` : ''}`).join('\n')}
+
+PERFORMANCE METRICS:
+- Total Trades: ${portfolio.totalTrades} | Win Rate: ${portfolio.totalTrades > 0 ? (portfolio.successfulTrades / portfolio.totalTrades * 100).toFixed(1) : 0}%
+- Profit Factor: ${riskReward.profitFactor.toFixed(2)} | Expectancy: $${riskReward.expectancy.toFixed(2)}
+- Avg Win: $${riskReward.avgWinUSD.toFixed(2)} | Avg Loss: $${riskReward.avgLossUSD.toFixed(2)}
+
+LAST 10 TRADES:
+${recentTrades.trades.slice(0, 10).map((t: any) => `- ${t.timestamp}: ${t.action} ${t.fromToken || ''}→${t.toToken || ''} $${t.amountUSD?.toFixed(2) || '?'} ${t.success ? '✓' : '✗'} — ${(t.reasoning || '').substring(0, 80)}`).join('\n')}`;
+
+  const systemPrompt = `You are the STC trading bot assistant. You have full access to your own live trading state. Answer questions conversationally and concisely about portfolio performance, positions, trade reasoning, market outlook, risk metrics, and strategy. Use specific numbers from the context. Keep responses under 150 words unless the user asks for detail. Don't use markdown formatting — plain text only.`;
+
+  const messages: { role: 'user' | 'assistant'; content: string }[] = [
+    { role: 'user', content: `${systemPrompt}\n\nCurrent State:\n${context}` },
+    { role: 'assistant', content: 'Understood. I have full context of my live trading state. What would you like to know?' },
+    ...history.slice(-6).map(m => ({
+      role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+      content: m.content,
+    })),
+    { role: 'user', content: userMessage },
+  ];
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 500,
+    messages,
+  });
+
+  const content = response.content[0];
+  if (content.type === 'text') {
+    return { response: content.text };
+  }
+  throw new Error('Unexpected response type');
+}
+
 // v9.2: Daily P&L Scoreboard — realized trading profits grouped by calendar day
 function apiDailyPnL() {
   const dailyMap: Record<string, { realized: number; trades: number; wins: number; sells: number; buys: number; volume: number }> = {};
@@ -9359,6 +9410,28 @@ const healthServer = http.createServer(async (req, res) => {
             });
           } catch (parseErr: any) {
             sendJSON(res, 400, { error: 'Invalid JSON body: ' + parseErr.message });
+          }
+        });
+        return; // Don't end response here — it's handled in req.on('end')
+      }
+
+      // v11.4.4: Dashboard AI Chat
+      case '/api/chat': {
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
+        let chatBody = '';
+        req.on('data', (chunk: Buffer) => { chatBody += chunk.toString(); });
+        req.on('end', async () => {
+          try {
+            const { message, history } = JSON.parse(chatBody);
+            if (!message || typeof message !== 'string') {
+              sendJSON(res, 400, { error: 'message required' });
+              return;
+            }
+            const result = await handleChatRequest(message.substring(0, 500), history || []);
+            sendJSON(res, 200, result);
+          } catch (err: any) {
+            console.error('[Chat API Error]', err.message);
+            sendJSON(res, 500, { error: 'Chat request failed' });
           }
         });
         return; // Don't end response here — it's handled in req.on('end')
