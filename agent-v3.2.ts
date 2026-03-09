@@ -7927,7 +7927,67 @@ async function runTradingCycle() {
 
     // AI decision
     console.log("\n🧠 AI analyzing portfolio & market...");
-    const decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
+    let decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
+
+    // v11.4.8: CRITICAL DEPLOYMENT FALLBACK — if AI returns HOLD with >85% USDC,
+    // auto-generate BUY decisions for the most underweight sectors.
+    // The AI prompt says "DO NOT RETURN HOLD" but Claude sometimes ignores this.
+    const allHold = decisions.every(d => d.action === 'HOLD');
+    if (allHold && deploymentCheck.active && deploymentCheck.cashPercent > 85) {
+      console.log(`\n⚡ DEPLOYMENT FALLBACK: AI returned HOLD with ${deploymentCheck.cashPercent.toFixed(0)}% USDC — overriding with auto-deployment`);
+
+      // Pick tokens from the most underweight sectors
+      const underweightSectors = sectorAllocations
+        .filter(s => s.name !== 'Blue Chip' || s.drift < -10) // only force blue chips if very underweight
+        .sort((a, b) => a.drift - b.drift) // most underweight first
+        .slice(0, 3);
+
+      const fallbackBuys: TradeDecision[] = [];
+      const sizePerTrade = Math.min(50, deploymentCheck.deployBudget / 4);
+
+      for (const sector of underweightSectors) {
+        // Find best token from this sector: prefer tokens with best confluence or most oversold RSI
+        const sectorKey = Object.keys(SECTORS).find(k => SECTORS[k as keyof typeof SECTORS].name === sector.name) as keyof typeof SECTORS | undefined;
+        if (!sectorKey) continue;
+
+        const sectorTokens = SECTORS[sectorKey].tokens;
+        // Score each token: prefer lower RSI (oversold) and higher confluence
+        let bestToken = '';
+        let bestScore = -Infinity;
+        for (const token of sectorTokens) {
+          if (token === 'USDC' || token === 'WETH') continue; // skip stablecoins and wrapped
+          const ind = marketData.indicators[token];
+          const rsiScore = ind?.rsi14 !== null && ind?.rsi14 !== undefined ? (50 - ind.rsi14) : 0; // lower RSI = higher score
+          const confScore = ind?.confluenceScore || 0;
+          const score = rsiScore + confScore;
+          // Check we don't already have a large position
+          const currentBal = balances.find(b => b.symbol === token);
+          const currentPct = currentBal ? ((currentBal.usdValue || 0) / state.trading.totalPortfolioValue) * 100 : 0;
+          if (currentPct > 15) continue; // skip if already > 15% of portfolio
+          if (score > bestScore) {
+            bestScore = score;
+            bestToken = token;
+          }
+        }
+
+        if (bestToken) {
+          fallbackBuys.push({
+            action: 'BUY',
+            fromToken: 'USDC',
+            toToken: bestToken,
+            amountUSD: sizePerTrade,
+            reasoning: `DEPLOYMENT_FALLBACK: Auto-deploy into ${bestToken} (${sector.name} sector underweight by ${sector.drift.toFixed(1)}%). AI returned HOLD but portfolio is ${deploymentCheck.cashPercent.toFixed(0)}% cash.`,
+            sector: sectorKey,
+          });
+          console.log(`   📦 Auto-BUY: $${sizePerTrade.toFixed(0)} → ${bestToken} (${sector.name}, drift: ${sector.drift.toFixed(1)}%)`);
+        }
+      }
+
+      if (fallbackBuys.length > 0) {
+        decisions = fallbackBuys;
+        console.log(`   Generated ${fallbackBuys.length} fallback BUY decisions`);
+      }
+    }
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
