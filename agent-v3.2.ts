@@ -8809,41 +8809,63 @@ function apiTrades(limit: number) {
 
 // v11.4.4: Dashboard AI Chat — answers user questions with full live state context
 async function handleChatRequest(userMessage: string, history: { role: string; content: string }[]) {
+  const n = (v: any) => Number(v) || 0;
+
   const portfolio = apiPortfolio();
   const balances = apiBalances();
   const recentTrades = apiTrades(10);
   const riskReward = calculateRiskRewardMetrics();
 
+  const holdingsLines = (balances.balances || []).map((b: any) =>
+    `- ${b.symbol}: ${n(b.balance).toFixed(4)} ($${n(b.usdValue).toFixed(2)})${b.unrealizedPnL ? ` | Unrealized: $${n(b.unrealizedPnL).toFixed(2)}` : ''}`
+  ).join('\n');
+
+  const tradeLines = (recentTrades.trades || []).slice(0, 10).map((t: any) =>
+    `- ${t.timestamp}: ${t.action} ${t.fromToken || ''}→${t.toToken || ''} $${n(t.amountUSD).toFixed(2)} ${t.success ? '✓' : '✗'} — ${(t.reasoning || '').substring(0, 80)}`
+  ).join('\n');
+
   const context = `LIVE PORTFOLIO (real-time):
-- Total Value: $${portfolio.totalValue.toFixed(2)}
-- Initial: $${portfolio.initialValue.toFixed(2)}
-- P&L: ${portfolio.pnlPercent >= 0 ? '+' : ''}${portfolio.pnlPercent.toFixed(1)}% ($${portfolio.pnl.toFixed(2)})
-- Peak: $${portfolio.peakValue.toFixed(2)} | Drawdown: ${portfolio.drawdown.toFixed(1)}%
+- Total Value: $${n(portfolio.totalValue).toFixed(2)}
+- Initial: $${n(portfolio.initialValue).toFixed(2)}
+- P&L: ${n(portfolio.pnlPercent) >= 0 ? '+' : ''}${n(portfolio.pnlPercent).toFixed(1)}% ($${n(portfolio.pnl).toFixed(2)})
+- Peak: $${n(portfolio.peakValue).toFixed(2)} | Drawdown: ${n(portfolio.drawdown).toFixed(1)}%
 - Trading: ${portfolio.tradingEnabled ? 'ENABLED' : 'DISABLED'}
 - Uptime: ${portfolio.uptime}
 
 CURRENT HOLDINGS:
-${balances.balances.map((b: any) => `- ${b.symbol}: ${Number(b.balance).toFixed(4)} ($${Number(b.usdValue).toFixed(2)})${b.unrealizedPnL ? ` | Unrealized: $${Number(b.unrealizedPnL).toFixed(2)}` : ''}`).join('\n')}
+${holdingsLines || '(none yet)'}
 
 PERFORMANCE METRICS:
 - Total Trades: ${portfolio.totalTrades} | Win Rate: ${portfolio.totalTrades > 0 ? (portfolio.successfulTrades / portfolio.totalTrades * 100).toFixed(1) : 0}%
-- Profit Factor: ${riskReward.profitFactor.toFixed(2)} | Expectancy: $${riskReward.expectancy.toFixed(2)}
-- Avg Win: $${riskReward.avgWinUSD.toFixed(2)} | Avg Loss: $${riskReward.avgLossUSD.toFixed(2)}
+- Profit Factor: ${n(riskReward.profitFactor).toFixed(2)} | Expectancy: $${n(riskReward.expectancy).toFixed(2)}
+- Avg Win: $${n(riskReward.avgWinUSD).toFixed(2)} | Avg Loss: $${n(riskReward.avgLossUSD).toFixed(2)}
 
 LAST 10 TRADES:
-${recentTrades.trades.slice(0, 10).map((t: any) => `- ${t.timestamp}: ${t.action} ${t.fromToken || ''}→${t.toToken || ''} $${t.amountUSD?.toFixed(2) || '?'} ${t.success ? '✓' : '✗'} — ${(t.reasoning || '').substring(0, 80)}`).join('\n')}`;
+${tradeLines || '(no trades yet)'}`;
 
-  const systemPrompt = `You are the STC trading bot assistant. You have full access to your own live trading state. Answer questions conversationally and concisely about portfolio performance, positions, trade reasoning, market outlook, risk metrics, and strategy. Use specific numbers from the context. Keep responses under 150 words unless the user asks for detail. Don't use markdown formatting — plain text only.`;
+  const systemPrompt = 'You are the STC trading bot assistant. You have full access to your own live trading state. Answer questions conversationally and concisely about portfolio performance, positions, trade reasoning, market outlook, risk metrics, and strategy. Use specific numbers from the context. Keep responses under 150 words unless the user asks for detail. Do not use markdown formatting — plain text only.';
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     { role: 'user', content: `${systemPrompt}\n\nCurrent State:\n${context}` },
     { role: 'assistant', content: 'Understood. I have full context of my live trading state. What would you like to know?' },
-    ...history.slice(-6).map(m => ({
-      role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-      content: m.content,
-    })),
-    { role: 'user', content: userMessage },
   ];
+
+  // Add conversation history (ensure alternating roles)
+  const safeHistory = (history || []).slice(-6);
+  for (const m of safeHistory) {
+    const role = m.role === 'assistant' ? 'assistant' as const : 'user' as const;
+    // Prevent consecutive same-role messages
+    if (messages.length > 0 && messages[messages.length - 1].role === role) continue;
+    messages.push({ role, content: m.content });
+  }
+
+  // Ensure last message before user question is assistant
+  if (messages[messages.length - 1].role === 'user') {
+    messages.push({ role: 'assistant', content: 'Go ahead.' });
+  }
+  messages.push({ role: 'user', content: userMessage });
+
+  console.log(`[Chat API] Question: "${userMessage.substring(0, 60)}..." | History: ${safeHistory.length} msgs`);
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -8853,6 +8875,7 @@ ${recentTrades.trades.slice(0, 10).map((t: any) => `- ${t.timestamp}: ${t.action
 
   const content = response.content[0];
   if (content.type === 'text') {
+    console.log(`[Chat API] Response: ${content.text.substring(0, 80)}...`);
     return { response: content.text };
   }
   throw new Error('Unexpected response type');
@@ -9430,8 +9453,8 @@ const healthServer = http.createServer(async (req, res) => {
             const result = await handleChatRequest(message.substring(0, 500), history || []);
             sendJSON(res, 200, result);
           } catch (err: any) {
-            console.error('[Chat API Error]', err.message);
-            sendJSON(res, 500, { error: 'Chat request failed' });
+            console.error('[Chat API Error]', err.message, err.stack?.substring(0, 300));
+            sendJSON(res, 500, { error: 'Chat request failed: ' + (err.message || 'unknown') });
           }
         });
         return; // Don't end response here — it's handled in req.on('end')
