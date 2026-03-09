@@ -361,7 +361,7 @@ export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before 
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
 export const KELLY_POSITION_FLOOR_USD = 5;    // Minimum viable trade
 export const KELLY_POSITION_CEILING_PCT = 10;  // v10.4: 10% of portfolio per trade (was 8%) — let the AI deploy capital
-export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 20; // v10.4: Boost for <$10K portfolios — $5K × 20% = $1,000 max per position
+export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 25; // v11.4.6: Boost for <$10K portfolios — $5K × 25% = $1,250 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**
@@ -470,17 +470,20 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  */
 export const CASH_DEPLOYMENT_THRESHOLD_PCT = 50; // Trigger when >50% USDC
 
-/** Confluence score reduction when in deployment mode (makes entries easier) */
-export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 10; // e.g. normal BUY=25 → 15 in deployment mode
+/** Confluence score reduction when in deployment mode (makes entries easier)
+ *  v11.4.6: Raised from 10 → 15 — when 90%+ cash, need to be more willing to enter */
+export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 15;
 
-/** Maximum percentage of excess cash to deploy per cycle (prevents all-in) */
-export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 30; // Deploy up to 30% of excess cash per cycle
+/** Maximum percentage of excess cash to deploy per cycle (prevents all-in)
+ *  v11.4.6: Raised from 30% → 50% — deploy faster when heavily over-cashed */
+export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 50;
 
 /** Minimum USDC to always keep as reserve (gas + emergency buffer) */
 export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 200;
 
-/** Number of tokens to target per deployment cycle (spread across sectors) */
-export const CASH_DEPLOYMENT_MAX_ENTRIES = 4;
+/** Number of tokens to target per deployment cycle (spread across sectors)
+ *  v11.4.6: Raised from 4 → 6 — more entries per cycle for faster deployment */
+export const CASH_DEPLOYMENT_MAX_ENTRIES = 6;
 
 // v11.2: CRASH-BUYING OVERRIDE — Let Cash Deployment punch through breaker during extreme fear
 /** Fear & Greed threshold: at or below this, deployment mode can override the institutional breaker */

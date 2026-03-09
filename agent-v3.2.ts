@@ -538,7 +538,7 @@ const CONFIG = {
   // Trading Parameters
   trading: {
     enabled: process.env.TRADING_ENABLED === "true",
-    maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "100"), // v9.2: raised from $25 to $100 default
+    maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "250"), // v11.4.6: raised from $100 to $250 — deploy capital faster
     maxSellPercent: parseFloat(process.env.MAX_SELL_PERCENT || "50"),
     intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || String(DEFAULT_TRADING_INTERVAL_MINUTES)),
     // V3.1: Risk-adjusted position sizing
@@ -6242,11 +6242,11 @@ ENTRY RULES (when to BUY):
 22. DEX TRENDING: If a tracked token appears in the Base DEX trending list AND has positive h1 price change, it has real on-chain momentum behind it — favor it over tokens with similar technical signals but no DEX traction
 
 EXIT RULES (when to SELL):
-1. TIERED PROFIT HARVESTING (v5.1.1): The bot automatically harvests profits in tranches:
-   - +8% gain → harvest 15% of position (early wins, bank the cream)
-   - +15% gain → harvest 20% of position (moderate win, real profit locked)
-   - +25% gain → harvest 30% of position (strong win, protect the bag)
-   - +40% gain → harvest 40% of position (major win, substantial profit lock)
+1. TIERED PROFIT HARVESTING (v11.4.5): The bot automatically harvests profits in tranches:
+   - +25% gain → harvest 15% of position (moderate win, bank the cream)
+   - +50% gain → harvest 20% of position (strong win, real profit locked)
+   - +100% gain → harvest 25% of position (2x gain, protect the bag)
+   - +200% gain → harvest 35% of position (3x gain, substantial profit lock)
    The remaining position continues to ride. Patient capital, not passive capital.
    IMPORTANT: When you recommend a SELL, also consider which tier the position has already been harvested at.
 2. OVERBOUGHT EXIT: Sell if RSI > 75 AND Bollinger %B > 0.95 AND MACD turning bearish — even if no harvest tier triggered
@@ -6257,7 +6257,7 @@ EXIT RULES (when to SELL):
 7. MACRO HEADWIND: If macro signal is RISK_OFF (rate hikes, yield curve inverting, strong dollar), tighten profit-taking. Sell into strength rather than holding
 8. NEWS RISK: If a token has strong bearish news mentions AND technical indicators confirm (RSI dropping, MACD bearish), trim position proactively
 9. SMART MONEY WARNING: If derivatives show SMART_MONEY_SHORT while you're holding a token, this is a high-priority sell signal
-10. TIME-BASED HARVEST: Positions held 72+ hours with +5% gain get a 10% trim — don't let stale winners sit forever
+10. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim — don't let stale winners sit forever
 11. CAPITAL RECYCLING (v10.1.1): If available USDC < $10 AND you hold profitable positions, you MUST recommend SELL on your highest-gain position (sell 20-30% of it) to free capital for new opportunities. A bot with $0 USDC cannot compound. Idle capital in tokens earning no yield while better opportunities exist is a DRAG on returns. Rotate capital: sell winners to fund new entries.
 
 REGIME-ADAPTED STRATEGY (CAPITAL COMPOUNDING MINDSET — always look for ways to grow):
