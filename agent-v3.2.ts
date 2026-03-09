@@ -552,13 +552,14 @@ const CONFIG = {
       targetPercent: 20,        // Legacy: original trigger (used by adaptive thresholds as base)
       sellPercent: 30,          // Legacy: original sell amount
       minHoldingUSD: 5,         // Don't trigger if holding < $5
-      cooldownHours: 6,         // Reduced: faster harvesting cycles (was 24h)
+      cooldownHours: 24,        // v11.4.5: Raised from 6h to 24h — prevent rapid-fire harvest loops
       // Tiered harvesting: sell progressively more as gains increase
+      // v11.4.5: Raised thresholds significantly — 8%/15% was triggering on normal crypto volatility
       tiers: [
-        { gainPercent: 8,  sellPercent: 15, label: "EARLY_HARVEST" },    // Small win: skim 15%
-        { gainPercent: 15, sellPercent: 20, label: "MID_HARVEST" },      // Moderate win: take 20%
-        { gainPercent: 25, sellPercent: 30, label: "STRONG_HARVEST" },   // Strong win: take 30%
-        { gainPercent: 40, sellPercent: 40, label: "MAJOR_HARVEST" },    // Major win: take 40%
+        { gainPercent: 25,  sellPercent: 15, label: "EARLY_HARVEST" },   // Moderate win: skim 15%
+        { gainPercent: 50,  sellPercent: 20, label: "MID_HARVEST" },     // Strong win: take 20%
+        { gainPercent: 100, sellPercent: 25, label: "STRONG_HARVEST" },  // 2x gain: take 25%
+        { gainPercent: 200, sellPercent: 35, label: "MAJOR_HARVEST" },   // 3x gain: take 35%
       ],
     },
     // V3.5: Stop-Loss
@@ -2388,10 +2389,10 @@ function checkProfitTaking(
 
   const cfg = CONFIG.trading.profitTaking;
   const flatTiers = (cfg as any).tiers || [
-    { gainPercent: 8,  sellPercent: 15, label: "EARLY_HARVEST" },
-    { gainPercent: 15, sellPercent: 20, label: "MID_HARVEST" },
-    { gainPercent: 25, sellPercent: 30, label: "STRONG_HARVEST" },
-    { gainPercent: 40, sellPercent: 40, label: "MAJOR_HARVEST" },
+    { gainPercent: 25,  sellPercent: 15, label: "EARLY_HARVEST" },
+    { gainPercent: 50,  sellPercent: 20, label: "MID_HARVEST" },
+    { gainPercent: 100, sellPercent: 25, label: "STRONG_HARVEST" },
+    { gainPercent: 200, sellPercent: 35, label: "MAJOR_HARVEST" },
   ];
   const now = new Date();
 
@@ -2468,8 +2469,9 @@ function checkProfitTaking(
       }
     }
 
-    // Time-based rebalancing: 72+ hours held, up at least 5%, no recent harvest
-    if (!bestCandidate && gainPercent >= 5 && cb.totalInvestedUSD > 0) {
+    // Time-based rebalancing: 72+ hours held, up at least 15%, no recent harvest
+    // v11.4.5: Raised from +5% to +15% — 5% is normal crypto noise
+    if (!bestCandidate && gainPercent >= 15 && cb.totalInvestedUSD > 0) {
       const holdingAge = cb.firstBuyDate
         ? (now.getTime() - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
         : 0;
@@ -2482,7 +2484,7 @@ function checkProfitTaking(
             balance: b.balance,
             usdValue: b.usdValue,
             gainPercent,
-            tier: { gainPercent: 5, sellPercent: 10, label: "TIME_REBALANCE" },
+            tier: { gainPercent: 15, sellPercent: 10, label: "TIME_REBALANCE" },
             costBasis: cb.averageCostBasis,
             currentPrice,
             sector: b.sector,
@@ -9413,6 +9415,39 @@ const healthServer = http.createServer(async (req, res) => {
                 newTotal: Math.round(state.totalDeposited * 100) / 100,
               });
               applied.push(`registerDeposit: +$${amt.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)}, initial: $${state.trading.initialValue.toFixed(2)})`);
+            }
+            // v11.4.5: Reset cost basis to current market prices — fixes stale/wrong cost basis
+            // Usage: { "resetCostBasis": true } or { "resetCostBasis": ["ETH", "AERO"] }
+            if (corrections.resetCostBasis) {
+              const balances = apiBalances();
+              const tokensToReset: string[] = Array.isArray(corrections.resetCostBasis)
+                ? corrections.resetCostBasis
+                : Object.keys(state.costBasis);
+              for (const symbol of tokensToReset) {
+                const cb = state.costBasis[symbol];
+                if (!cb) continue;
+                const bal = balances.balances.find((b: any) => b.symbol === symbol);
+                const currentPrice = bal ? (bal.price || (bal.balance > 0 ? bal.usdValue / bal.balance : 0)) : 0;
+                if (currentPrice <= 0) {
+                  applied.push(`resetCostBasis: ${symbol} — skipped (no price data)`);
+                  continue;
+                }
+                const oldCost = cb.averageCostBasis;
+                cb.averageCostBasis = currentPrice;
+                cb.totalInvestedUSD = currentPrice * cb.currentHolding;
+                cb.totalTokensAcquired = cb.currentHolding;
+                cb.realizedPnL = 0;
+                cb.unrealizedPnL = 0;
+                cb.firstBuyDate = new Date().toISOString();
+                cb.lastTradeDate = new Date().toISOString();
+                applied.push(`resetCostBasis: ${symbol} $${oldCost.toFixed(6)} → $${currentPrice.toFixed(6)}`);
+              }
+            }
+            // v11.4.5: Clear all harvest cooldowns to let fresh thresholds apply
+            if (corrections.clearHarvestCooldowns === true) {
+              const count = Object.keys(state.profitTakeCooldowns).length;
+              state.profitTakeCooldowns = {};
+              applied.push(`clearHarvestCooldowns: cleared ${count} cooldown entries`);
             }
             // Recalculate derived values
             const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;

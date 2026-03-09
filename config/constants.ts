@@ -335,12 +335,13 @@ export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
   BLUE_CHIP: 3.0,     // Blue chips: low vol, wider multiple needed
 };
 
-/** ATR-relative profit harvest tiers: [atrMultiple, sellPercent] */
+/** ATR-relative profit harvest tiers: [atrMultiple, sellPercent]
+ *  v11.4.5: Raised multiples — 3x ATR was triggering on normal daily swings */
 export const ATR_PROFIT_TIERS = [
-  { atrMultiple: 3,  sellPercent: 15, label: "ATR_EARLY" },
-  { atrMultiple: 5,  sellPercent: 20, label: "ATR_MID" },
-  { atrMultiple: 8,  sellPercent: 30, label: "ATR_STRONG" },
-  { atrMultiple: 12, sellPercent: 40, label: "ATR_MAJOR" },
+  { atrMultiple: 5,  sellPercent: 15, label: "ATR_EARLY" },
+  { atrMultiple: 8,  sellPercent: 20, label: "ATR_MID" },
+  { atrMultiple: 12, sellPercent: 25, label: "ATR_STRONG" },
+  { atrMultiple: 18, sellPercent: 35, label: "ATR_MAJOR" },
 ] as const;
 
 /** How many ATR comparison log entries to emit (for debugging first N cycles) */
