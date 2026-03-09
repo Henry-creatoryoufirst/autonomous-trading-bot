@@ -8183,6 +8183,73 @@ async function runTradingCycle() {
     } else {
       // All decisions were HOLD
       state.explorationState.consecutiveHolds++;
+
+      // v11.4.8: POST-GUARDRAIL DEPLOYMENT FALLBACK
+      // If ALL decisions ended up as HOLD (either AI chose HOLD, or guardrails blocked BUYs)
+      // AND we're in critical deployment mode, force-execute buys directly.
+      if (deploymentCheck.active && deploymentCheck.cashPercent > 80) {
+        console.log(`\n⚡⚡ POST-GUARDRAIL FALLBACK: ${state.explorationState.consecutiveHolds} consecutive HOLDs with ${deploymentCheck.cashPercent.toFixed(0)}% cash — forcing direct buys`);
+
+        // Build buy targets from most underweight sectors
+        const sectorPicks: { token: string; sector: string; sectorName: string; drift: number }[] = [];
+        const sortedSectors = [...sectorAllocations].sort((a, b) => a.drift - b.drift);
+
+        for (const sector of sortedSectors.slice(0, 4)) {
+          const sectorKey = Object.keys(SECTORS).find(k => SECTORS[k as keyof typeof SECTORS].name === sector.name) as keyof typeof SECTORS | undefined;
+          if (!sectorKey) continue;
+          const tokens = SECTORS[sectorKey].tokens.filter(t => t !== 'USDC' && t !== 'WETH');
+          // Pick token with smallest current holding (most room to grow)
+          let bestToken = '';
+          let smallestHolding = Infinity;
+          for (const token of tokens) {
+            const bal = balances.find(b => b.symbol === token);
+            const holdingPct = bal ? ((bal.usdValue || 0) / state.trading.totalPortfolioValue) * 100 : 0;
+            if (holdingPct < smallestHolding && holdingPct < 10) {
+              smallestHolding = holdingPct;
+              bestToken = token;
+            }
+          }
+          if (bestToken) {
+            sectorPicks.push({ token: bestToken, sector: sectorKey, sectorName: sector.name, drift: sector.drift });
+          }
+        }
+
+        const directBuySize = Math.min(40, deploymentCheck.deployBudget / sectorPicks.length);
+        let directBuysExecuted = 0;
+
+        for (const pick of sectorPicks.slice(0, 3)) {
+          if (directBuySize < 5) break;
+          console.log(`   📦 DIRECT BUY: $${directBuySize.toFixed(0)} → ${pick.token} (${pick.sectorName}, drift: ${pick.drift.toFixed(1)}%)`);
+          const directDecision: TradeDecision = {
+            action: 'BUY',
+            fromToken: 'USDC',
+            toToken: pick.token,
+            amountUSD: directBuySize,
+            reasoning: `DIRECT_DEPLOYMENT: Force-buy ${pick.token} — portfolio ${deploymentCheck.cashPercent.toFixed(0)}% cash, ${pick.sectorName} sector underweight by ${pick.drift.toFixed(1)}%. All AI decisions were HOLD for ${state.explorationState.consecutiveHolds} cycles.`,
+            sector: pick.sector,
+          };
+          try {
+            const result = await executeTrade(directDecision, marketData);
+            if (result.success) {
+              directBuysExecuted++;
+              console.log(`   ✅ Direct buy executed: ${pick.token}`);
+            } else {
+              console.log(`   ❌ Direct buy failed: ${pick.token} — ${result.error}`);
+            }
+          } catch (err: any) {
+            console.log(`   ❌ Direct buy error: ${pick.token} — ${err.message}`);
+          }
+        }
+
+        if (directBuysExecuted > 0) {
+          anyTradeExecuted = true;
+          state.explorationState.consecutiveHolds = 0;
+          state.explorationState.lastTradeTimestamp = new Date().toISOString();
+          analyzeStrategyPatterns();
+          saveTradeHistory();
+          console.log(`   ⚡ Direct deployment: ${directBuysExecuted} buys executed`);
+        }
+      }
     }
 
     // v9.3: Auto-harvest transfer replaced by Daily Payout cron (8 AM UTC)
