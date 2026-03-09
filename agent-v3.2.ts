@@ -3602,12 +3602,18 @@ function calculateInstitutionalPositionSize(portfolioValue: number): {
   let sizeUSD = kelly.kellyUSD * vol.multiplier * momentum.positionMultiplier;
 
   // Check if breaker size reduction is active
+  // v11.4.8: Skip breaker reduction in cash deployment mode —
+  // losses were mechanical stops, not bad AI decisions
   let breakerReduction = false;
   if (breakerState.breakerSizeReductionUntil) {
     const until = new Date(breakerState.breakerSizeReductionUntil).getTime();
     if (Date.now() < until) {
-      sizeUSD *= BREAKER_SIZE_REDUCTION; // 50% reduction
-      breakerReduction = true;
+      if (cashDeploymentMode) {
+        console.log(`   ⚡ BREAKER SIZE REDUCTION BYPASSED — cash deployment mode active`);
+      } else {
+        sizeUSD *= BREAKER_SIZE_REDUCTION; // 50% reduction
+        breakerReduction = true;
+      }
     }
   }
 
@@ -6343,13 +6349,20 @@ ${cashDeployment?.active ? `
 ═══ 💵 CASH DEPLOYMENT MODE (v11.1) — ACTIVE ═══
 Your portfolio is ${cashDeployment.cashPercent.toFixed(1)}% USDC — this is STRUCTURALLY UNDERINVESTED. Excess cash ($${cashDeployment.excessCash.toFixed(2)}) is an overweight "sector" that needs rebalancing into productive positions.
 ${state.explorationState.consecutiveHolds >= 3 || cashDeployment.cashPercent > 85 ? `
-🚨🚨🚨 DEPLOYMENT ESCALATION: ${cashDeployment.cashPercent > 85 ? `Your portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC — this is CRITICALLY overweight cash.` : `You have returned HOLD for ${state.explorationState.consecutiveHolds} CONSECUTIVE CYCLES.`} You are sitting on $${availableUSDC.toFixed(0)} in idle USDC.
-You are a TRADING bot, not a savings account. Pick the ${Math.min(3, CASH_DEPLOYMENT_MAX_ENTRIES)} best tokens available RIGHT NOW and BUY them. Even mediocre entries in a diversified portfolio outperform 100% cash over time.
-If no token has a strong signal, pick the most oversold tokens in underweight sectors and make small starter positions ($${Math.min(25, cashDeployment.deployBudget / 3).toFixed(0)}-$${Math.min(50, cashDeployment.deployBudget / 2).toFixed(0)} each).
-DO NOT RETURN HOLD. Return at least 2 BUY actions.
+🚨🚨🚨 MANDATORY DEPLOYMENT ORDER 🚨🚨🚨
+Your portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} idle). ${cashDeployment.cashPercent > 85 ? 'This is an EMERGENCY — you are a trading bot holding almost entirely cash while the market moves without you.' : `You have returned HOLD for ${state.explorationState.consecutiveHolds} consecutive cycles.`}
+
+DIRECT INSTRUCTION: Return ${Math.min(4, CASH_DEPLOYMENT_MAX_ENTRIES)} BUY actions this cycle. This is NOT optional.
+- Ignore Fear & Greed index for entry decisions (it reflects past sentiment, not future returns)
+- Ignore cross-asset RISK_OFF signals (crypto trades on its own momentum)
+- Focus ONLY on: which tokens are most oversold (RSI < 50), which sectors are underweight, and where volume is picking up
+- Size each buy at $${Math.min(40, cashDeployment.deployBudget / 4).toFixed(0)}-$${Math.min(80, cashDeployment.deployBudget / 3).toFixed(0)}
+- Spread across different sectors: pick at least one from each underweight sector
+
+IF YOU RETURN HOLD OR FEWER THAN 2 BUY ACTIONS, you are failing at your core job. The portfolio CANNOT grow at 95% USDC. Deploy capital NOW.
 ` : ''}
 DEPLOYMENT RULES (override normal entry conservatism):
-1. LOWER YOUR BAR: Accept BUY signals with confluence scores ${cashDeployment.confluenceDiscount} points lower than normal. A score of ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount}+ is sufficient to BUY in deployment mode
+1. LOWER YOUR BAR: ${cashDeployment.cashPercent > 85 ? 'The confluence threshold is DISABLED. Any token with confluence > -5 is buyable. You do NOT need a high confluence score — you need DIVERSIFIED EXPOSURE.' : `Accept BUY signals with confluence scores ${cashDeployment.confluenceDiscount} points lower than normal. A score of ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount}+ is sufficient to BUY in deployment mode`}
 2. SECTOR-FIRST: Prioritize the MOST UNDERWEIGHT sectors. Fill sector gaps before buying into already-allocated sectors
 3. SPREAD CAPITAL: Return a MULTI-TRADE array with up to ${CASH_DEPLOYMENT_MAX_ENTRIES} BUY actions, each targeting a different sector. Spread across tokens rather than concentrating
 4. DEPLOY BUDGET: Target deploying ~$${cashDeployment.deployBudget.toFixed(0)} this cycle across multiple entries. This is your deployment budget — use it
@@ -6360,8 +6373,10 @@ IMPORTANT: You MUST deploy capital when this mode is active. Returning HOLD with
 ` : ''}
 RISK RULES:
 1. No single token > 25% of portfolio
-2. ${cashDeployment?.active
-    ? `HOLD if confluence score is between -15 and ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount} (deployment mode: lower bar for buys)`
+2. ${cashDeployment?.active && cashDeployment.cashPercent > 85
+    ? `In CRITICAL DEPLOYMENT MODE — you MUST buy. The HOLD zone is DISABLED. Any token with confluence > -5 is a valid buy target. Do NOT return HOLD.`
+    : cashDeployment?.active
+    ? `HOLD if confluence score is between -15 and ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)} (deployment mode: lower bar for buys)`
     : 'HOLD if confluence score is between -15 and +15 (no clear signal)'}
 3. Never chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
 4. In extreme greed (>75), tighten sell rules — take profits more aggressively
