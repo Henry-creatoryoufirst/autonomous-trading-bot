@@ -6192,12 +6192,22 @@ async function makeTradeDecision(
     .map(([sym, ind]) => `${sym}(${ind.confluenceScore})`);
 
   // Build trade history summary for AI memory (last 10 trades)
+  // v11.4.7: Annotate trade types so Claude understands mechanical vs conviction sells
   const recentTrades = state.tradeHistory.slice(-10);
+  const sellCount = recentTrades.filter(t => t.action === 'SELL').length;
+  const buyCount = recentTrades.filter(t => t.action === 'BUY').length;
+  const mechanicalSells = recentTrades.filter(t => t.action === 'SELL' && t.reasoning && /stop.?loss|trailing.?stop|harvest|time.?rebalance|ATR/i.test(t.reasoning)).length;
   const tradeHistorySummary = recentTrades.length > 0
-    ? recentTrades.map(t =>
-        `  ${t.timestamp.slice(5, 16)} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"} regime=${t.signalContext?.marketRegime || "?"} ${t.reasoning?.substring(0, 60) || ""}`
-      ).join("\n")
+    ? recentTrades.map(t => {
+        const isMechanical = t.action === 'SELL' && t.reasoning && /stop.?loss|trailing.?stop|harvest|time.?rebalance|ATR/i.test(t.reasoning);
+        const tag = isMechanical ? '[AUTO-STOP]' : t.action === 'BUY' ? '[AI-BUY]' : '[AI-SELL]';
+        return `  ${t.timestamp.slice(5, 16)} ${tag} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"} regime=${t.signalContext?.marketRegime || "?"} ${t.reasoning?.substring(0, 60) || ""}`;
+      }).join("\n")
     : "  No trades yet";
+  // v11.4.7: Add context header if most recent trades are mechanical sells
+  const tradeHistoryContext = mechanicalSells >= sellCount * 0.7 && sellCount >= 3
+    ? `⚠️ NOTE: ${mechanicalSells} of the ${sellCount} recent sells were AUTOMATIC stop-losses/trailing-stops, NOT bearish AI decisions. These do NOT indicate market direction — they are mechanical risk management. The market may be neutral or bullish despite the sell-heavy history. Judge the current market on TODAY's indicators, not on past automated exits.\n`
+    : '';
 
   // v11.4: Volume spike alert — flag tokens with volume ≥ 2x their 7-day average
   const volumeSpikeAlerts: string[] = [];
@@ -6267,7 +6277,7 @@ ${Object.entries(marketBySector).map(([sector, tokens]) =>
 ).join("\n")}
 ${volumeSpikeSection}
 ═══ RECENT TRADE HISTORY ═══
-${tradeHistorySummary}
+${tradeHistoryContext}${tradeHistorySummary}
 
 ${discoveryIntel}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 50%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
@@ -6332,7 +6342,12 @@ MACRO-AWARE ADJUSTMENTS:
 ${cashDeployment?.active ? `
 ═══ 💵 CASH DEPLOYMENT MODE (v11.1) — ACTIVE ═══
 Your portfolio is ${cashDeployment.cashPercent.toFixed(1)}% USDC — this is STRUCTURALLY UNDERINVESTED. Excess cash ($${cashDeployment.excessCash.toFixed(2)}) is an overweight "sector" that needs rebalancing into productive positions.
-
+${state.explorationState.consecutiveHolds >= 3 ? `
+🚨🚨🚨 DEPLOYMENT ESCALATION: You have returned HOLD for ${state.explorationState.consecutiveHolds} CONSECUTIVE CYCLES while sitting on $${availableUSDC.toFixed(0)} in USDC. This is unacceptable.
+You are a TRADING bot, not a savings account. Pick the ${Math.min(3, CASH_DEPLOYMENT_MAX_ENTRIES)} best tokens available RIGHT NOW and BUY them. Even mediocre entries in a diversified portfolio outperform 100% cash over time.
+If no token has a strong signal, pick the most oversold tokens in underweight sectors and make small starter positions ($${Math.min(25, cashDeployment.deployBudget / 3).toFixed(0)}-$${Math.min(50, cashDeployment.deployBudget / 2).toFixed(0)} each).
+DO NOT RETURN HOLD. Return at least 2 BUY actions.
+` : ''}
 DEPLOYMENT RULES (override normal entry conservatism):
 1. LOWER YOUR BAR: Accept BUY signals with confluence scores ${cashDeployment.confluenceDiscount} points lower than normal. A score of ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount}+ is sufficient to BUY in deployment mode
 2. SECTOR-FIRST: Prioritize the MOST UNDERWEIGHT sectors. Fill sector gaps before buying into already-allocated sectors
@@ -6345,7 +6360,9 @@ IMPORTANT: You MUST deploy capital when this mode is active. Returning HOLD with
 ` : ''}
 RISK RULES:
 1. No single token > 25% of portfolio
-2. HOLD if confluence score is between -15 and +15 (no clear signal)
+2. ${cashDeployment?.active
+    ? `HOLD if confluence score is between -15 and ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount} (deployment mode: lower bar for buys)`
+    : 'HOLD if confluence score is between -15 and +15 (no clear signal)'}
 3. Never chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
 4. In extreme greed (>75), tighten sell rules — take profits more aggressively
 5. Minimum trade $1.00
