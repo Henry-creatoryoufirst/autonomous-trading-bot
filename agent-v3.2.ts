@@ -6585,12 +6585,18 @@ async function executeTrade(
   }
 
   // v8.1: VWS Liquidity check — ensure pool is deep enough for this trade
+  // v11.4.9: Skip VWS block for FORCED_DEPLOY — these are small $40-80 trades, liquidity is sufficient
   const tradeToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+  const isForcedDeploy = dedupTier === 'FORCED_DEPLOY';
   if (tradeToken !== 'USDC' && tradeToken !== 'ETH') {
     const liqCheck = await checkLiquidity(tradeToken, decision.amountUSD);
     if (!liqCheck.allowed) {
-      console.log(`  💧 VWS BLOCKED: ${liqCheck.reason}`);
-      return { success: false, error: `Liquidity too thin: ${liqCheck.reason}` };
+      if (isForcedDeploy && decision.amountUSD <= 100) {
+        console.log(`  💧 VWS would block, but FORCED_DEPLOY bypass active ($${decision.amountUSD.toFixed(0)} trade)`);
+      } else {
+        console.log(`  💧 VWS BLOCKED: ${liqCheck.reason}`);
+        return { success: false, error: `Liquidity too thin: ${liqCheck.reason}` };
+      }
     }
     if (liqCheck.adjustedSize < decision.amountUSD) {
       console.log(`  💧 VWS: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool | Size: $${decision.amountUSD.toFixed(2)} → $${liqCheck.adjustedSize.toFixed(2)} (${liqCheck.reason})`);
@@ -7928,8 +7934,10 @@ async function runTradingCycle() {
       const deployTargets: { token: string; sector: string }[] = [];
       const FORCED_DEPLOY_DEDUP_MINUTES = 10; // v11.4.9: shorter window for rapid deployment
       for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
-        // Pick the token in this sector that's NOT in the dedup log
+        // Pick the token in this sector that's NOT in the dedup log and not blocked
         for (const token of tokens) {
+          // Skip tokens blocked by circuit breaker (consecutive failures)
+          if (isTokenBlocked(token)) continue;
           const dedupKey = `${token}:BUY:FORCED_DEPLOY`;
           const lastExec = state.tradeDedupLog?.[dedupKey];
           const minutesSince = lastExec ? (Date.now() - new Date(lastExec).getTime()) / (1000 * 60) : Infinity;

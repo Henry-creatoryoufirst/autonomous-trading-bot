@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STC v11.4 Update — Blue Theme</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #F0F4F8;
+    display: flex;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .card {
+    width: 540px;
+    background: #F0F4F8;
+    border-radius: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 28px 32px 0;
+  }
+
+  .logo-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo {
+    width: 40px;
+    height: 40px;
+    background: #4A7AB5;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+    font-size: 18px;
+  }
+
+  .brand-name {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    color: #3A4A5C;
+  }
+
+  .version-badge {
+    background: #1B2838;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .content {
+    padding: 24px 32px 0;
+  }
+
+  .subtitle {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    color: #4A7AB5;
+    margin-bottom: 8px;
+  }
+
+  .headline {
+    font-size: 42px;
+    font-weight: 900;
+    line-height: 1.05;
+    color: #1B2838;
+  }
+
+  .headline .accent {
+    color: #4A7AB5;
+  }
+
+  .hero-image {
+    width: 100%;
+    height: 340px;
+    background: linear-gradient(180deg, transparent 0%, rgba(240,244,248,0.3) 100%),
+                url('https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=800&q=80') center 20% / cover;
+    margin-top: 16px;
+    filter: grayscale(0.7) contrast(1.1);
+    position: relative;
+  }
+
+  .hero-image::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 120px;
+    background: linear-gradient(transparent, #F0F4F8);
+  }
+
+  .features {
+    padding: 0 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: -40px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .feature-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(10px);
+    padding: 16px 20px;
+    border-radius: 14px;
+  }
+
+  .feature-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .feature-icon.shield { background: #FEE8E8; }
+  .feature-icon.chart { background: #E8F0FE; }
+  .feature-icon.pen { background: #FEF0E8; }
+
+  .feature-info h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1A1A1A;
+    margin-bottom: 2px;
+  }
+
+  .feature-info p {
+    font-size: 12.5px;
+    color: #666;
+    line-height: 1.3;
+  }
+
+  .footer {
+    display: flex;
+    justify-content: center;
+    padding: 28px 32px 36px;
+  }
+
+  .deploy-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1.5px solid #C8D0D8;
+    padding: 10px 28px;
+    border-radius: 28px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #3A4A5C;
+  }
+
+  .deploy-dot {
+    width: 8px;
+    height: 8px;
+    background: #22C55E;
+    border-radius: 50%;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logo-group">
+        <div class="logo">S</div>
+        <span class="brand-name">SCHERTZINGER TRADING COMMAND</span>
+      </div>
+      <div class="version-badge">v11.4</div>
+    </div>
+
+    <div class="content">
+      <div class="subtitle">SYSTEM UPDATE — MARCH 2026</div>
+      <h1 class="headline">
+        Your Bot Got<br>
+        <span class="accent">Sharper Overnight.</span>
+      </h1>
+    </div>
+
+    <div class="hero-image"></div>
+
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon shield">&#x1F6E1;</div>
+        <div class="feature-info">
+          <h3>MEV Protection</h3>
+          <p>Direct sequencer routing. Sandwich bots can't eat what they can't see.</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon chart">&#x1F4CA;</div>
+        <div class="feature-info">
+          <h3>ATR-Scaled Position Sizing</h3>
+          <p>Every buy is now volatility-adjusted per token. Precision over gut feel.</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon pen">&#x270F;</div>
+        <div class="feature-info">
+          <h3>Surgical Cleanup</h3>
+          <p>Safety guards stay. Duct tape goes. -25 lines removed.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="deploy-badge">
+        <span class="deploy-dot"></span>
+        V11.4 DEPLOYED & LIVE
+      </div>
+    </div>
+  </div>
+</body>
+</html>
