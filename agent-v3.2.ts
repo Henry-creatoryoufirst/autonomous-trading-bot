@@ -7900,6 +7900,55 @@ async function runTradingCycle() {
       saveTradeHistory();
     }
 
+    // === v11.4.8: PRE-AI FORCED DEPLOYMENT ===
+    // If cash >80%, deploy BEFORE the AI call. This guarantees deployment even if
+    // the AI call fails, times out, or returns HOLD. Runs in the same proven path
+    // as exploration trades above.
+    const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+    const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
+    if (preAiCashPct > 80 && preAiUSDC > 200) {
+      console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
+      const deployTargets = [
+        { token: 'ETH', sector: 'BLUE_CHIP' },
+        { token: 'AIXBT', sector: 'AI_TOKENS' },
+        { token: 'DEGEN', sector: 'MEME_COINS' },
+        { token: 'AERO', sector: 'DEFI' },
+      ];
+      const deploySize = Math.min(40, preAiUSDC * 0.03); // 3% of USDC per token
+      let preAiBuys = 0;
+      for (const target of deployTargets) {
+        try {
+          const deployDecision: TradeDecision = {
+            action: 'BUY',
+            fromToken: 'USDC',
+            toToken: target.token,
+            amountUSD: deploySize,
+            reasoning: `FORCED_DEPLOY: Pre-AI deployment into ${target.token} — ${preAiCashPct.toFixed(0)}% cash is too high. Sector: ${target.sector}`,
+            sector: target.sector,
+          };
+          console.log(`   📦 Deploying $${deploySize.toFixed(0)} → ${target.token}`);
+          const result = await executeTrade(deployDecision, marketData);
+          if (result.success) {
+            preAiBuys++;
+            console.log(`   ✅ ${target.token} buy executed`);
+          } else {
+            console.log(`   ❌ ${target.token} failed: ${result.error}`);
+          }
+        } catch (err: any) {
+          console.log(`   ❌ ${target.token} error: ${err.message}`);
+        }
+      }
+      if (preAiBuys > 0) {
+        console.log(`   ⚡ Pre-AI deployment: ${preAiBuys} buys executed`);
+        saveTradeHistory();
+        // Refresh balances for the AI call
+        const refreshedBalances = await getBalances();
+        if (refreshedBalances && refreshedBalances.length > 0) {
+          balances = refreshedBalances;
+        }
+      }
+    }
+
     // === v11.1: CASH DEPLOYMENT ENGINE ===
     // Check if portfolio is over-concentrated in USDC and needs active deployment
     const currentUSDCForDeploy = balances.find(b => b.symbol === 'USDC')?.balance || 0;
