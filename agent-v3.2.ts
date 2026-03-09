@@ -6342,8 +6342,8 @@ MACRO-AWARE ADJUSTMENTS:
 ${cashDeployment?.active ? `
 ═══ 💵 CASH DEPLOYMENT MODE (v11.1) — ACTIVE ═══
 Your portfolio is ${cashDeployment.cashPercent.toFixed(1)}% USDC — this is STRUCTURALLY UNDERINVESTED. Excess cash ($${cashDeployment.excessCash.toFixed(2)}) is an overweight "sector" that needs rebalancing into productive positions.
-${state.explorationState.consecutiveHolds >= 3 ? `
-🚨🚨🚨 DEPLOYMENT ESCALATION: You have returned HOLD for ${state.explorationState.consecutiveHolds} CONSECUTIVE CYCLES while sitting on $${availableUSDC.toFixed(0)} in USDC. This is unacceptable.
+${state.explorationState.consecutiveHolds >= 3 || cashDeployment.cashPercent > 85 ? `
+🚨🚨🚨 DEPLOYMENT ESCALATION: ${cashDeployment.cashPercent > 85 ? `Your portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC — this is CRITICALLY overweight cash.` : `You have returned HOLD for ${state.explorationState.consecutiveHolds} CONSECUTIVE CYCLES.`} You are sitting on $${availableUSDC.toFixed(0)} in idle USDC.
 You are a TRADING bot, not a savings account. Pick the ${Math.min(3, CASH_DEPLOYMENT_MAX_ENTRIES)} best tokens available RIGHT NOW and BUY them. Even mediocre entries in a diversified portfolio outperform 100% cash over time.
 If no token has a strong signal, pick the most oversold tokens in underweight sectors and make small starter positions ($${Math.min(25, cashDeployment.deployBudget / 3).toFixed(0)}-$${Math.min(50, cashDeployment.deployBudget / 2).toFixed(0)} each).
 DO NOT RETURN HOLD. Return at least 2 BUY actions.
