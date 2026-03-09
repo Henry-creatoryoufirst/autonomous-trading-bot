@@ -2030,9 +2030,12 @@ function loadTradeHistory() {
           const ys = aaveYieldService.getState();
           console.log(`  🏦 Aave yield restored: $${ys.depositedUSDC.toFixed(2)} deposited, $${ys.totalYieldEarned.toFixed(4)} earned, ${ys.supplyCount} supplies`);
         }
-        // v11.4.5: Restore migration flags
+        // v11.4.5-6: Restore migration flags
         if (parsed._migrationCostBasisV1145) {
           (state as any)._migrationCostBasisV1145 = true;
+        }
+        if (parsed._migrationCostBasisV1146) {
+          (state as any)._migrationCostBasisV1146 = true;
         }
         // v8.2: Restore deposit tracking
         state.totalDeposited = parsed.totalDeposited || 0;
@@ -2124,8 +2127,9 @@ function saveTradeHistory() {
       stablecoinSupplyHistory: { values: stablecoinSupplyHistory.values.slice(-504) },
       // v11.0: Aave V3 yield state persistence
       aaveYieldState: aaveYieldService.getState(),
-      // v11.4.5: Migration flags
+      // v11.4.5-6: Migration flags
       _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
+      _migrationCostBasisV1146: (state as any)._migrationCostBasisV1146 || false,
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -8491,6 +8495,43 @@ async function main() {
     (state as any)._migrationCostBasisV1145 = true;
     saveTradeHistory();
     console.log(`✅ MIGRATION v11.4.5 complete — harvest loop fix applied\n`);
+  }
+
+  // v11.4.6: Broader cost basis fix — reset ANY token where cost basis produces >500% unrealized gain.
+  // This catches BRETT ($0.0001 cost, $0.007 current = +6800%) and any other stale entries.
+  if (!(state as any)._migrationCostBasisV1146) {
+    let fixCount = 0;
+    for (const symbol of Object.keys(state.costBasis)) {
+      const cb = state.costBasis[symbol];
+      if (!cb || cb.averageCostBasis <= 0 || cb.currentHolding <= 0) continue;
+      // We don't have live prices yet at boot, so use the stored unrealized PnL ratio
+      // If unrealizedPnL / totalInvestedUSD > 5 (500%+), the cost basis is stale
+      const positionValue = cb.averageCostBasis * cb.currentHolding;
+      const unrealizedGainPct = positionValue > 0 ? (cb.unrealizedPnL / positionValue) * 100 : 0;
+      // Alternative check: if cost basis is more than 10x below what it should be
+      // Use totalInvestedUSD vs currentHolding as a sanity check
+      if (cb.totalInvestedUSD > 0 && cb.currentHolding > 0) {
+        const impliedCost = cb.totalInvestedUSD / cb.totalTokensAcquired;
+        const costRatio = cb.averageCostBasis / impliedCost;
+        // If average cost is wildly different from implied cost, something is wrong
+        if (costRatio < 0.01 || costRatio > 100) {
+          console.log(`🔧 MIGRATION v11.4.6: ${symbol} cost basis looks stale (avg=$${cb.averageCostBasis.toFixed(8)}, implied=$${impliedCost.toFixed(8)}, ratio=${costRatio.toFixed(4)})`);
+          // Reset to implied cost from actual investment
+          cb.averageCostBasis = impliedCost;
+          cb.unrealizedPnL = 0;
+          cb.firstBuyDate = new Date().toISOString();
+          fixCount++;
+        }
+      }
+    }
+    // Also clear harvest cooldowns again for fresh start
+    if (fixCount > 0 || Object.keys(state.profitTakeCooldowns).length > 0) {
+      state.profitTakeCooldowns = {};
+      console.log(`🔧 MIGRATION v11.4.6: Fixed ${fixCount} stale cost bases, cleared cooldowns`);
+    }
+    (state as any)._migrationCostBasisV1146 = true;
+    saveTradeHistory();
+    console.log(`✅ MIGRATION v11.4.6 complete\n`);
   }
 
   // Restore discovery state if available
