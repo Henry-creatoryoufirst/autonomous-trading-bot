@@ -7908,16 +7908,47 @@ async function runTradingCycle() {
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
     if (preAiCashPct > 80 && preAiUSDC > 200) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
-      const deployTargets = [
-        { token: 'ETH', sector: 'BLUE_CHIP' },
-        { token: 'AIXBT', sector: 'AI_TOKENS' },
-        { token: 'DEGEN', sector: 'MEME_COINS' },
-        { token: 'AERO', sector: 'DEFI' },
-      ];
+
+      // Build target list from most underweight sectors, rotating tokens to avoid dedup
+      const sectorTokenPool: Record<string, string[]> = {
+        BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
+        AI_TOKENS: ['AIXBT', 'VIRTUAL', 'HIGHER', 'VVV'],
+        MEME_COINS: ['DEGEN', 'TOSHI', 'BRETT', 'MOCHI', 'NORMIE'],
+        DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'MORPHO', 'RSR', 'PENDLE'],
+      };
+
+      const deployTargets: { token: string; sector: string }[] = [];
+      for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
+        // Pick the token in this sector that's NOT in the dedup log
+        for (const token of tokens) {
+          const dedupKey = `${token}:BUY:FORCED_DEPLOY`;
+          const lastExec = state.tradeDedupLog?.[dedupKey];
+          const minutesSince = lastExec ? (Date.now() - new Date(lastExec).getTime()) / (1000 * 60) : Infinity;
+          if (minutesSince >= 60) {
+            deployTargets.push({ token, sector });
+            break; // one token per sector
+          }
+        }
+      }
+
       const deploySize = Math.min(40, preAiUSDC * 0.03); // 3% of USDC per token
       let preAiBuys = 0;
       for (const target of deployTargets) {
         try {
+          // Reset stale cost basis BEFORE buying — if existing cost basis is >200% above current price, reset it
+          const existingCB = state.costBasis[target.token];
+          if (existingCB && existingCB.averageCostBasis > 0) {
+            const tokenPrice = balances.find(b => b.symbol === target.token)?.price || 0;
+            if (tokenPrice > 0 && existingCB.averageCostBasis > tokenPrice * 3) {
+              console.log(`   🔧 Resetting stale cost basis for ${target.token}: $${existingCB.averageCostBasis.toFixed(4)} → $${tokenPrice.toFixed(4)} (was ${((existingCB.averageCostBasis / tokenPrice - 1) * 100).toFixed(0)}% above market)`);
+              existingCB.averageCostBasis = tokenPrice;
+              existingCB.totalInvestedUSD = tokenPrice * existingCB.currentHolding;
+              existingCB.totalTokensAcquired = existingCB.currentHolding;
+              existingCB.unrealizedPnL = 0;
+              existingCB.firstBuyDate = new Date().toISOString();
+            }
+          }
+
           const deployDecision: TradeDecision = {
             action: 'BUY',
             fromToken: 'USDC',
