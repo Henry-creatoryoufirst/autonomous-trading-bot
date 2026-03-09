@@ -2586,6 +2586,13 @@ function checkStopLoss(
     const cb = state.costBasis[b.symbol];
     if (!cb || cb.averageCostBasis <= 0) continue;
 
+    // v11.4.6: Check stop-loss cooldown — prevent repeated firing on same token
+    const lastStopLoss = state.stopLossCooldowns[b.symbol];
+    if (lastStopLoss) {
+      const hoursSince = (Date.now() - new Date(lastStopLoss).getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 24) continue; // Skip — already triggered within 24h
+    }
+
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     const lossFromCost = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
 
@@ -7705,6 +7712,13 @@ async function runTradingCycle() {
       const slResult = await executeTrade(stopLossDecision, marketData);
       // v5.3.3: Track failures and set cooldown
       state.stopLossCooldowns[stopLossDecision.fromToken] = new Date().toISOString();
+      // v11.4.6: Reset peak price to current after stop-loss — prevents re-triggering trailing stop
+      const slCb = state.costBasis[stopLossDecision.fromToken];
+      if (slCb && slResult.success) {
+        const currentPrice = slCb.averageCostBasis; // Use cost basis as new reference
+        slCb.peakPrice = currentPrice;
+        slCb.peakPriceDate = new Date().toISOString();
+      }
       if (!slResult.success) {
         recordTradeFailure(stopLossDecision.fromToken);
       } else {
