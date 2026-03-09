@@ -1894,6 +1894,9 @@ interface AgentState {
   totalDeposited: number;
   lastKnownUSDCBalance: number;
   depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
+  // v11.4.7: Safety guards
+  sanityAlerts?: Array<{ timestamp: string; symbol: string; type: string; oldCostBasis: number; currentPrice: number; gainPercent: number; action: string }>;
+  tradeDedupLog?: Record<string, string>; // "symbol:action:tier" → ISO timestamp of last execution
 }
 
 let state: AgentState = {
@@ -2037,6 +2040,18 @@ function loadTradeHistory() {
         if (parsed._migrationCostBasisV1146) {
           (state as any)._migrationCostBasisV1146 = true;
         }
+        // v11.4.7: Restore safety guard state
+        state.sanityAlerts = parsed.sanityAlerts || [];
+        state.tradeDedupLog = parsed.tradeDedupLog || {};
+        // Clean up expired dedup entries (older than 2 hours)
+        if (state.tradeDedupLog) {
+          const now = Date.now();
+          for (const key of Object.keys(state.tradeDedupLog)) {
+            if (now - new Date(state.tradeDedupLog[key]).getTime() > 2 * 60 * 60 * 1000) {
+              delete state.tradeDedupLog[key];
+            }
+          }
+        }
         // v8.2: Restore deposit tracking
         state.totalDeposited = parsed.totalDeposited || 0;
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
@@ -2130,6 +2145,9 @@ function saveTradeHistory() {
       // v11.4.5-6: Migration flags
       _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
       _migrationCostBasisV1146: (state as any)._migrationCostBasisV1146 || false,
+      // v11.4.7: Safety guards
+      sanityAlerts: (state.sanityAlerts || []).slice(-50),
+      tradeDedupLog: state.tradeDedupLog || {},
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -2433,6 +2451,35 @@ function checkProfitTaking(
     const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
 
     if (gainPercent <= 0) continue; // No profit to take
+
+    // v11.4.7: SANITY CHECK — >500% unrealized gain almost certainly means stale cost basis.
+    // Flag it, auto-reset cost basis to current price, and skip harvesting this cycle.
+    if (gainPercent > 500) {
+      console.warn(`\n  🚨 SANITY CHECK: ${b.symbol} shows +${gainPercent.toFixed(1)}% unrealized gain — likely stale cost basis!`);
+      console.warn(`     Cost basis: $${cb.averageCostBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
+      console.warn(`     AUTO-RESETTING cost basis to current market price. Skipping harvest.`);
+      // Track the anomaly
+      if (!state.sanityAlerts) state.sanityAlerts = [];
+      state.sanityAlerts.push({
+        timestamp: now.toISOString(),
+        symbol: b.symbol,
+        type: 'STALE_COST_BASIS',
+        oldCostBasis: cb.averageCostBasis,
+        currentPrice,
+        gainPercent: Math.round(gainPercent * 10) / 10,
+        action: 'AUTO_RESET',
+      });
+      if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
+      // Auto-reset cost basis to current market price
+      cb.averageCostBasis = currentPrice;
+      cb.totalInvestedUSD = currentPrice * cb.currentHolding;
+      cb.totalTokensAcquired = cb.currentHolding;
+      cb.unrealizedPnL = 0;
+      cb.firstBuyDate = now.toISOString();
+      cb.lastTradeDate = now.toISOString();
+      saveTradeHistory();
+      continue; // Skip harvesting — cost basis was bogus
+    }
 
     // v9.0: Compute effective tiers — ATR-relative when ATR data available, flat fallback
     const ind = indicators[b.symbol];
@@ -6455,6 +6502,33 @@ async function executeTrade(
   marketData: MarketData
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
 
+  // v11.4.7: TRADE DEDUP GUARD — block same token/action/tier combo within 1 hour
+  // Prevents runaway loops where the same trade fires repeatedly
+  const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
+  const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
+  const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
+  if (!state.tradeDedupLog) state.tradeDedupLog = {};
+  const lastExecution = state.tradeDedupLog[dedupKey];
+  if (lastExecution) {
+    const minutesSince = (Date.now() - new Date(lastExecution).getTime()) / (1000 * 60);
+    if (minutesSince < 60) {
+      console.warn(`\n  🔁 DEDUP GUARD: Blocking ${dedupKey} — same combo fired ${minutesSince.toFixed(0)}min ago (min 60min)`);
+      // Track the blocked trade
+      if (!state.sanityAlerts) state.sanityAlerts = [];
+      state.sanityAlerts.push({
+        timestamp: new Date().toISOString(),
+        symbol: dedupToken,
+        type: 'TRADE_DEDUP_BLOCKED',
+        oldCostBasis: 0,
+        currentPrice: 0,
+        gainPercent: 0,
+        action: `Blocked ${dedupKey} — ${minutesSince.toFixed(0)}min since last (threshold: 60min)`,
+      });
+      if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
+      return { success: false, error: `Dedup guard: ${dedupKey} already executed ${minutesSince.toFixed(0)}min ago` };
+    }
+  }
+
   if (!CONFIG.trading.enabled) {
     console.log("  ⚠️ Trading disabled - dry run mode");
     console.log(`  📋 Would execute: $${decision.amountUSD.toFixed(2)} ${decision.fromToken} → ${decision.toToken}`);
@@ -6491,6 +6565,10 @@ async function executeTrade(
   if (decision.amountUSD >= TWAP_THRESHOLD_USD) {
     console.log(`  ⏱️ Order $${decision.amountUSD.toFixed(2)} ≥ $${TWAP_THRESHOLD_USD} → routing through TWAP engine`);
     const twapResult = await executeTWAP(decision, marketData, executeSingleSwap);
+    // v11.4.7: Record successful trade in dedup log
+    if (twapResult.success) {
+      state.tradeDedupLog![dedupKey] = new Date().toISOString();
+    }
     return {
       success: twapResult.success,
       txHash: twapResult.txHash,
@@ -6499,7 +6577,12 @@ async function executeTrade(
   }
 
   // Small orders: direct single swap
-  return executeSingleSwap(decision, marketData);
+  const swapResult = await executeSingleSwap(decision, marketData);
+  // v11.4.7: Record successful trade in dedup log
+  if (swapResult.success) {
+    state.tradeDedupLog![dedupKey] = new Date().toISOString();
+  }
+  return swapResult;
 }
 
 /**
@@ -9450,6 +9533,135 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/family/wallets':
         sendJSON(res, 200, familyWalletManager?.toJSON() || { totalWallets: 0, familyTotalValue: 0, wallets: [] });
         break;
+
+      // v11.4.7: Admin health audit — cost basis vs market price for all positions
+      case '/api/admin/health-audit': {
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+          break;
+        }
+        const balancesForAudit = apiBalances();
+        const auditPositions: Array<{
+          symbol: string;
+          balance: number;
+          usdValue: number;
+          marketPrice: number;
+          costBasis: number | null;
+          unrealizedGainPct: number | null;
+          totalInvested: number;
+          realizedPnL: number;
+          peakPrice: number | null;
+          drawdownFromPeak: number | null;
+          holdingAgeDays: number | null;
+          flags: string[];
+        }> = [];
+
+        for (const b of balancesForAudit.balances) {
+          if (b.symbol === 'USDC' || b.balance <= 0) continue;
+          const cb = state.costBasis[b.symbol];
+          const marketPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+          const flags: string[] = [];
+
+          let unrealizedGainPct: number | null = null;
+          let drawdownFromPeak: number | null = null;
+          let holdingAgeDays: number | null = null;
+
+          if (cb && cb.averageCostBasis > 0) {
+            unrealizedGainPct = ((marketPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+
+            // Flag: >500% gain — likely stale cost basis
+            if (unrealizedGainPct > 500) flags.push('STALE_COST_BASIS_LIKELY');
+            // Flag: >200% gain — review recommended
+            else if (unrealizedGainPct > 200) flags.push('EXTREME_GAIN_REVIEW');
+
+            // Flag: cost basis way below market (10x+)
+            if (marketPrice / cb.averageCostBasis > 10) flags.push('COST_10X_BELOW_MARKET');
+
+            // Flag: cost basis way above market (position underwater by 80%+)
+            if (unrealizedGainPct < -80) flags.push('SEVERE_LOSS');
+
+            // Flag: zero or negative cost basis
+            if (cb.averageCostBasis <= 0) flags.push('ZERO_COST_BASIS');
+
+            // Drawdown from peak
+            if (cb.peakPrice && cb.peakPrice > 0) {
+              drawdownFromPeak = ((marketPrice - cb.peakPrice) / cb.peakPrice) * 100;
+              if (drawdownFromPeak < -50) flags.push('PEAK_DRAWDOWN_50PCT');
+            }
+
+            // Holding age
+            if (cb.firstBuyDate) {
+              holdingAgeDays = Math.round((Date.now() - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60 * 24));
+              // Flag: stale position (30+ days held, small value)
+              if (holdingAgeDays > 30 && b.usdValue < 5) flags.push('STALE_DUST_POSITION');
+            }
+
+            // Flag: inconsistent cost basis data
+            if (cb.totalTokensAcquired > 0 && cb.currentHolding > 0) {
+              const impliedCost = cb.totalInvestedUSD / cb.totalTokensAcquired;
+              const costRatio = cb.averageCostBasis / impliedCost;
+              if (costRatio < 0.1 || costRatio > 10) flags.push('COST_BASIS_INCONSISTENT');
+            }
+          } else {
+            flags.push('NO_COST_BASIS');
+          }
+
+          auditPositions.push({
+            symbol: b.symbol,
+            balance: b.balance,
+            usdValue: b.usdValue,
+            marketPrice,
+            costBasis: cb?.averageCostBasis || null,
+            unrealizedGainPct: unrealizedGainPct !== null ? Math.round(unrealizedGainPct * 10) / 10 : null,
+            totalInvested: cb?.totalInvestedUSD || 0,
+            realizedPnL: cb?.realizedPnL || 0,
+            peakPrice: cb?.peakPrice || null,
+            drawdownFromPeak: drawdownFromPeak !== null ? Math.round(drawdownFromPeak * 10) / 10 : null,
+            holdingAgeDays,
+            flags,
+          });
+        }
+
+        // Sort: flagged positions first, then by USD value descending
+        auditPositions.sort((a, b) => {
+          if (a.flags.length > 0 && b.flags.length === 0) return -1;
+          if (a.flags.length === 0 && b.flags.length > 0) return 1;
+          return b.usdValue - a.usdValue;
+        });
+
+        const totalFlags = auditPositions.reduce((sum, p) => sum + p.flags.length, 0);
+
+        sendJSON(res, 200, {
+          timestamp: new Date().toISOString(),
+          portfolioValue: balancesForAudit.totalValue,
+          positionCount: auditPositions.length,
+          flaggedPositions: auditPositions.filter(p => p.flags.length > 0).length,
+          totalFlags,
+          healthStatus: totalFlags === 0 ? 'HEALTHY' : totalFlags <= 2 ? 'REVIEW' : 'CRITICAL',
+          positions: auditPositions,
+          // Recent sanity alerts
+          recentAlerts: (state.sanityAlerts || []).slice(-20),
+          // Active dedup entries
+          activeDedups: Object.entries(state.tradeDedupLog || {}).map(([key, ts]) => ({
+            key,
+            lastExecuted: ts,
+            minutesAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60)),
+          })),
+          // Harvest cooldown state
+          harvestCooldowns: Object.entries(state.profitTakeCooldowns).map(([key, ts]) => ({
+            key,
+            lastTrigger: ts,
+            hoursAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60) * 10) / 10,
+          })),
+          // Stop-loss cooldown state
+          stopLossCooldowns: Object.entries(state.stopLossCooldowns).map(([key, ts]) => ({
+            symbol: key,
+            lastTrigger: ts,
+            hoursAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60) * 10) / 10,
+          })),
+        });
+        break;
+      }
 
       // v11.3: Admin endpoint to correct corrupted state values (e.g. false deposit detection)
       case '/api/admin/correct-state': {
