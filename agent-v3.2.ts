@@ -2030,6 +2030,10 @@ function loadTradeHistory() {
           const ys = aaveYieldService.getState();
           console.log(`  🏦 Aave yield restored: $${ys.depositedUSDC.toFixed(2)} deposited, $${ys.totalYieldEarned.toFixed(4)} earned, ${ys.supplyCount} supplies`);
         }
+        // v11.4.5: Restore migration flags
+        if (parsed._migrationCostBasisV1145) {
+          (state as any)._migrationCostBasisV1145 = true;
+        }
         // v8.2: Restore deposit tracking
         state.totalDeposited = parsed.totalDeposited || 0;
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
@@ -2120,6 +2124,8 @@ function saveTradeHistory() {
       stablecoinSupplyHistory: { values: stablecoinSupplyHistory.values.slice(-504) },
       // v11.0: Aave V3 yield state persistence
       aaveYieldState: aaveYieldService.getState(),
+      // v11.4.5: Migration flags
+      _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -8458,6 +8464,34 @@ async function main() {
   console.log(`  ✅ Discovery engine active. Static pool: ${staticTokens.length} tokens. Dynamic discovery every 6h.`);
 
   loadTradeHistory();
+
+  // v11.4.5: One-time cost basis migration — fix ETH cost basis from $55 → current market price.
+  // The original $55 cost basis was from the bot's inception and caused a perpetual harvest loop.
+  // This migration marks itself done by setting a flag in state so it only runs once.
+  if (!(state as any)._migrationCostBasisV1145) {
+    const ethCb = state.costBasis['ETH'];
+    if (ethCb && ethCb.averageCostBasis < 200) {
+      // ETH cost basis is absurdly low — reset to a reasonable value
+      // We'll use 2000 as a baseline; the next price fetch will update it precisely
+      const resetPrice = 2000;
+      console.log(`\n🔧 MIGRATION v11.4.5: Resetting ETH cost basis from $${ethCb.averageCostBasis.toFixed(2)} → $${resetPrice}`);
+      ethCb.averageCostBasis = resetPrice;
+      ethCb.totalInvestedUSD = resetPrice * ethCb.currentHolding;
+      ethCb.totalTokensAcquired = ethCb.currentHolding;
+      ethCb.unrealizedPnL = 0;
+      ethCb.firstBuyDate = new Date().toISOString();
+      ethCb.lastTradeDate = new Date().toISOString();
+    }
+    // Clear all harvest cooldowns so new thresholds apply fresh
+    const cooldownCount = Object.keys(state.profitTakeCooldowns).length;
+    if (cooldownCount > 0) {
+      console.log(`🔧 MIGRATION v11.4.5: Clearing ${cooldownCount} harvest cooldowns (new thresholds apply)`);
+      state.profitTakeCooldowns = {};
+    }
+    (state as any)._migrationCostBasisV1145 = true;
+    saveTradeHistory();
+    console.log(`✅ MIGRATION v11.4.5 complete — harvest loop fix applied\n`);
+  }
 
   // Restore discovery state if available
   if (tokenDiscoveryEngine) {
