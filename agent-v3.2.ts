@@ -6404,11 +6404,16 @@ HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reason
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const response = await anthropic.messages.create({
+      // v11.4.9: 90-second timeout on AI call — prevents cycle hanging if API stalls
+      const aiCallPromise = anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 2000, // v9.2: increased for multi-trade array responses
         messages: [{ role: "user", content: systemPrompt }],
       });
+      const response = await Promise.race([
+        aiCallPromise,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('AI call timed out after 90s')), 90_000)),
+      ]);
 
       const content = response.content[0];
       if (content.type === "text") {
@@ -6534,17 +6539,19 @@ async function executeTrade(
   marketData: MarketData
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
 
-  // v11.4.7: TRADE DEDUP GUARD — block same token/action/tier combo within 1 hour
+  // v11.4.7: TRADE DEDUP GUARD — block same token/action/tier combo within window
   // Prevents runaway loops where the same trade fires repeatedly
+  // v11.4.9: FORCED_DEPLOY gets shorter 10-min window to allow rapid capital deployment
   const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
   const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
+  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 10 : 60;
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
   const lastExecution = state.tradeDedupLog[dedupKey];
   if (lastExecution) {
     const minutesSince = (Date.now() - new Date(lastExecution).getTime()) / (1000 * 60);
-    if (minutesSince < 60) {
-      console.warn(`\n  🔁 DEDUP GUARD: Blocking ${dedupKey} — same combo fired ${minutesSince.toFixed(0)}min ago (min 60min)`);
+    if (minutesSince < dedupWindowMinutes) {
+      console.warn(`\n  🔁 DEDUP GUARD: Blocking ${dedupKey} — same combo fired ${minutesSince.toFixed(0)}min ago (min ${dedupWindowMinutes}min)`);
       // Track the blocked trade
       if (!state.sanityAlerts) state.sanityAlerts = [];
       state.sanityAlerts.push({
@@ -6554,7 +6561,7 @@ async function executeTrade(
         oldCostBasis: 0,
         currentPrice: 0,
         gainPercent: 0,
-        action: `Blocked ${dedupKey} — ${minutesSince.toFixed(0)}min since last (threshold: 60min)`,
+        action: `Blocked ${dedupKey} — ${minutesSince.toFixed(0)}min since last (threshold: ${dedupWindowMinutes}min)`,
       });
       if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
       return { success: false, error: `Dedup guard: ${dedupKey} already executed ${minutesSince.toFixed(0)}min ago` };
@@ -7906,7 +7913,8 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    if (preAiCashPct > 80 && preAiUSDC > 200) {
+    // v11.4.9: Lowered from 80% to 70% to keep deploying until well-diversified
+    if (preAiCashPct > 70 && preAiUSDC > 150) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
@@ -7918,20 +7926,21 @@ async function runTradingCycle() {
       };
 
       const deployTargets: { token: string; sector: string }[] = [];
+      const FORCED_DEPLOY_DEDUP_MINUTES = 10; // v11.4.9: shorter window for rapid deployment
       for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
         // Pick the token in this sector that's NOT in the dedup log
         for (const token of tokens) {
           const dedupKey = `${token}:BUY:FORCED_DEPLOY`;
           const lastExec = state.tradeDedupLog?.[dedupKey];
           const minutesSince = lastExec ? (Date.now() - new Date(lastExec).getTime()) / (1000 * 60) : Infinity;
-          if (minutesSince >= 60) {
+          if (minutesSince >= FORCED_DEPLOY_DEDUP_MINUTES) {
             deployTargets.push({ token, sector });
             break; // one token per sector
           }
         }
       }
 
-      const deploySize = Math.min(40, preAiUSDC * 0.03); // 3% of USDC per token
+      const deploySize = Math.min(80, preAiUSDC * 0.05); // v11.4.9: 5% of USDC per token, max $80
       let preAiBuys = 0;
       for (const target of deployTargets) {
         try {
@@ -9280,11 +9289,16 @@ ${tradeLines || '(no trades yet)'}`;
 
   console.log(`[Chat API] Question: "${userMessage.substring(0, 60)}..." | History: ${safeHistory.length} msgs`);
 
-  const response = await anthropic.messages.create({
+  // v11.4.9: 30-second timeout on chat API call
+  const chatCallPromise = anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 500,
     messages,
   });
+  const response = await Promise.race([
+    chatCallPromise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Chat AI call timed out after 30s')), 30_000)),
+  ]);
 
   const content = response.content[0];
   if (content.type === 'text') {
