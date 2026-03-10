@@ -6703,7 +6703,7 @@ async function executeTrade(
   const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
   const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
-  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 5 : 15; // v11.4.15: 10/60 → 5/15 — faster cycling
+  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 2 : 15; // v11.4.20: 5/15 → 2/15 — FORCED_DEPLOY was getting stuck in 5min dedup loops
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
   // v11.4.17: In-flight lock — prevent parallel cycles from both passing dedup check
   if (tradeInFlight.has(dedupKey)) {
@@ -7108,7 +7108,8 @@ async function executeSingleSwap(
       },
     };
     state.tradeHistory.push(record);
-    state.trading.totalTrades++;
+    // v11.4.20: Don't increment totalTrades for failed trades — was inflating the counter
+    // totalTrades should only count successful executions (line 6967)
     saveTradeHistory();
 
     return { success: false, error: errorMsg };
@@ -7992,7 +7993,7 @@ async function runTradingCycle() {
       };
 
       const deployTargets: { token: string; sector: string }[] = [];
-      const FORCED_DEPLOY_DEDUP_MINUTES = 5; // v11.4.15: 10 → 5 min for maximum deployment velocity
+      const FORCED_DEPLOY_DEDUP_MINUTES = 2; // v11.4.20: 5 → 2 min — matches executeTrade dedup window
       for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
         // Pick the token in this sector that's NOT in the dedup log and not blocked
         for (const token of tokens) {
@@ -8896,6 +8897,17 @@ async function main() {
   console.log(`  💾 State file: ${CONFIG.logFile}`);
   console.log(`  💾 PERSIST_DIR: ${process.env.PERSIST_DIR || '(not set — using ./logs)'}`);
   console.log(`  💾 Loaded: ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis, peak $${state.trading.peakValue.toFixed(2)}`);
+
+  // v11.4.20: Reconcile trade counter with actual trade history
+  // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
+  const successfulInHistory = state.tradeHistory.filter(t => t.success).length;
+  const totalInHistory = state.tradeHistory.length;
+  if (state.trading.totalTrades !== totalInHistory || state.trading.successfulTrades !== successfulInHistory) {
+    console.log(`  🔧 Trade counter reconciliation: totalTrades ${state.trading.totalTrades} → ${totalInHistory}, successful ${state.trading.successfulTrades} → ${successfulInHistory}`);
+    state.trading.totalTrades = totalInHistory;
+    state.trading.successfulTrades = successfulInHistory;
+    saveTradeHistory();
+  }
 
   // v11.4.5: One-time cost basis migration — fix ETH cost basis from $55 → current market price.
   // The original $55 cost basis was from the bot's inception and caused a perpetual harvest loop.
