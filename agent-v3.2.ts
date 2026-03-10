@@ -2249,10 +2249,32 @@ function getOrCreateCostBasis(symbol: string): TokenCostBasis {
 function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceived: number): void {
   const cb = getOrCreateCostBasis(symbol);
   if (cb.totalTokensAcquired === 0) cb.firstBuyDate = new Date().toISOString();
+
+  // v11.4.15: Guard against zero tokensReceived which corrupts avgCostBasis to infinity.
+  // This happened with ETH buys where balance read returned native ETH instead of WETH.
+  if (tokensReceived <= 0) {
+    const knownPrice = lastKnownPrices[symbol]?.price || lastKnownPrices[symbol === 'ETH' ? 'WETH' : symbol]?.price || 0;
+    if (knownPrice > 0) {
+      tokensReceived = amountUSD / knownPrice;
+      console.log(`     ⚠️ tokensReceived was 0 — estimated ${tokensReceived.toFixed(8)} from price $${knownPrice.toFixed(4)}`);
+    } else {
+      console.warn(`     ❌ Cannot update cost basis for ${symbol}: tokensReceived=0 and no known price`);
+      return;
+    }
+  }
+
   cb.totalInvestedUSD += amountUSD;
   cb.totalTokensAcquired += tokensReceived;
-  // Weighted average: new avg = total invested / total tokens
-  cb.averageCostBasis = cb.totalInvestedUSD / cb.totalTokensAcquired;
+  cb.averageCostBasis = cb.totalTokensAcquired > 0 ? cb.totalInvestedUSD / cb.totalTokensAcquired : 0;
+
+  // v11.4.15: Sanity check — if avgCostBasis is >10x market price, it's corrupted. Reset.
+  const currentPrice = lastKnownPrices[symbol]?.price || lastKnownPrices[symbol === 'ETH' ? 'WETH' : symbol]?.price || 0;
+  if (currentPrice > 0 && cb.averageCostBasis > currentPrice * 10) {
+    console.warn(`     🔧 SANITY RESET: ${symbol} avgCost $${cb.averageCostBasis.toFixed(2)} is ${(cb.averageCostBasis / currentPrice).toFixed(0)}x market $${currentPrice.toFixed(4)} — resetting`);
+    cb.averageCostBasis = currentPrice;
+    cb.totalInvestedUSD = currentPrice * cb.totalTokensAcquired;
+  }
+
   cb.lastTradeDate = new Date().toISOString();
   console.log(`     📊 Cost basis updated: ${symbol} avg=$${cb.averageCostBasis.toFixed(6)} invested=$${cb.totalInvestedUSD.toFixed(2)}`);
 }
@@ -2279,7 +2301,19 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
     cb.currentHolding = b.balance;
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     (cb as any).currentPrice = currentPrice;
-    cb.unrealizedPnL = cb.averageCostBasis > 0 ? (currentPrice - cb.averageCostBasis) * b.balance : 0;
+
+    // v11.4.15: Sanity check — if avgCostBasis is absurdly high (>10x market), reset it.
+    // This catches corrupted cost basis from ETH/WETH balance mismatch or stale state.
+    if (currentPrice > 0 && cb.averageCostBasis > currentPrice * 10 && b.usdValue > 1) {
+      console.warn(`  🔧 COST BASIS RESET: ${b.symbol} avg $${cb.averageCostBasis.toFixed(2)} is ${(cb.averageCostBasis / currentPrice).toFixed(0)}x market $${currentPrice.toFixed(4)} — resetting to market price`);
+      cb.averageCostBasis = currentPrice;
+      cb.totalInvestedUSD = currentPrice * cb.currentHolding;
+      cb.totalTokensAcquired = cb.currentHolding;
+      cb.unrealizedPnL = 0;
+    } else {
+      cb.unrealizedPnL = cb.averageCostBasis > 0 ? (currentPrice - cb.averageCostBasis) * b.balance : 0;
+    }
+
     // Update peak price for trailing stop
     if (currentPrice > cb.peakPrice) {
       cb.peakPrice = currentPrice;
@@ -4077,12 +4111,18 @@ async function getTokenBalance(tokenSymbol: string): Promise<number> {
   try {
     // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet)
     const walletAddr = CONFIG.walletAddress;
+    // v11.4.15: ETH buys via CDP produce WETH (ERC-20), not native ETH.
+    // Read WETH ERC-20 balance for accurate cost basis tracking.
     if (tokenSymbol === 'ETH' || tokenSymbol === 'WETH') {
-      return await getETHBalance(walletAddr);
+      const wethAddr = TOKEN_REGISTRY['WETH'].address;
+      return await getERC20Balance(wethAddr, walletAddr, 18);
     }
     const reg = TOKEN_REGISTRY[tokenSymbol];
     if (!reg) return 0;
-    if (reg.address === 'native') return await getETHBalance(walletAddr);
+    if (reg.address === 'native') {
+      const wethAddr = TOKEN_REGISTRY['WETH'].address;
+      return await getERC20Balance(wethAddr, walletAddr, 18);
+    }
     return await getERC20Balance(reg.address, walletAddr, reg.decimals);
   } catch {
     return 0;
@@ -6561,7 +6601,7 @@ async function executeTrade(
   const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
   const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
-  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 10 : 60;
+  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 5 : 15; // v11.4.15: 10/60 → 5/15 — faster cycling
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
   const lastExecution = state.tradeDedupLog[dedupKey];
   if (lastExecution) {
@@ -7962,7 +8002,7 @@ async function runTradingCycle() {
       };
 
       const deployTargets: { token: string; sector: string }[] = [];
-      const FORCED_DEPLOY_DEDUP_MINUTES = 10; // v11.4.9: shorter window for rapid deployment
+      const FORCED_DEPLOY_DEDUP_MINUTES = 5; // v11.4.15: 10 → 5 min for maximum deployment velocity
       for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
         // Pick the token in this sector that's NOT in the dedup log and not blocked
         for (const token of tokens) {
@@ -8173,51 +8213,50 @@ async function runTradingCycle() {
         }
       }
 
-      // === v8.0: INSTITUTIONAL POSITION SIZING (Kelly × Vol × Breaker × Confidence) ===
+      // === v11.4.15: POSITION SIZING — streamlined from 5 multiplicative reductions to 2 ===
+      // Previously: Kelly × Vol × ATR × Confidence × LegacyBreaker stacked to kill trade sizes.
+      // With 0 trade history, Kelly fallback was $15, confidence ~0.5 → $7.50 per trade.
+      // Now: Kelly sets a ceiling. During deployment mode, use a generous floor instead.
       if (decision.action === "BUY" && decision.amountUSD > 0) {
         const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue);
-        const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
-        decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
-        console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}% × Vol×${instSizeCycle.volMultiplier.toFixed(2)}${instSizeCycle.breakerReduction ? ' × BREAKER' : ''})`);
 
-        // v11.4: ATR-scaled per-token sizing — size inversely with token volatility vs market average
-        const tokenATR = marketData.indicators[decision.toToken]?.atrPercent;
-        if (tokenATR && tokenATR > 0) {
-          const allATRs = Object.values(marketData.indicators)
-            .map((ind: any) => ind?.atrPercent)
-            .filter((a: any) => a && a > 0) as number[];
-          const avgATR = allATRs.length > 0 ? allATRs.reduce((s, a) => s + a, 0) / allATRs.length : tokenATR;
-          // Scale: avgATR / tokenATR — high-vol tokens get smaller sizes, low-vol get larger
-          const atrMultiplier = Math.max(0.5, Math.min(1.5, avgATR / tokenATR));
-          if (Math.abs(atrMultiplier - 1.0) > 0.05) {
-            const preATR = decision.amountUSD;
-            decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * atrMultiplier * 100) / 100);
-            console.log(`   📊 ATR Scaling: ${decision.toToken} ATR=${tokenATR.toFixed(1)}% vs avg=${avgATR.toFixed(1)}% → ×${atrMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+        if (deploymentCheck.active) {
+          // DEPLOYMENT MODE: Use generous sizing — the whole point is to get capital deployed.
+          // Floor at 2.5% of portfolio or $100, whichever is larger. Cap at remaining USDC.
+          const deployFloor = Math.max(100, state.trading.totalPortfolioValue * 0.025);
+          const deployMax = Math.min(deployFloor, remainingUSDC);
+          decision.amountUSD = Math.max(decision.amountUSD, deployMax);
+          decision.amountUSD = Math.min(decision.amountUSD, remainingUSDC);
+          console.log(`   ⚡ DEPLOY SIZING: $${decision.amountUSD.toFixed(2)} (floor: $${deployFloor.toFixed(0)}, Kelly would be: $${instSizeCycle.sizeUSD.toFixed(2)})`);
+        } else {
+          // NORMAL MODE: Kelly cap with ATR adjustment, no other reductions.
+          const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
+          decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
+          console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
+
+          // ATR scaling only in normal mode — slight adjustment, floored at 0.75x
+          const tokenATR = marketData.indicators[decision.toToken]?.atrPercent;
+          if (tokenATR && tokenATR > 0) {
+            const allATRs = Object.values(marketData.indicators)
+              .map((ind: any) => ind?.atrPercent)
+              .filter((a: any) => a && a > 0) as number[];
+            const avgATR = allATRs.length > 0 ? allATRs.reduce((s, a) => s + a, 0) / allATRs.length : tokenATR;
+            const atrMultiplier = Math.max(0.75, Math.min(1.25, avgATR / tokenATR));
+            if (Math.abs(atrMultiplier - 1.0) > 0.05) {
+              const preATR = decision.amountUSD;
+              decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * atrMultiplier * 100) / 100);
+              console.log(`   📊 ATR: ×${atrMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+            }
           }
         }
-
-        const tradePatternId = [
-          "BUY",
-          marketData.indicators[decision.toToken]?.rsi14 !== undefined
-            ? (marketData.indicators[decision.toToken].rsi14 < state.adaptiveThresholds.rsiOversold ? "OVERSOLD"
-               : marketData.indicators[decision.toToken].rsi14 > state.adaptiveThresholds.rsiOverbought ? "OVERBOUGHT" : "NEUTRAL")
-            : "UNKNOWN",
-          marketData.marketRegime,
-          marketData.indicators[decision.toToken]?.overallSignal || "NEUTRAL",
-        ].join("_");
-        const confidence = calculatePatternConfidence(tradePatternId, marketData.marketRegime);
-        const preConfAmount = decision.amountUSD;
-        decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * confidence * 100) / 100);
-        const confLabel = confidence >= 0.8 ? "HIGH" : confidence >= 0.5 ? "MEDIUM" : "LOW";
-        console.log(`   🎯 Pattern Confidence: ${(confidence * 100).toFixed(0)}% (${confLabel}) | Size: $${preConfAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
-
-        if (circuitBreakerActive) {
-          decision.amountUSD = Math.max(5, Math.round(decision.amountUSD * 0.5 * 100) / 100);
-          console.log(`   🚨 Legacy circuit breaker (DD≥12%): size reduced to $${decision.amountUSD.toFixed(2)}`);
-        }
+        // v11.4.15: Removed legacy 12% DD breaker (duplicate of institutional breaker)
+        // v11.4.15: Removed pattern confidence multiplier (was halving trades with no history)
       }
 
       // === POSITION SIZE GUARD ===
+      // v11.4.15: Changed from BLOCK to RESIZE — trim the buy to fit within sector limit
+      // instead of killing the entire trade. A $26 buy shouldn't be blocked just because
+      // the limit is $25. Trim it to $25 and execute.
       if (decision.action === "BUY" && decision.toToken !== "USDC" && state.trading.totalPortfolioValue > 0) {
         const targetHolding = balances.find(b => b.symbol === decision.toToken);
         const currentValue = targetHolding?.usdValue || 0;
@@ -8230,25 +8269,20 @@ async function runTradingCycle() {
           : CONFIG.trading.maxPositionPercent;
 
         if (afterBuyPercent > sectorLimit) {
-          console.log(`   🚫 POSITION GUARD: ${decision.toToken} (${tokenSector}) would be ${afterBuyPercent.toFixed(1)}% of portfolio (max ${sectorLimit}%). Current: $${currentValue.toFixed(2)}. Blocked.`);
-          decision.action = "HOLD";
-          decision.reasoning = `Position guard: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — exceeds ${tokenSector} sector limit of ${sectorLimit}%. Holding.`;
+          const maxBuyUSD = Math.max(0, (sectorLimit / 100) * state.trading.totalPortfolioValue - currentValue);
+          if (maxBuyUSD >= 5) {
+            console.log(`   ✂️ POSITION GUARD: ${decision.toToken} trimmed $${decision.amountUSD.toFixed(2)} → $${maxBuyUSD.toFixed(2)} (${sectorLimit}% sector cap)`);
+            decision.amountUSD = maxBuyUSD;
+          } else {
+            console.log(`   🚫 POSITION GUARD: ${decision.toToken} at ${(currentValue / state.trading.totalPortfolioValue * 100).toFixed(1)}% — at sector limit ${sectorLimit}%. No room.`);
+            decision.action = "HOLD";
+            decision.reasoning = `Position guard: ${decision.toToken} at sector limit ${sectorLimit}%.`;
+          }
         }
       }
 
-      // === DIVERSIFICATION GUARD ===
-      // v10.4: Relaxed from 3 to 5 consecutive same-token buys. The position guard
-      // (max % of portfolio) already prevents over-concentration. If the AI has
-      // conviction, let it build the position. The position sizing cap is the real guard.
-      const last5Trades = state.tradeHistory.slice(-5);
-      if (decision.action === "BUY" && last5Trades.length >= 5) {
-        const allSameToken = last5Trades.every(t => t.action === "BUY" && t.toToken === decision.toToken);
-        if (allSameToken) {
-          console.log(`   🔄 DIVERSITY GUARD: Bought ${decision.toToken} 5x in a row. Forcing HOLD to avoid concentration.`);
-          decision.action = "HOLD";
-          decision.reasoning = `Diversity guard: ${decision.toToken} bought 5 consecutive times. Cooling off.`;
-        }
-      }
+      // v11.4.15: Diversity guard REMOVED — the position size guard (sector limits) already
+      // prevents over-concentration. This guard was blocking legitimate conviction plays.
 
       // v5.3.3: Circuit breaker guard
       if (["SELL", "REBALANCE"].includes(decision.action) && decision.fromToken && isTokenBlocked(decision.fromToken)) {
