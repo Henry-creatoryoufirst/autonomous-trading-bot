@@ -1828,6 +1828,38 @@ function formatSelfImprovementPrompt(): string {
   return prompt;
 }
 
+// v11.4.16: Format user directives for injection into trading AI prompt
+function formatUserDirectivesPrompt(): string {
+  const active = getActiveDirectives();
+  if (active.length === 0) return '';
+
+  let prompt = '\n\n═══ USER DIRECTIVES (from dashboard chat) ═══\n';
+  prompt += 'The portfolio owner has given you these instructions via chat. Follow them:\n\n';
+
+  for (const d of active) {
+    switch (d.type) {
+      case 'WATCHLIST':
+        prompt += `  🔍 WATCHLIST: ${d.instruction}. Pay extra attention to ${d.token || 'this token'} — research its price, volume, and technicals. If it looks like a good entry, recommend a BUY.\n`;
+        break;
+      case 'ALLOCATION':
+        prompt += `  📊 ALLOCATION: ${d.instruction}. Adjust your sector targeting to aim for this allocation. Rebalance trades should move toward this target.\n`;
+        break;
+      case 'AVOID':
+        prompt += `  🚫 AVOID: ${d.instruction}. Do NOT recommend buying ${d.token || 'this token'} this cycle. Existing positions are fine but no new entries.\n`;
+        break;
+      case 'GENERAL':
+        prompt += `  📝 STRATEGY: ${d.instruction}\n`;
+        break;
+      case 'RESEARCH':
+        prompt += `  🔬 RESEARCH: ${d.instruction}\n`;
+        break;
+    }
+  }
+
+  prompt += '\nThese directives come from the portfolio owner and should be weighted heavily in your decisions.\n';
+  return prompt;
+}
+
 interface SectorAllocation {
   name: string;
   targetPercent: number;
@@ -1903,6 +1935,21 @@ interface AgentState {
   // v11.4.7: Safety guards
   sanityAlerts?: Array<{ timestamp: string; symbol: string; type: string; oldCostBasis: number; currentPrice: number; gainPercent: number; action: string }>;
   tradeDedupLog?: Record<string, string>; // "symbol:action:tier" → ISO timestamp of last execution
+  // v11.4.16: User Directives — chat commands that influence trading decisions
+  userDirectives?: UserDirective[];
+}
+
+// v11.4.16: User Directive types — instructions from the dashboard chat that affect bot behavior
+interface UserDirective {
+  id: string;
+  type: 'RESEARCH' | 'WATCHLIST' | 'ALLOCATION' | 'AVOID' | 'GENERAL';
+  instruction: string;       // Human-readable description
+  token?: string;            // Optional token symbol (e.g. "SUI")
+  sector?: string;           // Optional sector
+  value?: number;            // Optional numeric value (e.g. target allocation %)
+  createdAt: string;         // ISO timestamp
+  expiresAt?: string;        // Optional expiry (default: 24h)
+  source: string;            // Chat message that created this
 }
 
 let state: AgentState = {
@@ -1957,6 +2004,8 @@ let state: AgentState = {
   fundingRateHistory: { btc: [] as number[], eth: [] as number[] },
   btcDominanceHistory: { values: [] as { timestamp: string; dominance: number }[] },
   stablecoinSupplyHistory: { values: [] as { timestamp: string; totalSupply: number }[] },
+  // v11.4.16: User Directives from dashboard chat
+  userDirectives: [] as UserDirective[],
 };
 
 // ============================================================================
@@ -6455,7 +6504,7 @@ Return a single object for 1 trade, or an array for multiple. HOLD can be a sing
 Examples:
 Single: {"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold, MACD bullish","sector":"DEFI"}
 Multi: [{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":15,"reasoning":"RSI oversold","sector":"DEFI"},{"action":"BUY","fromToken":"USDC","toToken":"VIRTUAL","amountUSD":12,"reasoning":"AI sector underweight","sector":"AI_TOKENS"}]
-HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals"}` + formatSelfImprovementPrompt();
+HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals"}` + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -9315,6 +9364,174 @@ function apiTrades(limit: number) {
 }
 
 // v11.4.4: Dashboard AI Chat — answers user questions with full live state context
+// v11.4.16: Helper to get active (non-expired) user directives
+function getActiveDirectives(): UserDirective[] {
+  const directives = state.userDirectives || [];
+  const now = new Date().toISOString();
+  return directives.filter(d => !d.expiresAt || d.expiresAt > now);
+}
+
+// v11.4.16: Add a user directive from chat
+function addUserDirective(directive: Omit<UserDirective, 'id' | 'createdAt'>): UserDirective {
+  const d: UserDirective = {
+    ...directive,
+    id: `dir-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    createdAt: new Date().toISOString(),
+    expiresAt: directive.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Default 24h
+  };
+  if (!state.userDirectives) state.userDirectives = [];
+  state.userDirectives.push(d);
+  // Cap at 20 active directives
+  const active = getActiveDirectives();
+  if (active.length > 20) {
+    state.userDirectives = active.slice(-20);
+  }
+  console.log(`[Chat Action] Added directive: ${d.type} — "${d.instruction}" (expires ${d.expiresAt})`);
+  return d;
+}
+
+// v11.4.16: Remove a directive by ID
+function removeUserDirective(id: string): boolean {
+  if (!state.userDirectives) return false;
+  const before = state.userDirectives.length;
+  state.userDirectives = state.userDirectives.filter(d => d.id !== id);
+  return state.userDirectives.length < before;
+}
+
+// v11.4.16: Chat tool definitions for Claude tool_use
+const CHAT_TOOLS: any[] = [
+  {
+    name: 'add_to_watchlist',
+    description: 'Add a token to the research watchlist. The bot will pay extra attention to this token in upcoming trading cycles, research its price action, and consider it for trades.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'Token symbol (e.g. SUI, PEPE, ARB)' },
+        reason: { type: 'string', description: 'Why the user wants to watch this token' },
+      },
+      required: ['token', 'reason'],
+    },
+  },
+  {
+    name: 'adjust_sector_target',
+    description: 'Adjust the target allocation percentage for a sector. Valid sectors: BLUE_CHIP, AI_TOKENS, MEME_COINS, DEFI. Total across all sectors should stay around 100%.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sector: { type: 'string', enum: ['BLUE_CHIP', 'AI_TOKENS', 'MEME_COINS', 'DEFI'], description: 'Sector to adjust' },
+        target_percent: { type: 'number', description: 'New target allocation (e.g. 30 for 30%)' },
+      },
+      required: ['sector', 'target_percent'],
+    },
+  },
+  {
+    name: 'add_research_directive',
+    description: 'Add a general research/strategy directive that will be injected into the AI trading prompt. For things like "be more aggressive on dips", "focus on DeFi tokens", "avoid meme coins this week".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        instruction: { type: 'string', description: 'The strategy directive in plain English' },
+        hours: { type: 'number', description: 'How many hours this directive should last (default 24)' },
+      },
+      required: ['instruction'],
+    },
+  },
+  {
+    name: 'avoid_token',
+    description: 'Tell the bot to avoid buying a specific token. The bot will not open new positions in this token.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        token: { type: 'string', description: 'Token symbol to avoid (e.g. NORMIE, BRETT)' },
+        reason: { type: 'string', description: 'Why to avoid it' },
+      },
+      required: ['token', 'reason'],
+    },
+  },
+  {
+    name: 'clear_directives',
+    description: 'Clear all active user directives, resetting the bot to its default trading strategy.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        confirm: { type: 'boolean', description: 'Must be true to confirm clearing' },
+      },
+      required: ['confirm'],
+    },
+  },
+  {
+    name: 'list_directives',
+    description: 'List all currently active user directives affecting the bot.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+];
+
+// v11.4.16: Execute a chat tool call
+function executeChatTool(toolName: string, input: any): { result: string; directive?: UserDirective } {
+  switch (toolName) {
+    case 'add_to_watchlist': {
+      const token = (input.token || '').toUpperCase().trim();
+      const d = addUserDirective({
+        type: 'WATCHLIST',
+        instruction: `Research and watch ${token} — ${input.reason}`,
+        token,
+        source: `Watchlist: ${token}`,
+      });
+      return { result: `Added ${token} to watchlist. I'll research its price action and consider it in upcoming trading cycles. This directive expires in 24 hours.`, directive: d };
+    }
+    case 'adjust_sector_target': {
+      const sector = input.sector as string;
+      const target = Math.max(5, Math.min(60, input.target_percent));
+      const sectorName = SECTORS[sector as keyof typeof SECTORS]?.name || sector;
+      const d = addUserDirective({
+        type: 'ALLOCATION',
+        instruction: `Adjust ${sectorName} target allocation to ${target}%`,
+        sector,
+        value: target,
+        source: `Allocation: ${sectorName} → ${target}%`,
+      });
+      return { result: `Set ${sectorName} target to ${target}%. The bot will rebalance toward this target over the next trading cycles. Active for 24 hours.`, directive: d };
+    }
+    case 'add_research_directive': {
+      const hours = Math.max(1, Math.min(168, input.hours || 24));
+      const d = addUserDirective({
+        type: 'GENERAL',
+        instruction: input.instruction,
+        expiresAt: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString(),
+        source: `Directive: ${input.instruction.substring(0, 50)}`,
+      });
+      return { result: `Got it. I'll follow this directive for the next ${hours} hours: "${input.instruction}"`, directive: d };
+    }
+    case 'avoid_token': {
+      const token = (input.token || '').toUpperCase().trim();
+      const d = addUserDirective({
+        type: 'AVOID',
+        instruction: `Avoid buying ${token} — ${input.reason}`,
+        token,
+        source: `Avoid: ${token}`,
+      });
+      return { result: `I'll avoid opening new positions in ${token}. Existing positions won't be affected. Active for 24 hours.`, directive: d };
+    }
+    case 'clear_directives': {
+      if (!input.confirm) return { result: 'Clearing cancelled — confirm must be true.' };
+      const count = getActiveDirectives().length;
+      state.userDirectives = [];
+      return { result: `Cleared ${count} active directive(s). Bot is back to default strategy.` };
+    }
+    case 'list_directives': {
+      const active = getActiveDirectives();
+      if (active.length === 0) return { result: 'No active directives. The bot is running its default strategy.' };
+      const list = active.map((d, i) => `${i + 1}. [${d.type}] ${d.instruction} (expires ${new Date(d.expiresAt || '').toLocaleString()})`).join('\n');
+      return { result: `Active directives:\n${list}` };
+    }
+    default:
+      return { result: `Unknown action: ${toolName}` };
+  }
+}
+
 async function handleChatRequest(userMessage: string, history: { role: string; content: string }[]) {
   const n = (v: any) => Number(v) || 0;
 
@@ -9331,6 +9548,15 @@ async function handleChatRequest(userMessage: string, history: { role: string; c
     `- ${t.timestamp}: ${t.action} ${t.fromToken || ''}→${t.toToken || ''} $${n(t.amountUSD).toFixed(2)} ${t.success ? '✓' : '✗'} — ${(t.reasoning || '').substring(0, 80)}`
   ).join('\n');
 
+  const activeDirectives = getActiveDirectives();
+  const directivesSection = activeDirectives.length > 0
+    ? `\nACTIVE USER DIRECTIVES:\n${activeDirectives.map(d => `- [${d.type}] ${d.instruction}`).join('\n')}`
+    : '';
+
+  const sectorInfo = Object.entries(SECTORS).map(([key, s]) =>
+    `${s.name} (${key}): target ${(s.targetAllocation * 100).toFixed(0)}% | tokens: ${s.tokens.join(', ')}`
+  ).join('\n');
+
   const context = `LIVE PORTFOLIO (real-time):
 - Total Value: $${n(portfolio.totalValue).toFixed(2)}
 - Initial: $${n(portfolio.initialValue).toFixed(2)}
@@ -9342,42 +9568,59 @@ async function handleChatRequest(userMessage: string, history: { role: string; c
 CURRENT HOLDINGS:
 ${holdingsLines || '(none yet)'}
 
+SECTORS:
+${sectorInfo}
+
 PERFORMANCE METRICS:
 - Total Trades: ${portfolio.totalTrades} | Win Rate: ${portfolio.totalTrades > 0 ? (portfolio.successfulTrades / portfolio.totalTrades * 100).toFixed(1) : 0}%
 - Profit Factor: ${n(riskReward.profitFactor).toFixed(2)} | Expectancy: $${n(riskReward.expectancy).toFixed(2)}
 - Avg Win: $${n(riskReward.avgWinUSD).toFixed(2)} | Avg Loss: $${n(riskReward.avgLossUSD).toFixed(2)}
 
 LAST 10 TRADES:
-${tradeLines || '(no trades yet)'}`;
+${tradeLines || '(no trades yet)'}${directivesSection}
 
-  const systemPrompt = 'You are the STC trading bot assistant. You have full access to your own live trading state. Answer questions conversationally and concisely about portfolio performance, positions, trade reasoning, market outlook, risk metrics, and strategy. Use specific numbers from the context. Keep responses under 150 words unless the user asks for detail. Do not use markdown formatting — plain text only.';
+AVAILABLE TOKENS: ${CONFIG.activeTokens.join(', ')}
+NOTE: This bot trades on Base network only. Tokens not in the registry (like SUI) can be added to the watchlist for research — the bot will note user interest even if it cannot trade them directly yet.`;
+
+  const systemPrompt = `You are the STC trading bot assistant. You have full access to your own live trading state AND you can take actions that affect trading behavior.
+
+CAPABILITIES:
+- Answer questions about portfolio, positions, trades, strategy, and market outlook
+- Add tokens to your research watchlist (you'll pay extra attention to them)
+- Adjust sector allocation targets
+- Add strategy directives that influence your trading decisions
+- Mark tokens to avoid
+- List or clear active directives
+
+When the user asks you to DO something (watch a token, change strategy, avoid a token, adjust allocations), use the appropriate tool. When they ask a question, just answer it.
+
+Use specific numbers from context. Keep responses conversational and under 150 words unless detail is requested. Do not use markdown formatting — plain text only.`;
 
   const messages: { role: 'user' | 'assistant'; content: string }[] = [
     { role: 'user', content: `${systemPrompt}\n\nCurrent State:\n${context}` },
-    { role: 'assistant', content: 'Understood. I have full context of my live trading state. What would you like to know?' },
+    { role: 'assistant', content: 'Ready. I have full context of my live trading state and can take actions. What do you need?' },
   ];
 
   // Add conversation history (ensure alternating roles)
   const safeHistory = (history || []).slice(-6);
   for (const m of safeHistory) {
     const role = m.role === 'assistant' ? 'assistant' as const : 'user' as const;
-    // Prevent consecutive same-role messages
     if (messages.length > 0 && messages[messages.length - 1].role === role) continue;
     messages.push({ role, content: m.content });
   }
 
-  // Ensure last message before user question is assistant
   if (messages[messages.length - 1].role === 'user') {
     messages.push({ role: 'assistant', content: 'Go ahead.' });
   }
   messages.push({ role: 'user', content: userMessage });
 
-  console.log(`[Chat API] Question: "${userMessage.substring(0, 60)}..." | History: ${safeHistory.length} msgs`);
+  console.log(`[Chat API] Question: "${userMessage.substring(0, 60)}..." | History: ${safeHistory.length} msgs | Directives: ${activeDirectives.length}`);
 
-  // v11.4.9: 30-second timeout on chat API call
+  // v11.4.16: Use tool_use so Claude can take actions
   const chatCallPromise = anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 500,
+    max_tokens: 1000,
+    tools: CHAT_TOOLS,
     messages,
   });
   const response = await Promise.race([
@@ -9385,12 +9628,34 @@ ${tradeLines || '(no trades yet)'}`;
     new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Chat AI call timed out after 30s')), 30_000)),
   ]);
 
-  const content = response.content[0];
-  if (content.type === 'text') {
-    console.log(`[Chat API] Response: ${content.text.substring(0, 80)}...`);
-    return { response: content.text };
+  // Process response — may contain text, tool_use, or both
+  let textResponse = '';
+  const actions: string[] = [];
+
+  for (const block of response.content) {
+    if (block.type === 'text') {
+      textResponse += block.text;
+    } else if (block.type === 'tool_use') {
+      const toolResult = executeChatTool(block.name, block.input);
+      actions.push(toolResult.result);
+      console.log(`[Chat Action] Tool: ${block.name} → ${toolResult.result.substring(0, 80)}`);
+    }
   }
-  throw new Error('Unexpected response type');
+
+  // If Claude used tools but didn't include text, we need a follow-up call to get a natural response
+  if (!textResponse && actions.length > 0) {
+    textResponse = actions.join('\n\n');
+  } else if (textResponse && actions.length > 0) {
+    // Append action confirmations to the text response
+    textResponse += '\n\n' + actions.join('\n');
+  }
+
+  if (!textResponse) {
+    textResponse = "I processed your request but couldn't generate a response. Try asking again.";
+  }
+
+  console.log(`[Chat API] Response: ${textResponse.substring(0, 80)}... | Actions: ${actions.length}`);
+  return { response: textResponse, actions: actions.length > 0 ? actions : undefined };
 }
 
 // v9.2: Daily P&L Scoreboard — realized trading profits grouped by calendar day
@@ -10135,6 +10400,25 @@ const healthServer = http.createServer(async (req, res) => {
           }
         });
         return; // Don't end response here — it's handled in req.on('end')
+      }
+
+      // v11.4.16: User Directives API
+      case '/api/directives': {
+        const active = getActiveDirectives();
+        sendJSON(res, 200, {
+          directives: active.map(d => ({
+            id: d.id,
+            type: d.type,
+            instruction: d.instruction,
+            token: d.token,
+            sector: d.sector,
+            value: d.value,
+            createdAt: d.createdAt,
+            expiresAt: d.expiresAt,
+          })),
+          count: active.length,
+        });
+        break;
       }
 
       default:
