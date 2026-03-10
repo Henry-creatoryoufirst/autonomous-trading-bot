@@ -4048,6 +4048,9 @@ async function checkGasCost(tradeAmountUSD: number): Promise<{
   gasPctOfTrade: number;
   reason: string;
 }> {
+  if (tradeAmountUSD <= 0) {
+    return { proceed: false, gasCostUSD: 0, gasPctOfTrade: 0, reason: 'Trade amount is zero' };
+  }
   const gas = await fetchGasPrice();
   const gasPctOfTrade = (gas.gasCostUSD / tradeAmountUSD) * 100;
 
@@ -4185,7 +4188,8 @@ async function getTokenBalance(tokenSymbol: string): Promise<number> {
       return await getERC20Balance(wethAddr, walletAddr, 18);
     }
     return await getERC20Balance(reg.address, walletAddr, reg.decimals);
-  } catch {
+  } catch (err: any) {
+    console.warn(`  ⚠️ getTokenBalance(${tokenSymbol}) failed: ${err.message?.substring(0, 100)}`);
     return 0;
   }
 }
@@ -6075,7 +6079,7 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     }
 
     // Check USDC balance — don't drain the last few dollars
-    const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", account.address, 6);
+    const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, account.address, 6);
     if (usdcBalance < GAS_REFUEL_MIN_USDC) {
       return { refueled: false, ethBalance, error: `USDC balance ($${usdcBalance.toFixed(2)}) below minimum for gas refuel` };
     }
@@ -6087,7 +6091,7 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     const fromAmount = parseUnits(GAS_REFUEL_AMOUNT_USDC.toFixed(6), 6); // USDC has 6 decimals
     await account.swap({
       network: "base",
-      fromToken: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC
+      fromToken: TOKEN_REGISTRY.USDC.address, // USDC
       toToken: "0x4200000000000000000000000000000000000006",   // WETH on Base
       fromAmount,
       slippageBps: 100, // 1% slippage — not critical, just need gas
@@ -6104,9 +6108,6 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     return { refueled: false, ethBalance: lastKnownETHBalance, error: msg };
   }
 }
-
-// v10.1.1: Fund migration removed — wallet IS the Smart Wallet, no separate account to migrate to
-let fundsMigrated = true; // Always true — no migration needed
 
 async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
   // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet at 0x55509...)
@@ -7286,133 +7287,7 @@ async function executeDailyPayout(): Promise<void> {
   console.log(`========================================\n`);
 }
 
-/**
- * v5.3.0: Auto-Harvest Transfer (USDC) — LEGACY, replaced by v9.3 Daily Payout
- * Kept for backward compatibility. No longer called from heavy cycle.
- */
-async function checkAutoHarvestTransfer(
-  account: any,
-  cdp: any,
-  ethPrice: number,
-  ethBalance: number
-): Promise<{ sent: boolean; transfers: { label: string; amount: number; txHash?: string; error?: string }[] }> {
-  const cfg = CONFIG.autoHarvest;
-  const results: { label: string; amount: number; txHash?: string; error?: string }[] = [];
-
-  if (!cfg.enabled) {
-    return { sent: false, transfers: [{ label: '-', amount: 0, error: 'Auto-harvest disabled' }] };
-  }
-
-  if (!cfg.recipients || cfg.recipients.length === 0) {
-    return { sent: false, transfers: [{ label: '-', amount: 0, error: 'No recipients configured' }] };
-  }
-
-  // Cooldown check
-  if (state.lastAutoHarvestTime) {
-    const hoursSinceLast = (Date.now() - new Date(state.lastAutoHarvestTime).getTime()) / (1000 * 60 * 60);
-    if (hoursSinceLast < cfg.cooldownHours) {
-      return { sent: false, transfers: [{ label: '-', amount: 0, error: `Cooldown: ${(cfg.cooldownHours - hoursSinceLast).toFixed(1)}h remaining` }] };
-    }
-  }
-
-  // Gas check
-  if (ethBalance < cfg.minETHReserve) {
-    return { sent: false, transfers: [{ label: '-', amount: 0, error: `ETH balance (${ethBalance.toFixed(4)}) below reserve for gas` }] };
-  }
-
-  // Calculate unharvested profit (total harvested profits minus already transferred)
-  // v11.4.17: Use totalHarvested running counter instead of re-summing bounded array
-  // (harvests array is sliced to last 50, so summing it would undercount after 50+ harvests)
-  const profitUSD = (state.harvestedProfits?.totalHarvested || 0) - state.totalAutoHarvestedUSD;
-
-  if (profitUSD < cfg.thresholdUSD) {
-    return { sent: false, transfers: [{ label: '-', amount: 0, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` }] };
-  }
-
-  // Check actual USDC balance available
-  const usdcAddress = TOKEN_REGISTRY.USDC.address;
-  const harvestWalletAddr = CONFIG.walletAddress;
-  const usdcBalance = await getERC20Balance(usdcAddress, harvestWalletAddr, 6);
-
-  // Capital floor
-  const currentPortfolio = state.trading.totalPortfolioValue || 0;
-  const capitalFloor = cfg.minTradingCapitalUSD || 500;
-  const headroom = Math.max(0, currentPortfolio - capitalFloor);
-  if (headroom <= 0) {
-    return { sent: false, transfers: [{ label: '-', amount: 0, error: `Portfolio ($${currentPortfolio.toFixed(2)}) at capital floor ($${capitalFloor})` }] };
-  }
-
-  const sendableUSDC = Math.max(0, usdcBalance - 5); // Keep $5 buffer
-  const totalRecipientPct = cfg.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
-  const reinvestPct = 100 - totalRecipientPct;
-
-  console.log(`\n💰 AUTO-HARVEST DISTRIBUTION (v9.1)`);
-  console.log(`   Profit pool: $${profitUSD.toFixed(2)} | USDC avail: $${usdcBalance.toFixed(2)} | Headroom: $${headroom.toFixed(2)}`);
-  console.log(`   Split: ${cfg.recipients.map(r => `${r.label}=${r.percent}%`).join(', ')} | ${reinvestPct}% reinvested`);
-
-  let anySent = false;
-  let totalSentThisCycle = 0;
-
-  for (const recipient of cfg.recipients) {
-    // Each recipient gets their percentage of the total unharvested profit
-    const share = profitUSD * (recipient.percent / 100);
-
-    if (share < cfg.thresholdUSD) {
-      results.push({ label: recipient.label, amount: 0, error: `Share $${share.toFixed(2)} below threshold $${cfg.thresholdUSD}` });
-      continue;
-    }
-
-    // Cap at remaining sendable USDC and headroom
-    const remainingSendable = sendableUSDC - totalSentThisCycle;
-    const remainingHeadroom = headroom - totalSentThisCycle;
-    const transferAmount = Math.min(share, remainingSendable, remainingHeadroom);
-
-    if (transferAmount < cfg.thresholdUSD) {
-      results.push({ label: recipient.label, amount: 0, error: `Capped amount $${transferAmount.toFixed(2)} below threshold` });
-      continue;
-    }
-
-    console.log(`   -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${profitUSD.toFixed(2)})`);
-
-    try {
-      const txHash = await sendUSDCTransfer(account, recipient.wallet, transferAmount);
-
-      console.log(`   ✅ ${recipient.label}: TX ${txHash}`);
-      console.log(`   🔍 View: https://basescan.org/tx/${txHash}`);
-
-      state.autoHarvestTransfers.push({
-        timestamp: new Date().toISOString(),
-        amountETH: '0',
-        amountUSD: transferAmount,
-        txHash,
-        destination: recipient.wallet,
-        label: recipient.label,
-      });
-
-      state.totalAutoHarvestedUSD += transferAmount;
-      state.autoHarvestCount++;
-      state.autoHarvestByRecipient[recipient.label] = (state.autoHarvestByRecipient[recipient.label] || 0) + transferAmount;
-      totalSentThisCycle += transferAmount;
-      anySent = true;
-
-      results.push({ label: recipient.label, amount: transferAmount, txHash });
-    } catch (err: any) {
-      console.error(`   ❌ ${recipient.label} transfer failed:`, err.message);
-      results.push({ label: recipient.label, amount: 0, error: err.message });
-    }
-  }
-
-  if (anySent) {
-    state.lastAutoHarvestTime = new Date().toISOString();
-    if (state.autoHarvestTransfers.length > 50) {
-      state.autoHarvestTransfers = state.autoHarvestTransfers.slice(-50);
-    }
-    saveTradeHistory();
-    console.log(`   Total distributed: $${totalSentThisCycle.toFixed(2)} | Reinvested: $${(profitUSD - totalSentThisCycle).toFixed(2)} (${reinvestPct}%)`);
-  }
-
-  return { sent: anySent, transfers: results };
-}
+// v11.4.18: Removed dead checkAutoHarvestTransfer() — replaced by executeDailyPayout() in v9.3
 
 // Helper: send USDC (ERC-20) transfer — v10.1: uses Smart Account when available (gasless)
 async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): Promise<string> {
@@ -8499,8 +8374,7 @@ async function runTradingCycle() {
       }
     }
 
-    // v9.3: Auto-harvest transfer replaced by Daily Payout cron (8 AM UTC)
-    // Legacy checkAutoHarvestTransfer no longer called here — see executeDailyPayout()
+    // v9.3: Auto-harvest replaced by Daily Payout cron (8 AM UTC) — see executeDailyPayout()
 
     state.trading.lastCheck = new Date();
 
@@ -8797,7 +8671,7 @@ async function main() {
     try {
       const walletAddr = CONFIG.walletAddress;
       const ethBalance = await getETHBalance(walletAddr);
-      const usdcBalance = await getERC20Balance("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", walletAddr, 6);
+      const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6);
       console.log(`\n  💰 Fund Status:`);
       console.log(`     USDC: $${usdcBalance.toFixed(2)}`);
       console.log(`     ETH (for gas): ${ethBalance.toFixed(6)} ETH (~$${(ethBalance * 2700).toFixed(2)})`);
@@ -9203,6 +9077,7 @@ function sendJSON(res: http.ServerResponse, status: number, data: any, req?: htt
 
 // v10.2: Auth token for sensitive endpoints (set API_AUTH_TOKEN env var, or defaults to random)
 const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN || '';
+if (!API_AUTH_TOKEN) console.warn('⚠️  API_AUTH_TOKEN not set — admin endpoints are unprotected');
 function isAuthorized(req: http.IncomingMessage): boolean {
   if (!API_AUTH_TOKEN) return true; // No token configured = open (backward-compat)
   const authHeader = req.headers['authorization'] || '';
