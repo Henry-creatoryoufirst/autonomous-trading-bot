@@ -132,6 +132,24 @@ body {
   border-radius: var(--radius-full);
 }
 .top-badges { display: flex; gap: var(--space-2); align-items: center; }
+.grow-mantra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--gold);
+  user-select: none;
+}
+.grow-mantra .grow-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--gold);
+  opacity: 0.5;
+}
 .top-right { display: flex; align-items: center; gap: var(--space-4); }
 .updated-text { font-size: var(--fs-xs); color: var(--text-muted); }
 
@@ -492,6 +510,13 @@ tr:hover td { background: var(--bg-subtle); }
     <span class="badge badge-live"><span class="live-dot"></span> LIVE</span>
     <span class="badge badge-tier" id="tierBadge">STARTER</span>
     <span class="badge badge-regime" id="regimeBadge">--</span>
+  </div>
+  <div class="grow-mantra">
+    <span>GROW</span>
+    <span class="grow-dot"></span>
+    <span>GROW</span>
+    <span class="grow-dot"></span>
+    <span>GROW</span>
   </div>
   <div class="top-right">
     <span class="updated-text" id="lastUpdated">Loading...</span>
