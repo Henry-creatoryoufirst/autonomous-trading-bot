@@ -464,11 +464,11 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * "capital deployment mode" — lowers confluence thresholds to actively
  * seek entries and bring the portfolio closer to sector targets.
  *
- * v11.4.13: Lowered from 50% → 30%. The bot was sitting in a dead zone at 48.7% cash
- * where NO deployment mechanism fired. 30% ensures the bot actively deploys capital
- * instead of sitting idle. Cash above 30% is money not working.
+ * v11.4.13: Lowered from 50% → 30%. v11.4.19: Lowered from 30% → 20%.
+ * Bot was stuck at 29.6% — 0.4% below threshold — doing nothing with $1,482 USDC.
+ * 20% ensures deployment mode fires for any meaningful cash drag.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 30; // v11.4.13: 50 → 30 — deploy cash aggressively
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v11.4.19: 30 → 20 — 29.6% was a dead zone
 
 /** Confluence score reduction when in deployment mode (makes entries easier)
  *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */

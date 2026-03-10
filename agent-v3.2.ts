@@ -756,16 +756,20 @@ function checkCashDeploymentMode(
 
   const cashPercent = (usdcBalance / totalPortfolioValue) * 100;
 
-  if (cashPercent <= CASH_DEPLOYMENT_THRESHOLD_PCT) {
+  // v11.4.19: Directive-aware threshold — aggressive directives lower the trigger
+  const directiveAdj = getDirectiveThresholdAdjustments();
+  const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? CASH_DEPLOYMENT_THRESHOLD_PCT;
+
+  if (cashPercent <= effectiveThreshold) {
     if (cashDeploymentMode) {
-      console.log(`  ✅ Cash deployment mode OFF — USDC at ${cashPercent.toFixed(1)}% (below ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold)`);
+      console.log(`  ✅ Cash deployment mode OFF — USDC at ${cashPercent.toFixed(1)}% (below ${effectiveThreshold}% threshold${directiveAdj.deploymentThresholdOverride ? ' [directive override]' : ''})`);
       cashDeploymentMode = false;
     }
     return { active: false, cashPercent, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
   }
 
   // Calculate excess: how much USDC is above the target threshold
-  const targetCash = totalPortfolioValue * (CASH_DEPLOYMENT_THRESHOLD_PCT / 100);
+  const targetCash = totalPortfolioValue * (effectiveThreshold / 100);
   const excessCash = Math.max(0, usdcBalance - Math.max(targetCash, CASH_DEPLOYMENT_MIN_RESERVE_USD));
 
   if (excessCash < 10) {
@@ -778,12 +782,15 @@ function checkCashDeploymentMode(
   cashDeploymentMode = true;
   cashDeploymentCycles++;
 
+  // v11.4.19: Stack directive confluence reduction on top of deployment discount
+  const totalConfluenceDiscount = CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT + directiveAdj.confluenceReduction;
+
   return {
     active: true,
     cashPercent,
     excessCash,
     deployBudget,
-    confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
+    confluenceDiscount: totalConfluenceDiscount,
   };
 }
 
@@ -1860,6 +1867,39 @@ function formatUserDirectivesPrompt(): string {
   return prompt;
 }
 
+// v11.4.19: Directive-aware threshold adjustments
+// When user sends aggressive/offensive directives, actually lower trading gates
+function getDirectiveThresholdAdjustments(): { confluenceReduction: number; deploymentThresholdOverride: number | null; positionSizeMultiplier: number } {
+  const active = getActiveDirectives();
+  if (active.length === 0) return { confluenceReduction: 0, deploymentThresholdOverride: null, positionSizeMultiplier: 1.0 };
+
+  const aggressiveKeywords = ['aggressive', 'offense', 'offensive', 'attack', 'deploy', 'deploy capital', 'go hard', 'full send', 'maximize', 'larger positions', 'bigger trades', 'more trades', 'put money to work', 'stop sitting'];
+  const conservativeKeywords = ['conservative', 'defensive', 'reduce risk', 'careful', 'slow down', 'less risk', 'protect capital', 'hold cash'];
+
+  let aggressiveScore = 0;
+  let conservativeScore = 0;
+
+  for (const d of active) {
+    const text = (d.instruction + ' ' + (d.source || '')).toLowerCase();
+    for (const kw of aggressiveKeywords) {
+      if (text.includes(kw)) { aggressiveScore++; break; }
+    }
+    for (const kw of conservativeKeywords) {
+      if (text.includes(kw)) { conservativeScore++; break; }
+    }
+  }
+
+  if (aggressiveScore > conservativeScore) {
+    // Aggressive: lower confluence by 10 extra points, override deployment threshold to 15%, size up 1.3x
+    return { confluenceReduction: 10, deploymentThresholdOverride: 15, positionSizeMultiplier: 1.3 };
+  } else if (conservativeScore > aggressiveScore) {
+    // Conservative: raise confluence by 5, no deployment override, size down 0.7x
+    return { confluenceReduction: -5, deploymentThresholdOverride: null, positionSizeMultiplier: 0.7 };
+  }
+
+  return { confluenceReduction: 0, deploymentThresholdOverride: null, positionSizeMultiplier: 1.0 };
+}
+
 interface SectorAllocation {
   name: string;
   targetPercent: number;
@@ -2157,9 +2197,6 @@ function loadTradeHistory() {
 
 function saveTradeHistory() {
   try {
-    if (!fs.existsSync("./logs")) {
-      fs.mkdirSync("./logs", { recursive: true });
-    }
     const data = {
       version: "11.0",
       lastUpdated: new Date().toISOString(),
@@ -7941,8 +7978,8 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.14: 30% threshold (matches deployment mode) — if deployment mode is on, forced deploy fires too
-    if (preAiCashPct > 30 && preAiUSDC > 150) {
+    // v11.4.19: 20% threshold (matches deployment mode constant) — if deployment mode is on, forced deploy fires too
+    if (preAiCashPct > CASH_DEPLOYMENT_THRESHOLD_PCT && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
@@ -8204,6 +8241,16 @@ async function runTradingCycle() {
         }
         // v11.4.15: Removed legacy 12% DD breaker (duplicate of institutional breaker)
         // v11.4.15: Removed pattern confidence multiplier (was halving trades with no history)
+
+        // v11.4.19: Directive-aware sizing — aggressive directive scales up, conservative scales down
+        const dirAdj = getDirectiveThresholdAdjustments();
+        if (dirAdj.positionSizeMultiplier !== 1.0) {
+          const preDirSize = decision.amountUSD;
+          decision.amountUSD = Math.min(Math.round(decision.amountUSD * dirAdj.positionSizeMultiplier * 100) / 100, remainingUSDC);
+          if (Math.abs(preDirSize - decision.amountUSD) >= 1) {
+            console.log(`   📣 Directive sizing: ×${dirAdj.positionSizeMultiplier} ($${preDirSize.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+          }
+        }
       }
 
       // === POSITION SIZE GUARD ===
@@ -8845,6 +8892,10 @@ async function main() {
   console.log(`  ✅ Discovery engine active. Static pool: ${staticTokens.length} tokens. Dynamic discovery every 6h.`);
 
   loadTradeHistory();
+  // v11.4.19: Startup diagnostic — confirm state file location and persistence
+  console.log(`  💾 State file: ${CONFIG.logFile}`);
+  console.log(`  💾 PERSIST_DIR: ${process.env.PERSIST_DIR || '(not set — using ./logs)'}`);
+  console.log(`  💾 Loaded: ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis, peak $${state.trading.peakValue.toFixed(2)}`);
 
   // v11.4.5: One-time cost basis migration — fix ETH cost basis from $55 → current market price.
   // The original $55 cost basis was from the bot's inception and caused a perpetual harvest loop.
