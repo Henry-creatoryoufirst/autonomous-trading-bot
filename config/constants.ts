@@ -464,36 +464,39 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * "capital deployment mode" — lowers confluence thresholds to actively
  * seek entries and bring the portfolio closer to sector targets.
  *
- * At 90%+ cash, the bot is structurally underinvested and leaving money
- * on the table. This trigger treats excess cash as an overweight "sector"
- * that needs rebalancing.
+ * v11.4.13: Lowered from 50% → 30%. The bot was sitting in a dead zone at 48.7% cash
+ * where NO deployment mechanism fired. 30% ensures the bot actively deploys capital
+ * instead of sitting idle. Cash above 30% is money not working.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 50; // Trigger when >50% USDC
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 30; // v11.4.13: 50 → 30 — deploy cash aggressively
 
 /** Confluence score reduction when in deployment mode (makes entries easier)
- *  v11.4.6: Raised from 10 → 15 — when 90%+ cash, need to be more willing to enter */
-export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 15;
+ *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */
+export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 20;
 
 /** Maximum percentage of excess cash to deploy per cycle (prevents all-in)
- *  v11.4.6: Raised from 30% → 50% — deploy faster when heavily over-cashed */
-export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 50;
+ *  v11.4.13: Raised from 50% → 65% — deploy faster, the bot needs to be in the market */
+export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 65;
 
 /** Minimum USDC to always keep as reserve (gas + emergency buffer) */
-export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 200;
+export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 150;
 
 /** Number of tokens to target per deployment cycle (spread across sectors)
- *  v11.4.6: Raised from 4 → 6 — more entries per cycle for faster deployment */
-export const CASH_DEPLOYMENT_MAX_ENTRIES = 6;
+ *  v11.4.13: Raised from 6 → 8 — more entries per cycle for maximum deployment speed */
+export const CASH_DEPLOYMENT_MAX_ENTRIES = 8;
 
 // v11.2: CRASH-BUYING OVERRIDE — Let Cash Deployment punch through breaker during extreme fear
 /** Fear & Greed threshold: at or below this, deployment mode can override the institutional breaker */
-export const DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX = 25; // Extreme fear territory
-/** Minimum cash % to qualify for breaker override (must be heavily overweight cash) */
-export const DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT = 60;
-/** Position size multiplier when buying through breaker (reduced size for safety) */
-export const DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT = 0.4; // 40% of normal size — cautious accumulation
-/** Max entries per cycle when overriding breaker (fewer than normal deployment) */
-export const DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES = 2;
+export const DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX = 30; // v11.4.13: 25 → 30 — wider fear window
+/** Minimum cash % to qualify for breaker override (must be heavily overweight cash)
+ *  v11.4.13: 60 → 40 — don't need to be 60% cash to override, 40% is already too much */
+export const DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT = 40;
+/** Position size multiplier when buying through breaker (reduced size for safety)
+ *  v11.4.13: 0.4 → 0.6 — be more aggressive when buying fear */
+export const DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT = 0.6;
+/** Max entries per cycle when overriding breaker (fewer than normal deployment)
+ *  v11.4.13: 2 → 4 — more entries when crash-buying */
+export const DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES = 4;
 
 /**
  * Fallback RPC Endpoints — try in order

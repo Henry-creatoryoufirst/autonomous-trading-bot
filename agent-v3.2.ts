@@ -557,14 +557,15 @@ const CONFIG = {
       targetPercent: 20,        // Legacy: original trigger (used by adaptive thresholds as base)
       sellPercent: 30,          // Legacy: original sell amount
       minHoldingUSD: 5,         // Don't trigger if holding < $5
-      cooldownHours: 24,        // v11.4.5: Raised from 6h to 24h — prevent rapid-fire harvest loops
+      cooldownHours: 8,         // v11.4.13: 24h → 8h — need harvests to happen for payouts. 24h was too restrictive
       // Tiered harvesting: sell progressively more as gains increase
-      // v11.4.5: Raised thresholds significantly — 8%/15% was triggering on normal crypto volatility
+      // v11.4.13: Lowered first tier from 25% → 12% to harvest sooner and feed the payout system.
+      // With zero payouts in 3 days, the harvest thresholds were too high for current market conditions.
       tiers: [
-        { gainPercent: 25,  sellPercent: 15, label: "EARLY_HARVEST" },   // Moderate win: skim 15%
-        { gainPercent: 50,  sellPercent: 20, label: "MID_HARVEST" },     // Strong win: take 20%
-        { gainPercent: 100, sellPercent: 25, label: "STRONG_HARVEST" },  // 2x gain: take 25%
-        { gainPercent: 200, sellPercent: 35, label: "MAJOR_HARVEST" },   // 3x gain: take 35%
+        { gainPercent: 12,  sellPercent: 12, label: "EARLY_HARVEST" },   // v11.4.13: 25→12% — harvest sooner
+        { gainPercent: 30,  sellPercent: 18, label: "MID_HARVEST" },     // v11.4.13: 50→30% — don't wait for 50%
+        { gainPercent: 75,  sellPercent: 25, label: "STRONG_HARVEST" },  // v11.4.13: 100→75%
+        { gainPercent: 150, sellPercent: 35, label: "MAJOR_HARVEST" },   // v11.4.13: 200→150%
       ],
     },
     // V3.5: Stop-Loss
@@ -1739,10 +1740,10 @@ function checkStagnation(availableUSDC: number, tokenData: any[]): { toToken: st
     : Infinity;
 
   // No exploration if insufficient capital
-  if (availableUSDC < 3) return null;
+  if (availableUSDC < 5) return null;
 
-  // Trigger exploration if no trade in 48+ hours
-  if (hoursSinceLastTrade < 48) {
+  // v11.4.13: Trigger exploration after 4 hours (was 48h — way too passive)
+  if (hoursSinceLastTrade < 4) {
     exploration.consecutiveHolds = 0;
     return null;
   }
@@ -1759,7 +1760,7 @@ function checkStagnation(availableUSDC: number, tokenData: any[]): { toToken: st
   if (candidates.length === 0) return null;
 
   const target = candidates[0];
-  const explorationAmount = Math.min(3, availableUSDC); // $3 max for exploration
+  const explorationAmount = Math.min(15, availableUSDC * 0.02); // v11.4.13: $15 max, 2% of available — was $3
 
   return {
     toToken: target.symbol,
@@ -7947,8 +7948,8 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.11: 60% threshold — AIXBT/DEGEN skipped via CDP_UNSUPPORTED_TOKENS
-    if (preAiCashPct > 60 && preAiUSDC > 150) {
+    // v11.4.13: 40% threshold (was 60%) — deploy aggressively, don't let cash sit idle
+    if (preAiCashPct > 40 && preAiUSDC > 150) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
@@ -7979,7 +7980,7 @@ async function runTradingCycle() {
         }
       }
 
-      const deploySize = Math.min(80, preAiUSDC * 0.05); // v11.4.9: 5% of USDC per token, max $80
+      const deploySize = Math.min(150, preAiUSDC * 0.10); // v11.4.13: 10% of USDC per token, max $150 (was 5%/$80)
       let preAiBuys = 0;
       for (const target of deployTargets) {
         try {
@@ -8057,11 +8058,11 @@ async function runTradingCycle() {
     console.log("\n🧠 AI analyzing portfolio & market...");
     let decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
 
-    // v11.4.8: CRITICAL DEPLOYMENT FALLBACK — if AI returns HOLD with >85% USDC,
+    // v11.4.13: DEPLOYMENT FALLBACK — if AI returns HOLD with >50% USDC (was 85%),
     // auto-generate BUY decisions for the most underweight sectors.
     // The AI prompt says "DO NOT RETURN HOLD" but Claude sometimes ignores this.
     const allHold = decisions.every(d => d.action === 'HOLD');
-    if (allHold && deploymentCheck.active && deploymentCheck.cashPercent > 85) {
+    if (allHold && deploymentCheck.active && deploymentCheck.cashPercent > 50) {
       console.log(`\n⚡ DEPLOYMENT FALLBACK: AI returned HOLD with ${deploymentCheck.cashPercent.toFixed(0)}% USDC — overriding with auto-deployment`);
 
       // Pick tokens from the most underweight sectors
@@ -8071,7 +8072,7 @@ async function runTradingCycle() {
         .slice(0, 3);
 
       const fallbackBuys: TradeDecision[] = [];
-      const sizePerTrade = Math.min(50, deploymentCheck.deployBudget / 4);
+      const sizePerTrade = Math.min(120, deploymentCheck.deployBudget / 3); // v11.4.13: $120 max (was $50), /3 (was /4)
 
       for (const sector of underweightSectors) {
         // Find best token from this sector: prefer tokens with best confluence or most oversold RSI
@@ -8319,10 +8320,10 @@ async function runTradingCycle() {
       // All decisions were HOLD
       state.explorationState.consecutiveHolds++;
 
-      // v11.4.8: POST-GUARDRAIL DEPLOYMENT FALLBACK
+      // v11.4.13: POST-GUARDRAIL DEPLOYMENT FALLBACK (was >80%, now >45%)
       // If ALL decisions ended up as HOLD (either AI chose HOLD, or guardrails blocked BUYs)
-      // AND we're in critical deployment mode, force-execute buys directly.
-      if (deploymentCheck.active && deploymentCheck.cashPercent > 80) {
+      // AND we're in deployment mode, force-execute buys directly.
+      if (deploymentCheck.active && deploymentCheck.cashPercent > 45) {
         console.log(`\n⚡⚡ POST-GUARDRAIL FALLBACK: ${state.explorationState.consecutiveHolds} consecutive HOLDs with ${deploymentCheck.cashPercent.toFixed(0)}% cash — forcing direct buys`);
 
         // Build buy targets from most underweight sectors
@@ -8349,7 +8350,7 @@ async function runTradingCycle() {
           }
         }
 
-        const directBuySize = Math.min(40, deploymentCheck.deployBudget / sectorPicks.length);
+        const directBuySize = Math.min(100, deploymentCheck.deployBudget / sectorPicks.length); // v11.4.13: $100 max (was $40)
         let directBuysExecuted = 0;
 
         for (const pick of sectorPicks.slice(0, 3)) {
