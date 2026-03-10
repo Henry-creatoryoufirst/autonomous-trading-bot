@@ -8006,9 +8006,8 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.10: Lowered to 55% — AIXBT/DEGEN deploys were failing, so cash only dropped to ~69%
-    // Need to continue deploying until AI_TOKENS and MEME_COINS sectors get their allocation
-    if (preAiCashPct > 55 && preAiUSDC > 150) {
+    // v11.4.10: Lowered to 50% — need to test two-step CDP swap for AIXBT/DEGEN
+    if (preAiCashPct > 50 && preAiUSDC > 150) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
