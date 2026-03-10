@@ -6798,34 +6798,54 @@ async function executeSingleSwap(
       console.log(`     🔀 Uniswap V3 Direct Swap Fallback:`);
       console.log(`     Router: ${UNISWAP_ROUTER}`);
 
-      // Step 1: Approve Uniswap Router to spend fromToken (if not already approved)
-      const routerAllowanceData = "0xdd62ed3e" +
-        swapperAddress.slice(2).padStart(64, "0") +
-        UNISWAP_ROUTER.slice(2).padStart(64, "0");
+      // Step 1: Ensure Permit2 allowance for the Uniswap Router
+      // SwapRouter02 uses Permit2 for token transfers. Two approvals needed:
+      //   a) ERC20 approve(Permit2, maxUint256) — already done by the main swap flow
+      //   b) Permit2.approve(token, SwapRouter02, maxUint160, expiration) — we do this here
+      const PERMIT2_APPROVE_SELECTOR = "0x87517c45"; // approve(address token, address spender, uint160 amount, uint48 expiration)
+      const MAX_UINT160 = "0000000000000000000000ffffffffffffffffffffffffffffffffffffffff"; // max uint160 padded to 32 bytes
+      const FAR_FUTURE = "000000000000000000000000000000000000000000000000ffffffffffffffff"; // max uint48 padded to 32 bytes
 
-      const routerAllowance = await rpcCall("eth_call", [{
-        to: fromTokenAddress,
-        data: routerAllowanceData,
+      // Check current Permit2 allowance for the router
+      // allowance(address owner, address token, address spender) returns (uint160, uint48, uint48)
+      const permit2AllowanceData = "0x927da105" +
+        swapperAddress.slice(2).toLowerCase().padStart(64, "0") +
+        fromTokenAddress.slice(2).toLowerCase().padStart(64, "0") +
+        UNISWAP_ROUTER.slice(2).toLowerCase().padStart(64, "0");
+
+      const permit2AllowanceResult = await rpcCall("eth_call", [{
+        to: PERMIT2_ADDRESS,
+        data: permit2AllowanceData,
       }, "latest"]);
 
-      if (routerAllowance === "0x" || routerAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(routerAllowance) < fromAmount) {
-        console.log(`     🔓 Approving Uniswap Router to spend ${decision.fromToken}...`);
-        const approveData = APPROVE_SELECTOR +
-          UNISWAP_ROUTER.slice(2).padStart(64, "0") +
-          MAX_UINT256.slice(2);
+      // Parse allowance — first 32 bytes = uint160 amount
+      let currentPermit2Allowance = BigInt(0);
+      try {
+        if (permit2AllowanceResult && permit2AllowanceResult.length > 2) {
+          currentPermit2Allowance = BigInt("0x" + permit2AllowanceResult.slice(2, 66));
+        }
+      } catch { /* treat as 0 */ }
+
+      if (currentPermit2Allowance < fromAmount) {
+        console.log(`     🔓 Granting Permit2 allowance for Router to spend ${decision.fromToken}...`);
+        const permit2ApproveData = PERMIT2_APPROVE_SELECTOR +
+          fromTokenAddress.slice(2).toLowerCase().padStart(64, "0") +
+          UNISWAP_ROUTER.slice(2).toLowerCase().padStart(64, "0") +
+          MAX_UINT160 +
+          FAR_FUTURE;
 
         const approveTx = await account.sendTransaction({
           network: "base",
           transaction: {
-            to: fromTokenAddress,
-            data: approveData as `0x${string}`,
+            to: PERMIT2_ADDRESS as `0x${string}`,
+            data: permit2ApproveData as `0x${string}`,
             value: BigInt(0),
           },
         });
-        console.log(`     ✅ Router approved: ${approveTx.transactionHash}`);
+        console.log(`     ✅ Permit2 allowance granted: ${approveTx.transactionHash}`);
         await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for propagation
       } else {
-        console.log(`     ✅ Router already approved for ${decision.fromToken}`);
+        console.log(`     ✅ Permit2 already allows Router to spend ${decision.fromToken}`);
       }
 
       // Step 2: Build multi-hop swap path
