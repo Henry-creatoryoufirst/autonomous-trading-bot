@@ -287,6 +287,11 @@ const SECTORS = {
   },
 };
 
+// v11.4.11: Tokens that CDP SDK's routing service cannot swap (returns "Invalid request").
+// CoinbaseSmartWallet uses AA — can't fall back to direct DEX calls either.
+// These are skipped during forced deployment rotation; alternatives from the same sector are used.
+const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN']);
+
 // Complete token registry with addresses and metadata
 const TOKEN_REGISTRY: Record<string, {
   address: string;
@@ -1974,10 +1979,10 @@ function loadTradeHistory() {
         state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
         state.stopLossCooldowns = parsed.stopLossCooldowns || {};
         state.tradeFailures = parsed.tradeFailures || {};
-        // v11.4.10: Clear stale circuit breaker entries on startup — the Uniswap V3 fallback
-        // now handles tokens the CDP SDK can't swap, so old "Invalid request" failures are resolved
+        // v11.4.11: Clear stale circuit breaker entries on startup — unsupported tokens
+        // are now skipped via CDP_UNSUPPORTED_TOKENS, so old failures won't recur
         if (Object.keys(state.tradeFailures).length > 0) {
-          console.log(`  🔓 Clearing ${Object.keys(state.tradeFailures).length} circuit breaker entries on startup (Uniswap V3 fallback now active)`);
+          console.log(`  🔓 Clearing ${Object.keys(state.tradeFailures).length} circuit breaker entries on startup`);
           state.tradeFailures = {};
         }
         state.harvestedProfits = parsed.harvestedProfits || { totalHarvested: 0, harvestCount: 0, harvests: [] };
@@ -6777,8 +6782,8 @@ async function executeSingleSwap(
           adaptiveSlippage = Math.min(adaptiveSlippage + 25, CONFIG.trading.slippageBps);
           console.log(`     ⚠️ Slippage too tight, relaxing to ${adaptiveSlippage}bps and retrying...`);
         } else if (swapMsg.includes("Invalid request")) {
-          // v11.4.10: CDP SDK doesn't support this token pair — flag for Uniswap V3 fallback
-          console.log(`     ⚠️ CDP SDK rejected swap ("Invalid request") — will try direct Uniswap V3 router`);
+          // v11.4.11: CDP SDK doesn't support this token pair — throw immediately
+          console.log(`     ⚠️ CDP SDK rejected swap ("Invalid request") — token pair not supported`);
           cdpSwapFailed = true;
           break;
         } else {
@@ -6787,79 +6792,10 @@ async function executeSingleSwap(
       }
     }
 
-    // v11.4.10: Two-step CDP swap fallback for tokens CDP SDK can't route directly
-    // CDP SDK returns "Invalid request" for small-cap tokens (AIXBT, DEGEN, etc.)
-    // because its internal routing doesn't support them in a single hop.
-    // Solution: USDC → WETH (CDP supports) → Target Token (CDP may support with WETH base)
-    // If second hop also fails, the outer catch records the failure gracefully.
+    // v11.4.10: If CDP SDK doesn't support the token pair, throw immediately.
+    // The forced deploy rotation will skip unsupported tokens via CDP_UNSUPPORTED_TOKENS list.
     if (cdpSwapFailed) {
-      const WETH_ADDRESS = "0x4200000000000000000000000000000000000006" as Address;
-      const isBuy = decision.action === "BUY";
-
-      console.log(`     🔀 Two-Step CDP Swap Fallback:`);
-
-      if (isBuy && decision.fromToken === "USDC") {
-        // Step 1: USDC → WETH via CDP (known to work — same as ETH buy)
-        console.log(`     Step 1: USDC → WETH ($${decision.amountUSD.toFixed(2)})...`);
-        const step1Result = await account.swap({
-          network: "base",
-          fromToken: fromTokenAddress,
-          toToken: WETH_ADDRESS,
-          fromAmount,
-          slippageBps: adaptiveSlippage,
-        });
-        console.log(`     ✅ Step 1 done: ${step1Result.transactionHash}`);
-
-        // Brief delay for state propagation
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Estimate WETH received from step 1 (use 95% to account for slippage/fees)
-        const ethPrice = marketData.tokens.find(t => t.symbol === "ETH")?.price || 2000;
-        const estimatedWeth = (decision.amountUSD / ethPrice) * 0.95;
-        const wethReceived = parseUnits(estimatedWeth.toFixed(8), 18);
-
-        // Step 2: WETH → Target Token via CDP
-        console.log(`     Step 2: WETH → ${decision.toToken} (${formatUnits(wethReceived, 18)} WETH)...`);
-
-        // Check and approve Permit2 for WETH → target swap
-        const wethAllowanceData = "0xdd62ed3e" +
-          swapperAddress.slice(2).padStart(64, "0") +
-          PERMIT2_ADDRESS.slice(2).padStart(64, "0");
-        const wethAllowance = await rpcCall("eth_call", [{
-          to: WETH_ADDRESS,
-          data: wethAllowanceData,
-        }, "latest"]);
-        if (!wethAllowance || wethAllowance === "0x" || BigInt(wethAllowance) < wethReceived) {
-          console.log(`     🔓 Approving Permit2 for WETH...`);
-          const wethApproveData = APPROVE_SELECTOR +
-            PERMIT2_ADDRESS.slice(2).padStart(64, "0") +
-            MAX_UINT256.slice(2);
-          await account.sendTransaction({
-            network: "base",
-            transaction: {
-              to: WETH_ADDRESS,
-              data: wethApproveData as `0x${string}`,
-              value: BigInt(0),
-            },
-          });
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
-
-        const step2Result = await account.swap({
-          network: "base",
-          fromToken: WETH_ADDRESS,
-          toToken: toTokenAddress,
-          fromAmount: wethReceived,
-          slippageBps: Math.max(adaptiveSlippage, 300), // Higher slippage for small-cap tokens
-        });
-        txHash = step2Result.transactionHash;
-        console.log(`     ✅ Step 2 done: ${txHash}`);
-        console.log(`     ✅ Two-step swap complete: USDC → WETH → ${decision.toToken}`);
-
-      } else {
-        // For sells or non-USDC buys, throw to record failure — these are rare
-        throw new Error(`CDP two-step fallback not implemented for ${decision.fromToken}→${decision.toToken}`);
-      }
+      throw new Error(`CDP SDK does not support ${decision.fromToken}→${decision.toToken} swap (Invalid request)`);
     }
 
     console.log(`\n  ✅ TRADE EXECUTED SUCCESSFULLY!`);
@@ -8006,15 +7942,16 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.10: Lowered to 50% — need to test two-step CDP swap for AIXBT/DEGEN
-    if (preAiCashPct > 50 && preAiUSDC > 150) {
+    // v11.4.11: 60% threshold — AIXBT/DEGEN skipped via CDP_UNSUPPORTED_TOKENS
+    if (preAiCashPct > 60 && preAiUSDC > 150) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
+      // v11.4.11: CDP-supported tokens first. AIXBT/DEGEN moved to end (CDP unsupported).
       const sectorTokenPool: Record<string, string[]> = {
         BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
-        AI_TOKENS: ['AIXBT', 'VIRTUAL', 'HIGHER', 'VVV'],
-        MEME_COINS: ['DEGEN', 'TOSHI', 'BRETT', 'MOCHI', 'NORMIE'],
+        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT'],
+        MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
         DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'MORPHO', 'RSR', 'PENDLE'],
       };
 
@@ -8023,6 +7960,8 @@ async function runTradingCycle() {
       for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
         // Pick the token in this sector that's NOT in the dedup log and not blocked
         for (const token of tokens) {
+          // v11.4.11: Skip tokens that CDP SDK cannot swap
+          if (CDP_UNSUPPORTED_TOKENS.has(token)) continue;
           // Skip tokens blocked by circuit breaker (consecutive failures)
           if (isTokenBlocked(token)) continue;
           const dedupKey = `${token}:BUY:FORCED_DEPLOY`;
@@ -8310,6 +8249,13 @@ async function runTradingCycle() {
         console.log(`   🚫 CIRCUIT BREAKER: Skipping ${decision.action} for ${decision.fromToken} — too many consecutive failures`);
         decision.action = "HOLD";
         decision.reasoning = `Circuit breaker: ${decision.fromToken} blocked after repeated failures. Cooling off.`;
+      }
+
+      // v11.4.11: Block AI from buying CDP-unsupported tokens
+      if (decision.action === "BUY" && CDP_UNSUPPORTED_TOKENS.has(decision.toToken)) {
+        console.log(`   🚫 CDP UNSUPPORTED: Skipping BUY for ${decision.toToken} — CDP SDK cannot swap this token`);
+        decision.action = "HOLD";
+        decision.reasoning = `CDP unsupported: ${decision.toToken} cannot be traded via CDP SDK.`;
       }
 
       // Execute if needed
