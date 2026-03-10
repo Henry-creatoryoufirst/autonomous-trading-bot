@@ -9519,9 +9519,12 @@ function apiThresholds() {
 }
 
 function getDashboardHTML(): string {
-    // Try multiple paths to find index.html on disk
+    // Try multiple paths to find dashboard/index.html on disk
     const path = require('path');
     const candidates = [
+      path.join(process.cwd(), 'dashboard', 'index.html'),
+      path.join(__dirname, 'dashboard', 'index.html'),
+      '/app/dashboard/index.html',
       path.join(process.cwd(), 'index.html'),
       path.join(__dirname, 'index.html'),
       '/app/index.html'
