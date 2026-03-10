@@ -2049,7 +2049,7 @@ function loadTradeHistory() {
         state.lastReviewTradeIndex = parsed.lastReviewTradeIndex || 0;
         state.lastReviewTimestamp = parsed.lastReviewTimestamp || null;
         // v9.1: Restore auto-harvest transfer state (multi-wallet)
-        state.autoHarvestTransfers = parsed.autoHarvestTransfers || [];
+        state.autoHarvestTransfers = (parsed.autoHarvestTransfers || []).slice(-100);
         state.totalAutoHarvestedUSD = parsed.totalAutoHarvestedUSD || 0;
         state.totalAutoHarvestedETH = parsed.totalAutoHarvestedETH || 0;
         state.lastAutoHarvestTime = parsed.lastAutoHarvestTime || null;
@@ -2063,7 +2063,7 @@ function loadTradeHistory() {
           }
         }
         // v9.3: Restore daily payout state
-        state.dailyPayouts = parsed.dailyPayouts || [];
+        state.dailyPayouts = (parsed.dailyPayouts || []).slice(-90);
         state.totalDailyPayoutsUSD = parsed.totalDailyPayoutsUSD || 0;
         state.dailyPayoutCount = parsed.dailyPayoutCount || 0;
         state.lastDailyPayoutDate = parsed.lastDailyPayoutDate || null;
@@ -2104,8 +2104,8 @@ function loadTradeHistory() {
         if (parsed._migrationCostBasisV1146) {
           (state as any)._migrationCostBasisV1146 = true;
         }
-        // v11.4.7: Restore safety guard state
-        state.sanityAlerts = parsed.sanityAlerts || [];
+        // v11.4.7: Restore safety guard state (v11.4.17: bound to last 100)
+        state.sanityAlerts = (parsed.sanityAlerts || []).slice(-100);
         state.tradeDedupLog = parsed.tradeDedupLog || {};
         // Clean up expired dedup entries (older than 2 hours)
         if (state.tradeDedupLog) {
@@ -2133,11 +2133,16 @@ function loadTradeHistory() {
           if (cb.lastAtrUpdate === undefined) cb.lastAtrUpdate = null;
         }
         // v9.0: Ensure adaptive thresholds have ATR multiplier fields
+        // v11.4.17: Clamp to THRESHOLD_BOUNDS to prevent corrupted state from widening stops infinitely
         if ((state.adaptiveThresholds as any).atrStopMultiplier === undefined) {
           state.adaptiveThresholds.atrStopMultiplier = ATR_STOP_LOSS_MULTIPLIER;
+        } else {
+          state.adaptiveThresholds.atrStopMultiplier = Math.max(1.5, Math.min(4.0, state.adaptiveThresholds.atrStopMultiplier));
         }
         if ((state.adaptiveThresholds as any).atrTrailMultiplier === undefined) {
           state.adaptiveThresholds.atrTrailMultiplier = ATR_TRAILING_STOP_MULTIPLIER;
+        } else {
+          state.adaptiveThresholds.atrTrailMultiplier = Math.max(1.5, Math.min(4.0, state.adaptiveThresholds.atrTrailMultiplier));
         }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
@@ -2218,7 +2223,10 @@ function saveTradeHistory() {
     if (dir && !fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(CONFIG.logFile, JSON.stringify(data, null, 2));
+    // v11.4.17: Atomic write — write to temp file then rename to prevent corruption on crash
+    const tmpFile = CONFIG.logFile + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2));
+    fs.renameSync(tmpFile, CONFIG.logFile);
   } catch (e: any) {
     console.error("Failed to save trade history:", e.message);
   }
@@ -2335,7 +2343,8 @@ function updateCostBasisAfterSell(symbol: string, amountUSD: number, tokensSold:
   const realizedPnL = (sellPricePerToken - cb.averageCostBasis) * tokensSold;
   cb.realizedPnL += realizedPnL;
   // Reduce invested proportionally (cost basis stays same for remaining tokens)
-  const proportionSold = cb.totalTokensAcquired > 0 ? tokensSold / cb.totalTokensAcquired : 0;
+  // v11.4.17: Clamp proportionSold to [0,1] — selling more than tracked tokens shouldn't go negative
+  const proportionSold = Math.min(1, cb.totalTokensAcquired > 0 ? tokensSold / cb.totalTokensAcquired : 0);
   cb.totalInvestedUSD = Math.max(0, cb.totalInvestedUSD * (1 - proportionSold));
   cb.totalTokensAcquired = Math.max(0, cb.totalTokensAcquired - tokensSold);
   cb.lastTradeDate = new Date().toISOString();
@@ -3519,7 +3528,10 @@ function savePriceCache() {
       lastKnownPrices = pruned;
     }
     if (!fs.existsSync("./logs")) fs.mkdirSync("./logs", { recursive: true });
-    fs.writeFileSync(PRICE_CACHE_FILE, JSON.stringify({ lastUpdated: new Date().toISOString(), prices: lastKnownPrices }));
+    // v11.4.17: Atomic write for price cache
+    const tmpPriceFile = PRICE_CACHE_FILE + '.tmp';
+    fs.writeFileSync(tmpPriceFile, JSON.stringify({ lastUpdated: new Date().toISOString(), prices: lastKnownPrices }));
+    fs.renameSync(tmpPriceFile, PRICE_CACHE_FILE);
   } catch { /* non-critical */ }
 }
 
@@ -6639,6 +6651,9 @@ function getTokenDecimals(symbol: string): number {
   return 18;
 }
 
+// v11.4.17: In-flight trade lock — prevents concurrent cycles from executing same trade
+const tradeInFlight = new Set<string>();
+
 async function executeTrade(
   decision: TradeDecision,
   marketData: MarketData
@@ -6652,6 +6667,12 @@ async function executeTrade(
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
   const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 5 : 15; // v11.4.15: 10/60 → 5/15 — faster cycling
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
+  // v11.4.17: In-flight lock — prevent parallel cycles from both passing dedup check
+  if (tradeInFlight.has(dedupKey)) {
+    console.warn(`\n  🔁 DEDUP GUARD: Blocking ${dedupKey} — trade already in flight`);
+    return { success: false, error: `Dedup guard: ${dedupKey} already in flight` };
+  }
+  tradeInFlight.add(dedupKey);
   const lastExecution = state.tradeDedupLog[dedupKey];
   if (lastExecution) {
     const minutesSince = (Date.now() - new Date(lastExecution).getTime()) / (1000 * 60);
@@ -6669,6 +6690,7 @@ async function executeTrade(
         action: `Blocked ${dedupKey} — ${minutesSince.toFixed(0)}min since last (threshold: ${dedupWindowMinutes}min)`,
       });
       if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
+      tradeInFlight.delete(dedupKey);
       return { success: false, error: `Dedup guard: ${dedupKey} already executed ${minutesSince.toFixed(0)}min ago` };
     }
   }
@@ -6676,63 +6698,69 @@ async function executeTrade(
   if (!CONFIG.trading.enabled) {
     console.log("  ⚠️ Trading disabled - dry run mode");
     console.log(`  📋 Would execute: $${decision.amountUSD.toFixed(2)} ${decision.fromToken} → ${decision.toToken}`);
+    tradeInFlight.delete(dedupKey);
     return { success: false, error: "Trading disabled (dry run)" };
   }
 
-  // v8.1: Dynamic gas price check (replaces hardcoded $0.15)
-  const gasCheck = await checkGasCost(decision.amountUSD);
-  if (!gasCheck.proceed) {
-    console.log(`  ⛽ Gas guard: ${gasCheck.reason}`);
-    return { success: false, error: gasCheck.reason };
-  }
-  if (gasCheck.gasPctOfTrade > 2) {
-    console.log(`  ⛽ Gas: $${gasCheck.gasCostUSD.toFixed(4)} (${gasCheck.gasPctOfTrade.toFixed(1)}% of trade)`);
-  }
+  // v11.4.17: try/finally ensures in-flight lock is always released
+  try {
+    // v8.1: Dynamic gas price check (replaces hardcoded $0.15)
+    const gasCheck = await checkGasCost(decision.amountUSD);
+    if (!gasCheck.proceed) {
+      console.log(`  ⛽ Gas guard: ${gasCheck.reason}`);
+      return { success: false, error: gasCheck.reason };
+    }
+    if (gasCheck.gasPctOfTrade > 2) {
+      console.log(`  ⛽ Gas: $${gasCheck.gasCostUSD.toFixed(4)} (${gasCheck.gasPctOfTrade.toFixed(1)}% of trade)`);
+    }
 
-  // v8.1: VWS Liquidity check — ensure pool is deep enough for this trade
-  // v11.4.9: Skip VWS block for FORCED_DEPLOY — these are small $40-80 trades, liquidity is sufficient
-  const tradeToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
-  const isForcedDeploy = dedupTier === 'FORCED_DEPLOY';
-  if (tradeToken !== 'USDC' && tradeToken !== 'ETH') {
-    const liqCheck = await checkLiquidity(tradeToken, decision.amountUSD);
-    if (!liqCheck.allowed) {
-      if (isForcedDeploy && decision.amountUSD <= 100) {
-        console.log(`  💧 VWS would block, but FORCED_DEPLOY bypass active ($${decision.amountUSD.toFixed(0)} trade)`);
-      } else {
-        console.log(`  💧 VWS BLOCKED: ${liqCheck.reason}`);
-        return { success: false, error: `Liquidity too thin: ${liqCheck.reason}` };
+    // v8.1: VWS Liquidity check — ensure pool is deep enough for this trade
+    // v11.4.9: Skip VWS block for FORCED_DEPLOY — these are small $40-80 trades, liquidity is sufficient
+    const tradeToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+    const isForcedDeploy = dedupTier === 'FORCED_DEPLOY';
+    if (tradeToken !== 'USDC' && tradeToken !== 'ETH') {
+      const liqCheck = await checkLiquidity(tradeToken, decision.amountUSD);
+      if (!liqCheck.allowed) {
+        if (isForcedDeploy && decision.amountUSD <= 100) {
+          console.log(`  💧 VWS would block, but FORCED_DEPLOY bypass active ($${decision.amountUSD.toFixed(0)} trade)`);
+        } else {
+          console.log(`  💧 VWS BLOCKED: ${liqCheck.reason}`);
+          return { success: false, error: `Liquidity too thin: ${liqCheck.reason}` };
+        }
+      }
+      if (liqCheck.adjustedSize < decision.amountUSD) {
+        console.log(`  💧 VWS: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool | Size: $${decision.amountUSD.toFixed(2)} → $${liqCheck.adjustedSize.toFixed(2)} (${liqCheck.reason})`);
+        decision.amountUSD = liqCheck.adjustedSize;
+      } else if (liqCheck.liquidityUSD > 0) {
+        console.log(`  💧 VWS OK: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool`);
       }
     }
-    if (liqCheck.adjustedSize < decision.amountUSD) {
-      console.log(`  💧 VWS: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool | Size: $${decision.amountUSD.toFixed(2)} → $${liqCheck.adjustedSize.toFixed(2)} (${liqCheck.reason})`);
-      decision.amountUSD = liqCheck.adjustedSize;
-    } else if (liqCheck.liquidityUSD > 0) {
-      console.log(`  💧 VWS OK: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool`);
-    }
-  }
 
-  // v8.1: TWAP routing for large orders
-  if (decision.amountUSD >= TWAP_THRESHOLD_USD) {
-    console.log(`  ⏱️ Order $${decision.amountUSD.toFixed(2)} ≥ $${TWAP_THRESHOLD_USD} → routing through TWAP engine`);
-    const twapResult = await executeTWAP(decision, marketData, executeSingleSwap);
+    // v8.1: TWAP routing for large orders
+    if (decision.amountUSD >= TWAP_THRESHOLD_USD) {
+      console.log(`  ⏱️ Order $${decision.amountUSD.toFixed(2)} ≥ $${TWAP_THRESHOLD_USD} → routing through TWAP engine`);
+      const twapResult = await executeTWAP(decision, marketData, executeSingleSwap);
+      // v11.4.7: Record successful trade in dedup log
+      if (twapResult.success) {
+        state.tradeDedupLog![dedupKey] = new Date().toISOString();
+      }
+      return {
+        success: twapResult.success,
+        txHash: twapResult.txHash,
+        error: twapResult.error,
+      };
+    }
+
+    // Small orders: direct single swap
+    const swapResult = await executeSingleSwap(decision, marketData);
     // v11.4.7: Record successful trade in dedup log
-    if (twapResult.success) {
+    if (swapResult.success) {
       state.tradeDedupLog![dedupKey] = new Date().toISOString();
     }
-    return {
-      success: twapResult.success,
-      txHash: twapResult.txHash,
-      error: twapResult.error,
-    };
+    return swapResult;
+  } finally {
+    tradeInFlight.delete(dedupKey);
   }
-
-  // Small orders: direct single swap
-  const swapResult = await executeSingleSwap(decision, marketData);
-  // v11.4.7: Record successful trade in dedup log
-  if (swapResult.success) {
-    state.tradeDedupLog![dedupKey] = new Date().toISOString();
-  }
-  return swapResult;
 }
 
 /**
@@ -7293,8 +7321,9 @@ async function checkAutoHarvestTransfer(
   }
 
   // Calculate unharvested profit (total harvested profits minus already transferred)
-  const profitUSD = (state.harvestedProfits?.harvests || [])
-    .reduce((sum: number, h: any) => sum + (h.profitUSD || 0), 0) - state.totalAutoHarvestedUSD;
+  // v11.4.17: Use totalHarvested running counter instead of re-summing bounded array
+  // (harvests array is sliced to last 50, so summing it would undercount after 50+ harvests)
+  const profitUSD = (state.harvestedProfits?.totalHarvested || 0) - state.totalAutoHarvestedUSD;
 
   if (profitUSD < cfg.thresholdUSD) {
     return { sent: false, transfers: [{ label: '-', amount: 0, error: `Unharvested profit ($${profitUSD.toFixed(2)}) below threshold ($${cfg.thresholdUSD})` }] };
@@ -9867,9 +9896,18 @@ const healthServer = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(getDashboardHTML());
         break;
-      case '/health':
-        sendJSON(res, 200, { status: "ok", ...apiPortfolio() });
+      case '/health': {
+        // v11.4.17: Health check validates actual state — not just 200 OK
+        const portfolio = apiPortfolio();
+        const lastCycleAge = state.trading.lastCheck ? (Date.now() - state.trading.lastCheck.getTime()) / 1000 : Infinity;
+        const isHealthy = portfolio.totalValue > 0 && lastCycleAge < 600; // within 10 min
+        sendJSON(res, isHealthy ? 200 : 503, {
+          status: isHealthy ? "ok" : "degraded",
+          lastCycleAgeSec: Math.round(lastCycleAge),
+          ...portfolio,
+        });
         break;
+      }
       case '/api/portfolio':
         sendJSON(res, 200, apiPortfolio());
         break;
@@ -10279,10 +10317,15 @@ const healthServer = http.createServer(async (req, res) => {
           sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
           break;
         }
-        // Read POST body
+        // Read POST body (v11.4.17: bounded to 10KB to prevent DoS)
         let body = '';
-        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        let bodyTooLarge = false;
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 10_000) { bodyTooLarge = true; req.destroy(); }
+        });
         req.on('end', () => {
+          if (bodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large (max 10KB)' }); return; }
           try {
             const corrections = JSON.parse(body);
             const applied: string[] = [];
@@ -10383,9 +10426,15 @@ const healthServer = http.createServer(async (req, res) => {
       // v11.4.4: Dashboard AI Chat
       case '/api/chat': {
         if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
+        // v11.4.17: Bounded POST body (max 50KB for chat with history)
         let chatBody = '';
-        req.on('data', (chunk: Buffer) => { chatBody += chunk.toString(); });
+        let chatBodyTooLarge = false;
+        req.on('data', (chunk: Buffer) => {
+          chatBody += chunk.toString();
+          if (chatBody.length > 50_000) { chatBodyTooLarge = true; req.destroy(); }
+        });
         req.on('end', async () => {
+          if (chatBodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large (max 50KB)' }); return; }
           try {
             const { message, history } = JSON.parse(chatBody);
             if (!message || typeof message !== 'string') {
