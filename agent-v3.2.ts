@@ -6787,127 +6787,79 @@ async function executeSingleSwap(
       }
     }
 
-    // v11.4.10: Uniswap V3 direct swap fallback for tokens CDP SDK doesn't support
-    // Routes through SwapRouter02 on Base via account.sendTransaction()
-    // Path: USDC → WETH → target token (multi-hop via exactInput)
+    // v11.4.10: Two-step CDP swap fallback for tokens CDP SDK can't route directly
+    // CDP SDK returns "Invalid request" for small-cap tokens (AIXBT, DEGEN, etc.)
+    // because its internal routing doesn't support them in a single hop.
+    // Solution: USDC → WETH (CDP supports) → Target Token (CDP may support with WETH base)
+    // If second hop also fails, the outer catch records the failure gracefully.
     if (cdpSwapFailed) {
-      const UNISWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapRouter02 on Base
-      const WETH_ADDRESS = "0x4200000000000000000000000000000000000006";
-      const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-
-      console.log(`     🔀 Uniswap V3 Direct Swap Fallback:`);
-      console.log(`     Router: ${UNISWAP_ROUTER}`);
-
-      // Step 1: Ensure Permit2 allowance for the Uniswap Router
-      // SwapRouter02 uses Permit2 for token transfers. Two approvals needed:
-      //   a) ERC20 approve(Permit2, maxUint256) — already done by the main swap flow
-      //   b) Permit2.approve(token, SwapRouter02, maxUint160, expiration) — we do this here
-      const PERMIT2_APPROVE_SELECTOR = "0x87517c45"; // approve(address token, address spender, uint160 amount, uint48 expiration)
-      const MAX_UINT160 = "0000000000000000000000ffffffffffffffffffffffffffffffffffffffff"; // max uint160 padded to 32 bytes
-      const FAR_FUTURE = "000000000000000000000000000000000000000000000000ffffffffffffffff"; // max uint48 padded to 32 bytes
-
-      // Check current Permit2 allowance for the router
-      // allowance(address owner, address token, address spender) returns (uint160, uint48, uint48)
-      const permit2AllowanceData = "0x927da105" +
-        swapperAddress.slice(2).toLowerCase().padStart(64, "0") +
-        fromTokenAddress.slice(2).toLowerCase().padStart(64, "0") +
-        UNISWAP_ROUTER.slice(2).toLowerCase().padStart(64, "0");
-
-      const permit2AllowanceResult = await rpcCall("eth_call", [{
-        to: PERMIT2_ADDRESS,
-        data: permit2AllowanceData,
-      }, "latest"]);
-
-      // Parse allowance — first 32 bytes = uint160 amount
-      let currentPermit2Allowance = BigInt(0);
-      try {
-        if (permit2AllowanceResult && permit2AllowanceResult.length > 2) {
-          currentPermit2Allowance = BigInt("0x" + permit2AllowanceResult.slice(2, 66));
-        }
-      } catch { /* treat as 0 */ }
-
-      if (currentPermit2Allowance < fromAmount) {
-        console.log(`     🔓 Granting Permit2 allowance for Router to spend ${decision.fromToken}...`);
-        const permit2ApproveData = PERMIT2_APPROVE_SELECTOR +
-          fromTokenAddress.slice(2).toLowerCase().padStart(64, "0") +
-          UNISWAP_ROUTER.slice(2).toLowerCase().padStart(64, "0") +
-          MAX_UINT160 +
-          FAR_FUTURE;
-
-        const approveTx = await account.sendTransaction({
-          network: "base",
-          transaction: {
-            to: PERMIT2_ADDRESS as `0x${string}`,
-            data: permit2ApproveData as `0x${string}`,
-            value: BigInt(0),
-          },
-        });
-        console.log(`     ✅ Permit2 allowance granted: ${approveTx.transactionHash}`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for propagation
-      } else {
-        console.log(`     ✅ Permit2 already allows Router to spend ${decision.fromToken}`);
-      }
-
-      // Step 2: Build multi-hop swap path
-      // For BUY: USDC --(0.05% fee)--> WETH --(1% fee)--> TargetToken
-      // For SELL: TargetToken --(1% fee)--> WETH --(0.05% fee)--> USDC
-      // Fee tiers: 100 = 0.01%, 500 = 0.05%, 3000 = 0.3%, 10000 = 1%
+      const WETH_ADDRESS = "0x4200000000000000000000000000000000000006" as Address;
       const isBuy = decision.action === "BUY";
-      let path: string;
-      if (isBuy) {
-        // USDC → WETH (500 = 0.05%) → Token (10000 = 1%)
-        path = USDC_ADDRESS.slice(2).toLowerCase() +
-          "0001f4" + // 500 fee (0.05%) for USDC/WETH — most liquid
-          WETH_ADDRESS.slice(2).toLowerCase() +
-          "002710" + // 10000 fee (1%) for WETH/Token — typical for small-cap
-          toTokenAddress.slice(2).toLowerCase();
+
+      console.log(`     🔀 Two-Step CDP Swap Fallback:`);
+
+      if (isBuy && decision.fromToken === "USDC") {
+        // Step 1: USDC → WETH via CDP (known to work — same as ETH buy)
+        console.log(`     Step 1: USDC → WETH ($${decision.amountUSD.toFixed(2)})...`);
+        const step1Result = await account.swap({
+          network: "base",
+          fromToken: fromTokenAddress,
+          toToken: WETH_ADDRESS,
+          fromAmount,
+          slippageBps: adaptiveSlippage,
+        });
+        console.log(`     ✅ Step 1 done: ${step1Result.transactionHash}`);
+
+        // Brief delay for state propagation
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // Estimate WETH received from step 1 (use 95% to account for slippage/fees)
+        const ethPrice = marketData.tokens.find(t => t.symbol === "ETH")?.price || 2000;
+        const estimatedWeth = (decision.amountUSD / ethPrice) * 0.95;
+        const wethReceived = parseUnits(estimatedWeth.toFixed(8), 18);
+
+        // Step 2: WETH → Target Token via CDP
+        console.log(`     Step 2: WETH → ${decision.toToken} (${formatUnits(wethReceived, 18)} WETH)...`);
+
+        // Check and approve Permit2 for WETH → target swap
+        const wethAllowanceData = "0xdd62ed3e" +
+          swapperAddress.slice(2).padStart(64, "0") +
+          PERMIT2_ADDRESS.slice(2).padStart(64, "0");
+        const wethAllowance = await rpcCall("eth_call", [{
+          to: WETH_ADDRESS,
+          data: wethAllowanceData,
+        }, "latest"]);
+        if (!wethAllowance || wethAllowance === "0x" || BigInt(wethAllowance) < wethReceived) {
+          console.log(`     🔓 Approving Permit2 for WETH...`);
+          const wethApproveData = APPROVE_SELECTOR +
+            PERMIT2_ADDRESS.slice(2).padStart(64, "0") +
+            MAX_UINT256.slice(2);
+          await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: WETH_ADDRESS,
+              data: wethApproveData as `0x${string}`,
+              value: BigInt(0),
+            },
+          });
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        const step2Result = await account.swap({
+          network: "base",
+          fromToken: WETH_ADDRESS,
+          toToken: toTokenAddress,
+          fromAmount: wethReceived,
+          slippageBps: Math.max(adaptiveSlippage, 300), // Higher slippage for small-cap tokens
+        });
+        txHash = step2Result.transactionHash;
+        console.log(`     ✅ Step 2 done: ${txHash}`);
+        console.log(`     ✅ Two-step swap complete: USDC → WETH → ${decision.toToken}`);
+
       } else {
-        // Token → WETH (10000 = 1%) → USDC (500 = 0.05%)
-        path = fromTokenAddress.slice(2).toLowerCase() +
-          "002710" + // 10000 fee (1%)
-          WETH_ADDRESS.slice(2).toLowerCase() +
-          "0001f4" + // 500 fee (0.05%)
-          USDC_ADDRESS.slice(2).toLowerCase();
+        // For sells or non-USDC buys, throw to record failure — these are rare
+        throw new Error(`CDP two-step fallback not implemented for ${decision.fromToken}→${decision.toToken}`);
       }
-
-      // Step 3: Encode exactInput call for SwapRouter02
-      // exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum))
-      // Selector: 0xb858183f (SwapRouter02 / IV3SwapRouter — no deadline field)
-      const pathBytes = Buffer.from(path, 'hex');
-      const pathHex = pathBytes.toString('hex');
-
-      // ABI encoding: selector + offset to tuple + tuple(offset_to_path, recipient, amountIn, amountOutMin, pathLen, pathData)
-      const tupleOffset = "0000000000000000000000000000000000000000000000000000000000000020"; // 32 — offset to tuple start
-      const pathDynOffset = "0000000000000000000000000000000000000000000000000000000000000080"; // 128 — offset to path data within tuple (4 fields * 32)
-      const recipientPadded = swapperAddress.slice(2).toLowerCase().padStart(64, "0");
-      const amountInPadded = fromAmount.toString(16).padStart(64, "0");
-      const amountOutPadded = "0".padStart(64, "0"); // amountOutMinimum = 0 (safe for small trades, negligible MEV)
-      const pathLength = pathBytes.length.toString(16).padStart(64, "0");
-      const pathPadded = pathHex.padEnd(Math.ceil(pathHex.length / 64) * 64, "0");
-
-      const swapCalldata = "0xb858183f" +
-        tupleOffset +
-        pathDynOffset +
-        recipientPadded +
-        amountInPadded +
-        amountOutPadded +
-        pathLength +
-        pathPadded;
-
-      console.log(`     🔄 Executing Uniswap V3 exactInput swap...`);
-      console.log(`     Path: ${isBuy ? 'USDC→WETH→' + decision.toToken : decision.fromToken + '→WETH→USDC'}`);
-      console.log(`     Amount: ${formatUnits(fromAmount, fromDecimals)} ${decision.fromToken} (~$${decision.amountUSD.toFixed(2)})`);
-
-      const swapTx = await account.sendTransaction({
-        network: "base",
-        transaction: {
-          to: UNISWAP_ROUTER as `0x${string}`,
-          data: swapCalldata as `0x${string}`,
-          value: BigInt(0),
-        },
-      });
-      txHash = swapTx.transactionHash;
-      console.log(`     ✅ Uniswap V3 swap executed: ${txHash}`);
     }
 
     console.log(`\n  ✅ TRADE EXECUTED SUCCESSFULLY!`);
