@@ -7948,8 +7948,8 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.13: 40% threshold (was 60%) — deploy aggressively, don't let cash sit idle
-    if (preAiCashPct > 40 && preAiUSDC > 150) {
+    // v11.4.14: 30% threshold (matches deployment mode) — if deployment mode is on, forced deploy fires too
+    if (preAiCashPct > 30 && preAiUSDC > 150) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
@@ -8058,11 +8058,11 @@ async function runTradingCycle() {
     console.log("\n🧠 AI analyzing portfolio & market...");
     let decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
 
-    // v11.4.13: DEPLOYMENT FALLBACK — if AI returns HOLD with >50% USDC (was 85%),
-    // auto-generate BUY decisions for the most underweight sectors.
-    // The AI prompt says "DO NOT RETURN HOLD" but Claude sometimes ignores this.
+    // v11.4.14: DEPLOYMENT FALLBACK — if AI returns HOLD while deployment mode is active,
+    // auto-generate BUY decisions. The AI keeps returning HOLD even with deployment prompts.
+    // No separate threshold — if deployment mode is on, HOLD is not acceptable.
     const allHold = decisions.every(d => d.action === 'HOLD');
-    if (allHold && deploymentCheck.active && deploymentCheck.cashPercent > 50) {
+    if (allHold && deploymentCheck.active) {
       console.log(`\n⚡ DEPLOYMENT FALLBACK: AI returned HOLD with ${deploymentCheck.cashPercent.toFixed(0)}% USDC — overriding with auto-deployment`);
 
       // Pick tokens from the most underweight sectors
@@ -8320,10 +8320,9 @@ async function runTradingCycle() {
       // All decisions were HOLD
       state.explorationState.consecutiveHolds++;
 
-      // v11.4.13: POST-GUARDRAIL DEPLOYMENT FALLBACK (was >80%, now >45%)
-      // If ALL decisions ended up as HOLD (either AI chose HOLD, or guardrails blocked BUYs)
-      // AND we're in deployment mode, force-execute buys directly.
-      if (deploymentCheck.active && deploymentCheck.cashPercent > 45) {
+      // v11.4.14: POST-GUARDRAIL DEPLOYMENT FALLBACK — no cash% gate.
+      // If ALL decisions ended up as HOLD and deployment mode is active, force buys.
+      if (deploymentCheck.active) {
         console.log(`\n⚡⚡ POST-GUARDRAIL FALLBACK: ${state.explorationState.consecutiveHolds} consecutive HOLDs with ${deploymentCheck.cashPercent.toFixed(0)}% cash — forcing direct buys`);
 
         // Build buy targets from most underweight sectors
