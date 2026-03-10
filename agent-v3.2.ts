@@ -1974,6 +1974,12 @@ function loadTradeHistory() {
         state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
         state.stopLossCooldowns = parsed.stopLossCooldowns || {};
         state.tradeFailures = parsed.tradeFailures || {};
+        // v11.4.10: Clear stale circuit breaker entries on startup — the Uniswap V3 fallback
+        // now handles tokens the CDP SDK can't swap, so old "Invalid request" failures are resolved
+        if (Object.keys(state.tradeFailures).length > 0) {
+          console.log(`  🔓 Clearing ${Object.keys(state.tradeFailures).length} circuit breaker entries on startup (Uniswap V3 fallback now active)`);
+          state.tradeFailures = {};
+        }
         state.harvestedProfits = parsed.harvestedProfits || { totalHarvested: 0, harvestCount: 0, harvests: [] };
         // Phase 3 fields
         state.strategyPatterns = parsed.strategyPatterns || {};
@@ -8028,8 +8034,9 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.9: Lowered from 80% to 70% to keep deploying until well-diversified
-    if (preAiCashPct > 70 && preAiUSDC > 150) {
+    // v11.4.10: Lowered to 55% — AIXBT/DEGEN deploys were failing, so cash only dropped to ~69%
+    // Need to continue deploying until AI_TOKENS and MEME_COINS sectors get their allocation
+    if (preAiCashPct > 55 && preAiUSDC > 150) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
