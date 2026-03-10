@@ -6747,6 +6747,7 @@ async function executeSingleSwap(
     let result: any;
     let txHash = '';
     const maxRetries = justApproved ? 3 : 1;
+    let cdpSwapFailed = false;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}...`);
@@ -6769,10 +6770,118 @@ async function executeSingleSwap(
           // v5.1: If slippage too tight, relax slightly and retry (but never above base config)
           adaptiveSlippage = Math.min(adaptiveSlippage + 25, CONFIG.trading.slippageBps);
           console.log(`     ⚠️ Slippage too tight, relaxing to ${adaptiveSlippage}bps and retrying...`);
+        } else if (swapMsg.includes("Invalid request")) {
+          // v11.4.10: CDP SDK doesn't support this token pair — flag for Uniswap V3 fallback
+          console.log(`     ⚠️ CDP SDK rejected swap ("Invalid request") — will try direct Uniswap V3 router`);
+          cdpSwapFailed = true;
+          break;
         } else {
           throw swapError; // Re-throw for outer catch to handle
         }
       }
+    }
+
+    // v11.4.10: Uniswap V3 direct swap fallback for tokens CDP SDK doesn't support
+    // Routes through SwapRouter02 on Base via account.sendTransaction()
+    // Path: USDC → WETH → target token (multi-hop via exactInput)
+    if (cdpSwapFailed) {
+      const UNISWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481"; // SwapRouter02 on Base
+      const WETH_ADDRESS = "0x4200000000000000000000000000000000000006";
+      const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+      console.log(`     🔀 Uniswap V3 Direct Swap Fallback:`);
+      console.log(`     Router: ${UNISWAP_ROUTER}`);
+
+      // Step 1: Approve Uniswap Router to spend fromToken (if not already approved)
+      const routerAllowanceData = "0xdd62ed3e" +
+        swapperAddress.slice(2).padStart(64, "0") +
+        UNISWAP_ROUTER.slice(2).padStart(64, "0");
+
+      const routerAllowance = await rpcCall("eth_call", [{
+        to: fromTokenAddress,
+        data: routerAllowanceData,
+      }, "latest"]);
+
+      if (routerAllowance === "0x" || routerAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(routerAllowance) < fromAmount) {
+        console.log(`     🔓 Approving Uniswap Router to spend ${decision.fromToken}...`);
+        const approveData = APPROVE_SELECTOR +
+          UNISWAP_ROUTER.slice(2).padStart(64, "0") +
+          MAX_UINT256.slice(2);
+
+        const approveTx = await account.sendTransaction({
+          network: "base",
+          transaction: {
+            to: fromTokenAddress,
+            data: approveData as `0x${string}`,
+            value: BigInt(0),
+          },
+        });
+        console.log(`     ✅ Router approved: ${approveTx.transactionHash}`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for propagation
+      } else {
+        console.log(`     ✅ Router already approved for ${decision.fromToken}`);
+      }
+
+      // Step 2: Build multi-hop swap path
+      // For BUY: USDC --(0.05% fee)--> WETH --(1% fee)--> TargetToken
+      // For SELL: TargetToken --(1% fee)--> WETH --(0.05% fee)--> USDC
+      // Fee tiers: 100 = 0.01%, 500 = 0.05%, 3000 = 0.3%, 10000 = 1%
+      const isBuy = decision.action === "BUY";
+      let path: string;
+      if (isBuy) {
+        // USDC → WETH (500 = 0.05%) → Token (10000 = 1%)
+        path = USDC_ADDRESS.slice(2).toLowerCase() +
+          "0001f4" + // 500 fee (0.05%) for USDC/WETH — most liquid
+          WETH_ADDRESS.slice(2).toLowerCase() +
+          "002710" + // 10000 fee (1%) for WETH/Token — typical for small-cap
+          toTokenAddress.slice(2).toLowerCase();
+      } else {
+        // Token → WETH (10000 = 1%) → USDC (500 = 0.05%)
+        path = fromTokenAddress.slice(2).toLowerCase() +
+          "002710" + // 10000 fee (1%)
+          WETH_ADDRESS.slice(2).toLowerCase() +
+          "0001f4" + // 500 fee (0.05%)
+          USDC_ADDRESS.slice(2).toLowerCase();
+      }
+
+      // Step 3: Encode exactInput call for SwapRouter02
+      // exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum))
+      // Selector: 0xb858183f (SwapRouter02 / IV3SwapRouter — no deadline field)
+      const pathBytes = Buffer.from(path, 'hex');
+      const pathHex = pathBytes.toString('hex');
+
+      // ABI encoding: selector + offset to tuple + tuple(offset_to_path, recipient, amountIn, amountOutMin, pathLen, pathData)
+      const tupleOffset = "0000000000000000000000000000000000000000000000000000000000000020"; // 32 — offset to tuple start
+      const pathDynOffset = "0000000000000000000000000000000000000000000000000000000000000080"; // 128 — offset to path data within tuple (4 fields * 32)
+      const recipientPadded = swapperAddress.slice(2).toLowerCase().padStart(64, "0");
+      const amountInPadded = fromAmount.toString(16).padStart(64, "0");
+      const amountOutPadded = "0".padStart(64, "0"); // amountOutMinimum = 0 (safe for small trades, negligible MEV)
+      const pathLength = pathBytes.length.toString(16).padStart(64, "0");
+      const pathPadded = pathHex.padEnd(Math.ceil(pathHex.length / 64) * 64, "0");
+
+      const swapCalldata = "0xb858183f" +
+        tupleOffset +
+        pathDynOffset +
+        recipientPadded +
+        amountInPadded +
+        amountOutPadded +
+        pathLength +
+        pathPadded;
+
+      console.log(`     🔄 Executing Uniswap V3 exactInput swap...`);
+      console.log(`     Path: ${isBuy ? 'USDC→WETH→' + decision.toToken : decision.fromToken + '→WETH→USDC'}`);
+      console.log(`     Amount: ${formatUnits(fromAmount, fromDecimals)} ${decision.fromToken} (~$${decision.amountUSD.toFixed(2)})`);
+
+      const swapTx = await account.sendTransaction({
+        network: "base",
+        transaction: {
+          to: UNISWAP_ROUTER as `0x${string}`,
+          data: swapCalldata as `0x${string}`,
+          value: BigInt(0),
+        },
+      });
+      txHash = swapTx.transactionHash;
+      console.log(`     ✅ Uniswap V3 swap executed: ${txHash}`);
     }
 
     console.log(`\n  ✅ TRADE EXECUTED SUCCESSFULLY!`);
