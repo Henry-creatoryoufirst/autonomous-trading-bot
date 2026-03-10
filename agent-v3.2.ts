@@ -1975,6 +1975,9 @@ function loadTradeHistory() {
         state.trading.peakValue = parsed.peakValue || 374;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
+        // v11.4.12: Restore fields that were saved but never loaded back
+        if (parsed.currentValue && parsed.currentValue > 0) state.trading.totalPortfolioValue = parsed.currentValue;
+        if (parsed.sectorAllocations) state.trading.sectorAllocations = parsed.sectorAllocations;
         state.costBasis = parsed.costBasis || {};
         state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
         state.stopLossCooldowns = parsed.stopLossCooldowns || {};
@@ -2111,7 +2114,7 @@ function saveTradeHistory() {
       totalTrades: state.trading.totalTrades,
       successfulTrades: state.trading.successfulTrades,
       sectorAllocations: state.trading.sectorAllocations,
-      trades: state.tradeHistory.slice(-200), // Cap at 200 trades
+      trades: state.tradeHistory.slice(-1000), // v11.4.12: Raised from 200 to 1000 — Kelly needs full rolling window
       costBasis: state.costBasis,
       profitTakeCooldowns: state.profitTakeCooldowns,
       stopLossCooldowns: state.stopLossCooldowns,
@@ -3416,7 +3419,8 @@ let lastSignalHealth: Record<string, string> = {
 };
 
 // v7.1: Persist price cache to disk so deploys don't start with empty prices
-const PRICE_CACHE_FILE = "./logs/price-cache.json";
+// v11.4.12: Use PERSIST_DIR so cache survives Docker deploys
+const PRICE_CACHE_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/price-cache.json` : "./logs/price-cache.json";
 
 function savePriceCache() {
   try {
@@ -7721,9 +7725,10 @@ async function runTradingCycle() {
     const sectorAllocations = calculateSectorAllocations(balances, state.trading.totalPortfolioValue);
     state.trading.sectorAllocations = sectorAllocations;
 
-    // Display status
-    const pnl = state.trading.totalPortfolioValue - state.trading.initialValue;
-    const pnlPercent = (pnl / state.trading.initialValue) * 100;
+    // Display status — v11.4.12: deposit-aware P&L
+    const totalCapIn = state.trading.initialValue + (state.totalDeposited || 0);
+    const pnl = state.trading.totalPortfolioValue - totalCapIn;
+    const pnlPercent = totalCapIn > 0 ? (pnl / totalCapIn) * 100 : 0;
 
     // v11.4.2: Runtime peakValue sanity check — correct inflated peak without needing restart.
     // Peak should never exceed (current portfolio + total payouts sent out + reasonable unrealized buffer).
@@ -9155,12 +9160,17 @@ function apiPortfolio() {
   const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
   const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
   const riskReward = calculateRiskRewardMetrics();
+  // v11.4.12: Deposit-aware P&L — always subtract deposits from gains
+  const totalCapitalIn = state.trading.initialValue + (state.totalDeposited || 0);
+  const tradingPnl = state.trading.totalPortfolioValue - totalCapitalIn;
+  const tradingPnlPercent = totalCapitalIn > 0 ? (tradingPnl / totalCapitalIn) * 100 : 0;
   return {
     totalValue: state.trading.totalPortfolioValue,
     initialValue: state.trading.initialValue,
     peakValue: state.trading.peakValue,
-    pnl: state.trading.totalPortfolioValue - state.trading.initialValue,
-    pnlPercent: state.trading.initialValue > 0 ? ((state.trading.totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue) * 100 : 0,
+    pnl: tradingPnl,
+    pnlPercent: tradingPnlPercent,
+    totalCapitalIn,
     drawdown: state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0,
     realizedPnL: totalRealized,
     unrealizedPnL: totalUnrealized,
