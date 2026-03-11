@@ -9249,7 +9249,6 @@ async function main() {
   // The Blockscout recovery was causing Railway deploy failures (healthcheck timeout / crash).
   // Will re-enable once we confirm the root cause from logs.
   (state as any)._recoveryStatus = 'disabled';
-  (state as any)._recoveryWallet = account.address;
   console.log(`  ⏭️ On-chain recovery disabled — will re-enable after debug`);
 
   // v11.4.20: Reconcile trade counter with actual trade history
