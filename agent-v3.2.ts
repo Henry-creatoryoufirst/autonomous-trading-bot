@@ -6695,6 +6695,21 @@ async function makeTradeDecision(
   // V4.0: Build intelligence layers
   const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData, marketData.globalMarket, marketData.smartRetailDivergence, marketData.fundingMeanReversion, marketData.tvlPriceDivergence, marketData.stablecoinSupply);
 
+  // v11.4.23: Compute today's realized P&L for payout-awareness
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todaySells = state.tradeHistory.filter(t => t.success && t.action === 'SELL' && t.timestamp.slice(0, 10) === todayStr);
+  let todayRealizedPnL = 0;
+  for (const t of todaySells) {
+    const cb = state.costBasis[t.fromToken];
+    if (cb && cb.averageCostBasis > 0) {
+      const tokensSold = t.tokenAmount || (t.amountUSD / (cb.averageCostBasis || 1));
+      todayRealizedPnL += t.amountUSD - tokensSold * cb.averageCostBasis;
+    }
+  }
+  const utcHour = new Date().getUTCHours();
+  const hoursUntilPayout = utcHour < 8 ? 8 - utcHour : 32 - utcHour; // hours until next 8 AM UTC
+  const payoutUrgency = hoursUntilPayout <= 4; // within 4 hours of payout
+
   // V4.0: Performance stats for self-awareness
   const perfStats = calculateTradePerformance();
   const perfSummary = perfStats.totalTrades > 0
@@ -6709,7 +6724,8 @@ You are an 11-DIMENSIONAL TRADER with real-time access to: technical indicators,
 - Token Holdings: $${totalTokenValue.toFixed(2)}
 - Total: $${totalPortfolioValue.toFixed(2)}
 - Today's P&L: ${breakerState.dailyBaseline.value > 0 ? `${((totalPortfolioValue - breakerState.dailyBaseline.value) / breakerState.dailyBaseline.value * 100).toFixed(2)}% ($${(totalPortfolioValue - breakerState.dailyBaseline.value).toFixed(2)})` : 'Calculating...'}
-- Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%${cashDeployment?.active ? `
+- Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%
+- Today's Realized P&L (from sells): $${todayRealizedPnL.toFixed(2)} (${todaySells.length} sells) | Next payout: ${hoursUntilPayout}h${cashDeployment?.active ? `
 - 💵 DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
 ═══ YOUR TRADE PERFORMANCE ═══
@@ -6796,6 +6812,8 @@ EXIT RULES (when to SELL):
 9. SMART MONEY WARNING: If derivatives show SMART_MONEY_SHORT while you're holding a token, this is a high-priority sell signal
 10. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim — don't let stale winners sit forever
 11. CAPITAL RECYCLING (v10.1.1): If available USDC < $10 AND you hold profitable positions, you MUST recommend SELL on your highest-gain position (sell 20-30% of it) to free capital for new opportunities. A bot with $0 USDC cannot compound. Idle capital in tokens earning no yield while better opportunities exist is a DRAG on returns. Rotate capital: sell winners to fund new entries.
+12. DAILY PAYOUT AWARENESS (v11.4.23): Every day at 8 AM UTC, the bot distributes yesterday's REALIZED profits to stakeholders (Henry, Harrison). Unrealized gains don't count — only completed SELL trades that close at a profit. Today's realized P&L so far: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout settles in ${hoursUntilPayout}h.${payoutUrgency ? `
+   ⚠️ PAYOUT WINDOW APPROACHING: Less than 4 hours until settlement. If you hold positions with unrealized gains >10%, STRONGLY prefer selling a portion NOW to lock in realized profit for distribution. Even a small realized gain ($5-20) makes the difference between "NEGATIVE PNL — no payout" and real money distributed to stakeholders. Do NOT sit on unrealized gains while the payout window approaches.` : ''} The payout system is a core value proposition — a bot that grows portfolio value but never realizes profits for distribution is not meeting its full objective. Always be looking to bank wins, not just hold them.
 
 REGIME-ADAPTED STRATEGY (CAPITAL COMPOUNDING MINDSET — always look for ways to grow):
 - TRENDING_UP: Maximum aggression. Buy dips hard. Favor momentum entries. Let winners run. Deploy idle USDC
