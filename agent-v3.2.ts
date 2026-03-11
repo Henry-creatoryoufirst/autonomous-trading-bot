@@ -9893,6 +9893,31 @@ const healthServer = http.createServer(async (req, res) => {
         });
         break;
       }
+      case '/api/persistence': {
+        // v11.4.21: Diagnostic endpoint — check if state file persists across deploys
+        const stateFileExists = fs.existsSync(CONFIG.logFile);
+        let stateFileSize = 0;
+        let stateFileModified = '';
+        try {
+          if (stateFileExists) {
+            const stat = fs.statSync(CONFIG.logFile);
+            stateFileSize = stat.size;
+            stateFileModified = stat.mtime.toISOString();
+          }
+        } catch {}
+        sendJSON(res, 200, {
+          persistDir: process.env.PERSIST_DIR || '(not set)',
+          stateFilePath: CONFIG.logFile,
+          stateFileExists,
+          stateFileSizeBytes: stateFileSize,
+          stateFileModified,
+          tradeHistoryCount: state.tradeHistory.length,
+          costBasisCount: Object.keys(state.costBasis).length,
+          breakerStateLoaded: breakerState.dailyBaseline.value > 0,
+          version: '11.4.21',
+        });
+        break;
+      }
       case '/api/portfolio':
         sendJSON(res, 200, apiPortfolio());
         break;
