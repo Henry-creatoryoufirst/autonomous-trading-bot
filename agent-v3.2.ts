@@ -9246,26 +9246,27 @@ async function main() {
   breakerState.consecutiveLosses = 0;
 
   // v11.4.22: On-chain trade history recovery from Blockscout (free, no API key).
-  // Fetches all ERC20 transfers from the bot's wallet, pairs them into BUY/SELL
-  // trades, and merges any missing trades into state. Rebuilds cost basis from
-  // the complete history. This ensures no trades are lost across restarts.
+  // Deferred to run 30s after startup so the HTTP server passes Railway's healthcheck first.
   // Uses account.address (actual CDP wallet) — CONFIG.walletAddress may differ.
-  let recoveryStatus = '';
-  try {
-    const recovery = await recoverOnChainTradeHistory(account.address);
-    if (recovery.merged > 0) {
-      recoveryStatus = `OK: ${recovery.merged} trades recovered from ${recovery.recovered} on-chain`;
-      console.log(`  🔗 On-chain recovery: ${recovery.merged} trades added, cost basis rebuilt`);
-    } else {
-      recoveryStatus = `OK: ${recovery.recovered} on-chain trades found, 0 new (all already in state)`;
-    }
-  } catch (recoveryErr: any) {
-    recoveryStatus = `FAILED: ${recoveryErr.message?.substring(0, 200)}`;
-    console.log(`  ⚠️ On-chain recovery failed: ${recoveryErr.message?.substring(0, 100)} — using persisted state`);
-  }
-  // Store for diagnostic API access
-  (state as any)._recoveryStatus = recoveryStatus;
+  (state as any)._recoveryStatus = 'pending (deferred 30s)';
   (state as any)._recoveryWallet = account.address;
+  const recoveryWalletAddr = account.address;
+  setTimeout(async () => {
+    try {
+      console.log(`\n🔗 Starting deferred on-chain trade recovery...`);
+      const recovery = await recoverOnChainTradeHistory(recoveryWalletAddr);
+      if (recovery.merged > 0) {
+        (state as any)._recoveryStatus = `OK: ${recovery.merged} trades recovered from ${recovery.recovered} on-chain`;
+        console.log(`  🔗 On-chain recovery: ${recovery.merged} trades added, cost basis rebuilt`);
+      } else {
+        (state as any)._recoveryStatus = `OK: ${recovery.recovered} on-chain trades found, 0 new (all already in state)`;
+        console.log(`  ✅ On-chain recovery: ${recovery.recovered} trades found, all already in state`);
+      }
+    } catch (recoveryErr: any) {
+      (state as any)._recoveryStatus = `FAILED: ${recoveryErr.message?.substring(0, 200)}`;
+      console.log(`  ⚠️ On-chain recovery failed: ${recoveryErr.message?.substring(0, 100)} — using persisted state`);
+    }
+  }, 30_000);
 
   // v11.4.20: Reconcile trade counter with actual trade history
   // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
