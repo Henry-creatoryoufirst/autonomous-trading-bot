@@ -2304,6 +2304,264 @@ function saveTradeHistory() {
 }
 
 // ============================================================================
+// v11.4.22: ON-CHAIN TRADE HISTORY RECOVERY
+// Reconstructs trade history from Basescan ERC20 transfer logs.
+// This is the source of truth — it survives any state corruption, restart,
+// or file loss. Runs on startup to backfill trades missing from persisted state.
+// ============================================================================
+
+const BASESCAN_API_URL = 'https://api.basescan.org/api';
+const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
+
+// Reverse lookup: contract address → symbol
+const ADDRESS_TO_SYMBOL: Record<string, string> = {};
+for (const [symbol, reg] of Object.entries(TOKEN_REGISTRY)) {
+  if (reg.address && reg.address !== 'native') {
+    ADDRESS_TO_SYMBOL[reg.address.toLowerCase()] = symbol;
+  }
+}
+
+interface BasescanTransfer {
+  blockNumber: string;
+  timeStamp: string;
+  hash: string;
+  from: string;
+  to: string;
+  contractAddress: string;
+  value: string;
+  tokenName: string;
+  tokenSymbol: string;
+  tokenDecimal: string;
+}
+
+/**
+ * Fetch ERC20 token transfers for the bot's wallet from Basescan.
+ * Returns raw transfer records sorted by timestamp ascending.
+ */
+async function fetchBasescanTransfers(walletAddress: string, apiKey: string): Promise<BasescanTransfer[]> {
+  const allTransfers: BasescanTransfer[] = [];
+  let page = 1;
+  const pageSize = 1000;
+
+  while (true) {
+    const url = `${BASESCAN_API_URL}?module=account&action=tokentx&address=${walletAddress}&page=${page}&offset=${pageSize}&sort=asc&apikey=${apiKey}`;
+    const response = await axios.get(url, { timeout: 15000 });
+    if (response.data.status !== '1' || !Array.isArray(response.data.result)) {
+      // status '0' with 'No transactions found' is not an error
+      if (response.data.message === 'No transactions found') break;
+      console.log(`  ⚠️ Basescan API: ${response.data.message || 'Unknown error'}`);
+      break;
+    }
+    allTransfers.push(...response.data.result);
+    if (response.data.result.length < pageSize) break;
+    page++;
+    // Rate limit: 5 calls/sec on free tier
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return allTransfers;
+}
+
+/**
+ * Pair ERC20 transfers within the same transaction into BUY/SELL trade records.
+ * A BUY = USDC leaves wallet + another token enters wallet (same tx hash).
+ * A SELL = another token leaves wallet + USDC enters wallet (same tx hash).
+ */
+function pairTransfersIntoTrades(
+  transfers: BasescanTransfer[],
+  walletAddress: string
+): TradeRecord[] {
+  const wallet = walletAddress.toLowerCase();
+  const trades: TradeRecord[] = [];
+
+  // Group transfers by transaction hash
+  const txGroups = new Map<string, BasescanTransfer[]>();
+  for (const t of transfers) {
+    const group = txGroups.get(t.hash) || [];
+    group.push(t);
+    txGroups.set(t.hash, group);
+  }
+
+  for (const [txHash, group] of txGroups) {
+    // Classify each transfer as incoming/outgoing relative to our wallet
+    const outgoing: BasescanTransfer[] = [];
+    const incoming: BasescanTransfer[] = [];
+    for (const t of group) {
+      if (t.from.toLowerCase() === wallet) outgoing.push(t);
+      if (t.to.toLowerCase() === wallet) incoming.push(t);
+    }
+
+    // Skip if no paired transfer (approvals, wraps, etc.)
+    if (outgoing.length === 0 || incoming.length === 0) continue;
+
+    const timestamp = new Date(parseInt(group[0].timeStamp) * 1000).toISOString();
+
+    // Find USDC leg and token leg
+    const usdcOut = outgoing.find(t => t.contractAddress.toLowerCase() === USDC_ADDRESS);
+    const usdcIn = incoming.find(t => t.contractAddress.toLowerCase() === USDC_ADDRESS);
+    const tokenIn = incoming.find(t => t.contractAddress.toLowerCase() !== USDC_ADDRESS);
+    const tokenOut = outgoing.find(t => t.contractAddress.toLowerCase() !== USDC_ADDRESS);
+
+    if (usdcOut && tokenIn) {
+      // BUY: USDC out, token in
+      const usdcAmount = parseFloat(usdcOut.value) / Math.pow(10, parseInt(usdcOut.tokenDecimal));
+      const tokenAmount = parseFloat(tokenIn.value) / Math.pow(10, parseInt(tokenIn.tokenDecimal));
+      const tokenSymbol = ADDRESS_TO_SYMBOL[tokenIn.contractAddress.toLowerCase()] || tokenIn.tokenSymbol;
+
+      trades.push({
+        timestamp,
+        cycle: 0,
+        action: 'BUY',
+        fromToken: 'USDC',
+        toToken: tokenSymbol,
+        amountUSD: usdcAmount,
+        tokenAmount,
+        txHash,
+        success: true,
+        portfolioValueBefore: 0, // Unknown from chain data
+        reasoning: `On-chain recovery: bought ${tokenAmount.toFixed(6)} ${tokenSymbol} for $${usdcAmount.toFixed(2)}`,
+        sector: TOKEN_REGISTRY[tokenSymbol]?.sector || undefined,
+        marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
+        signalContext: {
+          marketRegime: 'UNKNOWN',
+          confluenceScore: 0,
+          rsi: null,
+          macdSignal: null,
+          triggeredBy: 'AI',
+        },
+      });
+    } else if (tokenOut && usdcIn) {
+      // SELL: token out, USDC in
+      const usdcAmount = parseFloat(usdcIn.value) / Math.pow(10, parseInt(usdcIn.tokenDecimal));
+      const tokenAmount = parseFloat(tokenOut.value) / Math.pow(10, parseInt(tokenOut.tokenDecimal));
+      const tokenSymbol = ADDRESS_TO_SYMBOL[tokenOut.contractAddress.toLowerCase()] || tokenOut.tokenSymbol;
+
+      trades.push({
+        timestamp,
+        cycle: 0,
+        action: 'SELL',
+        fromToken: tokenSymbol,
+        toToken: 'USDC',
+        amountUSD: usdcAmount,
+        tokenAmount,
+        txHash,
+        success: true,
+        portfolioValueBefore: 0,
+        reasoning: `On-chain recovery: sold ${tokenAmount.toFixed(6)} ${tokenSymbol} for $${usdcAmount.toFixed(2)}`,
+        sector: TOKEN_REGISTRY[tokenSymbol]?.sector || undefined,
+        marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
+        signalContext: {
+          marketRegime: 'UNKNOWN',
+          confluenceScore: 0,
+          rsi: null,
+          macdSignal: null,
+          triggeredBy: 'AI',
+        },
+      });
+    }
+    // Skip token-to-token swaps (non-USDC pairs) — these are rare and hard to value
+  }
+
+  return trades;
+}
+
+/**
+ * Rebuild cost basis from a complete trade history.
+ * Resets all cost basis entries and replays trades chronologically.
+ */
+function rebuildCostBasisFromTrades(trades: TradeRecord[]): void {
+  // Reset all cost basis
+  state.costBasis = {};
+
+  // Replay trades in chronological order
+  const sorted = [...trades].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  let totalTrades = 0;
+  let successfulTrades = 0;
+
+  for (const trade of sorted) {
+    if (trade.action === 'BUY' && trade.toToken !== 'USDC') {
+      const cb = getOrCreateCostBasis(trade.toToken);
+      const tokens = trade.tokenAmount || (trade.amountUSD / 1); // Fallback if no token amount
+      if (tokens > 0) {
+        if (cb.totalTokensAcquired === 0) cb.firstBuyDate = trade.timestamp;
+        cb.totalInvestedUSD += trade.amountUSD;
+        cb.totalTokensAcquired += tokens;
+        cb.averageCostBasis = cb.totalTokensAcquired > 0 ? cb.totalInvestedUSD / cb.totalTokensAcquired : 0;
+        cb.lastTradeDate = trade.timestamp;
+      }
+    } else if (trade.action === 'SELL' && trade.fromToken !== 'USDC') {
+      const cb = getOrCreateCostBasis(trade.fromToken);
+      const tokens = trade.tokenAmount || 0;
+      if (tokens > 0 && cb.totalTokensAcquired > 0) {
+        const sellPrice = trade.amountUSD / tokens;
+        const realizedPnL = (sellPrice - cb.averageCostBasis) * tokens;
+        cb.realizedPnL += realizedPnL;
+        const proportionSold = Math.min(1, tokens / cb.totalTokensAcquired);
+        cb.totalInvestedUSD = Math.max(0, cb.totalInvestedUSD * (1 - proportionSold));
+        cb.totalTokensAcquired = Math.max(0, cb.totalTokensAcquired - tokens);
+        cb.lastTradeDate = trade.timestamp;
+      }
+    }
+    if (trade.action === 'BUY' || trade.action === 'SELL') {
+      totalTrades++;
+      if (trade.success) successfulTrades++;
+    }
+  }
+
+  return;
+}
+
+/**
+ * Main startup function: recover trade history from Basescan and merge with state.
+ */
+async function recoverOnChainTradeHistory(): Promise<{ recovered: number; merged: number }> {
+  const apiKey = process.env.BASESCAN_API_KEY;
+  if (!apiKey) {
+    console.log(`  ⏭️ BASESCAN_API_KEY not set — skipping on-chain recovery`);
+    return { recovered: 0, merged: 0 };
+  }
+
+  const walletAddress = CONFIG.walletAddress;
+  console.log(`  📡 Fetching on-chain transfers for ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`);
+
+  const transfers = await fetchBasescanTransfers(walletAddress, apiKey);
+  console.log(`  📥 ${transfers.length} ERC20 transfers found on Base`);
+
+  if (transfers.length === 0) return { recovered: 0, merged: 0 };
+
+  const onChainTrades = pairTransfersIntoTrades(transfers, walletAddress);
+  console.log(`  🔄 ${onChainTrades.length} swap trades paired from transfers`);
+
+  // Merge: add on-chain trades that aren't already in state (by txHash)
+  const existingHashes = new Set(state.tradeHistory.filter(t => t.txHash).map(t => t.txHash));
+  const newTrades = onChainTrades.filter(t => t.txHash && !existingHashes.has(t.txHash));
+
+  if (newTrades.length > 0) {
+    console.log(`  ✨ ${newTrades.length} new trades recovered from chain (${existingHashes.size} already in state)`);
+    state.tradeHistory = [...state.tradeHistory, ...newTrades]
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(-5000); // Cap at 5000
+
+    // Rebuild cost basis from the complete history
+    console.log(`  📊 Rebuilding cost basis from ${state.tradeHistory.length} total trades...`);
+    rebuildCostBasisFromTrades(state.tradeHistory);
+    const cbCount = Object.keys(state.costBasis).length;
+    console.log(`  ✅ Cost basis rebuilt for ${cbCount} tokens`);
+
+    // Update trade counters
+    const actionable = state.tradeHistory.filter(t => t.action === 'BUY' || t.action === 'SELL');
+    state.trading.totalTrades = actionable.length;
+    state.trading.successfulTrades = actionable.filter(t => t.success).length;
+
+    // Persist the recovered state
+    saveTradeHistory();
+  } else {
+    console.log(`  ✅ On-chain history matches state — no new trades to recover`);
+  }
+
+  return { recovered: onChainTrades.length, merged: newTrades.length };
+}
+
+// ============================================================================
 // v5.3.3: CONSECUTIVE FAILURE CIRCUIT BREAKER
 // ============================================================================
 
@@ -8973,6 +9231,19 @@ async function main() {
     breakerState.breakerSizeReductionUntil = null;
   }
   breakerState.consecutiveLosses = 0;
+
+  // v11.4.22: On-chain trade history recovery from Basescan.
+  // Fetches all ERC20 transfers from the bot's wallet, pairs them into BUY/SELL
+  // trades, and merges any missing trades into state. Rebuilds cost basis from
+  // the complete history. This ensures no trades are lost across restarts.
+  try {
+    const recovery = await recoverOnChainTradeHistory();
+    if (recovery.merged > 0) {
+      console.log(`  🔗 On-chain recovery: ${recovery.merged} trades added, cost basis rebuilt`);
+    }
+  } catch (recoveryErr: any) {
+    console.log(`  ⚠️ On-chain recovery failed: ${recoveryErr.message?.substring(0, 100)} — using persisted state`);
+  }
 
   // v11.4.20: Reconcile trade counter with actual trade history
   // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
