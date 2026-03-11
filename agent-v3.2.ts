@@ -9331,59 +9331,28 @@ async function main() {
     } catch { /* non-critical */ }
   }
 
-  // v11.4.22: Bootstrap price history cache on startup.
-  // Fetches 30 days of hourly data from CoinGecko for tokens the bot actually holds.
-  // This ensures RSI, MACD, Bollinger, ATR, and ADX are available on the first cycle
-  // instead of returning null. Prioritizes held tokens to minimize API calls.
+  // v11.4.22: Bootstrap price history for core tokens (ETH, BTC) on startup.
+  // Only fetches 2 tokens to avoid exhausting CoinGecko's free tier rate limit before
+  // the first cycle. The remaining tokens get fetched by getTokenIndicators() during
+  // the first heavy cycle with its own rate-limited batching.
   try {
-    console.log(`\n📊 Bootstrapping price history for technical indicators...`);
-    // Only bootstrap tokens we actually hold — not the entire registry
-    const heldSymbols = (state.trading.balances || [])
-      .filter((b: any) => b.symbol !== 'USDC' && b.usdValue > 1)
-      .map((b: any) => b.symbol);
-    // Always include core tokens (ETH, BTC) for market regime detection
-    const coreSymbols = ['ETH', 'cbBTC'];
-    const allSymbols = [...new Set([...coreSymbols, ...heldSymbols])];
-    const uniqueCGIds = new Set<string>();
-    for (const symbol of allSymbols) {
-      const reg = TOKEN_REGISTRY[symbol];
-      if (reg && reg.coingeckoId) uniqueCGIds.add(reg.coingeckoId);
-    }
-    const cgIds = Array.from(uniqueCGIds);
-    console.log(`  📋 ${cgIds.length} unique CoinGecko IDs (${heldSymbols.length} held tokens + core)`);
+    console.log(`\n📊 Bootstrapping core price history (ETH, BTC)...`);
+    const coreCGIds = ['ethereum', 'bitcoin'];
+    const results = await Promise.allSettled(
+      coreCGIds.map(id => fetchPriceHistory(id))
+    );
     let bootstrapped = 0;
-    let failed = 0;
-    // Fetch in batches of 2 with 2.5s delay to stay well within CoinGecko rate limits
-    // (free tier: ~10-30 calls/min; this uses ~2 calls per 2.5s = ~48/min max)
-    for (let i = 0; i < cgIds.length; i += 2) {
-      const batch = cgIds.slice(i, i + 2);
-      const results = await Promise.allSettled(
-        batch.map(id => fetchPriceHistory(id))
-      );
-      for (let j = 0; j < batch.length; j++) {
-        const result = results[j];
-        if (result.status === 'fulfilled' && result.value.prices.length > 0) {
-          priceHistoryCache[batch[j]] = { ...result.value, lastFetched: Date.now() };
-          bootstrapped++;
-        } else {
-          failed++;
-        }
-      }
-      // Rate limit pause between batches (skip after last batch)
-      if (i + 2 < cgIds.length) {
-        await new Promise(r => setTimeout(r, 2500));
+    for (let i = 0; i < coreCGIds.length; i++) {
+      const result = results[i];
+      if (result.status === 'fulfilled' && result.value.prices.length > 0) {
+        priceHistoryCache[coreCGIds[i]] = { ...result.value, lastFetched: Date.now() };
+        bootstrapped++;
+        console.log(`  ✅ ${coreCGIds[i]}: ${result.value.prices.length} hourly candles loaded`);
+      } else {
+        console.log(`  ⚠️ ${coreCGIds[i]}: failed to fetch`);
       }
     }
-    console.log(`  ✅ Price history bootstrapped: ${bootstrapped}/${cgIds.length} tokens (${failed > 0 ? failed + ' failed' : 'all succeeded'})`);
-    if (bootstrapped > 0) {
-      const sampleId = cgIds.find(id => priceHistoryCache[id]?.prices.length > 35);
-      if (sampleId) {
-        console.log(`  ✅ Sample: ${sampleId} has ${priceHistoryCache[sampleId].prices.length} hourly candles — RSI/MACD/Bollinger ready`);
-      }
-    }
-    // Cooldown before first cycle to let CoinGecko rate limit window reset
-    console.log(`  ⏳ Rate limit cooldown (5s) before first cycle...`);
-    await new Promise(r => setTimeout(r, 5000));
+    console.log(`  ✅ Core price history: ${bootstrapped}/${coreCGIds.length} — market regime detection ready`);
   } catch (bootstrapErr: any) {
     console.log(`  ⚠️ Price history bootstrap failed: ${bootstrapErr.message?.substring(0, 100)} — indicators will populate on first heavy cycle`);
   }
