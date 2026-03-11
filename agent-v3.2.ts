@@ -2002,8 +2002,8 @@ let state: AgentState = {
     successfulTrades: 0,
     balances: [],
     totalPortfolioValue: 0,
-    initialValue: parseFloat(process.env.INITIAL_PORTFOLIO_VALUE || '4091'), // v8.2: $2,891 original + $1,200 deposit (March 2026)
-    peakValue: 4091,
+    initialValue: 2891, // v11.4.20: Actual seed capital — deposits tracked separately in totalDeposited
+    peakValue: 2891,
     sectorAllocations: [],
   },
   tradeHistory: [],
@@ -2061,7 +2061,9 @@ function loadTradeHistory() {
         const data = fs.readFileSync(file, "utf-8");
         const parsed = JSON.parse(data);
         state.tradeHistory = parsed.trades || [];
-        state.trading.initialValue = process.env.INITIAL_PORTFOLIO_VALUE ? parseFloat(process.env.INITIAL_PORTFOLIO_VALUE) : (parsed.initialValue || 4091); // v8.2: $2,891 + $1,200 deposit
+        // v11.4.20: initialValue = ONLY the original seed capital ($2,891). Deposits tracked separately.
+        // Ignore INITIAL_PORTFOLIO_VALUE env var — it previously baked deposits into initial, causing double-counting.
+        state.trading.initialValue = 2891;
         state.trading.peakValue = parsed.peakValue || 374;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
@@ -2157,9 +2159,12 @@ function loadTradeHistory() {
           }
         }
         // v8.2: Restore deposit tracking
-        state.totalDeposited = parsed.totalDeposited || 0;
+        // v11.4.20: If state file has no deposit data (wiped state), fall back to known deposits
+        state.totalDeposited = parsed.totalDeposited || 1200; // Known: $1,200 deposited March 2026
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
-        state.depositHistory = parsed.depositHistory || [];
+        state.depositHistory = (parsed.depositHistory && parsed.depositHistory.length > 0)
+          ? parsed.depositHistory
+          : [{ timestamp: '2026-03-03T00:00:00Z', amountUSD: 1200, newTotal: 1200 }];
         if (state.totalDeposited > 0) {
           console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
         }
@@ -6400,7 +6405,7 @@ You are an 11-DIMENSIONAL TRADER with real-time access to: technical indicators,
 - USDC Available: $${availableUSDC.toFixed(2)}${cashDeployment?.active ? ` ⚠️ CASH OVERWEIGHT (${cashDeployment.cashPercent.toFixed(1)}% of portfolio)` : ''}
 - Token Holdings: $${totalTokenValue.toFixed(2)}
 - Total: $${totalPortfolioValue.toFixed(2)}
-- P&L: ${((totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue * 100).toFixed(1)}% from $${state.trading.initialValue}
+- Today's P&L: ${breakerState.dailyBaseline.value > 0 ? `${((totalPortfolioValue - breakerState.dailyBaseline.value) / breakerState.dailyBaseline.value * 100).toFixed(2)}% ($${(totalPortfolioValue - breakerState.dailyBaseline.value).toFixed(2)})` : 'Calculating...'}
 - Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%${cashDeployment?.active ? `
 - 💵 DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
@@ -7734,20 +7739,29 @@ async function runTradingCycle() {
       state.trading.totalPortfolioValue = newPortfolioValue;
     }
 
-    // v11.4.3: DEPOSIT DETECTION — disabled automatic inference.
-    // Previous versions tried to detect deposits by watching USDC balance changes and
-    // ruling out sells/withdrawals. This was fundamentally fragile — blockchain settlement
-    // delays, Aave withdrawals, batched sells, and timing edge cases caused false positives
-    // that inflated peakValue (e.g. $4k portfolio showed $10k peak, triggering HOLD-ONLY).
-    //
-    // At SaaS scale with hundreds of wallets, auto-detection is a liability.
-    // Deposits are now handled explicitly:
-    //   1. Initial capital is set via INITIAL_PORTFOLIO_VALUE env var at deploy time
-    //   2. Additional deposits use the /correct-state admin endpoint
-    //   3. The runtime peakValue sanity check catches any residual drift
-    //
-    // We still track USDC balance for logging but do NOT auto-adjust peakValue/initialValue.
+    // v11.4.20: DEPOSIT DETECTION — reliable approach using portfolio value jumps.
+    // If total portfolio jumped by >$200 in a single cycle AND USDC increased, it's a deposit.
+    // Trading can't produce $200+ gains in one 3-minute cycle. This avoids the false positives
+    // from the old USDC-only detection (which broke on sells, Aave withdrawals, settlement delays).
     const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
+    const previousPortfolioValue = state.trading.totalPortfolioValue; // value from last cycle
+    const portfolioJump = totalPortfolioValue - previousPortfolioValue;
+    const usdcJump = currentUSDCBalance - state.lastKnownUSDCBalance;
+    const DEPOSIT_THRESHOLD = 200; // Minimum jump to consider as deposit (trading does $80-$150 per position)
+    if (portfolioJump > DEPOSIT_THRESHOLD && usdcJump > DEPOSIT_THRESHOLD * 0.5 && previousPortfolioValue > 0) {
+      // Likely a deposit — the portfolio and USDC both jumped significantly
+      const depositAmount = Math.round(portfolioJump);
+      console.log(`\n💰 DEPOSIT DETECTED: Portfolio jumped +$${portfolioJump.toFixed(2)} (USDC +$${usdcJump.toFixed(2)})`);
+      console.log(`   Registering deposit: $${depositAmount}`);
+      state.totalDeposited += depositAmount;
+      state.trading.peakValue += depositAmount;
+      state.depositHistory.push({
+        timestamp: new Date().toISOString(),
+        amountUSD: depositAmount,
+        newTotal: Math.round(state.totalDeposited * 100) / 100,
+      });
+      saveTradeHistory();
+    }
     state.lastKnownUSDCBalance = currentUSDCBalance;
 
     if (state.trading.totalPortfolioValue > state.trading.peakValue) {
@@ -7757,10 +7771,10 @@ async function runTradingCycle() {
     const sectorAllocations = calculateSectorAllocations(balances, state.trading.totalPortfolioValue);
     state.trading.sectorAllocations = sectorAllocations;
 
-    // Display status — v11.4.12: deposit-aware P&L
-    const totalCapIn = state.trading.initialValue + (state.totalDeposited || 0);
-    const pnl = state.trading.totalPortfolioValue - totalCapIn;
-    const pnlPercent = totalCapIn > 0 ? (pnl / totalCapIn) * 100 : 0;
+    // Display status — v11.4.20: Daily P&L from start-of-day baseline
+    const dailyBase = breakerState.dailyBaseline.value;
+    const pnl = dailyBase > 0 ? state.trading.totalPortfolioValue - dailyBase : 0;
+    const pnlPercent = dailyBase > 0 ? (pnl / dailyBase) * 100 : 0;
 
     // v11.4.2: Runtime peakValue sanity check — correct inflated peak without needing restart.
     // Peak should never exceed (current portfolio + total payouts sent out + reasonable unrealized buffer).
@@ -7832,7 +7846,7 @@ async function runTradingCycle() {
     }
 
     console.log(`\n💰 Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
-    console.log(`   P&L: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(1)}%)`);
+    console.log(`   Today: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%) from $${dailyBase.toFixed(2)} start-of-day`);
     console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${drawdown.toFixed(1)}%`);
     console.log(`   Fear & Greed: ${marketData.fearGreed.value} (${marketData.fearGreed.classification})`);
 
@@ -9210,17 +9224,17 @@ function apiPortfolio() {
   const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
   const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
   const riskReward = calculateRiskRewardMetrics();
-  // v11.4.12: Deposit-aware P&L — always subtract deposits from gains
-  const totalCapitalIn = state.trading.initialValue + (state.totalDeposited || 0);
-  const tradingPnl = state.trading.totalPortfolioValue - totalCapitalIn;
-  const tradingPnlPercent = totalCapitalIn > 0 ? (tradingPnl / totalCapitalIn) * 100 : 0;
+  // v11.4.20: Daily P&L — use start-of-day baseline instead of unreliable lifetime deposit tracking
+  const dailyBaseline = breakerState.dailyBaseline.value;
+  const dailyPnl = dailyBaseline > 0 ? state.trading.totalPortfolioValue - dailyBaseline : 0;
+  const dailyPnlPercent = dailyBaseline > 0 ? (dailyPnl / dailyBaseline) * 100 : 0;
   return {
     totalValue: state.trading.totalPortfolioValue,
     initialValue: state.trading.initialValue,
     peakValue: state.trading.peakValue,
-    pnl: tradingPnl,
-    pnlPercent: tradingPnlPercent,
-    totalCapitalIn,
+    pnl: dailyPnl,
+    pnlPercent: dailyPnlPercent,
+    dailyBaseline,
     drawdown: state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0,
     realizedPnL: totalRealized,
     unrealizedPnL: totalUnrealized,
@@ -9526,8 +9540,7 @@ async function handleChatRequest(userMessage: string, history: { role: string; c
 
   const context = `LIVE PORTFOLIO (real-time):
 - Total Value: $${n(portfolio.totalValue).toFixed(2)}
-- Initial: $${n(portfolio.initialValue).toFixed(2)}
-- P&L: ${n(portfolio.pnlPercent) >= 0 ? '+' : ''}${n(portfolio.pnlPercent).toFixed(1)}% ($${n(portfolio.pnl).toFixed(2)})
+- Today's P&L: ${n(portfolio.pnlPercent) >= 0 ? '+' : ''}${n(portfolio.pnlPercent).toFixed(2)}% ($${n(portfolio.pnl).toFixed(2)}) from $${n(portfolio.dailyBaseline).toFixed(2)} start-of-day
 - Peak: $${n(portfolio.peakValue).toFixed(2)} | Drawdown: ${n(portfolio.drawdown).toFixed(1)}%
 - Trading: ${portfolio.tradingEnabled ? 'ENABLED' : 'DISABLED'}
 - Uptime: ${portfolio.uptime}
@@ -10288,12 +10301,11 @@ const healthServer = http.createServer(async (req, res) => {
               const removed = state.depositHistory.pop();
               applied.push(`removed last deposit: $${removed?.amountUSD}`);
             }
-            // v11.4.3: Explicit deposit registration — the SaaS-grade way to track deposits.
-            // Atomically adjusts initialValue, peakValue, breaker baselines, and logs the deposit.
+            // v11.4.20: Explicit deposit registration — adjusts totalDeposited, peakValue, breaker baselines.
+            // initialValue is NOT modified — it's the original seed ($2,891). All deposits go into totalDeposited.
             if (typeof corrections.registerDeposit === 'number' && corrections.registerDeposit > 0) {
               const amt = corrections.registerDeposit;
               state.totalDeposited += amt;
-              state.trading.initialValue += amt;
               state.trading.peakValue += amt;
               if (breakerState.dailyBaseline.value > 0) breakerState.dailyBaseline.value += amt;
               if (breakerState.weeklyBaseline.value > 0) breakerState.weeklyBaseline.value += amt;
@@ -10695,7 +10707,7 @@ async function fetchData() {
 function renderPortfolio(p) {
   $('portfolio-value').textContent = fmt(p.totalValue);
   const pnlEl = $('total-pnl');
-  pnlEl.textContent = pnlSign(p.pnl) + fmt(p.pnl) + ' (' + pnlSign(p.pnlPercent) + p.pnlPercent.toFixed(1) + '%)';
+  pnlEl.textContent = 'Today: ' + pnlSign(p.pnl) + fmt(p.pnl) + ' (' + pnlSign(p.pnlPercent) + p.pnlPercent.toFixed(2) + '%)';
   pnlEl.className = 'text-xl sm:text-2xl font-bold mono ' + pnlColor(p.pnl);
 
   const rEl = $('realized-pnl');
