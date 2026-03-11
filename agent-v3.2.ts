@@ -10222,14 +10222,17 @@ const healthServer = http.createServer(async (req, res) => {
         res.end(getDashboardHTML());
         break;
       case '/health': {
-        // v11.4.17: Health check validates actual state — not just 200 OK
-        const portfolio = apiPortfolio();
+        // v11.4.22: Healthcheck must return 200 quickly during startup so Railway doesn't kill the deploy.
+        // Grace period: first 5 minutes always healthy. After that, require a recent cycle.
+        const uptimeSec = (Date.now() - state.startTime.getTime()) / 1000;
         const lastCycleAge = state.trading.lastCheck ? (Date.now() - state.trading.lastCheck.getTime()) / 1000 : Infinity;
-        const isHealthy = portfolio.totalValue > 0 && lastCycleAge < 600; // within 10 min
+        const inStartupGrace = uptimeSec < 300; // 5 min grace
+        const isHealthy = inStartupGrace || (lastCycleAge < 600);
         sendJSON(res, isHealthy ? 200 : 503, {
           status: isHealthy ? "ok" : "degraded",
+          uptimeSec: Math.round(uptimeSec),
           lastCycleAgeSec: Math.round(lastCycleAge),
-          ...portfolio,
+          inStartupGrace,
         });
         break;
       }
