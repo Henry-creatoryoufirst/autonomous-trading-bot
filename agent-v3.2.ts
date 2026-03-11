@@ -2342,22 +2342,30 @@ interface BasescanTransfer {
 async function fetchBlockscoutTransfers(walletAddress: string): Promise<BasescanTransfer[]> {
   const allTransfers: BasescanTransfer[] = [];
   let page = 1;
-  const pageSize = 1000;
-  const maxPages = 10; // Safety cap: 10k transfers max
+  // Blockscout times out (524) on large offsets — use 100 per page for reliability.
+  // Max 30 pages = 3000 transfers which covers all our history.
+  const pageSize = 100;
+  const maxPages = 30;
 
   while (page <= maxPages) {
-    const url = `${BLOCKSCOUT_API_URL}?module=account&action=tokentx&address=${walletAddress}&startblock=0&endblock=99999999&page=${page}&offset=${pageSize}&sort=asc`;
-    const response = await axios.get(url, { timeout: 20000 });
-    if (response.data.status !== '1' || !Array.isArray(response.data.result)) {
-      if (response.data.message === 'No transactions found') break;
-      console.log(`  ⚠️ Blockscout API: ${response.data.message || 'Unknown error'}`);
+    try {
+      const url = `${BLOCKSCOUT_API_URL}?module=account&action=tokentx&address=${walletAddress}&page=${page}&offset=${pageSize}&sort=asc`;
+      const response = await axios.get(url, { timeout: 15000 });
+      if (response.data.status !== '1' || !Array.isArray(response.data.result)) {
+        if (response.data.message === 'No transactions found' || response.data.message === 'No token transfers found') break;
+        console.log(`  ⚠️ Blockscout API page ${page}: ${response.data.message || 'Unknown error'}`);
+        break;
+      }
+      allTransfers.push(...response.data.result);
+      if (response.data.result.length < pageSize) break;
+      page++;
+      // Small delay between pages
+      await new Promise(r => setTimeout(r, 200));
+    } catch (err: any) {
+      // If a page fails (timeout, 524, etc.), stop and use what we have
+      console.log(`  ⚠️ Blockscout fetch stopped at page ${page}: ${err.message?.substring(0, 80)}`);
       break;
     }
-    allTransfers.push(...response.data.result);
-    if (response.data.result.length < pageSize) break;
-    page++;
-    // Blockscout has generous rate limits but be polite
-    await new Promise(r => setTimeout(r, 300));
   }
   return allTransfers;
 }
