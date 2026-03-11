@@ -987,6 +987,18 @@ function computeNextInterval(currentPrices: Map<string, number>): {
  */
 // v8.1: Cycle mutex — prevents double-execution from timer + cron overlap
 let cycleInProgress = false;
+const CYCLE_TIMEOUT_MS = 5 * 60 * 1000; // v11.4.21: 5-minute hard timeout per cycle
+
+// v11.4.21: Wrap a promise with a timeout — rejects if the promise doesn't resolve in time.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
+}
 
 function scheduleNextCycle() {
   if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
@@ -1000,7 +1012,9 @@ function scheduleNextCycle() {
     }
     cycleInProgress = true;
     try {
-      await runTradingCycle();
+      // v11.4.21: Hard timeout prevents a hung API call from killing the trading loop forever.
+      // If any single cycle takes >5 minutes, it's stuck — abort and schedule the next one.
+      await withTimeout(runTradingCycle(), CYCLE_TIMEOUT_MS, 'Trading cycle');
     } catch (err: any) {
       console.error(`[Adaptive Cycle Error] ${err?.message?.substring(0, 300) || err}`);
     } finally {
@@ -7739,16 +7753,15 @@ async function runTradingCycle() {
       state.trading.totalPortfolioValue = newPortfolioValue;
     }
 
-    // v11.4.20: DEPOSIT DETECTION — reliable approach using portfolio value jumps.
-    // If total portfolio jumped by >$200 in a single cycle AND USDC increased, it's a deposit.
-    // Trading can't produce $200+ gains in one 3-minute cycle. This avoids the false positives
-    // from the old USDC-only detection (which broke on sells, Aave withdrawals, settlement delays).
+    // v11.4.21: DEPOSIT DETECTION — reliable approach using portfolio value jumps.
+    // Compare newPortfolioValue (this cycle's fully-priced total) vs prevValue (last cycle's total).
+    // If portfolio jumped by >$200 in a single cycle AND USDC increased, it's a deposit.
+    // Trading can't produce $200+ gains in one 3-minute cycle.
     const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
-    const previousPortfolioValue = state.trading.totalPortfolioValue; // value from last cycle
-    const portfolioJump = totalPortfolioValue - previousPortfolioValue;
+    const portfolioJump = newPortfolioValue - prevValue; // v11.4.21: use correctly-scoped variables
     const usdcJump = currentUSDCBalance - state.lastKnownUSDCBalance;
     const DEPOSIT_THRESHOLD = 200; // Minimum jump to consider as deposit (trading does $80-$150 per position)
-    if (portfolioJump > DEPOSIT_THRESHOLD && usdcJump > DEPOSIT_THRESHOLD * 0.5 && previousPortfolioValue > 0) {
+    if (portfolioJump > DEPOSIT_THRESHOLD && usdcJump > DEPOSIT_THRESHOLD * 0.5 && prevValue > 0) {
       // Likely a deposit — the portfolio and USDC both jumped significantly
       const depositAmount = Math.round(portfolioJump);
       console.log(`\n💰 DEPOSIT DETECTED: Portfolio jumped +$${portfolioJump.toFixed(2)} (USDC +$${usdcJump.toFixed(2)})`);
@@ -7771,6 +7784,15 @@ async function runTradingCycle() {
     const sectorAllocations = calculateSectorAllocations(balances, state.trading.totalPortfolioValue);
     state.trading.sectorAllocations = sectorAllocations;
 
+    // v11.4.21: Persist state after portfolio/peak/sector updates — ensures peakValue
+    // survives if cycle crashes later (previously peak was only saved during trades/sanity checks).
+    saveTradeHistory();
+
+    // v11.4.21: Update daily/weekly baselines BEFORE capital floor / circuit breaker checks.
+    // Previously this was only called inside checkCircuitBreaker(), which runs AFTER the capital
+    // floor check. If the floor check returned early, dailyBaseline never got set → P&L stayed 0.
+    updateDrawdownBaselines(state.trading.totalPortfolioValue);
+
     // Display status — v11.4.20: Daily P&L from start-of-day baseline
     const dailyBase = breakerState.dailyBaseline.value;
     const pnl = dailyBase > 0 ? state.trading.totalPortfolioValue - dailyBase : 0;
@@ -7788,7 +7810,7 @@ async function runTradingCycle() {
       saveTradeHistory();
     }
 
-    const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
+    const drawdown = Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100);
 
     // === v6.2: CAPITAL FLOOR ENFORCEMENT ===
     // v10.3: Skip floor checks when portfolio value is 0 — this is always a cold-start artifact
@@ -8769,17 +8791,24 @@ async function main() {
           state.lastKnownUSDCBalance = startupUSDC;
           console.log(`  ✅ USDC balance hydrated: $${startupUSDC.toFixed(2)} (deposit detection baseline set)`);
         }
-        // v11.4.3: Startup peakValue sanity check — same logic as runtime check.
-        // Peak cannot exceed (portfolio + total payouts + 15% buffer).
-        // This catches any historical corruption from the old auto-deposit-detection bug.
-        const totalPayoutsAtStartup = state.totalDailyPayoutsUSD || 0;
-        const maxReasonablePeakAtStartup = (startupValue + totalPayoutsAtStartup) * 1.15;
-        if (state.trading.peakValue > maxReasonablePeakAtStartup && startupValue > 500) {
-          console.log(`  🔧 PEAK VALUE CORRECTION: peak $${state.trading.peakValue.toFixed(2)} > reasonable max $${maxReasonablePeakAtStartup.toFixed(2)} (portfolio $${startupValue.toFixed(2)} + payouts $${totalPayoutsAtStartup.toFixed(2)} + 15%)`);
-          state.trading.peakValue = startupValue + totalPayoutsAtStartup;
-          console.log(`     Corrected peak: $${state.trading.peakValue.toFixed(2)}`);
-          saveTradeHistory();
+        // v11.4.21: REMOVED startup peakValue sanity check — getBalances() only prices USDC
+        // (non-USDC tokens have usdValue: 0 until a heavy cycle fetches market data).
+        // This was incorrectly capping peak to the USDC-only balance (~$859), which then
+        // prevented the runtime check from correcting it (since runtime peak = portfolio).
+        // The runtime sanity check at line ~7784 handles peak correction with fully-priced balances.
+
+        // v11.4.21: Initialize dailyBaseline if it's unset (fresh deploy or date rollover).
+        // Uses persisted portfolio value (from state file) as baseline, NOT the unpriced startupValue.
+        // The first heavy cycle will correct this with fully-priced balances.
+        if (breakerState.dailyBaseline.value === 0) {
+          const persistedValue = state.trading.totalPortfolioValue; // was set by loadTradeHistory or warmup
+          if (persistedValue > 0) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            breakerState.dailyBaseline = { date: todayStr, value: persistedValue };
+            console.log(`  ✅ Daily baseline initialized: $${persistedValue.toFixed(2)} (${todayStr})`);
+          }
         }
+
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
       } else {
         console.log(`  ⚠️ Startup balance fetch returned $0 — first heavy cycle will hydrate`);
@@ -9026,11 +9055,16 @@ async function main() {
           console.log(`[Safety Net] Adaptive engine may have stalled — forcing cycle (${(timeSinceLastCycle / 60000).toFixed(0)}m since last heavy)`);
           cycleInProgress = true;
           try {
-            await runTradingCycle();
+            await withTimeout(runTradingCycle(), CYCLE_TIMEOUT_MS, 'Safety net cycle');
           } finally {
             cycleInProgress = false;
           }
         }
+      }
+      // v11.4.21: If cron fires and cycle loop seems completely dead, restart it
+      if (!cycleInProgress && timeSinceLastCycle > HEAVY_CYCLE_FORCED_INTERVAL_MS * 10) {
+        console.log(`[Safety Net] ⚠️ Cycle loop appears dead (${(timeSinceLastCycle / 60000).toFixed(0)}m stale) — restarting scheduler`);
+        scheduleNextCycle();
       }
     } catch (cronError: any) {
       console.error(`[Cron Safety Net Error] ${cronError?.message?.substring(0, 300) || cronError}`);
@@ -9235,7 +9269,7 @@ function apiPortfolio() {
     pnl: dailyPnl,
     pnlPercent: dailyPnlPercent,
     dailyBaseline,
-    drawdown: state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0,
+    drawdown: state.trading.peakValue > 0 ? Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100) : 0,
     realizedPnL: totalRealized,
     unrealizedPnL: totalUnrealized,
     totalTrades: state.trading.totalTrades,
@@ -10350,7 +10384,7 @@ const healthServer = http.createServer(async (req, res) => {
               applied.push(`clearHarvestCooldowns: cleared ${count} cooldown entries`);
             }
             // Recalculate derived values
-            const drawdown = ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100;
+            const drawdown = Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100);
             saveTradeHistory();
             console.log(`\n🔧 ADMIN STATE CORRECTION applied:`);
             applied.forEach(a => console.log(`   ${a}`));
