@@ -155,10 +155,10 @@ export const REVIEW_TRADE_INTERVAL = 10;
 export const REVIEW_TIME_INTERVAL_HOURS = 24;
 
 /** Stagnation threshold — trigger exploration trade if no trade in this many hours */
-export const STAGNATION_THRESHOLD_HOURS = 48;
+export const STAGNATION_THRESHOLD_HOURS = 1; // v11.4.22: 48 → 1h — bot must stay active
 
 /** Max exploration trade amount (USD) */
-export const EXPLORATION_TRADE_USD = 3;
+export const EXPLORATION_TRADE_USD = 50; // v11.4.22: $3 → $50 — build real positions
 
 // ============================================================================
 // THRESHOLD BOUNDS — limits for adaptive threshold changes

@@ -1311,10 +1311,10 @@ const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: numb
 const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   rsiOversold: 30,
   rsiOverbought: 70,
-  confluenceBuy: 15,
-  confluenceSell: -15,
-  confluenceStrongBuy: 40,
-  confluenceStrongSell: -40,
+  confluenceBuy: 8,       // v11.4.22: Lowered from 15 — with no RSI/MACD history, scores stay near 0-8. Need lower bar to bootstrap trades.
+  confluenceSell: -8,     // v11.4.22: Symmetrical with buy threshold
+  confluenceStrongBuy: 30, // v11.4.22: Lowered from 40 — more achievable for conviction trades
+  confluenceStrongSell: -30, // v11.4.22: Symmetrical
   profitTakeTarget: 20,
   profitTakeSellPercent: 30,
   stopLossPercent: -15,       // v6.2: tightened from -25%
@@ -1322,11 +1322,11 @@ const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   atrStopMultiplier: ATR_STOP_LOSS_MULTIPLIER,     // v9.0: 2.5x ATR default
   atrTrailMultiplier: ATR_TRAILING_STOP_MULTIPLIER, // v9.0: 2.0x ATR default
   regimeMultipliers: {
-    TRENDING_UP: 1.2,
-    TRENDING_DOWN: 0.6,
-    RANGING: 0.8,      // v5.2: reduced from 1.0 — smaller positions in ranging markets
-    VOLATILE: 0.5,
-    UNKNOWN: 0.7,
+    TRENDING_UP: 1.3,       // v11.4.22: Aligned with constants.ts v9.4 values
+    TRENDING_DOWN: 0.85,    // v11.4.22: Was 0.6 — still trade, just more selective
+    RANGING: 0.9,           // v11.4.22: Was 0.8 — ranges are opportunity for a fast-cycling bot
+    VOLATILE: 0.7,          // v11.4.22: Was 0.5 — vol = opportunity
+    UNKNOWN: 0.8,           // v11.4.22: Was 0.7
   },
   history: [],
   lastAdapted: null,
@@ -1763,14 +1763,16 @@ function checkStagnation(availableUSDC: number, tokenData: any[]): { toToken: st
   // No exploration if insufficient capital
   if (availableUSDC < 5) return null;
 
-  // v11.4.13: Trigger exploration after 4 hours (was 48h — way too passive)
-  if (hoursSinceLastTrade < 4) {
+  // v11.4.22: Trigger exploration after 1 hour (was 4h in v11.4.13).
+  // The bot needs to be actively trading to build the 20-trade sample for Kelly sizing.
+  // 1 hour stagnation is already too long for a 24/7 autonomous agent.
+  if (hoursSinceLastTrade < 1) {
     exploration.consecutiveHolds = 0;
     return null;
   }
 
   exploration.stagnationAlerts++;
-  console.log(`  🔬 Stagnation detected: ${(hoursSinceLastTrade / 24).toFixed(1)} days since last trade (alert #${exploration.stagnationAlerts})`);
+  console.log(`  🔬 Stagnation detected: ${hoursSinceLastTrade.toFixed(1)}h since last trade (alert #${exploration.stagnationAlerts})`);
 
   // Pick the token with best confluence that we haven't traded recently
   const recentTokens = new Set(state.tradeHistory.slice(-10).map(t => t.toToken));
@@ -1781,7 +1783,9 @@ function checkStagnation(availableUSDC: number, tokenData: any[]): { toToken: st
   if (candidates.length === 0) return null;
 
   const target = candidates[0];
-  const explorationAmount = Math.min(15, availableUSDC * 0.02); // v11.4.13: $15 max, 2% of available — was $3
+  // v11.4.22: Increased from $15 to $50 (or 3% of available USDC).
+  // $15 exploration trades don't build meaningful positions or generate useful P&L data.
+  const explorationAmount = Math.min(50, availableUSDC * 0.03);
 
   return {
     toToken: target.symbol,
@@ -2099,6 +2103,17 @@ function loadTradeHistory() {
         state.strategyPatterns = parsed.strategyPatterns || {};
         if (parsed.adaptiveThresholds) {
           state.adaptiveThresholds = { ...DEFAULT_ADAPTIVE_THRESHOLDS, ...parsed.adaptiveThresholds };
+        }
+        // v11.4.22: Force lower confluence thresholds until self-improvement has enough data.
+        // Persisted state may have the old confluenceBuy=15 which blocks trades when RSI/MACD are null.
+        if (state.trading.totalTrades < KELLY_MIN_TRADES) {
+          state.adaptiveThresholds.confluenceBuy = Math.min(state.adaptiveThresholds.confluenceBuy, 8);
+          state.adaptiveThresholds.confluenceSell = Math.max(state.adaptiveThresholds.confluenceSell, -8);
+          state.adaptiveThresholds.confluenceStrongBuy = Math.min(state.adaptiveThresholds.confluenceStrongBuy, 30);
+          state.adaptiveThresholds.confluenceStrongSell = Math.max(state.adaptiveThresholds.confluenceStrongSell, -30);
+          // Also force updated regime multipliers
+          state.adaptiveThresholds.regimeMultipliers = { ...DEFAULT_ADAPTIVE_THRESHOLDS.regimeMultipliers };
+          console.log(`  📊 Bootstrap mode: Lowered confluence thresholds (buy≥${state.adaptiveThresholds.confluenceBuy}, sell≤${state.adaptiveThresholds.confluenceSell}) until ${KELLY_MIN_TRADES} trades reached`);
         }
         state.performanceReviews = (parsed.performanceReviews || []).slice(-30);
         state.explorationState = parsed.explorationState || { ...DEFAULT_EXPLORATION_STATE };
@@ -3668,8 +3683,11 @@ function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number;
   const sells = recentTrades.filter(t => t.action === 'SELL' && t.success);
 
   // Need minimum sample size for statistical validity
+  // v11.4.22: Increased fallback from FLOOR×3 ($15) to 5% of portfolio (capped at ceiling).
+  // $15 trades don't build meaningful positions. Use 5% to actually deploy capital while
+  // gathering the 20 trades needed for Kelly to kick in.
   if (sells.length < KELLY_MIN_TRADES) {
-    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (effectiveCeiling / 100));
+    const fallback = Math.min(Math.max(50, portfolioValue * 0.05), portfolioValue * (effectiveCeiling / 100));
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
@@ -3686,7 +3704,7 @@ function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number;
   }
 
   if (wins.length + losses.length < KELLY_MIN_TRADES) {
-    const fallback = Math.min(KELLY_POSITION_FLOOR_USD * 3, portfolioValue * (effectiveCeiling / 100));
+    const fallback = Math.min(Math.max(50, portfolioValue * 0.05), portfolioValue * (effectiveCeiling / 100));
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
@@ -6722,7 +6740,7 @@ async function executeTrade(
   const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
   const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
-  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 2 : 15; // v11.4.20: 5/15 → 2/15 — FORCED_DEPLOY was getting stuck in 5min dedup loops
+  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 2 : 5; // v11.4.22: 15 → 5 min — faster position building, bot needs to stay active
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
   // v11.4.17: In-flight lock — prevent parallel cycles from both passing dedup check
   if (tradeInFlight.has(dedupKey)) {
@@ -8808,6 +8826,21 @@ async function main() {
             console.log(`  ✅ Daily baseline initialized: $${persistedValue.toFixed(2)} (${todayStr})`);
           }
         }
+
+        // v11.4.22: Clear stale circuit breaker on startup.
+        // The breaker may have been triggered by corrupted state (e.g. fake drawdown from
+        // peakValue bug). On fresh deploy, reset pause and size reduction so the bot starts clean.
+        if (breakerState.isPaused) {
+          console.log(`  🔓 Clearing stale breaker pause (was: ${breakerState.lastReason})`);
+          breakerState.isPaused = false;
+          breakerState.pauseUntil = null;
+        }
+        if (breakerState.isSizeReduced) {
+          console.log(`  🔓 Clearing stale size reduction (was until: ${breakerState.sizeReductionUntil})`);
+          breakerState.isSizeReduced = false;
+          breakerState.sizeReductionUntil = null;
+        }
+        breakerState.consecutiveLosses = 0;
 
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
       } else {
