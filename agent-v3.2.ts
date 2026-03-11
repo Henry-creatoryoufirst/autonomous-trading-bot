@@ -9245,28 +9245,12 @@ async function main() {
   }
   breakerState.consecutiveLosses = 0;
 
-  // v11.4.22: On-chain trade history recovery from Blockscout (free, no API key).
-  // Deferred to run 30s after startup so the HTTP server passes Railway's healthcheck first.
-  // Uses account.address (actual CDP wallet) — CONFIG.walletAddress may differ.
-  (state as any)._recoveryStatus = 'pending (deferred 30s)';
+  // v11.4.22: On-chain trade history recovery — DISABLED pending debug.
+  // The Blockscout recovery was causing Railway deploy failures (healthcheck timeout / crash).
+  // Will re-enable once we confirm the root cause from logs.
+  (state as any)._recoveryStatus = 'disabled';
   (state as any)._recoveryWallet = account.address;
-  const recoveryWalletAddr = account.address;
-  setTimeout(async () => {
-    try {
-      console.log(`\n🔗 Starting deferred on-chain trade recovery...`);
-      const recovery = await recoverOnChainTradeHistory(recoveryWalletAddr);
-      if (recovery.merged > 0) {
-        (state as any)._recoveryStatus = `OK: ${recovery.merged} trades recovered from ${recovery.recovered} on-chain`;
-        console.log(`  🔗 On-chain recovery: ${recovery.merged} trades added, cost basis rebuilt`);
-      } else {
-        (state as any)._recoveryStatus = `OK: ${recovery.recovered} on-chain trades found, 0 new (all already in state)`;
-        console.log(`  ✅ On-chain recovery: ${recovery.recovered} trades found, all already in state`);
-      }
-    } catch (recoveryErr: any) {
-      (state as any)._recoveryStatus = `FAILED: ${recoveryErr.message?.substring(0, 200)}`;
-      console.log(`  ⚠️ On-chain recovery failed: ${recoveryErr.message?.substring(0, 100)} — using persisted state`);
-    }
-  }, 30_000);
+  console.log(`  ⏭️ On-chain recovery disabled — will re-enable after debug`);
 
   // v11.4.20: Reconcile trade counter with actual trade history
   // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
