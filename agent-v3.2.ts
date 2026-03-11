@@ -3413,148 +3413,10 @@ async function fetchDefiLlamaData(): Promise<DefiLlamaData | null> {
  * Fetch BTC/ETH funding rates and open interest from Binance (free, no API key needed)
  */
 async function fetchDerivativesData(): Promise<DerivativesData | null> {
-  try {
-    // v5.1: Expanded Binance derivatives intelligence — funding, OI, long/short ratios, top trader sentiment
-    const [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes,
-           btcLSRes, ethLSRes, btcTopLSRes, ethTopLSRes, btcTopPosRes, ethTopPosRes] = await Promise.allSettled([
-      // Original: Funding rates + Open Interest
-      axios.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=2", { timeout: 8000 }),
-      axios.get("https://fapi.binance.com/fapi/v1/fundingRate?symbol=ETHUSDT&limit=2", { timeout: 8000 }),
-      axios.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT", { timeout: 8000 }),
-      axios.get("https://fapi.binance.com/fapi/v1/openInterest?symbol=ETHUSDT", { timeout: 8000 }),
-      // v5.1: Global Long/Short Account Ratio (retail sentiment)
-      axios.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1", { timeout: 8000 }),
-      axios.get("https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
-      // v5.1: Top Trader Long/Short Account Ratio (smart money)
-      axios.get("https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=1", { timeout: 8000 }),
-      axios.get("https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
-      // v5.1: Top Trader Long/Short Position Ratio (smart money position sizing)
-      axios.get("https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=BTCUSDT&period=1h&limit=1", { timeout: 8000 }),
-      axios.get("https://fapi.binance.com/futures/data/topLongShortPositionRatio?symbol=ETHUSDT&period=1h&limit=1", { timeout: 8000 }),
-    ]);
-
-    // v10.3: Log individual endpoint failures for diagnostics (geo-blocking, rate limits)
-    const allResults = [btcFundingRes, ethFundingRes, btcOIRes, ethOIRes, btcLSRes, ethLSRes, btcTopLSRes, ethTopLSRes, btcTopPosRes, ethTopPosRes];
-    const failedCount = allResults.filter(r => r.status === 'rejected').length;
-    if (failedCount > 0) {
-      const firstFail = allResults.find(r => r.status === 'rejected') as PromiseRejectedResult;
-      const httpStatus = firstFail?.reason?.response?.status;
-      const errMsg = httpStatus || firstFail?.reason?.code || firstFail?.reason?.message || 'unknown';
-      // v10.4: Explicit geo-block detection
-      if (httpStatus === 403 || httpStatus === 451) {
-        console.warn(`  🚫 Binance derivatives: GEO-BLOCKED (HTTP ${httpStatus}) — ${failedCount}/10 endpoints. Railway IP may be US-restricted. Derivatives signals unavailable.`);
-      } else {
-        console.warn(`  ⚠️ Binance derivatives: ${failedCount}/10 endpoints failed (${errMsg})`);
-      }
-    }
-
-    // v10.2: Use null to distinguish "data unavailable" from "genuinely 0"
-    let btcFundingRate: number | null = null;
-    let ethFundingRate: number | null = null;
-    let btcOpenInterest = 0;
-    let ethOpenInterest = 0;
-
-    if (btcFundingRes.status === "fulfilled" && btcFundingRes.value.data?.length > 0) {
-      btcFundingRate = parseFloat(btcFundingRes.value.data[btcFundingRes.value.data.length - 1].fundingRate) * 100;
-    }
-    if (ethFundingRes.status === "fulfilled" && ethFundingRes.value.data?.length > 0) {
-      ethFundingRate = parseFloat(ethFundingRes.value.data[ethFundingRes.value.data.length - 1].fundingRate) * 100;
-    }
-    if (btcOIRes.status === "fulfilled") {
-      btcOpenInterest = parseFloat(btcOIRes.value.data?.openInterest || "0");
-    }
-    if (ethOIRes.status === "fulfilled") {
-      ethOpenInterest = parseFloat(ethOIRes.value.data?.openInterest || "0");
-    }
-
-    // v5.1: Parse long/short ratios — value > 1 means more longs than shorts
-    const parseLSRatio = (res: PromiseSettledResult<any>): number | null => {
-      if (res.status !== "fulfilled" || !res.value.data?.length) return null;
-      return parseFloat(res.value.data[0].longShortRatio);
-    };
-
-    const btcLongShortRatio = parseLSRatio(btcLSRes);
-    const ethLongShortRatio = parseLSRatio(ethLSRes);
-    const btcTopTraderLSRatio = parseLSRatio(btcTopLSRes);
-    const ethTopTraderLSRatio = parseLSRatio(ethTopLSRes);
-    const btcTopTraderPositionRatio = parseLSRatio(btcTopPosRes);
-    const ethTopTraderPositionRatio = parseLSRatio(ethTopPosRes);
-
-    // Interpret funding rates — extreme values indicate crowded positions
-    // v10.2: null = data unavailable, distinct from 0 = genuinely neutral
-    const interpretFunding = (rate: number | null): "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL" | "UNAVAILABLE" => {
-      if (rate === null) return "UNAVAILABLE";
-      if (rate > 0.03) return "LONG_CROWDED";
-      if (rate < -0.03) return "SHORT_CROWDED";
-      return "NEUTRAL";
-    };
-
-    const btcFundingSignal = interpretFunding(btcFundingRate);
-    const ethFundingSignal = interpretFunding(ethFundingRate);
-
-    // Calculate OI change (we'll store previous values in cache)
-    const btcOIChange24h = derivativesCache.btcOI > 0 ? ((btcOpenInterest - derivativesCache.btcOI) / derivativesCache.btcOI) * 100 : 0;
-    const ethOIChange24h = derivativesCache.ethOI > 0 ? ((ethOpenInterest - derivativesCache.ethOI) / derivativesCache.ethOI) * 100 : 0;
-
-    // v5.1: Composite Positioning Signal — combines funding, global L/S, and top trader L/S
-    const interpretPositioning = (
-      fundingSignal: string,
-      globalLS: number | null,
-      topTraderLS: number | null,
-      topTraderPos: number | null,
-    ): "OVERLEVERAGED_LONG" | "OVERLEVERAGED_SHORT" | "SMART_MONEY_LONG" | "SMART_MONEY_SHORT" | "NEUTRAL" => {
-      // Smart money divergence from retail = highest conviction signal
-      if (topTraderLS !== null && globalLS !== null) {
-        // Top traders long while retail short = smart money accumulation
-        if (topTraderLS > 1.3 && globalLS < 0.8) return "SMART_MONEY_LONG";
-        // Top traders short while retail long = smart money distribution
-        if (topTraderLS < 0.7 && globalLS > 1.3) return "SMART_MONEY_SHORT";
-      }
-      // Extreme crowding — everyone on same side = danger
-      if (fundingSignal === "LONG_CROWDED" && (globalLS ?? 1) > 1.5) return "OVERLEVERAGED_LONG";
-      if (fundingSignal === "SHORT_CROWDED" && (globalLS ?? 1) < 0.5) return "OVERLEVERAGED_SHORT";
-      return "NEUTRAL";
-    };
-
-    const btcPositioningSignal = interpretPositioning(btcFundingSignal, btcLongShortRatio, btcTopTraderLSRatio, btcTopTraderPositionRatio);
-    const ethPositioningSignal = interpretPositioning(ethFundingSignal, ethLongShortRatio, ethTopTraderLSRatio, ethTopTraderPositionRatio);
-
-    // v5.1: OI + Price Divergence Detection — OI rising while price falls = potential squeeze
-    const interpretOIPriceDivergence = (
-      oiChange: number, priceChange: number
-    ): "OI_UP_PRICE_DOWN" | "OI_DOWN_PRICE_UP" | "ALIGNED" | "NEUTRAL" => {
-      if (Math.abs(oiChange) < 1 || Math.abs(priceChange) < 1) return "NEUTRAL"; // Not enough movement
-      if (oiChange > 3 && priceChange < -2) return "OI_UP_PRICE_DOWN";   // Shorts piling in OR longs averaging down = squeeze incoming
-      if (oiChange < -3 && priceChange > 2) return "OI_DOWN_PRICE_UP";    // Short squeeze happening — OI drops as shorts close
-      return "ALIGNED";
-    };
-
-    // Use cached price changes from derivativesCache
-    const btcOIPriceDivergence = interpretOIPriceDivergence(btcOIChange24h, derivativesCache.btcPriceChange ?? 0);
-    const ethOIPriceDivergence = interpretOIPriceDivergence(ethOIChange24h, derivativesCache.ethPriceChange ?? 0);
-
-    // Update cache
-    derivativesCache.btcOI = btcOpenInterest;
-    derivativesCache.ethOI = ethOpenInterest;
-
-    console.log(`  📈 Derivatives: BTC funding ${btcFundingRate !== null ? `${btcFundingRate >= 0 ? "+" : ""}${btcFundingRate.toFixed(4)}%` : "N/A"} (${btcFundingSignal}) | ETH funding ${ethFundingRate !== null ? `${ethFundingRate >= 0 ? "+" : ""}${ethFundingRate.toFixed(4)}%` : "N/A"} (${ethFundingSignal})`);
-    console.log(`     BTC OI: ${btcOpenInterest.toFixed(0)} BTC | ETH OI: ${ethOpenInterest.toFixed(0)} ETH`);
-    console.log(`     BTC L/S: Global ${btcLongShortRatio?.toFixed(2) ?? "N/A"} | TopTrader ${btcTopTraderLSRatio?.toFixed(2) ?? "N/A"} → ${btcPositioningSignal}`);
-    console.log(`     ETH L/S: Global ${ethLongShortRatio?.toFixed(2) ?? "N/A"} | TopTrader ${ethTopTraderLSRatio?.toFixed(2) ?? "N/A"} → ${ethPositioningSignal}`);
-
-    return {
-      btcFundingRate, ethFundingRate, btcOpenInterest, ethOpenInterest,
-      btcFundingSignal, ethFundingSignal, btcOIChange24h, ethOIChange24h,
-      btcLongShortRatio, ethLongShortRatio,
-      btcTopTraderLSRatio, ethTopTraderLSRatio,
-      btcTopTraderPositionRatio, ethTopTraderPositionRatio,
-      btcPositioningSignal, ethPositioningSignal,
-      btcOIPriceDivergence, ethOIPriceDivergence,
-    };
-  } catch (error: any) {
-    console.warn(`  ⚠️ Derivatives fetch failed: ${error?.message?.substring(0, 100) || error}`);
-    return null;
-  }
+  // v11.5: Binance derivatives DISABLED — geo-blocked on US Railway infrastructure,
+  // and bot has no futures trading capability (trades Base DeFi via CDP).
+  // All 10 API calls removed. Downstream code already handles null gracefully.
+  return null;
 }
 
 // Cache for derivatives OI comparison + price change tracking for divergence detection
@@ -4078,12 +3940,8 @@ function calculateInstitutionalPositionSize(portfolioValue: number): {
     }
   }
 
-  // v10.4: Derivatives blind-spot reduction — when derivatives data is unavailable,
-  // 3 key trading rules (funding, smart money divergence, mean-reversion) are silenced.
-  // Reduce size by 15% to compensate for reduced signal confidence.
-  if (lastSignalHealth.derivatives === 'DOWN') {
-    sizeUSD *= 0.85;
-  }
+  // v11.5: Derivatives blind-spot reduction REMOVED — derivatives permanently disabled.
+  // No longer penalizing position sizing for missing derivatives data.
 
   // Hard floor and ceiling — v10.3: uses dynamic ceiling for small portfolios
   const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue);
@@ -5034,6 +4892,12 @@ function determineMarketRegime(
 /**
  * Format DefiLlama + Derivatives data for the AI prompt
  */
+// v11.5: Safe toFixed — prevents crash when value is null/undefined/NaN at runtime
+function sf(val: number | null | undefined, digits: number): string {
+  if (val === null || val === undefined || isNaN(val)) return "N/A";
+  return val.toFixed(digits);
+}
+
 function formatIntelligenceForPrompt(
   defi: DefiLlamaData | null,
   derivatives: DerivativesData | null,
@@ -5050,8 +4914,8 @@ function formatIntelligenceForPrompt(
 
   if (defi) {
     lines.push(`═══ DEFI INTELLIGENCE (DefiLlama) ═══`);
-    lines.push(`Base Chain TVL: $${(defi.baseTVL / 1e9).toFixed(2)}B (${defi.baseTVLChange24h >= 0 ? "+" : ""}${defi.baseTVLChange24h.toFixed(1)}% 24h)`);
-    lines.push(`Base DEX Volume (24h): $${(defi.baseDEXVolume24h / 1e6).toFixed(0)}M`);
+    lines.push(`Base Chain TVL: $${sf((defi.baseTVL || 0) / 1e9, 2)}B (${(defi.baseTVLChange24h ?? 0) >= 0 ? "+" : ""}${sf(defi.baseTVLChange24h, 1)}% 24h)`);
+    lines.push(`Base DEX Volume (24h): $${sf((defi.baseDEXVolume24h || 0) / 1e6, 0)}M`);
 
     if (defi.topProtocols.length > 0) {
       lines.push(`Top Base Protocols by TVL:`);
@@ -5076,24 +4940,24 @@ function formatIntelligenceForPrompt(
 
   if (derivatives) {
     lines.push(`═══ DERIVATIVES INTELLIGENCE (Binance) ═══`);
-    lines.push(`BTC Funding Rate: ${derivatives.btcFundingRate >= 0 ? "+" : ""}${derivatives.btcFundingRate.toFixed(4)}%/8h → ${derivatives.btcFundingSignal}`);
-    lines.push(`ETH Funding Rate: ${derivatives.ethFundingRate >= 0 ? "+" : ""}${derivatives.ethFundingRate.toFixed(4)}%/8h → ${derivatives.ethFundingSignal}`);
-    lines.push(`BTC Open Interest: ${derivatives.btcOpenInterest.toFixed(0)} BTC ${derivatives.btcOIChange24h !== 0 ? `(${derivatives.btcOIChange24h >= 0 ? "+" : ""}${derivatives.btcOIChange24h.toFixed(1)}% change)` : ""}`);
-    lines.push(`ETH Open Interest: ${derivatives.ethOpenInterest.toFixed(0)} ETH ${derivatives.ethOIChange24h !== 0 ? `(${derivatives.ethOIChange24h >= 0 ? "+" : ""}${derivatives.ethOIChange24h.toFixed(1)}% change)` : ""}`);
+    lines.push(`BTC Funding Rate: ${(derivatives.btcFundingRate ?? 0) >= 0 ? "+" : ""}${sf(derivatives.btcFundingRate, 4)}%/8h → ${derivatives.btcFundingSignal}`);
+    lines.push(`ETH Funding Rate: ${(derivatives.ethFundingRate ?? 0) >= 0 ? "+" : ""}${sf(derivatives.ethFundingRate, 4)}%/8h → ${derivatives.ethFundingSignal}`);
+    lines.push(`BTC Open Interest: ${sf(derivatives.btcOpenInterest, 0)} BTC ${derivatives.btcOIChange24h !== 0 ? `(${(derivatives.btcOIChange24h ?? 0) >= 0 ? "+" : ""}${sf(derivatives.btcOIChange24h, 1)}% change)` : ""}`);
+    lines.push(`ETH Open Interest: ${sf(derivatives.ethOpenInterest, 0)} ETH ${derivatives.ethOIChange24h !== 0 ? `(${(derivatives.ethOIChange24h ?? 0) >= 0 ? "+" : ""}${sf(derivatives.ethOIChange24h, 1)}% change)` : ""}`);
 
     // v5.1: Long/Short Ratios — retail vs smart money positioning
     lines.push(`--- Positioning Intelligence ---`);
     if (derivatives.btcLongShortRatio !== null) {
-      lines.push(`BTC Global L/S Ratio: ${derivatives.btcLongShortRatio.toFixed(2)} (${derivatives.btcLongShortRatio > 1 ? "retail net long" : "retail net short"})`);
+      lines.push(`BTC Global L/S Ratio: ${sf(derivatives.btcLongShortRatio, 2)} (${(derivatives.btcLongShortRatio ?? 0) > 1 ? "retail net long" : "retail net short"})`);
     }
     if (derivatives.btcTopTraderLSRatio !== null) {
-      lines.push(`BTC Top Trader L/S: ${derivatives.btcTopTraderLSRatio.toFixed(2)} (${derivatives.btcTopTraderLSRatio > 1 ? "smart money long" : "smart money short"})`);
+      lines.push(`BTC Top Trader L/S: ${sf(derivatives.btcTopTraderLSRatio, 2)} (${(derivatives.btcTopTraderLSRatio ?? 0) > 1 ? "smart money long" : "smart money short"})`);
     }
     if (derivatives.ethLongShortRatio !== null) {
-      lines.push(`ETH Global L/S Ratio: ${derivatives.ethLongShortRatio.toFixed(2)} (${derivatives.ethLongShortRatio > 1 ? "retail net long" : "retail net short"})`);
+      lines.push(`ETH Global L/S Ratio: ${sf(derivatives.ethLongShortRatio, 2)} (${(derivatives.ethLongShortRatio ?? 0) > 1 ? "retail net long" : "retail net short"})`);
     }
     if (derivatives.ethTopTraderLSRatio !== null) {
-      lines.push(`ETH Top Trader L/S: ${derivatives.ethTopTraderLSRatio.toFixed(2)} (${derivatives.ethTopTraderLSRatio > 1 ? "smart money long" : "smart money short"})`);
+      lines.push(`ETH Top Trader L/S: ${sf(derivatives.ethTopTraderLSRatio, 2)} (${(derivatives.ethTopTraderLSRatio ?? 0) > 1 ? "smart money long" : "smart money short"})`);
     }
 
     // v5.1: Composite Positioning Signals
@@ -5184,12 +5048,12 @@ function formatIntelligenceForPrompt(
 
   if (macro) {
     lines.push(`═══ MACRO INTELLIGENCE (Federal Reserve / FRED) ═══`);
-    if (macro.fedFundsRate) lines.push(`Fed Funds Rate: ${macro.fedFundsRate.value.toFixed(2)}% (${macro.rateDirection})`);
-    if (macro.treasury10Y) lines.push(`10-Year Treasury Yield: ${macro.treasury10Y.value.toFixed(2)}%`);
-    if (macro.yieldCurve) lines.push(`Yield Curve (10Y-2Y): ${macro.yieldCurve.value >= 0 ? "+" : ""}${macro.yieldCurve.value.toFixed(2)}% ${macro.yieldCurve.value < 0 ? "⚠️ INVERTED" : ""}`);
-    if (macro.cpi) lines.push(`CPI: ${macro.cpi.value.toFixed(1)} ${macro.cpi.yoyChange !== null ? `(${macro.cpi.yoyChange >= 0 ? "+" : ""}${macro.cpi.yoyChange.toFixed(1)}% YoY)` : ""}`);
-    if (macro.m2MoneySupply) lines.push(`M2 Money Supply: ${macro.m2MoneySupply.yoyChange !== null ? `${macro.m2MoneySupply.yoyChange >= 0 ? "+" : ""}${macro.m2MoneySupply.yoyChange.toFixed(1)}% YoY` : "N/A"} ${(macro.m2MoneySupply.yoyChange ?? 0) > 5 ? "🟢 LIQUIDITY EXPANDING" : (macro.m2MoneySupply.yoyChange ?? 0) < 0 ? "🔴 LIQUIDITY CONTRACTING" : ""}`);
-    if (macro.dollarIndex) lines.push(`US Dollar Index: ${macro.dollarIndex.value.toFixed(1)} ${macro.dollarIndex.value > 110 ? "🔴 STRONG (headwind)" : macro.dollarIndex.value < 100 ? "🟢 WEAK (tailwind)" : ""}`);
+    if (macro.fedFundsRate) lines.push(`Fed Funds Rate: ${sf(macro.fedFundsRate.value, 2)}% (${macro.rateDirection})`);
+    if (macro.treasury10Y) lines.push(`10-Year Treasury Yield: ${sf(macro.treasury10Y.value, 2)}%`);
+    if (macro.yieldCurve) lines.push(`Yield Curve (10Y-2Y): ${(macro.yieldCurve.value ?? 0) >= 0 ? "+" : ""}${sf(macro.yieldCurve.value, 2)}% ${(macro.yieldCurve.value ?? 0) < 0 ? "⚠️ INVERTED" : ""}`);
+    if (macro.cpi) lines.push(`CPI: ${sf(macro.cpi.value, 1)} ${macro.cpi.yoyChange !== null ? `(${(macro.cpi.yoyChange ?? 0) >= 0 ? "+" : ""}${sf(macro.cpi.yoyChange, 1)}% YoY)` : ""}`);
+    if (macro.m2MoneySupply) lines.push(`M2 Money Supply: ${macro.m2MoneySupply.yoyChange !== null ? `${(macro.m2MoneySupply.yoyChange ?? 0) >= 0 ? "+" : ""}${sf(macro.m2MoneySupply.yoyChange, 1)}% YoY` : "N/A"} ${(macro.m2MoneySupply.yoyChange ?? 0) > 5 ? "🟢 LIQUIDITY EXPANDING" : (macro.m2MoneySupply.yoyChange ?? 0) < 0 ? "🔴 LIQUIDITY CONTRACTING" : ""}`);
+    if (macro.dollarIndex) lines.push(`US Dollar Index: ${sf(macro.dollarIndex.value, 1)} ${(macro.dollarIndex.value ?? 0) > 110 ? "🔴 STRONG (headwind)" : (macro.dollarIndex.value ?? 0) < 100 ? "🟢 WEAK (tailwind)" : ""}`);
     lines.push(`Macro Signal: ${macro.macroSignal}`);
 
     // Macro signal interpretation
@@ -5203,16 +5067,16 @@ function formatIntelligenceForPrompt(
       lines.push("");
       lines.push(`═══ CROSS-ASSET CORRELATION (v5.1) ═══`);
       if (ca.goldPrice !== null) {
-        lines.push(`Gold (XAU): $${ca.goldPrice.toFixed(0)} ${ca.goldChange24h !== null ? `(${ca.goldChange24h >= 0 ? "+" : ""}${ca.goldChange24h.toFixed(1)}% 24h)` : ""}`);
+        lines.push(`Gold (XAU): $${sf(ca.goldPrice, 0)} ${ca.goldChange24h !== null ? `(${ca.goldChange24h >= 0 ? "+" : ""}${sf(ca.goldChange24h, 1)}% 24h)` : ""}`);
       }
       if (ca.oilPrice !== null) {
-        lines.push(`Oil (WTI): $${ca.oilPrice.toFixed(2)} ${ca.oilChange24h !== null ? `(${ca.oilChange24h >= 0 ? "+" : ""}${ca.oilChange24h.toFixed(1)}% 24h)` : ""}`);
+        lines.push(`Oil (WTI): $${sf(ca.oilPrice, 2)} ${ca.oilChange24h !== null ? `(${ca.oilChange24h >= 0 ? "+" : ""}${sf(ca.oilChange24h, 1)}% 24h)` : ""}`);
       }
       if (ca.vixLevel !== null) {
-        lines.push(`VIX: ${ca.vixLevel.toFixed(1)} ${ca.vixLevel > 30 ? "⚠️ HIGH FEAR" : ca.vixLevel > 20 ? "↑ Elevated" : ca.vixLevel < 15 ? "🟢 Low (complacent)" : ""}`);
+        lines.push(`VIX: ${sf(ca.vixLevel, 1)} ${ca.vixLevel > 30 ? "⚠️ HIGH FEAR" : ca.vixLevel > 20 ? "↑ Elevated" : ca.vixLevel < 15 ? "🟢 Low (complacent)" : ""}`);
       }
       if (ca.sp500Change !== null) {
-        lines.push(`S&P 500: ${ca.sp500Change >= 0 ? "+" : ""}${ca.sp500Change.toFixed(1)}% ${ca.sp500Change > 2 ? "🟢 Risk-On Rally" : ca.sp500Change < -2 ? "🔴 Risk-Off Selloff" : ""}`);
+        lines.push(`S&P 500: ${ca.sp500Change >= 0 ? "+" : ""}${sf(ca.sp500Change, 1)}% ${ca.sp500Change > 2 ? "🟢 Risk-On Rally" : ca.sp500Change < -2 ? "🔴 Risk-Off Selloff" : ""}`);
       }
       lines.push(`Cross-Asset Signal: ${ca.crossAssetSignal}`);
 
@@ -5237,10 +5101,10 @@ function formatIntelligenceForPrompt(
   // ── v10.0: Global Market Intelligence ──
   if (globalMarket) {
     lines.push(`═══ GLOBAL MARKET INTELLIGENCE ═══`);
-    lines.push(`BTC Dominance: ${globalMarket.btcDominance.toFixed(1)}% | ETH Dominance: ${globalMarket.ethDominance.toFixed(1)}%`);
-    lines.push(`Total Crypto Market Cap: $${(globalMarket.totalMarketCap / 1e9).toFixed(1)}B | 24h Volume: $${(globalMarket.totalVolume24h / 1e9).toFixed(1)}B`);
-    if (globalMarket.defiMarketCap) lines.push(`DeFi Market Cap: $${(globalMarket.defiMarketCap / 1e9).toFixed(1)}B`);
-    lines.push(`BTC Dominance 7d Change: ${globalMarket.btcDominanceChange7d >= 0 ? '+' : ''}${globalMarket.btcDominanceChange7d.toFixed(2)}pp`);
+    lines.push(`BTC Dominance: ${sf(globalMarket.btcDominance, 1)}% | ETH Dominance: ${sf(globalMarket.ethDominance, 1)}%`);
+    lines.push(`Total Crypto Market Cap: $${sf((globalMarket.totalMarketCap || 0) / 1e9, 1)}B | 24h Volume: $${sf((globalMarket.totalVolume24h || 0) / 1e9, 1)}B`);
+    if (globalMarket.defiMarketCap) lines.push(`DeFi Market Cap: $${sf(globalMarket.defiMarketCap / 1e9, 1)}B`);
+    lines.push(`BTC Dominance 7d Change: ${(globalMarket.btcDominanceChange7d ?? 0) >= 0 ? '+' : ''}${sf(globalMarket.btcDominanceChange7d, 2)}pp`);
     switch (globalMarket.altseasonSignal) {
       case 'ALTSEASON_ROTATION':
         lines.push(`🔥 ALTSEASON SIGNAL: BTC dominance dropping >2pp — capital rotating into alts. BOOST AI/Meme allocation, REDUCE Blue Chip.`);
@@ -5258,10 +5122,10 @@ function formatIntelligenceForPrompt(
   if (smartRetailDiv) {
     lines.push(`═══ SMART MONEY vs RETAIL DIVERGENCE ═══`);
     if (smartRetailDiv.btcDivergence !== null) {
-      lines.push(`BTC: Smart-Retail divergence = ${smartRetailDiv.btcDivergence >= 0 ? '+' : ''}${smartRetailDiv.btcDivergence.toFixed(1)}pp → ${smartRetailDiv.btcSignal}`);
+      lines.push(`BTC: Smart-Retail divergence = ${smartRetailDiv.btcDivergence >= 0 ? '+' : ''}${sf(smartRetailDiv.btcDivergence, 1)}pp → ${smartRetailDiv.btcSignal}`);
     }
     if (smartRetailDiv.ethDivergence !== null) {
-      lines.push(`ETH: Smart-Retail divergence = ${smartRetailDiv.ethDivergence >= 0 ? '+' : ''}${smartRetailDiv.ethDivergence.toFixed(1)}pp → ${smartRetailDiv.ethSignal}`);
+      lines.push(`ETH: Smart-Retail divergence = ${smartRetailDiv.ethDivergence >= 0 ? '+' : ''}${sf(smartRetailDiv.ethDivergence, 1)}pp → ${smartRetailDiv.ethSignal}`);
     }
     if (smartRetailDiv.btcSignal === 'STRONG_BUY' || smartRetailDiv.ethSignal === 'STRONG_BUY') {
       lines.push(`🟢 Smart money is MORE long than retail — institutions see opportunity. High conviction BUY signal.`);
@@ -5276,8 +5140,8 @@ function formatIntelligenceForPrompt(
   // ── v10.0: Funding Rate Mean-Reversion ──
   if (fundingMR) {
     lines.push(`═══ FUNDING RATE MEAN-REVERSION ═══`);
-    lines.push(`BTC funding: mean=${(fundingMR.btcMean * 100).toFixed(4)}% | z-score=${fundingMR.btcZScore.toFixed(2)} → ${fundingMR.btcSignal}`);
-    lines.push(`ETH funding: mean=${(fundingMR.ethMean * 100).toFixed(4)}% | z-score=${fundingMR.ethZScore.toFixed(2)} → ${fundingMR.ethSignal}`);
+    lines.push(`BTC funding: mean=${sf((fundingMR.btcMean ?? 0) * 100, 4)}% | z-score=${sf(fundingMR.btcZScore, 2)} → ${fundingMR.btcSignal}`);
+    lines.push(`ETH funding: mean=${sf((fundingMR.ethMean ?? 0) * 100, 4)}% | z-score=${sf(fundingMR.ethZScore, 2)} → ${fundingMR.ethSignal}`);
     if (fundingMR.btcSignal === 'CROWDED_LONGS_REVERSAL' || fundingMR.ethSignal === 'CROWDED_LONGS_REVERSAL') {
       lines.push(`⚠️ CROWDED LONGS: Funding rates >2σ above mean — leveraged longs are overcrowded. Correction risk elevated. Consider taking profit or hedging.`);
     } else if (fundingMR.btcSignal === 'CROWDED_SHORTS_BOUNCE' || fundingMR.ethSignal === 'CROWDED_SHORTS_BOUNCE') {
@@ -5294,8 +5158,8 @@ function formatIntelligenceForPrompt(
     const undervalued: string[] = [];
     const overvalued: string[] = [];
     for (const [token, d] of Object.entries(tvlPriceDiv.divergences)) {
-      if (d.signal === 'UNDERVALUED') undervalued.push(`${token} (TVL ${d.tvlChange >= 0 ? '+' : ''}${d.tvlChange.toFixed(1)}% / Price ${d.priceChange >= 0 ? '+' : ''}${d.priceChange.toFixed(1)}%)`);
-      if (d.signal === 'OVERVALUED') overvalued.push(`${token} (TVL ${d.tvlChange >= 0 ? '+' : ''}${d.tvlChange.toFixed(1)}% / Price ${d.priceChange >= 0 ? '+' : ''}${d.priceChange.toFixed(1)}%)`);
+      if (d.signal === 'UNDERVALUED') undervalued.push(`${token} (TVL ${(d.tvlChange ?? 0) >= 0 ? '+' : ''}${sf(d.tvlChange, 1)}% / Price ${(d.priceChange ?? 0) >= 0 ? '+' : ''}${sf(d.priceChange, 1)}%)`);
+      if (d.signal === 'OVERVALUED') overvalued.push(`${token} (TVL ${(d.tvlChange ?? 0) >= 0 ? '+' : ''}${sf(d.tvlChange, 1)}% / Price ${(d.priceChange ?? 0) >= 0 ? '+' : ''}${sf(d.priceChange, 1)}%)`);
     }
     if (undervalued.length > 0) lines.push(`🟢 UNDERVALUED (TVL up, price flat): ${undervalued.join(', ')}`);
     if (overvalued.length > 0) lines.push(`🔴 OVERVALUED (TVL down, price up): ${overvalued.join(', ')}`);
@@ -5306,8 +5170,8 @@ function formatIntelligenceForPrompt(
   // ── v10.0: Stablecoin Supply / Capital Flow ──
   if (stablecoinData) {
     lines.push(`═══ STABLECOIN SUPPLY / CAPITAL FLOW ═══`);
-    lines.push(`Total Stablecoin Supply: $${(stablecoinData.totalStablecoinSupply / 1e9).toFixed(1)}B (USDT: $${(stablecoinData.usdtMarketCap / 1e9).toFixed(1)}B | USDC: $${(stablecoinData.usdcMarketCap / 1e9).toFixed(1)}B)`);
-    lines.push(`7-Day Supply Change: ${stablecoinData.supplyChange7d >= 0 ? '+' : ''}${stablecoinData.supplyChange7d.toFixed(2)}%`);
+    lines.push(`Total Stablecoin Supply: $${sf((stablecoinData.totalStablecoinSupply || 0) / 1e9, 1)}B (USDT: $${sf((stablecoinData.usdtMarketCap || 0) / 1e9, 1)}B | USDC: $${sf((stablecoinData.usdcMarketCap || 0) / 1e9, 1)}B)`);
+    lines.push(`7-Day Supply Change: ${(stablecoinData.supplyChange7d ?? 0) >= 0 ? '+' : ''}${sf(stablecoinData.supplyChange7d, 2)}%`);
     switch (stablecoinData.signal) {
       case 'CAPITAL_INFLOW':
         lines.push(`🟢 CAPITAL INFLOW: Stablecoin supply growing >2% — fresh capital entering crypto. Bullish for prices.`);
@@ -5594,17 +5458,17 @@ async function getMarketData(): Promise<MarketData> {
       coingecko: marketResult.status === 'fulfilled' ? 'LIVE' : Object.keys(lastKnownPrices).length > 0 ? 'STALE' : 'DOWN',
       fearGreed: fngResult.status === 'fulfilled' ? 'LIVE' : 'DOWN',
       defiLlama: defiResult.status === 'fulfilled' && defiResult.value ? 'LIVE' : 'DOWN',
-      derivatives: derivResult.status === 'fulfilled' && derivResult.value ? 'LIVE' : 'DOWN',
+      derivatives: 'DISABLED', // v11.5: Derivatives removed — geo-blocked and not actionable
       news: newsResult.status === 'fulfilled' && newsResult.value ? 'LIVE' : 'DOWN',
       macro: macroResult.status === 'fulfilled' && macroResult.value ? 'LIVE' : 'DOWN',
       momentum: lastMomentumSignal.dataAvailable ? 'LIVE' : 'DOWN',
       // v10.0: New intelligence sources
       globalMarket: globalMktResult.status === 'fulfilled' && globalMktResult.value ? 'LIVE' : 'DOWN',
       stablecoinSupply: stablecoinResult.status === 'fulfilled' && stablecoinResult.value ? 'LIVE' : 'DOWN',
-      fundingHistory: fundingRateHistory.btc.length >= 5 ? 'LIVE' : 'BUILDING',
+      fundingHistory: 'DISABLED', // v11.5: depends on derivatives, permanently disabled
       lastUpdated: new Date().toISOString(),
     };
-    const healthEntries = Object.entries(lastSignalHealth).filter(([k]) => k !== 'lastUpdated');
+    const healthEntries = Object.entries(lastSignalHealth).filter(([k, v]) => k !== 'lastUpdated' && v !== 'DISABLED');
     const liveCount = healthEntries.filter(([, v]) => v === 'LIVE').length;
     const totalSources = healthEntries.length;
     const downSources = healthEntries.filter(([, v]) => v === 'DOWN').map(([k]) => k);
@@ -6709,7 +6573,7 @@ async function makeTradeDecision(
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
   const systemPrompt = `You are Henry's autonomous crypto trading agent v10.0 "Market Intelligence Engine" on Base network.
-You are an 11-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, derivatives data (funding rates + OI + long/short ratios + top trader positioning), news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), market regime analysis, BTC dominance & altseason rotation, smart money vs retail divergence, funding rate mean-reversion, TVL-price divergence, and stablecoin capital flow. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to SMART MONEY positioning divergence from retail, OI-Price divergence, altseason rotation signals, and funding rate mean-reversion — these are your highest-conviction indicators.
+You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), market regime analysis, BTC dominance & altseason rotation, TVL-price divergence, and stablecoin capital flow. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to altseason rotation signals, TVL-price divergence, and cross-asset correlations — these are your highest-conviction indicators.
 
 ═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}${cashDeployment?.active ? ` ⚠️ CASH OVERWEIGHT (${cashDeployment.cashPercent.toFixed(1)}% of portfolio)` : ''}
@@ -6804,7 +6668,7 @@ RISK RULES:
 3. Don't chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
 4. Minimum trade $1.00
 
-DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Smart-Retail Divergence > Technical signals + DeFi flows > DEX Intelligence (volume spikes + buy/sell pressure) > Funding Mean-Reversion > TVL-Price Divergence > Stablecoin Capital Flow > Derivatives signals > News sentiment > Sector rebalancing
+DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Technical signals + DeFi flows > DEX Intelligence (volume spikes + buy/sell pressure) > TVL-Price Divergence > Stablecoin Capital Flow > Cross-Asset Correlations > News sentiment > Sector rebalancing
 
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
@@ -8917,17 +8781,14 @@ function displayBanner() {
 ║   AGENTIC WALLETS — Smart Account + Gasless Swaps                     ║
 ║   LIVE TRADING | Base Network | Capital Compounding Mindset            ║
 ║                                                                        ║
-║   Intelligence Stack (11 Dimensions):                                  ║
-║   • Technical: RSI, MACD, Bollinger Bands, SMA, Volume                ║
+║   Intelligence Stack (Lean & Action-Biased):                           ║
+║   • Technical: RSI, MACD, Bollinger Bands, ADX, ATR, Volume           ║
 ║   • DeFi Intel: Base TVL, DEX Volume, Protocol TVL (DefiLlama)        ║
-║   • Derivatives: Funding + OI + Long/Short Ratios + Top Traders       ║
-║   • Positioning: Smart Money vs Retail + OI-Price Divergence           ║
 ║   • News: Crypto news sentiment — bullish/bearish (CryptoPanic)       ║
 ║   • Macro: Fed Rate, 10Y Yield, CPI, M2, Dollar Index (FRED)         ║
 ║   • Cross-Asset: Gold, Oil, VIX, S&P 500 correlation signals         ║
-║   • Sentiment: Technical Regime Detection + Price Action              ║
+║   • Regime: Technical Regime Detection + Pure Price Action             ║
 ║   • BTC Dominance: Altseason rotation + dominance flight signals      ║
-║   • Funding MR: Mean-reversion z-scores for crowding detection        ║
 ║   • Capital Flow: Stablecoin supply tracking + TVL-price divergence   ║
 ║                                                                        ║
 ╚══════════════════════════════════════════════════════════════════════════╝
