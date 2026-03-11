@@ -9060,6 +9060,55 @@ async function main() {
     } catch { /* non-critical */ }
   }
 
+  // v11.4.22: Bootstrap price history cache on startup.
+  // Fetches 30 days of hourly data from CoinGecko for all portfolio tokens BEFORE the first
+  // trading cycle. This ensures RSI, MACD, Bollinger, ATR, and ADX are available immediately
+  // instead of returning null for the first hour of operation.
+  try {
+    console.log(`\n📊 Bootstrapping price history for technical indicators...`);
+    const uniqueCGIds = new Set<string>();
+    for (const symbol of Object.keys(TOKEN_REGISTRY)) {
+      const reg = TOKEN_REGISTRY[symbol];
+      if (reg && reg.coingeckoId && symbol !== 'USDC') {
+        uniqueCGIds.add(reg.coingeckoId);
+      }
+    }
+    const cgIds = Array.from(uniqueCGIds);
+    let bootstrapped = 0;
+    let failed = 0;
+    // Fetch in batches of 3 with 1.5s delay to respect CoinGecko rate limits
+    for (let i = 0; i < cgIds.length; i += 3) {
+      const batch = cgIds.slice(i, i + 3);
+      const results = await Promise.allSettled(
+        batch.map(id => fetchPriceHistory(id))
+      );
+      for (let j = 0; j < batch.length; j++) {
+        const result = results[j];
+        if (result.status === 'fulfilled' && result.value.prices.length > 0) {
+          priceHistoryCache[batch[j]] = { ...result.value, lastFetched: Date.now() };
+          bootstrapped++;
+        } else {
+          failed++;
+        }
+      }
+      // Rate limit pause between batches (skip after last batch)
+      if (i + 3 < cgIds.length) {
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+    console.log(`  ✅ Price history bootstrapped: ${bootstrapped}/${cgIds.length} tokens (${failed > 0 ? failed + ' failed' : 'all succeeded'})`);
+    if (bootstrapped > 0) {
+      // Verify indicator readiness
+      const sampleId = cgIds.find(id => priceHistoryCache[id]?.prices.length > 35);
+      if (sampleId) {
+        const samplePrices = priceHistoryCache[sampleId].prices;
+        console.log(`  ✅ Sample: ${sampleId} has ${samplePrices.length} hourly candles — RSI/MACD/Bollinger ready`);
+      }
+    }
+  } catch (bootstrapErr: any) {
+    console.log(`  ⚠️ Price history bootstrap failed: ${bootstrapErr.message?.substring(0, 100)} — indicators will populate on first heavy cycle`);
+  }
+
   // Run immediately
   await runTradingCycle();
 
