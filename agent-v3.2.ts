@@ -8830,15 +8830,14 @@ async function main() {
         // v11.4.22: Clear stale circuit breaker on startup.
         // The breaker may have been triggered by corrupted state (e.g. fake drawdown from
         // peakValue bug). On fresh deploy, reset pause and size reduction so the bot starts clean.
-        if (breakerState.isPaused) {
-          console.log(`  🔓 Clearing stale breaker pause (was: ${breakerState.lastReason})`);
-          breakerState.isPaused = false;
-          breakerState.pauseUntil = null;
+        if (breakerState.lastBreakerTriggered) {
+          console.log(`  🔓 Clearing stale breaker (was: ${breakerState.lastBreakerReason})`);
+          breakerState.lastBreakerTriggered = null;
+          breakerState.lastBreakerReason = null;
         }
-        if (breakerState.isSizeReduced) {
-          console.log(`  🔓 Clearing stale size reduction (was until: ${breakerState.sizeReductionUntil})`);
-          breakerState.isSizeReduced = false;
-          breakerState.sizeReductionUntil = null;
+        if (breakerState.breakerSizeReductionUntil) {
+          console.log(`  🔓 Clearing stale size reduction (was until: ${breakerState.breakerSizeReductionUntil})`);
+          breakerState.breakerSizeReductionUntil = null;
         }
         breakerState.consecutiveLosses = 0;
 
