@@ -9250,14 +9250,22 @@ async function main() {
   // trades, and merges any missing trades into state. Rebuilds cost basis from
   // the complete history. This ensures no trades are lost across restarts.
   // Uses account.address (actual CDP wallet) — CONFIG.walletAddress may differ.
+  let recoveryStatus = '';
   try {
     const recovery = await recoverOnChainTradeHistory(account.address);
     if (recovery.merged > 0) {
+      recoveryStatus = `OK: ${recovery.merged} trades recovered from ${recovery.recovered} on-chain`;
       console.log(`  🔗 On-chain recovery: ${recovery.merged} trades added, cost basis rebuilt`);
+    } else {
+      recoveryStatus = `OK: ${recovery.recovered} on-chain trades found, 0 new (all already in state)`;
     }
   } catch (recoveryErr: any) {
+    recoveryStatus = `FAILED: ${recoveryErr.message?.substring(0, 200)}`;
     console.log(`  ⚠️ On-chain recovery failed: ${recoveryErr.message?.substring(0, 100)} — using persisted state`);
   }
+  // Store for diagnostic API access
+  (state as any)._recoveryStatus = recoveryStatus;
+  (state as any)._recoveryWallet = account.address;
 
   // v11.4.20: Reconcile trade counter with actual trade history
   // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
@@ -9681,6 +9689,9 @@ function apiPortfolio() {
       sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
       maxEntriesPerCycle: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
     },
+    // v11.4.22: On-chain recovery diagnostic
+    _recovery: (state as any)._recoveryStatus || 'not run',
+    _recoveryWallet: (state as any)._recoveryWallet || 'unknown',
   };
 }
 
