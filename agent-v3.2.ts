@@ -987,6 +987,7 @@ function computeNextInterval(currentPrices: Map<string, number>): {
  */
 // v8.1: Cycle mutex — prevents double-execution from timer + cron overlap
 let cycleInProgress = false;
+let cycleStartedAt = 0; // v11.5: Timestamp when cycle started — for stuck detection
 const CYCLE_TIMEOUT_MS = 5 * 60 * 1000; // v11.4.21: 5-minute hard timeout per cycle
 
 // v11.4.21: Wrap a promise with a timeout — rejects if the promise doesn't resolve in time.
@@ -1005,12 +1006,22 @@ function scheduleNextCycle() {
 
   const delayMs = adaptiveCycle.currentIntervalSec * 1000;
   adaptiveCycleTimer = setTimeout(async () => {
+    // v11.5: Stuck cycle detection — if cycleInProgress is true but cycle started >2× timeout ago,
+    // force-reset it. This handles edge cases where withTimeout's rejection doesn't properly
+    // clear the flag (e.g., unhandled rejection in finally block, or process.nextTick race).
     if (cycleInProgress) {
-      console.log(`[Adaptive Cycle] Skipped — previous cycle still running`);
-      scheduleNextCycle();
-      return;
+      const stuckDuration = Date.now() - cycleStartedAt;
+      if (stuckDuration > CYCLE_TIMEOUT_MS * 2) {
+        console.error(`[Adaptive Cycle] ⚠️ STUCK CYCLE DETECTED — flag stuck for ${(stuckDuration / 1000).toFixed(0)}s, force-resetting`);
+        cycleInProgress = false;
+      } else {
+        console.log(`[Adaptive Cycle] Skipped — previous cycle still running (${(stuckDuration / 1000).toFixed(0)}s elapsed)`);
+        scheduleNextCycle();
+        return;
+      }
     }
     cycleInProgress = true;
+    cycleStartedAt = Date.now();
     try {
       // v11.4.21: Hard timeout prevents a hung API call from killing the trading loop forever.
       // If any single cycle takes >5 minutes, it's stuck — abort and schedule the next one.
@@ -3788,29 +3799,23 @@ function calculateMarketMomentum(): MarketMomentumSignal {
   let score = 0;
   let dataPoints = 0;
 
-  // BTC momentum component (weight: 40%)
+  // v11.5: Pure price-action momentum — no F&G. BTC 55% weight, ETH 45% weight.
+  // BTC momentum component (weight: 55%)
   if (btc24h !== null) {
-    // Scale: +5% BTC move = +40 score, -5% = -40 score, capped at ±50
-    score += Math.max(-50, Math.min(50, btc24h * 8)) * 0.4;
+    // Scale: +5% BTC move = +50 score, -5% = -50 score, capped at ±55
+    score += Math.max(-55, Math.min(55, btc24h * 10)) * 0.55;
     dataPoints++;
   }
 
-  // ETH momentum component (weight: 35%)
+  // ETH momentum component (weight: 45%)
   if (eth24h !== null) {
-    score += Math.max(-50, Math.min(50, eth24h * 8)) * 0.35;
-    dataPoints++;
-  }
-
-  // Fear & Greed component (weight: 25%)
-  if (fg !== null) {
-    // Map 0-100 to -25 to +25: neutral at 50
-    score += ((fg - 50) / 2) * 0.25;
+    score += Math.max(-45, Math.min(45, eth24h * 10)) * 0.45;
     dataPoints++;
   }
 
   // Normalize if we have partial data
-  if (dataPoints > 0 && dataPoints < 3) {
-    score = score * (3 / dataPoints) * 0.8; // Scale up but discount for incomplete data
+  if (dataPoints > 0 && dataPoints < 2) {
+    score = score * 2 * 0.85; // Scale up but discount for single data point
   }
 
   // Clamp to -100 to +100
@@ -4954,7 +4959,7 @@ async function fetchMacroData(): Promise<MacroData | null> {
  * Determine overall market regime from multiple factors
  */
 function determineMarketRegime(
-  fearGreed: number,
+  _fearGreed: number, // v11.5: F&G no longer used for regime detection, kept for API compat
   indicators: Record<string, TechnicalIndicators>,
   derivatives: DerivativesData | null
 ): MarketRegime {
@@ -5007,18 +5012,17 @@ function determineMarketRegime(
   if (avgADX > 25 && upRatio > 0.5) return "TRENDING_UP";
   if (avgADX > 25 && downRatio > 0.5) return "TRENDING_DOWN";
 
-  // v9.2 Priority 2.5: Strong BTC/ETH momentum overrides weak ADX
-  // If BTC+ETH average 24h change is >4%, the market IS moving regardless of altcoin ADX
-  if (majorMomentum > 4 && fearGreed > 45) return "TRENDING_UP";
-  if (majorMomentum < -4 && fearGreed < 45) return "TRENDING_DOWN";
+  // v11.5: BTC/ETH momentum overrides weak ADX — pure price action, no F&G
+  if (majorMomentum > 4) return "TRENDING_UP";
+  if (majorMomentum < -4) return "TRENDING_DOWN";
 
-  // Priority 3: Weak-signal trending (ADX 15-25, rely more on ratios + F&G as tiebreaker)
-  if (upRatio > 0.6 && fearGreed > 40) return "TRENDING_UP";
-  if (downRatio > 0.6 && fearGreed < 40) return "TRENDING_DOWN";
+  // Priority 3: Weak-signal trending (ADX 15-25, directional ratios as tiebreaker)
+  if (upRatio > 0.55) return "TRENDING_UP";
+  if (downRatio > 0.55) return "TRENDING_DOWN";
 
-  // v9.2: Moderate BTC/ETH momentum with greed — don't sit in RANGING when market is running
-  if (majorMomentum > 2.5 && fearGreed > 55) return "TRENDING_UP";
-  if (majorMomentum < -2.5 && fearGreed < 35) return "TRENDING_DOWN";
+  // v11.5: Moderate BTC/ETH momentum — don't sit in RANGING when market is running
+  if (majorMomentum > 2.5) return "TRENDING_UP";
+  if (majorMomentum < -2.5) return "TRENDING_DOWN";
 
   // Priority 4: ADX < 20 = trendless market → ranging
   if (avgADX > 0 && avgADX < 20) return "RANGING";
@@ -6117,20 +6121,8 @@ function calculateConfluence(
     }
   }
 
-  // v10.4: Mechanical Fear & Greed adjustment — previously only AI prompt guidance,
-  // now a hard score modifier. Extreme fear is historically a buying opportunity;
-  // extreme greed increases sell conviction. Capped at ±8 to influence without dominating.
-  if (lastFearGreedValue > 0) {
-    if (lastFearGreedValue <= 20) {
-      score += 8;   // Extreme fear — strong contrarian buy boost
-    } else if (lastFearGreedValue <= 30) {
-      score += 5;   // Fear — moderate buy boost
-    } else if (lastFearGreedValue >= 80) {
-      score -= 8;   // Extreme greed — strong contrarian sell boost
-    } else if (lastFearGreedValue >= 70) {
-      score -= 5;   // Greed — moderate sell boost
-    }
-  }
+  // v11.5: Fear & Greed mechanical adjustment REMOVED — F&G reflects lagging sentiment,
+  // not actionable alpha. Let technical indicators and on-chain data drive confluence.
 
   // Normalize to -100 to +100
   const normalizedScore = Math.max(-100, Math.min(100, score));
@@ -6742,7 +6734,6 @@ ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
 ).join("\n")}
 
 ═══ MARKET SENTIMENT ═══
-- Fear & Greed: ${marketData.fearGreed.value}/100 (${marketData.fearGreed.classification})
 - Trending: ${marketData.trendingTokens.join(", ") || "None"}
 - Momentum: score=${lastMomentumSignal.score} bias=${lastMomentumSignal.deploymentBias} | BTC 24h: ${lastMomentumSignal.btcChange24h >= 0 ? '+' : ''}${lastMomentumSignal.btcChange24h.toFixed(1)}% | ETH 24h: ${lastMomentumSignal.ethChange24h >= 0 ? '+' : ''}${lastMomentumSignal.ethChange24h.toFixed(1)}%
 
@@ -6771,99 +6762,47 @@ ${discoveryIntel}═══ TRADING LIMITS ═══
 ═══ STRATEGY FRAMEWORK v10.0 ═══
 
 ENTRY RULES (when to BUY):
-1. CONFLUENCE: Only buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend)
-2. FEAR AMPLIFIER: During extreme fear (<25), lower the bar — buy on 1 indicator signal
-3. SECTOR PRIORITY: Buy into the most underweight sector first
-4. VOLUME CONFIRMATION: Prefer tokens where volume is above 7-day average (strength behind the move)
-5. TREND ALIGNMENT: Prefer buying tokens in UP or STRONG_UP trends
-6. DEFI FLOW: If Base TVL is rising (>+2% 24h), favor buying DeFi tokens. If falling, avoid new DeFi positions
-7. FUNDING RATE: If BTC/ETH shorts are CROWDED (negative funding), this is contrarian bullish — favor buying
-8. TVL MOMENTUM: If a specific protocol's TVL is rising while price hasn't followed, it's undervalued — buy opportunity
-9. NEWS CATALYST: If news sentiment is BULLISH (score >+30) and a token has bullish mentions, it's a buy signal amplifier
-10. MACRO TAILWIND: If macro signal is RISK_ON (rate cuts, expanding liquidity, weak dollar), be more aggressive on buys. Increase conviction on dip buys
-11. CONTRARIAN NEWS: If news sentiment is extremely BEARISH (score <-50) but technical indicators show oversold, this is a high-conviction contrarian buy — fear is priced in
-12. MOMENTUM DEPLOYMENT: When momentum bias is AGGRESSIVE (BTC/ETH moving +4%+ in 24h with F&G >50), deploy USDC more readily. Don't sit in 70%+ USDC when the market is ripping — a rising tide lifts all boats. Lower confluence requirements by 1 tier in aggressive momentum
-13. FEAR & GREED SIZING: When F&G >70 (Greed), use larger position sizes for buys — market conviction is high. When F&G <25 (Extreme Fear), use smaller sizes but more entries — accumulate across dips
-14. ALTSEASON ROTATION: When ALTSEASON_ROTATION signal fires (BTC.D dropping >2pp over 7d), aggressively buy AI tokens and meme coins — capital is rotating from BTC into alts. This is the best environment for small-cap gains
-15. BTC DOMINANCE FLIGHT: When BTC_DOMINANCE_FLIGHT fires (BTC.D rising >2pp), favor blue chip positions (ETH, major L2s) and reduce speculative alt exposure. Capital is concentrating into BTC
-16. SMART-RETAIL DIVERGENCE: When smart money is MORE long than retail (STRONG_BUY signal), this is a high-conviction buy — institutions see something retail doesn't. Increase position size by 1 tier
-17. FUNDING MEAN-REVERSION: When funding rate z-score < -2σ (CROWDED_SHORTS_BOUNCE), this is a contrarian buy — short squeeze is likely. When z-score > +2σ (CROWDED_LONGS_REVERSAL), take profits and reduce exposure
-18. TVL-PRICE DIVERGENCE: When a DeFi token shows UNDERVALUED (TVL rising >5% but price flat), prioritize buying it — fundamental value is growing faster than price. When OVERVALUED (TVL dropping but price rising), trim the position
-19. STABLECOIN CAPITAL FLOW: When CAPITAL_INFLOW signal fires (stablecoin supply growing >2%), be more aggressive on buys — fresh money is entering crypto. When CAPITAL_OUTFLOW fires, reduce exposure and tighten stops
-20. DEX VOLUME SPIKES: When DEX Intelligence shows a tracked token with >2x normal volume AND buy-heavy pressure (>55% buys), this is a strong short-term BUY signal — smart money or whales are accumulating on-chain. Increase conviction by 1 tier
-21. DEX SELL PRESSURE: When DEX Intelligence shows a tracked token with SELL_PRESSURE or STRONG_SELL signal (buy ratio <45%), reduce position or avoid buying — on-chain traders are dumping
-22. DEX TRENDING: If a tracked token appears in the Base DEX trending list AND has positive h1 price change, it has real on-chain momentum behind it — favor it over tokens with similar technical signals but no DEX traction
+1. CONFLUENCE: Buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend). In strong momentum, 1 signal is enough
+2. SECTOR PRIORITY: Buy into the most underweight sector first
+3. VOLUME CONFIRMATION: Prefer tokens where volume is above 7-day average
+4. TREND ALIGNMENT: Prefer buying tokens in UP or STRONG_UP trends
+5. MOMENTUM DEPLOYMENT: When BTC/ETH are moving +3%+ in 24h, deploy USDC more readily. Don't sit in 70%+ USDC when the market is running
+6. DEX VOLUME SPIKES: Token with >2x normal volume AND buy-heavy pressure (>55% buys) = strong BUY signal
+7. TVL-PRICE DIVERGENCE: DeFi token with rising TVL but flat price = undervalued, prioritize buying
+8. BIAS TO ACTION: You are a TRADING bot. Holding idle cash is the worst position. If you see ANY reasonable entry with positive confluence, TAKE IT. A mediocre trade beats no trade
 
 EXIT RULES (when to SELL):
-1. TIERED PROFIT HARVESTING (v11.4.5): The bot automatically harvests profits in tranches:
-   - +25% gain → harvest 15% of position (moderate win, bank the cream)
-   - +50% gain → harvest 20% of position (strong win, real profit locked)
-   - +100% gain → harvest 25% of position (2x gain, protect the bag)
-   - +200% gain → harvest 35% of position (3x gain, substantial profit lock)
-   The remaining position continues to ride. Patient capital, not passive capital.
-   IMPORTANT: When you recommend a SELL, also consider which tier the position has already been harvested at.
-2. OVERBOUGHT EXIT: Sell if RSI > 75 AND Bollinger %B > 0.95 AND MACD turning bearish — even if no harvest tier triggered
+1. PROFIT HARVESTING: Auto-harvests at +25%, +50%, +100%, +200% gain tiers. When recommending SELL, consider harvest history
+2. OVERBOUGHT EXIT: Sell if RSI > 75 AND MACD turning bearish
 3. STOP LOSS: Sell if token is down >20% in 7d and trend is STRONG_DOWN
 4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
-5. FUNDING WARNING: If BTC/ETH longs are CROWDED (high positive funding), prepare to take profits — correction risk
-6. TVL OUTFLOW: If a DeFi protocol's TVL is dropping >5% while you hold its token, consider trimming
-7. MACRO HEADWIND: If macro signal is RISK_OFF (rate hikes, yield curve inverting, strong dollar), tighten profit-taking. Sell into strength rather than holding
-8. NEWS RISK: If a token has strong bearish news mentions AND technical indicators confirm (RSI dropping, MACD bearish), trim position proactively
-9. SMART MONEY WARNING: If derivatives show SMART_MONEY_SHORT while you're holding a token, this is a high-priority sell signal
-10. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim — don't let stale winners sit forever
-11. CAPITAL RECYCLING (v10.1.1): If available USDC < $10 AND you hold profitable positions, you MUST recommend SELL on your highest-gain position (sell 20-30% of it) to free capital for new opportunities. A bot with $0 USDC cannot compound. Idle capital in tokens earning no yield while better opportunities exist is a DRAG on returns. Rotate capital: sell winners to fund new entries.
-12. DAILY PAYOUT AWARENESS (v11.4.23): Every day at 8 AM UTC, the bot distributes yesterday's REALIZED profits to stakeholders (Henry, Harrison). Unrealized gains don't count — only completed SELL trades that close at a profit. Today's realized P&L so far: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout settles in ${hoursUntilPayout}h.${payoutUrgency ? `
-   ⚠️ PAYOUT WINDOW APPROACHING: Less than 4 hours until settlement. If you hold positions with unrealized gains >10%, STRONGLY prefer selling a portion NOW to lock in realized profit for distribution. Even a small realized gain ($5-20) makes the difference between "NEGATIVE PNL — no payout" and real money distributed to stakeholders. Do NOT sit on unrealized gains while the payout window approaches.` : ''} The payout system is a core value proposition — a bot that grows portfolio value but never realizes profits for distribution is not meeting its full objective. Always be looking to bank wins, not just hold them.
+5. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim
+6. CAPITAL RECYCLING: If USDC < $10, SELL 20-30% of your highest-gain position to free capital. A bot with $0 USDC cannot compound
+7. DAILY PAYOUT AWARENESS: Every day at 8 AM UTC, REALIZED profits are distributed to stakeholders. Unrealized gains don't count. Today's realized P&L: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.${payoutUrgency ? ` ⚠️ <4h to settlement — sell a portion of winners NOW to lock in realized profit for distribution.` : ''} Always be banking wins, not just holding them
 
-REGIME-ADAPTED STRATEGY (CAPITAL COMPOUNDING MINDSET — always look for ways to grow):
-- TRENDING_UP: Maximum aggression. Buy dips hard. Favor momentum entries. Let winners run. Deploy idle USDC
-- TRENDING_DOWN: Selective buying — downtrends create the best entry prices. Hunt for oversold bounces and accumulation setups. Sell only clear losers, not everything. But if USDC is exhausted, sell winners to recycle capital
-- RANGING: Active mean-reversion. Buy oversold tokens aggressively, sell overbought. Ranges are profit machines for active traders
-- VOLATILE: Volatility = opportunity. Use it to enter positions at dislocated prices. Reduce size per trade but INCREASE trade count. More bets, smaller each
-
-MACRO-AWARE ADJUSTMENTS:
-- RISK_ON macro + TRENDING_UP regime = Maximum aggression. Deploy all available capital on dips. This is the best environment for crypto
-- RISK_OFF macro + TRENDING_DOWN regime = Contrarian accumulation. Best future returns come from buying when others panic. Selectively accumulate high-conviction tokens at discount. Keep 30-40% USDC reserve, deploy the rest into strength
-- RISK_ON macro + RANGING regime = Lean bullish. Buy oversold more aggressively, hold longer before selling. Deploy USDC into pullbacks
-- RISK_OFF macro + VOLATILE regime = Tactical. Smaller position sizes but keep trading. Look for oversold snaps and mean-reversion plays. Sitting in 100% USDC is not ideal, but sitting in 0% USDC is WORSE — recycle capital from stale positions
+REGIME STRATEGY:
+- TRENDING_UP: Maximum aggression. Buy dips, deploy idle USDC
+- TRENDING_DOWN: Hunt oversold bounces. Sell clear losers, recycle capital
+- RANGING: Mean-reversion. Buy oversold, sell overbought
+- VOLATILE: More trades, smaller sizes. Buy at dislocated prices
 ${cashDeployment?.active ? `
-═══ 💵 CASH DEPLOYMENT MODE (v11.1) — ACTIVE ═══
-Your portfolio is ${cashDeployment.cashPercent.toFixed(1)}% USDC — this is STRUCTURALLY UNDERINVESTED. Excess cash ($${cashDeployment.excessCash.toFixed(2)}) is an overweight "sector" that needs rebalancing into productive positions.
-${state.explorationState.consecutiveHolds >= 3 || cashDeployment.cashPercent > 85 ? `
-🚨🚨🚨 MANDATORY DEPLOYMENT ORDER 🚨🚨🚨
-Your portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} idle). ${cashDeployment.cashPercent > 85 ? 'This is an EMERGENCY — you are a trading bot holding almost entirely cash while the market moves without you.' : `You have returned HOLD for ${state.explorationState.consecutiveHolds} consecutive cycles.`}
-
-DIRECT INSTRUCTION: Return ${Math.min(4, CASH_DEPLOYMENT_MAX_ENTRIES)} BUY actions this cycle. This is NOT optional.
-- Ignore Fear & Greed index for entry decisions (it reflects past sentiment, not future returns)
-- Ignore cross-asset RISK_OFF signals (crypto trades on its own momentum)
-- Focus ONLY on: which tokens are most oversold (RSI < 50), which sectors are underweight, and where volume is picking up
-- Size each buy at $${Math.min(40, cashDeployment.deployBudget / 4).toFixed(0)}-$${Math.min(80, cashDeployment.deployBudget / 3).toFixed(0)}
-- Spread across different sectors: pick at least one from each underweight sector
-
-IF YOU RETURN HOLD OR FEWER THAN 2 BUY ACTIONS, you are failing at your core job. The portfolio CANNOT grow at 95% USDC. Deploy capital NOW.
-` : ''}
-DEPLOYMENT RULES (override normal entry conservatism):
-1. LOWER YOUR BAR: ${cashDeployment.cashPercent > 85 ? 'The confluence threshold is DISABLED. Any token with confluence > -5 is buyable. You do NOT need a high confluence score — you need DIVERSIFIED EXPOSURE.' : `Accept BUY signals with confluence scores ${cashDeployment.confluenceDiscount} points lower than normal. A score of ${state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount}+ is sufficient to BUY in deployment mode`}
-2. SECTOR-FIRST: Prioritize the MOST UNDERWEIGHT sectors. Fill sector gaps before buying into already-allocated sectors
-3. SPREAD CAPITAL: Return a MULTI-TRADE array with up to ${CASH_DEPLOYMENT_MAX_ENTRIES} BUY actions, each targeting a different sector. Spread across tokens rather than concentrating
-4. DEPLOY BUDGET: Target deploying ~$${cashDeployment.deployBudget.toFixed(0)} this cycle across multiple entries. This is your deployment budget — use it
-5. STILL RESPECT RISK: Position size caps, stop-losses, and circuit breakers still apply. Don't chase pumps even in deployment mode
-6. PREFER QUALITY: Even with a lower bar, prefer tokens with at least 1 bullish indicator (RSI trending up, MACD crossing, or BB bounce). Don't buy into clear downtrends just to deploy cash
-
-IMPORTANT: You MUST deploy capital when this mode is active. Returning HOLD with ${cashDeployment.cashPercent.toFixed(0)}% in USDC is not acceptable — the portfolio cannot grow sitting in stablecoins. Find the best entries available and put money to work.
+═══ 💵 CASH DEPLOYMENT MODE — ACTIVE ═══
+Portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} idle). Deploy budget: $${cashDeployment.deployBudget.toFixed(0)}.
+${cashDeployment.cashPercent > 85 ? `🚨 CRITICAL: You are a trading bot holding almost entirely cash. Return ${Math.min(4, CASH_DEPLOYMENT_MAX_ENTRIES)} BUY actions NOW.` : `Return ${Math.min(3, CASH_DEPLOYMENT_MAX_ENTRIES)} BUY actions across underweight sectors.`}
+- Focus on: most oversold tokens (RSI < 50), underweight sectors, volume picking up
+- Size: $${Math.min(40, cashDeployment.deployBudget / 4).toFixed(0)}-$${Math.min(80, cashDeployment.deployBudget / 3).toFixed(0)} per trade
+- Confluence threshold lowered by ${cashDeployment.confluenceDiscount} points
+- HOLD is NOT acceptable with ${cashDeployment.cashPercent.toFixed(0)}% cash. Deploy capital
 ` : ''}
 RISK RULES:
 1. No single token > 25% of portfolio
 2. ${cashDeployment?.active && cashDeployment.cashPercent > 85
-    ? `In CRITICAL DEPLOYMENT MODE — you MUST buy. The HOLD zone is DISABLED. Any token with confluence > -5 is a valid buy target. Do NOT return HOLD.`
+    ? `CRITICAL DEPLOYMENT: HOLD zone is DISABLED. Any token with confluence > -5 is buyable.`
     : cashDeployment?.active
-    ? `HOLD if confluence score is between -15 and ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)} (deployment mode: lower bar for buys)`
-    : 'HOLD if confluence score is between -15 and +15 (no clear signal)'}
-3. Never chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
-4. In extreme greed (>75), tighten sell rules — take profits more aggressively
-5. Minimum trade $1.00
-6. SELF-IMPROVEMENT: Your strategy patterns, adaptive thresholds, and performance insights are provided below. FAVOR proven winning patterns and AVOID known losing patterns. Trust the confidence-weighted sizing
-7. NEWS NOISE FILTER: Ignore news sentiment if it contradicts strong technical + DeFi signals. Headlines lag price action
+    ? `Deployment mode: HOLD only if confluence < ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)}`
+    : 'HOLD only if confluence is between -15 and +15 (no clear signal)'}
+3. Don't chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
+4. Minimum trade $1.00
 
 DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Smart-Retail Divergence > Technical signals + DeFi flows > DEX Intelligence (volume spikes + buy/sell pressure) > Funding Mean-Reversion > TVL-Price Divergence > Stablecoin Capital Flow > Derivatives signals > News sentiment > Sector rebalancing
 
@@ -7820,16 +7759,8 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
     return { isHeavy: true, reason: `🚨 EMERGENCY: ${emergency.token} dropped ${emergency.dropPercent?.toFixed(1)}%` };
   }
 
-  // 4. Check Fear & Greed change (use cached value, no API call)
-  const cachedFG = cacheManager.get<any>(CacheKeys.FEAR_GREED);
-  if (cachedFG) {
-    try {
-      const currentFG = parseInt(cachedFG?.data?.data?.[0]?.value || '0');
-      if (currentFG > 0 && lastFearGreedValue > 0 && Math.abs(currentFG - lastFearGreedValue) > FG_CHANGE_THRESHOLD) {
-        return { isHeavy: true, reason: `Fear & Greed changed: ${lastFearGreedValue} → ${currentFG}` };
-      }
-    } catch { /* ignore parse errors */ }
-  }
+  // v11.5: Fear & Greed heavy cycle trigger REMOVED — F&G changes don't warrant full cycles.
+  // Heavy cycles now trigger only on: forced interval, price moves, emergencies, cooldown exits.
 
   // 5. Check if any tokens exited cooldown
   // Capture count BEFORE filterTokensForEvaluation, which deletes expired entries
@@ -8177,7 +8108,7 @@ async function runTradingCycle() {
     console.log(`\n💰 Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
     console.log(`   Today: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%) from $${dailyBase.toFixed(2)} start-of-day`);
     console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${drawdown.toFixed(1)}%`);
-    console.log(`   Fear & Greed: ${marketData.fearGreed.value} (${marketData.fearGreed.classification})`);
+    console.log(`   Regime: ${marketData.marketRegime}`);
 
     // Display technical indicators summary
     if (Object.keys(marketData.indicators).length > 0) {
@@ -8994,7 +8925,7 @@ function displayBanner() {
 ║   • News: Crypto news sentiment — bullish/bearish (CryptoPanic)       ║
 ║   • Macro: Fed Rate, 10Y Yield, CPI, M2, Dollar Index (FRED)         ║
 ║   • Cross-Asset: Gold, Oil, VIX, S&P 500 correlation signals         ║
-║   • Sentiment: Fear & Greed Index + Market Regime Detection           ║
+║   • Sentiment: Technical Regime Detection + Price Action              ║
 ║   • BTC Dominance: Altseason rotation + dominance flight signals      ║
 ║   • Funding MR: Mean-reversion z-scores for crowding detection        ║
 ║   • Capital Flow: Stablecoin supply tracking + TVL-price divergence   ║
@@ -9400,14 +9331,25 @@ async function main() {
   const cronExpression = `*/${Math.max(CONFIG.trading.intervalMinutes, 15)} * * * *`;
   cron.schedule(cronExpression, async () => {
     try {
-      // Only run if the adaptive engine somehow stalled
       const timeSinceLastCycle = Date.now() - (lastHeavyCycleAt || 0);
+
+      // v11.5: Force-reset stuck cycle flag — if cycle has been "in progress" for >2× timeout,
+      // the flag is stuck from an unhandled edge case. Reset it so cycles can resume.
+      if (cycleInProgress && cycleStartedAt > 0) {
+        const stuckDuration = Date.now() - cycleStartedAt;
+        if (stuckDuration > CYCLE_TIMEOUT_MS * 2) {
+          console.error(`[Safety Net] ⚠️ STUCK CYCLE: flag stuck for ${(stuckDuration / 1000).toFixed(0)}s — force-resetting`);
+          cycleInProgress = false;
+        }
+      }
+
       if (timeSinceLastCycle > HEAVY_CYCLE_FORCED_INTERVAL_MS * 1.5) {
         if (cycleInProgress) {
-          console.log(`[Safety Net] Cycle already in progress — skipping forced trigger`);
+          console.log(`[Safety Net] Cycle already in progress (${((Date.now() - cycleStartedAt) / 1000).toFixed(0)}s elapsed) — skipping forced trigger`);
         } else {
           console.log(`[Safety Net] Adaptive engine may have stalled — forcing cycle (${(timeSinceLastCycle / 60000).toFixed(0)}m since last heavy)`);
           cycleInProgress = true;
+          cycleStartedAt = Date.now();
           try {
             await withTimeout(runTradingCycle(), CYCLE_TIMEOUT_MS, 'Safety net cycle');
           } finally {
@@ -9422,6 +9364,8 @@ async function main() {
       }
     } catch (cronError: any) {
       console.error(`[Cron Safety Net Error] ${cronError?.message?.substring(0, 300) || cronError}`);
+      // v11.5: Even if safety net cycle crashes, ensure flag is reset
+      cycleInProgress = false;
     }
   });
 
@@ -9463,8 +9407,11 @@ async function main() {
 
   // Heartbeat every 5 minutes to confirm process is alive
   setInterval(() => {
-    const adaptiveInfo = `Interval: ${adaptiveCycle.currentIntervalSec}s | Vol: ${adaptiveCycle.volatilityLevel} | Tier: ${adaptiveCycle.portfolioTier} | Stream: ${adaptiveCycle.wsConnected ? 'LIVE' : 'OFF'}${adaptiveCycle.emergencyMode ? ' | 🚨 EMERGENCY' : ''}`;
-    console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | ${adaptiveInfo}`);
+    const lastTrade = state.tradeHistory.length > 0 ? state.tradeHistory[state.tradeHistory.length - 1] : null;
+    const lastTradeAge = lastTrade ? `${((Date.now() - new Date(lastTrade.timestamp).getTime()) / 60000).toFixed(0)}m ago` : 'never';
+    const cycleStatus = cycleInProgress ? `IN_PROGRESS (${((Date.now() - cycleStartedAt) / 1000).toFixed(0)}s)` : 'idle';
+    const lastHeavyAge = lastHeavyCycleAt ? `${((Date.now() - lastHeavyCycleAt) / 1000).toFixed(0)}s ago` : 'never';
+    console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | Last trade: ${lastTradeAge} | Cycle: ${cycleStatus} | Last heavy: ${lastHeavyAge} | Portfolio: $${(state.trading.totalPortfolioValue || 0).toFixed(0)}`);
     // v5.2: Save state every heartbeat
     saveTradeHistory();
   }, 5 * 60 * 1000);
