@@ -2310,7 +2310,8 @@ function saveTradeHistory() {
 // or file loss. Runs on startup to backfill trades missing from persisted state.
 // ============================================================================
 
-const BASESCAN_API_URL = 'https://api.basescan.org/api';
+// v11.4.22: Blockscout (free, no API key) replaces deprecated Basescan V1 API
+const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
 const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
 
 // Reverse lookup: contract address → symbol
@@ -2335,28 +2336,28 @@ interface BasescanTransfer {
 }
 
 /**
- * Fetch ERC20 token transfers for the bot's wallet from Basescan.
+ * Fetch ERC20 token transfers for the bot's wallet from Blockscout (free, no API key).
  * Returns raw transfer records sorted by timestamp ascending.
  */
-async function fetchBasescanTransfers(walletAddress: string, apiKey: string): Promise<BasescanTransfer[]> {
+async function fetchBlockscoutTransfers(walletAddress: string): Promise<BasescanTransfer[]> {
   const allTransfers: BasescanTransfer[] = [];
   let page = 1;
   const pageSize = 1000;
+  const maxPages = 10; // Safety cap: 10k transfers max
 
-  while (true) {
-    const url = `${BASESCAN_API_URL}?module=account&action=tokentx&address=${walletAddress}&page=${page}&offset=${pageSize}&sort=asc&apikey=${apiKey}`;
-    const response = await axios.get(url, { timeout: 15000 });
+  while (page <= maxPages) {
+    const url = `${BLOCKSCOUT_API_URL}?module=account&action=tokentx&address=${walletAddress}&startblock=0&endblock=99999999&page=${page}&offset=${pageSize}&sort=asc`;
+    const response = await axios.get(url, { timeout: 20000 });
     if (response.data.status !== '1' || !Array.isArray(response.data.result)) {
-      // status '0' with 'No transactions found' is not an error
       if (response.data.message === 'No transactions found') break;
-      console.log(`  ⚠️ Basescan API: ${response.data.message || 'Unknown error'}`);
+      console.log(`  ⚠️ Blockscout API: ${response.data.message || 'Unknown error'}`);
       break;
     }
     allTransfers.push(...response.data.result);
     if (response.data.result.length < pageSize) break;
     page++;
-    // Rate limit: 5 calls/sec on free tier
-    await new Promise(r => setTimeout(r, 250));
+    // Blockscout has generous rate limits but be polite
+    await new Promise(r => setTimeout(r, 300));
   }
   return allTransfers;
 }
@@ -2426,6 +2427,10 @@ function pairTransfersIntoTrades(
           confluenceScore: 0,
           rsi: null,
           macdSignal: null,
+          btcFundingRate: null,
+          ethFundingRate: null,
+          baseTVLChange24h: null,
+          baseDEXVolume24h: null,
           triggeredBy: 'AI',
         },
       });
@@ -2454,6 +2459,10 @@ function pairTransfersIntoTrades(
           confluenceScore: 0,
           rsi: null,
           macdSignal: null,
+          btcFundingRate: null,
+          ethFundingRate: null,
+          baseTVLChange24h: null,
+          baseDEXVolume24h: null,
           triggeredBy: 'AI',
         },
       });
@@ -2511,24 +2520,20 @@ function rebuildCostBasisFromTrades(trades: TradeRecord[]): void {
 }
 
 /**
- * Main startup function: recover trade history from Basescan and merge with state.
+ * Main startup function: recover trade history from Blockscout and merge with state.
+ * Uses Blockscout (free, no API key) instead of deprecated Basescan V1.
+ * @param walletAddress - The actual CDP wallet address (account.address), NOT CONFIG.walletAddress
  */
-async function recoverOnChainTradeHistory(): Promise<{ recovered: number; merged: number }> {
-  const apiKey = process.env.BASESCAN_API_KEY;
-  if (!apiKey) {
-    console.log(`  ⏭️ BASESCAN_API_KEY not set — skipping on-chain recovery`);
-    return { recovered: 0, merged: 0 };
-  }
+async function recoverOnChainTradeHistory(walletAddress?: string): Promise<{ recovered: number; merged: number }> {
+  const addr = walletAddress || CONFIG.walletAddress;
+  console.log(`  📡 Fetching on-chain transfers for ${addr.slice(0, 6)}...${addr.slice(-4)}`);
 
-  const walletAddress = CONFIG.walletAddress;
-  console.log(`  📡 Fetching on-chain transfers for ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`);
-
-  const transfers = await fetchBasescanTransfers(walletAddress, apiKey);
+  const transfers = await fetchBlockscoutTransfers(addr);
   console.log(`  📥 ${transfers.length} ERC20 transfers found on Base`);
 
   if (transfers.length === 0) return { recovered: 0, merged: 0 };
 
-  const onChainTrades = pairTransfersIntoTrades(transfers, walletAddress);
+  const onChainTrades = pairTransfersIntoTrades(transfers, addr);
   console.log(`  🔄 ${onChainTrades.length} swap trades paired from transfers`);
 
   // Merge: add on-chain trades that aren't already in state (by txHash)
@@ -9232,12 +9237,13 @@ async function main() {
   }
   breakerState.consecutiveLosses = 0;
 
-  // v11.4.22: On-chain trade history recovery from Basescan.
+  // v11.4.22: On-chain trade history recovery from Blockscout (free, no API key).
   // Fetches all ERC20 transfers from the bot's wallet, pairs them into BUY/SELL
   // trades, and merges any missing trades into state. Rebuilds cost basis from
   // the complete history. This ensures no trades are lost across restarts.
+  // Uses account.address (actual CDP wallet) — CONFIG.walletAddress may differ.
   try {
-    const recovery = await recoverOnChainTradeHistory();
+    const recovery = await recoverOnChainTradeHistory(account.address);
     if (recovery.merged > 0) {
       console.log(`  🔗 On-chain recovery: ${recovery.merged} trades added, cost basis rebuilt`);
     }
