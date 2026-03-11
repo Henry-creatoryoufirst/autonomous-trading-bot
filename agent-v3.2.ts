@@ -8827,20 +8827,6 @@ async function main() {
           }
         }
 
-        // v11.4.22: Clear stale circuit breaker on startup.
-        // The breaker may have been triggered by corrupted state (e.g. fake drawdown from
-        // peakValue bug). On fresh deploy, reset pause and size reduction so the bot starts clean.
-        if (breakerState.lastBreakerTriggered) {
-          console.log(`  🔓 Clearing stale breaker (was: ${breakerState.lastBreakerReason})`);
-          breakerState.lastBreakerTriggered = null;
-          breakerState.lastBreakerReason = null;
-        }
-        if (breakerState.breakerSizeReductionUntil) {
-          console.log(`  🔓 Clearing stale size reduction (was until: ${breakerState.breakerSizeReductionUntil})`);
-          breakerState.breakerSizeReductionUntil = null;
-        }
-        breakerState.consecutiveLosses = 0;
-
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
       } else {
         console.log(`  ⚠️ Startup balance fetch returned $0 — first heavy cycle will hydrate`);
@@ -8972,6 +8958,21 @@ async function main() {
   console.log(`  💾 State file: ${CONFIG.logFile}`);
   console.log(`  💾 PERSIST_DIR: ${process.env.PERSIST_DIR || '(not set — using ./logs)'}`);
   console.log(`  💾 Loaded: ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis, peak $${state.trading.peakValue.toFixed(2)}`);
+
+  // v11.4.22: Clear stale circuit breaker on startup.
+  // Must run AFTER loadTradeHistory() because that restores breakerState from persisted file.
+  // The breaker may have been triggered by corrupted state (e.g. fake drawdown from
+  // peakValue bug). On fresh deploy, reset pause and size reduction so the bot starts clean.
+  if (breakerState.lastBreakerTriggered) {
+    console.log(`  🔓 Clearing stale breaker (was: ${breakerState.lastBreakerReason})`);
+    breakerState.lastBreakerTriggered = null;
+    breakerState.lastBreakerReason = null;
+  }
+  if (breakerState.breakerSizeReductionUntil) {
+    console.log(`  🔓 Clearing stale size reduction (was until: ${breakerState.breakerSizeReductionUntil})`);
+    breakerState.breakerSizeReductionUntil = null;
+  }
+  breakerState.consecutiveLosses = 0;
 
   // v11.4.20: Reconcile trade counter with actual trade history
   // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
