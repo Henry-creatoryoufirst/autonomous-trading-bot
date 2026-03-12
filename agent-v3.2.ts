@@ -513,68 +513,56 @@ interface PoolRegistryFile {
   pools: Record<string, PoolRegistryEntry>;
 }
 
-const POOL_REGISTRY_VERSION = 3; // v12.0.2: Bump — labels-based V2/V3 detection replaces dexId-only mapping
+const POOL_REGISTRY_VERSION = 4; // v12.0.3: Bump — on-chain probing replaces label-guessing for V2/V3 detection
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
 
 const POOL_REGISTRY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/pool-registry.json` : "./logs/pool-registry.json";
 
-// DEX ID to pool type mapping (from DexScreener's dexId field)
-// v12.0.2: For un-versioned dexIds, the actual V2/V3 distinction comes from DexScreener's
-// `labels` array (e.g., ["v2"] or ["v3"]), resolved in resolvePoolType() below.
-const DEX_TYPE_MAP: Record<string, PoolRegistryEntry['poolType']> = {
-  // Explicitly versioned dexIds — always map directly
-  'uniswap_v3': 'uniswapV3',
-  'uniswap-v3': 'uniswapV3',
-  'baseswap_v3': 'uniswapV3',
-  'pancakeswap_v3': 'uniswapV3',
-  'sushiswap_v3': 'uniswapV3',
-  'aerodrome_slipstream': 'aerodromeV3',
-  'aerodrome-slipstream': 'aerodromeV3',
-  'slipstream': 'aerodromeV3',
-  'aerodrome_v2': 'aerodrome',
-};
-
-// DEXes whose dexId is un-versioned — labels[] determines V2 vs V3
-const AMBIGUOUS_DEX_IDS = new Set([
-  'uniswap', 'pancakeswap', 'sushiswap', 'quickswap', 'rocketswap', 'baseswap', 'aerodrome',
+// Known DEX IDs that we accept (allows filtering out completely unknown DEXes)
+const KNOWN_DEX_IDS = new Set([
+  'uniswap', 'uniswap_v3', 'uniswap-v3',
+  'aerodrome', 'aerodrome_v2', 'aerodrome_slipstream', 'aerodrome-slipstream', 'slipstream',
+  'pancakeswap', 'pancakeswap_v3',
+  'sushiswap', 'sushiswap_v3',
+  'baseswap', 'baseswap_v3',
+  'quickswap', 'rocketswap',
 ]);
 
 /**
- * Resolve pool type from DexScreener's dexId + labels array.
- * - Explicitly versioned dexIds (e.g., "uniswap_v3") → use DEX_TYPE_MAP directly
- * - Un-versioned dexIds (e.g., "pancakeswap") → check labels for "v2"/"v3"
- * - Aerodrome without version label → default to V2 (getReserves)
- * - Unknown dexId → return null (skip pool)
+ * v12.0.3: Probe a pool contract on-chain to determine V2 vs V3 type.
+ * DexScreener's labels field is unreliable (missing for Aerodrome, PancakeSwap, etc.).
+ * Instead, we try slot0() first — if it responds, it's V3. Otherwise try getReserves() for V2.
+ * This costs 1-2 free RPC view calls per pool during one-time discovery.
  */
-function resolvePoolType(dexId: string, labels: string[]): PoolRegistryEntry['poolType'] | null {
+async function probePoolType(poolAddress: string, dexId: string): Promise<PoolRegistryEntry['poolType'] | null> {
   const id = dexId.toLowerCase();
 
-  // Check explicit versioned map first
-  if (DEX_TYPE_MAP[id]) return DEX_TYPE_MAP[id];
+  // Try slot0() — V3/CL pools implement this (selector 0x3850c7bd)
+  try {
+    const slot0Result = await rpcCall('eth_call', [
+      { to: poolAddress, data: '0x3850c7bd' }, 'latest'
+    ]);
+    if (slot0Result && slot0Result !== '0x' && slot0Result.length >= 66) {
+      // Valid slot0 response — this is a V3/CL pool
+      // Aerodrome CL (slipstream) uses same ABI as Uni V3
+      return (id === 'aerodrome' || id === 'aerodrome_slipstream' || id === 'aerodrome-slipstream' || id === 'slipstream')
+        ? 'aerodromeV3' : 'uniswapV3';
+    }
+  } catch { /* slot0 not available — not a V3 pool */ }
 
-  // Check if this is an ambiguous (un-versioned) DEX
-  if (!AMBIGUOUS_DEX_IDS.has(id)) return null; // Unknown DEX entirely
+  // Try getReserves() — V2/constant-product pools implement this (selector 0x0902f1ac)
+  try {
+    const reservesResult = await rpcCall('eth_call', [
+      { to: poolAddress, data: '0x0902f1ac' }, 'latest'
+    ]);
+    if (reservesResult && reservesResult !== '0x' && reservesResult.length >= 130) {
+      return 'aerodrome'; // V2 pool — all V2 forks use the same getReserves ABI
+    }
+  } catch { /* getReserves not available either */ }
 
-  // Normalize labels to lowercase for comparison
-  const lowerLabels = labels.map(l => l.toLowerCase());
-
-  // Check labels for version hints
-  const hasV3 = lowerLabels.some(l => l === 'v3' || l.includes('concentrated') || l === 'cl' || l === 'slipstream');
-  const hasV2 = lowerLabels.some(l => l === 'v2' || l.includes('constant product'));
-
-  if (hasV3) {
-    // Aerodrome V3 = slipstream (same slot0 ABI but different fee handling)
-    return id === 'aerodrome' ? 'aerodromeV3' : 'uniswapV3';
-  }
-  if (hasV2 || id === 'aerodrome') {
-    // Explicit V2 label, or aerodrome without version label → V2
-    return 'aerodrome';
-  }
-
-  // No version label found — default to V2 (getReserves) as safer fallback
-  // V2 calls fail gracefully on V3 pools (return 0x), whereas V3 slot0 on V2 would also fail
-  return 'aerodrome';
+  // Neither worked — skip this pool
+  return null;
 }
 
 // Token addresses on Base for pool pair detection
@@ -647,9 +635,7 @@ async function discoverPoolAddresses(): Promise<void> {
       // Pick deepest pool that we can read on-chain
       for (const pool of pools) {
         const dexId = (pool.dexId || '').toLowerCase();
-        const labels: string[] = Array.isArray(pool.labels) ? pool.labels : [];
-        const poolType = resolvePoolType(dexId, labels);
-        if (!poolType) continue; // unknown DEX type, skip
+        if (!KNOWN_DEX_IDS.has(dexId)) continue; // skip completely unknown DEXes
 
         const baseAddr = pool.baseToken?.address?.toLowerCase() || '';
         const quoteAddr = pool.quoteToken?.address?.toLowerCase() || '';
@@ -663,6 +649,10 @@ async function discoverPoolAddresses(): Promise<void> {
         else if (pairedAddr === CBBTC_ADDRESS) quoteToken = 'cbBTC';
         else if (pairedAddr === VIRTUAL_ADDRESS) quoteToken = 'VIRTUAL';
         else continue; // paired with something else, skip
+
+        // v12.0.3: Probe pool on-chain to determine V2 vs V3 (DexScreener labels are unreliable)
+        const poolType = await probePoolType(pool.pairAddress, dexId);
+        if (!poolType) continue; // pool didn't respond to either slot0 or getReserves
 
         // For slot0-based pools, token0IsBase refers to Uniswap's actual token0
         // DexScreener's baseToken is the first token in the pair display, which may differ
