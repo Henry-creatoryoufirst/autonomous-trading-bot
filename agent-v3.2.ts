@@ -298,7 +298,7 @@ const SECTORS = {
 // v11.4.11: Tokens that CDP SDK's routing service cannot swap (returns "Invalid request").
 // CoinbaseSmartWallet uses AA — can't fall back to direct DEX calls either.
 // These are skipped during forced deployment rotation; alternatives from the same sector are used.
-const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN']);
+const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
 
 // Complete token registry with addresses and metadata
 const TOKEN_REGISTRY: Record<string, {
@@ -513,32 +513,69 @@ interface PoolRegistryFile {
   pools: Record<string, PoolRegistryEntry>;
 }
 
-const POOL_REGISTRY_VERSION = 2; // Bump to force re-discovery when DEX_TYPE_MAP changes
+const POOL_REGISTRY_VERSION = 3; // v12.0.2: Bump — labels-based V2/V3 detection replaces dexId-only mapping
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
 
 const POOL_REGISTRY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/pool-registry.json` : "./logs/pool-registry.json";
 
 // DEX ID to pool type mapping (from DexScreener's dexId field)
+// v12.0.2: For un-versioned dexIds, the actual V2/V3 distinction comes from DexScreener's
+// `labels` array (e.g., ["v2"] or ["v3"]), resolved in resolvePoolType() below.
 const DEX_TYPE_MAP: Record<string, PoolRegistryEntry['poolType']> = {
-  // V3 / concentrated liquidity — use slot0()
+  // Explicitly versioned dexIds — always map directly
   'uniswap_v3': 'uniswapV3',
   'uniswap-v3': 'uniswapV3',
   'baseswap_v3': 'uniswapV3',
   'pancakeswap_v3': 'uniswapV3',
   'sushiswap_v3': 'uniswapV3',
-  'aerodrome_slipstream': 'aerodromeV3', // Aerodrome CL (uses slot0 like Uni V3)
+  'aerodrome_slipstream': 'aerodromeV3',
   'aerodrome-slipstream': 'aerodromeV3',
   'slipstream': 'aerodromeV3',
-  // V2 / constant product — use getReserves()
-  'aerodrome': 'aerodrome',
   'aerodrome_v2': 'aerodrome',
-  'uniswap': 'aerodrome',      // Uniswap V2 fork — getReserves()
-  'pancakeswap': 'aerodrome',   // PancakeSwap V2 fork — getReserves()
-  'sushiswap': 'aerodrome',     // SushiSwap V2 fork — getReserves()
-  'quickswap': 'aerodrome',     // QuickSwap V2 fork — getReserves()
-  'rocketswap': 'aerodrome',    // RocketSwap V2 fork — getReserves()
 };
+
+// DEXes whose dexId is un-versioned — labels[] determines V2 vs V3
+const AMBIGUOUS_DEX_IDS = new Set([
+  'uniswap', 'pancakeswap', 'sushiswap', 'quickswap', 'rocketswap', 'baseswap', 'aerodrome',
+]);
+
+/**
+ * Resolve pool type from DexScreener's dexId + labels array.
+ * - Explicitly versioned dexIds (e.g., "uniswap_v3") → use DEX_TYPE_MAP directly
+ * - Un-versioned dexIds (e.g., "pancakeswap") → check labels for "v2"/"v3"
+ * - Aerodrome without version label → default to V2 (getReserves)
+ * - Unknown dexId → return null (skip pool)
+ */
+function resolvePoolType(dexId: string, labels: string[]): PoolRegistryEntry['poolType'] | null {
+  const id = dexId.toLowerCase();
+
+  // Check explicit versioned map first
+  if (DEX_TYPE_MAP[id]) return DEX_TYPE_MAP[id];
+
+  // Check if this is an ambiguous (un-versioned) DEX
+  if (!AMBIGUOUS_DEX_IDS.has(id)) return null; // Unknown DEX entirely
+
+  // Normalize labels to lowercase for comparison
+  const lowerLabels = labels.map(l => l.toLowerCase());
+
+  // Check labels for version hints
+  const hasV3 = lowerLabels.some(l => l === 'v3' || l.includes('concentrated') || l === 'cl' || l === 'slipstream');
+  const hasV2 = lowerLabels.some(l => l === 'v2' || l.includes('constant product'));
+
+  if (hasV3) {
+    // Aerodrome V3 = slipstream (same slot0 ABI but different fee handling)
+    return id === 'aerodrome' ? 'aerodromeV3' : 'uniswapV3';
+  }
+  if (hasV2 || id === 'aerodrome') {
+    // Explicit V2 label, or aerodrome without version label → V2
+    return 'aerodrome';
+  }
+
+  // No version label found — default to V2 (getReserves) as safer fallback
+  // V2 calls fail gracefully on V3 pools (return 0x), whereas V3 slot0 on V2 would also fail
+  return 'aerodrome';
+}
 
 // Token addresses on Base for pool pair detection
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006'.toLowerCase();
@@ -610,7 +647,8 @@ async function discoverPoolAddresses(): Promise<void> {
       // Pick deepest pool that we can read on-chain
       for (const pool of pools) {
         const dexId = (pool.dexId || '').toLowerCase();
-        const poolType = DEX_TYPE_MAP[dexId];
+        const labels: string[] = Array.isArray(pool.labels) ? pool.labels : [];
+        const poolType = resolvePoolType(dexId, labels);
         if (!poolType) continue; // unknown DEX type, skip
 
         const baseAddr = pool.baseToken?.address?.toLowerCase() || '';
@@ -658,7 +696,9 @@ async function discoverPoolAddresses(): Promise<void> {
     }
 
     poolRegistry = newRegistry;
-    console.log(`  ✅ Pool registry: ${Object.keys(poolRegistry).length} pools discovered`);
+    const v3Count = Object.values(poolRegistry).filter(p => p.poolType === 'uniswapV3' || p.poolType === 'aerodromeV3').length;
+    const v2Count = Object.values(poolRegistry).filter(p => p.poolType === 'aerodrome').length;
+    console.log(`  ✅ Pool registry: ${Object.keys(poolRegistry).length} pools discovered (${v3Count} V3/slot0, ${v2Count} V2/reserves)`);
     for (const [sym, info] of Object.entries(poolRegistry)) {
       console.log(`     ${sym}: ${info.poolType} @ ${info.poolAddress.slice(0, 10)}... (${info.quoteToken}, $${(info.liquidityUSD / 1000).toFixed(0)}K liq)`);
     }
@@ -1103,13 +1143,18 @@ async function fetchBaseUSDCSupply(): Promise<StablecoinSupplyData | null> {
     const totalSupply = Number(BigInt(result)) / 1e6; // USDC has 6 decimals
     const now = new Date().toISOString();
 
-    // v12.0: Detect stale CoinGecko-era history (global supply ~$200B vs Base USDC ~$4B)
-    // If the most recent historical entry differs by >10x from current reading, purge history
+    // v12.0.2: Filter out stale CoinGecko-era history entries (global supply ~$200B vs Base USDC ~$4B)
+    // Remove ANY entries that differ >10x from current reading — handles mixed history from migration
     if (stablecoinSupplyHistory.values.length > 0) {
-      const lastHistorical = stablecoinSupplyHistory.values[stablecoinSupplyHistory.values.length - 1].totalSupply;
-      if (lastHistorical > 0 && (totalSupply / lastHistorical < 0.1 || totalSupply / lastHistorical > 10)) {
-        console.log(`  🔄 Stablecoin history reset: last=$${(lastHistorical / 1e6).toFixed(1)}M vs current=$${(totalSupply / 1e6).toFixed(1)}M — data source changed`);
-        stablecoinSupplyHistory.values = [];
+      const before = stablecoinSupplyHistory.values.length;
+      stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.filter(v => {
+        if (v.totalSupply <= 0) return false;
+        const ratio = totalSupply / v.totalSupply;
+        return ratio >= 0.1 && ratio <= 10; // Keep only entries within 10x of current
+      });
+      const purged = before - stablecoinSupplyHistory.values.length;
+      if (purged > 0) {
+        console.log(`  🔄 Stablecoin history: purged ${purged} stale entries (pre-v12 data), ${stablecoinSupplyHistory.values.length} remain`);
       }
     }
 
