@@ -706,7 +706,8 @@ async function discoverPoolAddresses(): Promise<void> {
 /**
  * Decode sqrtPriceX96 from Uniswap V3 / Aerodrome V3 slot0 into a human-readable price.
  * price = (sqrtPriceX96 / 2^96)^2 adjusted for token decimal difference.
- * Returns price of token1 in terms of token0 (i.e., how many token0 per token1).
+ * Returns: amount of token1 per 1 token0 (decimal-adjusted).
+ * i.e., price of token0 denominated in token1.
  */
 function decodeSqrtPriceX96(sqrtPriceX96Hex: string, token0Decimals: number, token1Decimals: number): number {
   // sqrtPriceX96 is the first 32 bytes of slot0 return data
@@ -750,15 +751,15 @@ async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number, btcUs
       const rawPrice = decodeSqrtPriceX96(result.slice(2), pool.token0Decimals, pool.token1Decimals);
       if (rawPrice <= 0) return null;
 
-      // rawPrice = price of token1 in terms of token0
-      // If our token is token0: our_token_price = 1/rawPrice (in terms of quote)
-      // If our token is token1: our_token_price = rawPrice (in terms of quote)
+      // rawPrice = amount of token1 per 1 token0 (price of token0 in token1 terms)
+      // If our token is token0: rawPrice IS our token's price in quote (token1) terms
+      // If our token is token1: our token's price = 1/rawPrice in quote (token0) terms
       if (pool.token0IsBase) {
-        // Our token is token0, so rawPrice = quote/our_token → our_token = 1/rawPrice in quote terms
-        tokenPrice = 1 / rawPrice;
-      } else {
-        // Our token is token1, so rawPrice = our_token in terms of token0 (quote)
+        // Our token is token0 → rawPrice = quote_per_our_token → use directly
         tokenPrice = rawPrice;
+      } else {
+        // Our token is token1 → rawPrice = our_token_per_quote → invert
+        tokenPrice = 1 / rawPrice;
       }
     } else {
       // Aerodrome V2: getReserves() → (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
