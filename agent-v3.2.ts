@@ -2930,7 +2930,7 @@ function saveTradeHistory() {
 
 // v11.4.22: Blockscout (free, no API key) replaces deprecated Basescan V1 API
 const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
-const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
+// USDC_ADDRESS declared in v12.0 on-chain pricing block (line ~536)
 
 // Reverse lookup: contract address → symbol
 const ADDRESS_TO_SYMBOL: Record<string, string> = {};
