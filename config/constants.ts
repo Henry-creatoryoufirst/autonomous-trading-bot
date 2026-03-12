@@ -87,15 +87,10 @@ export const CACHE_TTL = {
   DEFI_LLAMA: 10 * 60 * 1000,        // 10 minutes
   /** News sentiment (CryptoPanic) */
   NEWS: 10 * 60 * 1000,              // 10 minutes
-  /** Price history for technical indicators (hourly candles) */
-  PRICE_HISTORY: 4 * 60 * 60 * 1000, // 4 hours
   /** Derivatives data (Binance funding/OI) */
   DERIVATIVES: 5 * 60 * 1000,        // 5 minutes
-  // v10.0: Market Intelligence Engine
-  /** CoinGecko /global endpoint — BTC dominance, total market cap */
-  COINGECKO_GLOBAL: 15 * 60 * 1000,       // 15 minutes
-  /** Stablecoin supply tracking (USDT + USDC market caps) */
-  STABLECOIN_SUPPLY: 30 * 60 * 1000,      // 30 minutes
+  // v12.0: CoinGecko-related TTLs removed (PRICE_HISTORY, COINGECKO_GLOBAL, STABLECOIN_SUPPLY)
+  // Price history is now self-accumulating from on-chain reads. See PRICE_HISTORY_* constants below.
 } as const;
 
 // ============================================================================
@@ -510,3 +505,31 @@ export const BASE_RPC_ENDPOINTS = [
   'https://base.meowrpc.com',            // Community RPC fallback
   'https://base.drpc.org',               // dRPC fallback
 ] as const;
+
+// ============================================================================
+// v12.0: ON-CHAIN PRICING ENGINE — Replace CoinGecko with direct DEX pool reads
+// ============================================================================
+
+/** How often to record a price snapshot for the self-accumulating history (hourly) */
+export const PRICE_HISTORY_RECORD_INTERVAL_MS = 55 * 60 * 1000; // 55 min (allows for cycle drift)
+
+/** Maximum hourly data points to retain per token (30 days of hourly data) */
+export const PRICE_HISTORY_MAX_POINTS = 720;
+
+/** How often to persist price history to disk */
+export const PRICE_HISTORY_SAVE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+/** Pool registry re-discovery interval (re-discover if older than this) */
+export const POOL_DISCOVERY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/** Consecutive on-chain read failures before triggering pool re-discovery for a token */
+export const POOL_REDISCOVERY_FAILURE_THRESHOLD = 3;
+
+/** DexScreener volume enrichment interval (fades out once self-sufficient) */
+export const VOLUME_ENRICHMENT_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Number of hourly data points needed before volume enrichment auto-disables */
+export const VOLUME_SELF_SUFFICIENT_POINTS = 168; // 7 days of hourly data
+
+/** Price sanity check — skip update if on-chain price deviates more than this from last known */
+export const PRICE_SANITY_MAX_DEVIATION = 0.50; // 50%

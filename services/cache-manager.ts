@@ -5,7 +5,6 @@
  * Prevents API rate limit exhaustion on 2-minute trading cycles.
  */
 
-import { CACHE_TTL } from '../config/constants.js';
 
 interface CacheEntry<T> {
   data: T;
@@ -162,8 +161,6 @@ export class CacheManager {
 // ============================================================================
 
 export const CacheKeys = {
-  /** CoinGecko market data for all tokens */
-  COINGECKO_PRICES: 'coingecko:prices',
   /** Fear & Greed Index */
   FEAR_GREED: 'feargreed:index',
   /** DefiLlama Base chain TVL */
@@ -174,11 +171,8 @@ export const CacheKeys = {
   MACRO_DATA: 'macro:fred',
   /** CryptoPanic news */
   NEWS_SENTIMENT: 'news:cryptopanic',
-  // v10.0: Market Intelligence Engine
-  /** CoinGecko global market data (BTC dominance, total mcap) */
-  COINGECKO_GLOBAL: 'coingecko:global',
-  /** Stablecoin supply tracking */
-  STABLECOIN_SUPPLY: 'stablecoin:supply',
+  // v12.0: CoinGecko keys removed (COINGECKO_PRICES, COINGECKO_GLOBAL, STABLECOIN_SUPPLY)
+  // Prices now come from on-chain DEX pool reads. Stablecoin supply from on-chain totalSupply().
 } as const;
 
 // Singleton instance for the whole application

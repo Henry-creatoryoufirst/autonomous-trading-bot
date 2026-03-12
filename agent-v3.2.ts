@@ -45,14 +45,13 @@
  * - FRED macro data now flowing: Fed Rate, 10Y Yield, CPI, M2, Dollar Index
  *
  * CHANGES IN V4.5.2:
- * - CoinGecko: last-known-prices cache prevents $0 portfolio when rate limited
- * - CoinGecko: longer retry delays (15s, 45s) to survive 60s rate limit windows
- * - Intelligence fetches run in parallel with CoinGecko retries (faster cycles)
+ * - Last-known-prices cache prevents $0 portfolio between cycles
+ * - Intelligence fetches run in parallel with price reads (faster cycles)
  *
  * CHANGES IN V4.5.1:
  * - Fixed CryptoPanic: proper API v1 endpoint with auth_token (env: CRYPTOPANIC_AUTH_TOKEN)
  * - Fixed FRED API: added env var check + warning (auth fixed in v4.5.3)
- * - Fixed CoinGecko: retry with exponential backoff (3 attempts) to prevent $0 portfolio pricing
+ * - Price fallback chain: on-chain → DexScreener → Chainlink (no external API dependencies)
  *
  * CHANGES IN V4.5:
  * - CryptoPanic news sentiment: bullish/bearish news classification, per-token mentions, headline tracking
@@ -202,6 +201,15 @@ import {
   DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
   DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
   VOLUME_SPIKE_THRESHOLD,
+  // v12.0: On-Chain Pricing Engine
+  PRICE_HISTORY_RECORD_INTERVAL_MS,
+  PRICE_HISTORY_MAX_POINTS,
+  PRICE_HISTORY_SAVE_INTERVAL_MS,
+  POOL_DISCOVERY_MAX_AGE_MS,
+  POOL_REDISCOVERY_FAILURE_THRESHOLD,
+  VOLUME_ENRICHMENT_INTERVAL_MS,
+  VOLUME_SELF_SUFFICIENT_POINTS,
+  PRICE_SANITY_MAX_DEVIATION,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -482,6 +490,605 @@ async function fetchChainlinkPrices(): Promise<Map<string, number>> {
 
   return prices;
 }
+
+// ============================================================================
+// v12.0: ON-CHAIN PRICING ENGINE — Direct DEX pool reads, no CoinGecko
+// ============================================================================
+
+interface PoolRegistryEntry {
+  poolAddress: string;
+  poolType: 'uniswapV3' | 'aerodrome' | 'aerodromeV3';
+  quoteToken: 'WETH' | 'USDC';
+  token0IsBase: boolean; // true if our traded token is token0 in the pool
+  token0Decimals: number;
+  token1Decimals: number;
+  dexName: string;
+  liquidityUSD: number;
+  consecutiveFailures: number;
+}
+
+interface PoolRegistryFile {
+  version: 1;
+  discoveredAt: string;
+  pools: Record<string, PoolRegistryEntry>;
+}
+
+let poolRegistry: Record<string, PoolRegistryEntry> = {};
+
+const POOL_REGISTRY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/pool-registry.json` : "./logs/pool-registry.json";
+
+// DEX ID to pool type mapping (from DexScreener's dexId field)
+const DEX_TYPE_MAP: Record<string, PoolRegistryEntry['poolType']> = {
+  'uniswap_v3': 'uniswapV3',
+  'uniswap-v3': 'uniswapV3',
+  'baseswap_v3': 'uniswapV3',
+  'pancakeswap_v3': 'uniswapV3',
+  'sushiswap_v3': 'uniswapV3',
+  'aerodrome_slipstream': 'aerodromeV3', // Aerodrome CL (uses slot0 like Uni V3)
+  'aerodrome-slipstream': 'aerodromeV3',
+  'slipstream': 'aerodromeV3',
+  'aerodrome': 'aerodrome', // Aerodrome V2 (uses getReserves)
+  'aerodrome_v2': 'aerodrome',
+};
+
+// WETH and USDC addresses on Base for pool pair detection
+const WETH_ADDRESS = '0x4200000000000000000000000000000000000006'.toLowerCase();
+const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
+
+/**
+ * Discover pool addresses for all tokens via DexScreener (one-time bootstrap).
+ * Caches to disk — subsequent startups load from file.
+ */
+async function discoverPoolAddresses(): Promise<void> {
+  // Try loading from disk first
+  try {
+    if (fs.existsSync(POOL_REGISTRY_FILE)) {
+      const data: PoolRegistryFile = JSON.parse(fs.readFileSync(POOL_REGISTRY_FILE, 'utf-8'));
+      const age = Date.now() - new Date(data.discoveredAt).getTime();
+      if (data.version === 1 && age < POOL_DISCOVERY_MAX_AGE_MS && Object.keys(data.pools).length > 0) {
+        poolRegistry = data.pools;
+        // Reset failure counts on fresh load
+        for (const entry of Object.values(poolRegistry)) entry.consecutiveFailures = 0;
+        console.log(`  ♻️  Pool registry loaded: ${Object.keys(poolRegistry).length} pools from cache (${(age / 3600000).toFixed(1)}h old)`);
+        return;
+      }
+    }
+  } catch { /* corrupt file — re-discover */ }
+
+  console.log(`  🔍 Discovering pool addresses via DexScreener...`);
+
+  try {
+    // Batch all token addresses in one call
+    const addresses = Object.entries(TOKEN_REGISTRY)
+      .filter(([s]) => s !== 'USDC' && TOKEN_REGISTRY[s].address !== 'native')
+      .map(([_, t]) => t.address)
+      .join(',');
+
+    const res = await axios.get(
+      `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+      { timeout: 15000 }
+    );
+
+    if (!res.data || !Array.isArray(res.data)) {
+      console.warn(`  ⚠️ DexScreener pool discovery returned invalid data`);
+      return;
+    }
+
+    const newRegistry: Record<string, PoolRegistryEntry> = {};
+
+    for (const [symbol, tokenInfo] of Object.entries(TOKEN_REGISTRY)) {
+      if (symbol === 'USDC') continue;
+      const tokenAddr = (tokenInfo.address === 'native' ? TOKEN_REGISTRY.WETH.address : tokenInfo.address).toLowerCase();
+
+      // Find all Base pools for this token, sorted by liquidity
+      const pools = res.data
+        .filter((p: any) =>
+          p.chainId === 'base' &&
+          (p.baseToken?.address?.toLowerCase() === tokenAddr || p.quoteToken?.address?.toLowerCase() === tokenAddr) &&
+          (p.liquidity?.usd || 0) > 0
+        )
+        .sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+
+      if (pools.length === 0) continue;
+
+      // Pick deepest pool that we can read on-chain
+      for (const pool of pools) {
+        const dexId = (pool.dexId || '').toLowerCase();
+        const poolType = DEX_TYPE_MAP[dexId];
+        if (!poolType) continue; // unknown DEX type, skip
+
+        const baseAddr = pool.baseToken?.address?.toLowerCase() || '';
+        const quoteAddr = pool.quoteToken?.address?.toLowerCase() || '';
+
+        // Determine which side is our token and what it's paired with
+        const isToken0 = baseAddr === tokenAddr;
+        const pairedAddr = isToken0 ? quoteAddr : baseAddr;
+        let quoteToken: 'WETH' | 'USDC';
+        if (pairedAddr === WETH_ADDRESS) quoteToken = 'WETH';
+        else if (pairedAddr === USDC_ADDRESS) quoteToken = 'USDC';
+        else continue; // paired with something else, skip
+
+        // For slot0-based pools, token0IsBase refers to Uniswap's actual token0
+        // DexScreener's baseToken is the first token in the pair display, which may differ
+        // We need to determine the actual on-chain token0 ordering
+        // token0 is always the address that sorts lower numerically
+        const addr0 = tokenAddr < pairedAddr ? tokenAddr : pairedAddr;
+        const token0IsOurToken = addr0 === tokenAddr;
+
+        const dec0 = token0IsOurToken ? tokenInfo.decimals : (quoteToken === 'USDC' ? 6 : 18);
+        const dec1 = token0IsOurToken ? (quoteToken === 'USDC' ? 6 : 18) : tokenInfo.decimals;
+
+        newRegistry[symbol] = {
+          poolAddress: pool.pairAddress,
+          poolType,
+          quoteToken,
+          token0IsBase: token0IsOurToken,
+          token0Decimals: dec0,
+          token1Decimals: dec1,
+          dexName: pool.dexId || 'unknown',
+          liquidityUSD: pool.liquidity?.usd || 0,
+          consecutiveFailures: 0,
+        };
+        break; // Use first viable pool (deepest liquidity)
+      }
+    }
+
+    // Handle ETH as an alias for WETH
+    if (newRegistry['WETH'] && !newRegistry['ETH']) {
+      newRegistry['ETH'] = { ...newRegistry['WETH'] };
+    }
+
+    poolRegistry = newRegistry;
+    console.log(`  ✅ Pool registry: ${Object.keys(poolRegistry).length} pools discovered`);
+    for (const [sym, info] of Object.entries(poolRegistry)) {
+      console.log(`     ${sym}: ${info.poolType} @ ${info.poolAddress.slice(0, 10)}... (${info.quoteToken}, $${(info.liquidityUSD / 1000).toFixed(0)}K liq)`);
+    }
+
+    // Persist to disk
+    const registryData: PoolRegistryFile = { version: 1, discoveredAt: new Date().toISOString(), pools: poolRegistry };
+    const tmpFile = POOL_REGISTRY_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(registryData, null, 2));
+    fs.renameSync(tmpFile, POOL_REGISTRY_FILE);
+  } catch (e: any) {
+    console.warn(`  ⚠️ Pool discovery failed: ${e.message?.substring(0, 100) || e}`);
+  }
+}
+
+/**
+ * Decode sqrtPriceX96 from Uniswap V3 / Aerodrome V3 slot0 into a human-readable price.
+ * price = (sqrtPriceX96 / 2^96)^2 adjusted for token decimal difference.
+ * Returns price of token1 in terms of token0 (i.e., how many token0 per token1).
+ */
+function decodeSqrtPriceX96(sqrtPriceX96Hex: string, token0Decimals: number, token1Decimals: number): number {
+  // sqrtPriceX96 is the first 32 bytes of slot0 return data
+  const sqrtPriceX96 = BigInt('0x' + sqrtPriceX96Hex.slice(0, 64));
+  if (sqrtPriceX96 === 0n) return 0;
+
+  // price = (sqrtPriceX96)^2 / 2^192 * 10^(token0Decimals - token1Decimals)
+  // sqrtPriceX96 is up to 160 bits → squared is up to 320 bits.
+  // We must do BigInt division first to stay within Number precision.
+  const numerator = sqrtPriceX96 * sqrtPriceX96;
+  const Q192 = 2n ** 192n;
+
+  // Split into integer and fractional parts to preserve precision
+  const intPart = numerator / Q192;
+  const remainder = numerator % Q192;
+  const rawPrice = Number(intPart) + Number(remainder) / Number(Q192);
+
+  const decimalAdjustment = 10 ** (token0Decimals - token1Decimals);
+  return rawPrice * decimalAdjustment;
+}
+
+/**
+ * Read a single token's price from its on-chain DEX pool.
+ * Returns price in USD, or null on failure.
+ */
+async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number): Promise<number | null> {
+  const pool = poolRegistry[symbol];
+  if (!pool) return null;
+
+  try {
+    let tokenPrice: number;
+
+    if (pool.poolType === 'uniswapV3' || pool.poolType === 'aerodromeV3') {
+      // slot0() → returns (uint160 sqrtPriceX96, int24 tick, ...)
+      const result = await rpcCall('eth_call', [
+        { to: pool.poolAddress, data: '0x3850c7bd' }, 'latest'
+      ]);
+      if (!result || result === '0x' || result.length < 66) return null;
+
+      // Strip '0x' prefix for decoding
+      const rawPrice = decodeSqrtPriceX96(result.slice(2), pool.token0Decimals, pool.token1Decimals);
+      if (rawPrice <= 0) return null;
+
+      // rawPrice = price of token1 in terms of token0
+      // If our token is token0: our_token_price = 1/rawPrice (in terms of quote)
+      // If our token is token1: our_token_price = rawPrice (in terms of quote)
+      if (pool.token0IsBase) {
+        // Our token is token0, so rawPrice = quote/our_token → our_token = 1/rawPrice in quote terms
+        tokenPrice = 1 / rawPrice;
+      } else {
+        // Our token is token1, so rawPrice = our_token in terms of token0 (quote)
+        tokenPrice = rawPrice;
+      }
+    } else {
+      // Aerodrome V2: getReserves() → (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
+      const result = await rpcCall('eth_call', [
+        { to: pool.poolAddress, data: '0x0902f1ac' }, 'latest'
+      ]);
+      if (!result || result === '0x' || result.length < 130) return null;
+
+      const reserve0 = BigInt('0x' + result.slice(2, 66));
+      const reserve1 = BigInt('0x' + result.slice(66, 130));
+      if (reserve0 === 0n || reserve1 === 0n) return null;
+
+      // Adjust for decimals
+      const r0 = Number(reserve0) / (10 ** pool.token0Decimals);
+      const r1 = Number(reserve1) / (10 ** pool.token1Decimals);
+
+      if (pool.token0IsBase) {
+        // Our token is token0 → price = reserve1/reserve0 (how many quote tokens per base token)
+        tokenPrice = r1 / r0;
+      } else {
+        // Our token is token1 → price = reserve0/reserve1
+        tokenPrice = r0 / r1;
+      }
+    }
+
+    // Convert to USD
+    const priceUSD = pool.quoteToken === 'WETH' ? tokenPrice * ethUsdPrice : tokenPrice;
+    if (priceUSD <= 0 || !isFinite(priceUSD)) return null;
+
+    // Reset failure counter on success
+    pool.consecutiveFailures = 0;
+    return priceUSD;
+  } catch (e: any) {
+    pool.consecutiveFailures++;
+    return null;
+  }
+}
+
+/**
+ * Fetch ETH/USD price from Chainlink oracle (single RPC call).
+ * Reuses existing Chainlink infrastructure.
+ */
+async function fetchChainlinkETHPrice(): Promise<number> {
+  try {
+    const result = await rpcCall('eth_call', [
+      { to: CHAINLINK_FEEDS_BASE.ETH.feed, data: CHAINLINK_ABI_FRAGMENT }, 'latest'
+    ]);
+    if (result && result !== '0x') {
+      const price = parseInt(result, 16) / Math.pow(10, CHAINLINK_FEEDS_BASE.ETH.decimals);
+      if (price > 0) return price;
+    }
+  } catch { /* fall through */ }
+  // Fallback: use last known ETH price
+  return lastKnownPrices['ETH']?.price || lastKnownPrices['WETH']?.price || 0;
+}
+
+/**
+ * Fetch BTC/USD price from Chainlink oracle (single RPC call).
+ */
+async function fetchChainlinkBTCPrice(): Promise<number> {
+  try {
+    const result = await rpcCall('eth_call', [
+      { to: CHAINLINK_FEEDS_BASE.cbBTC.feed, data: CHAINLINK_ABI_FRAGMENT }, 'latest'
+    ]);
+    if (result && result !== '0x') {
+      const price = parseInt(result, 16) / Math.pow(10, CHAINLINK_FEEDS_BASE.cbBTC.decimals);
+      if (price > 0) return price;
+    }
+  } catch { /* fall through */ }
+  return lastKnownPrices['cbBTC']?.price || 0;
+}
+
+/**
+ * Fetch all token prices on-chain in parallel.
+ * Primary: DEX pool reads. Chainlink for ETH/BTC.
+ */
+async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  prices.set('USDC', 1.0);
+
+  // Step 1: Get ETH and BTC prices from Chainlink (most reliable)
+  const [ethPrice, btcPrice] = await Promise.all([
+    fetchChainlinkETHPrice(),
+    fetchChainlinkBTCPrice(),
+  ]);
+
+  if (ethPrice > 0) {
+    prices.set('ETH', ethPrice);
+    prices.set('WETH', ethPrice);
+  }
+  if (btcPrice > 0) {
+    prices.set('cbBTC', btcPrice);
+  }
+
+  // Step 2: Fetch all other tokens from DEX pools in parallel
+  const poolSymbols = Object.keys(poolRegistry).filter(s => !prices.has(s));
+  const results = await Promise.allSettled(
+    poolSymbols.map(s => fetchOnChainTokenPrice(s, ethPrice))
+  );
+
+  for (let i = 0; i < poolSymbols.length; i++) {
+    const result = results[i];
+    if (result.status === 'fulfilled' && result.value !== null && result.value > 0) {
+      // Price sanity check against last known
+      const lastPrice = lastKnownPrices[poolSymbols[i]]?.price;
+      if (lastPrice && lastPrice > 0) {
+        const deviation = Math.abs(result.value - lastPrice) / lastPrice;
+        if (deviation > PRICE_SANITY_MAX_DEVIATION) {
+          console.warn(`  ⚠️ Price sanity fail: ${poolSymbols[i]} on-chain=$${result.value.toFixed(4)} vs last=$${lastPrice.toFixed(4)} (${(deviation * 100).toFixed(1)}% deviation) — skipping`);
+          continue;
+        }
+      }
+      prices.set(poolSymbols[i], result.value);
+    }
+  }
+
+  // Check for tokens that need pool re-discovery
+  for (const [symbol, entry] of Object.entries(poolRegistry)) {
+    if (entry.consecutiveFailures >= POOL_REDISCOVERY_FAILURE_THRESHOLD) {
+      console.warn(`  🔄 ${symbol}: ${entry.consecutiveFailures} consecutive failures — will re-discover pool on next startup`);
+    }
+  }
+
+  return prices;
+}
+
+// ============================================================================
+// v12.0: SELF-ACCUMULATING PRICE HISTORY STORE
+// ============================================================================
+
+interface PriceHistoryStore {
+  version: 1;
+  lastSaved: string;
+  tokens: Record<string, {
+    timestamps: number[];
+    prices: number[];
+    volumes: number[];
+  }>;
+}
+
+let priceHistoryStore: PriceHistoryStore = { version: 1, lastSaved: '', tokens: {} };
+let lastPriceHistorySaveTime = 0;
+
+const PRICE_HISTORY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/price-history.json` : "./logs/price-history.json";
+
+function loadPriceHistoryStore(): void {
+  try {
+    if (fs.existsSync(PRICE_HISTORY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(PRICE_HISTORY_FILE, 'utf-8'));
+      if (data.version === 1 && data.tokens) {
+        priceHistoryStore = data;
+        const tokenCount = Object.keys(data.tokens).length;
+        const totalPoints = Object.values(data.tokens as Record<string, { prices: number[] }>).reduce((sum, t) => sum + t.prices.length, 0);
+        console.log(`  ♻️  Price history loaded: ${tokenCount} tokens, ${totalPoints} total data points`);
+      }
+    }
+  } catch { /* corrupt file — start fresh */ }
+}
+
+function savePriceHistoryStore(): void {
+  try {
+    priceHistoryStore.lastSaved = new Date().toISOString();
+    const tmpFile = PRICE_HISTORY_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(priceHistoryStore));
+    fs.renameSync(tmpFile, PRICE_HISTORY_FILE);
+    lastPriceHistorySaveTime = Date.now();
+  } catch { /* non-critical */ }
+}
+
+/**
+ * Record current prices into the self-accumulating history store.
+ * Only records at hourly intervals to match indicator granularity.
+ */
+function recordPriceSnapshot(prices: Map<string, number>): void {
+  const now = Date.now();
+
+  for (const [symbol, price] of prices) {
+    if (price <= 0 || symbol === 'USDC') continue;
+
+    let entry = priceHistoryStore.tokens[symbol];
+    if (!entry) {
+      entry = { timestamps: [], prices: [], volumes: [] };
+      priceHistoryStore.tokens[symbol] = entry;
+    }
+
+    const lastTs = entry.timestamps[entry.timestamps.length - 1] || 0;
+
+    // Only record if >= PRICE_HISTORY_RECORD_INTERVAL_MS since last recording
+    if (now - lastTs >= PRICE_HISTORY_RECORD_INTERVAL_MS) {
+      entry.timestamps.push(now);
+      entry.prices.push(price);
+      entry.volumes.push(0); // filled by volume enrichment
+
+      // Trim to max points
+      if (entry.timestamps.length > PRICE_HISTORY_MAX_POINTS) {
+        const excess = entry.timestamps.length - PRICE_HISTORY_MAX_POINTS;
+        entry.timestamps = entry.timestamps.slice(excess);
+        entry.prices = entry.prices.slice(excess);
+        entry.volumes = entry.volumes.slice(excess);
+      }
+    }
+  }
+
+  // Save to disk periodically
+  if (now - lastPriceHistorySaveTime >= PRICE_HISTORY_SAVE_INTERVAL_MS) {
+    savePriceHistoryStore();
+  }
+}
+
+/**
+ * Compute percentage price change from history.
+ * lookbackMs: how far back to look (e.g., 24h = 86400000)
+ */
+function computePriceChange(symbol: string, currentPrice: number, lookbackMs: number): number {
+  const entry = priceHistoryStore.tokens[symbol];
+  if (!entry || entry.timestamps.length < 2 || currentPrice <= 0) return 0;
+
+  const target = Date.now() - lookbackMs;
+  let closestIdx = 0;
+  let closestDiff = Infinity;
+
+  for (let i = entry.timestamps.length - 1; i >= 0; i--) {
+    const diff = Math.abs(entry.timestamps[i] - target);
+    if (diff < closestDiff) {
+      closestDiff = diff;
+      closestIdx = i;
+    }
+    if (entry.timestamps[i] < target) break;
+  }
+
+  const oldPrice = entry.prices[closestIdx];
+  return oldPrice > 0 ? ((currentPrice - oldPrice) / oldPrice) * 100 : 0;
+}
+
+// Volume enrichment state
+let lastVolumeEnrichmentTime = 0;
+
+/**
+ * Periodic volume enrichment from DexScreener (fades out once self-sufficient).
+ * Returns volume data per symbol, or empty map if skipped.
+ */
+async function enrichVolumeData(): Promise<Map<string, number>> {
+  const volumes = new Map<string, number>();
+  const now = Date.now();
+
+  // Skip if too soon since last enrichment
+  if (now - lastVolumeEnrichmentTime < VOLUME_ENRICHMENT_INTERVAL_MS) return volumes;
+
+  // Check if we're self-sufficient (have enough history to skip DexScreener)
+  const tokenLengths = Object.values(priceHistoryStore.tokens)
+    .filter(t => t.prices.length > 0)
+    .map(t => t.prices.length);
+  const minPoints = tokenLengths.length > 0 ? Math.min(...tokenLengths) : 0;
+  if (minPoints >= VOLUME_SELF_SUFFICIENT_POINTS) {
+    // Self-sufficient — no need for DexScreener volume enrichment
+    return volumes;
+  }
+
+  try {
+    const addresses = Object.entries(TOKEN_REGISTRY)
+      .filter(([s]) => s !== 'USDC' && TOKEN_REGISTRY[s].address !== 'native')
+      .map(([_, t]) => t.address)
+      .join(',');
+
+    const res = await axios.get(
+      `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+      { timeout: 10000 }
+    );
+
+    if (res.data && Array.isArray(res.data)) {
+      const seen = new Set<string>();
+      for (const pair of res.data) {
+        const addr = pair.baseToken?.address?.toLowerCase();
+        const entry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.address.toLowerCase() === addr);
+        if (entry && !seen.has(entry[0])) {
+          seen.add(entry[0]);
+          const vol = pair.volume?.h24 || 0;
+          if (vol > 0) volumes.set(entry[0], vol);
+        }
+      }
+    }
+
+    lastVolumeEnrichmentTime = now;
+    if (volumes.size > 0) {
+      console.log(`  📊 Volume enrichment: ${volumes.size} tokens (fade-out: ${minPoints}/${VOLUME_SELF_SUFFICIENT_POINTS} points)`);
+    }
+  } catch { /* non-critical */ }
+
+  return volumes;
+}
+
+/**
+ * Compute local altseason signal from BTC/ETH price ratio tracked in price history.
+ * Replaces fetchCoinGeckoGlobal() — no external API needed.
+ */
+function computeLocalAltseasonSignal(): AltseasonSignal {
+  const btcHistory = priceHistoryStore.tokens['cbBTC'];
+  const ethHistory = priceHistoryStore.tokens['ETH'] || priceHistoryStore.tokens['WETH'];
+
+  if (!btcHistory || !ethHistory || btcHistory.prices.length < 24 || ethHistory.prices.length < 24) {
+    return 'NEUTRAL'; // Not enough data yet
+  }
+
+  const currentBtc = btcHistory.prices[btcHistory.prices.length - 1];
+  const currentEth = ethHistory.prices[ethHistory.prices.length - 1];
+  if (!currentBtc || !currentEth || currentEth === 0) return 'NEUTRAL';
+
+  const currentRatio = currentBtc / currentEth;
+
+  // Look back ~7 days (168 hourly points) or as far as we have
+  const lookbackIdx = Math.max(0, btcHistory.prices.length - 168);
+  const oldBtc = btcHistory.prices[lookbackIdx];
+  const oldEthIdx = Math.max(0, ethHistory.prices.length - 168);
+  const oldEth = ethHistory.prices[oldEthIdx];
+  if (!oldBtc || !oldEth || oldEth === 0) return 'NEUTRAL';
+
+  const oldRatio = oldBtc / oldEth;
+  if (oldRatio === 0) return 'NEUTRAL';
+
+  const ratioChange = ((currentRatio - oldRatio) / oldRatio) * 100;
+
+  if (ratioChange > BTC_DOMINANCE_CHANGE_THRESHOLD * 2.5) return 'BTC_DOMINANCE_FLIGHT';
+  if (ratioChange < -BTC_DOMINANCE_CHANGE_THRESHOLD * 2.5) return 'ALTSEASON_ROTATION';
+  return 'NEUTRAL';
+}
+
+/**
+ * Fetch USDC total supply on Base as a proxy for stablecoin capital flow.
+ * Replaces fetchStablecoinSupply() CoinGecko call.
+ */
+async function fetchBaseUSDCSupply(): Promise<StablecoinSupplyData | null> {
+  try {
+    // totalSupply() on Base USDC contract (checksummed address)
+    const result = await rpcCall('eth_call', [
+      { to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', data: '0x18160ddd' },
+      'latest'
+    ]);
+    if (!result || result === '0x') return null;
+
+    // Use BigInt to avoid precision loss on large supply values, then convert to USD
+    const totalSupply = Number(BigInt(result)) / 1e6; // USDC has 6 decimals
+    const now = new Date().toISOString();
+
+    // Track in existing stablecoinSupplyHistory for persistence
+    stablecoinSupplyHistory.values.push({ timestamp: now, totalSupply });
+    if (stablecoinSupplyHistory.values.length > 504) {
+      stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.slice(-504);
+    }
+
+    // Compute 7-day change
+    let supplyChange7d = 0;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const oldEntry = stablecoinSupplyHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
+    if (oldEntry && oldEntry.totalSupply > 0) {
+      supplyChange7d = ((totalSupply - oldEntry.totalSupply) / oldEntry.totalSupply) * 100;
+    }
+
+    let signal: StablecoinSupplyData['signal'] = 'STABLE';
+    if (supplyChange7d > STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = 'CAPITAL_INFLOW';
+    else if (supplyChange7d < -STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = 'CAPITAL_OUTFLOW';
+
+    console.log(`  💵 Base USDC supply: $${(totalSupply / 1e6).toFixed(1)}M (${supplyChange7d >= 0 ? '+' : ''}${supplyChange7d.toFixed(2)}% 7d) → ${signal}`);
+
+    return {
+      usdtMarketCap: 0, // Not available on-chain
+      usdcMarketCap: totalSupply,
+      totalStablecoinSupply: totalSupply,
+      supplyChange7d,
+      signal,
+      lastUpdated: now,
+    };
+  } catch (e: any) {
+    console.warn(`  ⚠️ Base USDC supply fetch failed: ${e.message?.substring(0, 100) || e}`);
+    return null;
+  }
+}
+
+// Load stores on module init
+loadPriceHistoryStore();
 
 // ============================================================================
 // v9.1: MULTI-WALLET PROFIT DISTRIBUTION
@@ -3432,54 +4039,7 @@ let currentAltseasonSignal: AltseasonSignal = "NEUTRAL";
 // v10.0: MARKET INTELLIGENCE ENGINE — Fetch & Compute Functions
 // ============================================================================
 
-/**
- * v10.0: Fetch CoinGecko global market data — BTC dominance, total market cap, volumes
- */
-async function fetchCoinGeckoGlobal(): Promise<GlobalMarketData | null> {
-  try {
-    const [globalRes, defiRes] = await Promise.allSettled([
-      axios.get("https://api.coingecko.com/api/v3/global", { timeout: 10000 }),
-      axios.get("https://api.coingecko.com/api/v3/global/decentralized_finance_defi", { timeout: 10000 }),
-    ]);
-
-    let btcDominance = 0, ethDominance = 0, totalMarketCap = 0, totalVolume24h = 0;
-    if (globalRes.status === "fulfilled" && globalRes.value.data?.data) {
-      const g = globalRes.value.data.data;
-      btcDominance = g.market_cap_percentage?.btc || 0;
-      ethDominance = g.market_cap_percentage?.eth || 0;
-      totalMarketCap = g.total_market_cap?.usd || 0;
-      totalVolume24h = g.total_volume?.usd || 0;
-    }
-
-    let defiMarketCap: number | null = null, defiVolume24h: number | null = null;
-    if (defiRes.status === "fulfilled" && defiRes.value.data?.data) {
-      const d = defiRes.value.data.data;
-      defiMarketCap = parseFloat(d.defi_market_cap) || null;
-      defiVolume24h = parseFloat(d.trading_volume_24h) || null;
-    }
-
-    const now = new Date().toISOString();
-    btcDominanceHistory.values.push({ timestamp: now, dominance: btcDominance });
-    if (btcDominanceHistory.values.length > 504) btcDominanceHistory.values = btcDominanceHistory.values.slice(-504);
-
-    let btcDominanceChange7d = 0;
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const oldEntry = btcDominanceHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
-    if (oldEntry) btcDominanceChange7d = btcDominance - oldEntry.dominance;
-
-    let altseasonSignal: AltseasonSignal = "NEUTRAL";
-    if (btcDominanceChange7d < -BTC_DOMINANCE_CHANGE_THRESHOLD) altseasonSignal = "ALTSEASON_ROTATION";
-    else if (btcDominanceChange7d > BTC_DOMINANCE_CHANGE_THRESHOLD) altseasonSignal = "BTC_DOMINANCE_FLIGHT";
-
-    console.log(`  🌐 Global: BTC.D ${btcDominance.toFixed(1)}% (${btcDominanceChange7d >= 0 ? "+" : ""}${btcDominanceChange7d.toFixed(1)}pp 7d) → ${altseasonSignal}`);
-    console.log(`     Total mcap: $${(totalMarketCap / 1e12).toFixed(2)}T | Volume: $${(totalVolume24h / 1e9).toFixed(0)}B`);
-
-    return { btcDominance, ethDominance, totalMarketCap, totalVolume24h, defiMarketCap, defiVolume24h, btcDominanceChange7d, altseasonSignal, lastUpdated: now };
-  } catch (error: any) {
-    console.warn(`  ⚠️ CoinGecko Global fetch failed: ${error?.message?.substring(0, 100) || error}`);
-    return null;
-  }
-}
+// v12.0: fetchCoinGeckoGlobal() removed — replaced by computeLocalAltseasonSignal() (on-chain BTC/ETH ratio)
 
 /**
  * v10.0: Compute Smart Money vs Retail Divergence Score from existing Binance data
@@ -3545,7 +4105,7 @@ function computeFundingMeanReversion(derivatives: DerivativesData | null): Fundi
 }
 
 /**
- * v10.0: TVL-Price Divergence per Token — uses existing DefiLlama + CoinGecko data
+ * v10.0: TVL-Price Divergence per Token — uses existing DefiLlama + on-chain price data
  */
 function computeTVLPriceDivergence(defi: DefiLlamaData | null, tokens: MarketData["tokens"]): TVLPriceDivergence | null {
   if (!defi || !defi.protocolTVLByToken || Object.keys(defi.protocolTVLByToken).length === 0) return null;
@@ -3564,39 +4124,7 @@ function computeTVLPriceDivergence(defi: DefiLlamaData | null, tokens: MarketDat
   return { divergences };
 }
 
-/**
- * v10.0: Stablecoin Supply Tracking — USDT + USDC market cap as capital flow indicator
- */
-async function fetchStablecoinSupply(): Promise<StablecoinSupplyData | null> {
-  try {
-    const res = await axios.get(
-      "https://api.coingecko.com/api/v3/simple/price?ids=tether,usd-coin&vs_currencies=usd&include_market_cap=true",
-      { timeout: 10000 }
-    );
-    const usdtMarketCap = res.data?.tether?.usd_market_cap || 0;
-    const usdcMarketCap = res.data?.["usd-coin"]?.usd_market_cap || 0;
-    const totalSupply = usdtMarketCap + usdcMarketCap;
-    const now = new Date().toISOString();
-
-    stablecoinSupplyHistory.values.push({ timestamp: now, totalSupply });
-    if (stablecoinSupplyHistory.values.length > 504) stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.slice(-504);
-
-    let supplyChange7d = 0;
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const oldEntry = stablecoinSupplyHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
-    if (oldEntry && oldEntry.totalSupply > 0) supplyChange7d = ((totalSupply - oldEntry.totalSupply) / oldEntry.totalSupply) * 100;
-
-    let signal: StablecoinSupplyData["signal"] = "STABLE";
-    if (supplyChange7d > STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = "CAPITAL_INFLOW";
-    else if (supplyChange7d < -STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = "CAPITAL_OUTFLOW";
-
-    console.log(`  💵 Stablecoin supply: $${(totalSupply / 1e9).toFixed(1)}B (${supplyChange7d >= 0 ? "+" : ""}${supplyChange7d.toFixed(2)}% 7d) → ${signal}`);
-    return { usdtMarketCap, usdcMarketCap, totalStablecoinSupply: totalSupply, supplyChange7d, signal, lastUpdated: now };
-  } catch (error: any) {
-    console.warn(`  ⚠️ Stablecoin supply fetch failed: ${error?.message?.substring(0, 100) || error}`);
-    return null;
-  }
-}
+// v12.0: fetchStablecoinSupply() removed — replaced by fetchBaseUSDCSupply() (on-chain totalSupply)
 
 /**
  * v10.0: Dynamic sector targets based on altseason/dominance signal
@@ -3624,7 +4152,7 @@ function getAdjustedSectorTargets(signal: AltseasonSignal): Record<string, numbe
   return adjusted;
 }
 
-// Cache for CoinGecko last-known prices — prevents $0 portfolio when rate limited
+// Last-known prices cache — prevents $0 portfolio between cycles
 let lastKnownPrices: Record<string, { price: number; change24h: number; change7d: number; volume: number; marketCap: number; name: string; sector: string }> = {};
 
 // ============================================================================
@@ -3713,11 +4241,12 @@ let lastMomentumSignal: MarketMomentumSignal = {
   positionMultiplier: 1.0, deploymentBias: 'NORMAL', dataAvailable: false,
 };
 
-// v9.2: Signal health tracker — monitors which external data sources are operational
+// v12.0: Signal health tracker — monitors which data sources are operational
 let lastSignalHealth: Record<string, string> = {
-  coingecko: 'UNKNOWN', fearGreed: 'UNKNOWN', defiLlama: 'UNKNOWN',
+  onchain: 'UNKNOWN', fearGreed: 'UNKNOWN', defiLlama: 'UNKNOWN',
   derivatives: 'UNKNOWN', news: 'UNKNOWN', macro: 'UNKNOWN',
-  momentum: 'UNKNOWN', lastUpdated: '',
+  momentum: 'UNKNOWN', altseasonSignal: 'UNKNOWN', stablecoinSupply: 'UNKNOWN',
+  lastUpdated: '',
 };
 
 // v7.1: Persist price cache to disk so deploys don't start with empty prices
@@ -5200,13 +5729,7 @@ function formatIntelligenceForPrompt(
 
 async function getMarketData(): Promise<MarketData> {
   try {
-    // Build CoinGecko URL before parallel call
-    const coingeckoIds = [...new Set(
-      Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean)
-    )].join(",");
-    const coingeckoUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
-
-    // v6.0: Launch all non-CoinGecko fetches in parallel with smart caching
+    // v12.0: Launch intelligence fetches in parallel with on-chain price reads
     const intelligencePromise = (async () => {
       const fng = await Promise.allSettled([
         cacheManager.getOrFetch(CacheKeys.FEAR_GREED, CACHE_TTL.FEAR_GREED, () =>
@@ -5217,193 +5740,74 @@ async function getMarketData(): Promise<MarketData> {
         cacheManager.getOrFetch(CacheKeys.DEFI_LLAMA_TVL, CACHE_TTL.DEFI_LLAMA, fetchDefiLlamaData),
         cacheManager.getOrFetch(CacheKeys.BINANCE_FUNDING, CACHE_TTL.DERIVATIVES, fetchDerivativesData),
       ]);
-      const [news, macro, globalMkt, stablecoin] = await Promise.allSettled([
+      const [news, macro] = await Promise.allSettled([
         cacheManager.getOrFetch(CacheKeys.NEWS_SENTIMENT, CACHE_TTL.NEWS, fetchNewsSentiment),
         cacheManager.getOrFetch(CacheKeys.MACRO_DATA, CACHE_TTL.MACRO, fetchMacroData),
-        // v10.0: Market Intelligence Engine
-        cacheManager.getOrFetch(CacheKeys.COINGECKO_GLOBAL, CACHE_TTL.COINGECKO_GLOBAL, fetchCoinGeckoGlobal),
-        cacheManager.getOrFetch(CacheKeys.STABLECOIN_SUPPLY, CACHE_TTL.STABLECOIN_SUPPLY, fetchStablecoinSupply),
       ]);
-      return { fng, defi, deriv, news, macro, globalMkt, stablecoin };
+      return { fng, defi, deriv, news, macro };
     })();
 
-    // v6.0: CoinGecko with smart cache + retry — critical data source for portfolio pricing
-    const cachedCoinGecko = cacheManager.get<any>(CacheKeys.COINGECKO_PRICES);
-    let marketResult: PromiseSettledResult<any>;
+    // v12.0: On-chain pricing — fetch all token prices from DEX pools in parallel
+    const onChainPricesPromise = fetchAllOnChainPrices();
+    const volumePromise = enrichVolumeData();
+    const stablecoinPromise = fetchBaseUSDCSupply();
 
-    if (cachedCoinGecko) {
-      marketResult = { status: "fulfilled", value: cachedCoinGecko };
-      console.log(`  ♻️  CoinGecko: using cached data (${((cacheManager.getAge(CacheKeys.COINGECKO_PRICES) || 0) / 1000).toFixed(0)}s old)`);
-    } else {
-    // v10.2: Exponential backoff with jitter for CoinGecko rate limits
-    marketResult = { status: "rejected", reason: new Error("No attempt") } as PromiseRejectedResult;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const res = await axios.get(coingeckoUrl, { timeout: 15000 });
-        if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-          marketResult = { status: "fulfilled", value: res };
-          cacheManager.set(CacheKeys.COINGECKO_PRICES, res, CACHE_TTL.PRICE);
-          for (const coin of res.data) {
-            const registryEntry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.coingeckoId === coin.id);
-            const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
-            const sector = registryEntry ? registryEntry[1].sector : "UNKNOWN";
-            lastKnownPrices[symbol] = {
-              price: coin.current_price, change24h: coin.price_change_percentage_24h || 0,
-              change7d: coin.price_change_percentage_7d_in_currency || 0,
-              volume: coin.total_volume, marketCap: coin.market_cap, name: coin.name, sector,
-            };
-          }
-          savePriceCache();
-          break;
-        } else {
-          const backoff = Math.pow(2, attempt) * 10000 + Math.random() * 5000; // 20s, 40s, 80s + jitter
-          console.warn(`  ⚠️ CoinGecko attempt ${attempt}/3: empty response, retrying in ${(backoff / 1000).toFixed(0)}s...`);
-          if (attempt < 3) await new Promise(r => setTimeout(r, backoff));
-        }
-      } catch (err: any) {
-        const status = err?.response?.status;
-        const backoff = Math.pow(2, attempt) * 10000 + Math.random() * 5000;
-        console.warn(`  ⚠️ CoinGecko attempt ${attempt}/3: ${status === 429 ? "rate limited (429)" : err?.message?.substring(0, 80) || err}`);
-        if (attempt < 3) {
-          console.log(`     Waiting ${(backoff / 1000).toFixed(0)}s before retry (exponential backoff)...`);
-          await new Promise(r => setTimeout(r, backoff));
-        }
-        if (attempt === 3) marketResult = { status: "rejected", reason: err } as PromiseRejectedResult;
-      }
-    }
-    } // end of cache miss else block
-
-    // Await intelligence data (likely already resolved during CoinGecko retries)
-    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult, globalMkt: globalMktResult, stablecoin: stablecoinResult } = await intelligencePromise;
+    // Await all parallel fetches
+    const [onChainPrices, volumeData, stablecoinData] = await Promise.all([
+      onChainPricesPromise,
+      volumePromise,
+      stablecoinPromise,
+    ]);
+    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult } = await intelligencePromise;
 
     const fearGreed = fngResult.status === "fulfilled"
       ? { value: parseInt(fngResult.value.data.data[0].value), classification: fngResult.value.data.data[0].value_classification }
       : { value: 50, classification: "Neutral" };
 
+    // v12.0: Build tokens array from on-chain prices
     let tokens: MarketData["tokens"] = [];
-    if (marketResult.status === "fulfilled") {
-      tokens = marketResult.value.data.map((coin: any) => {
-        const registryEntry = Object.entries(TOKEN_REGISTRY).find(
-          ([_, t]) => t.coingeckoId === coin.id
-        );
-        const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
-        const sector = registryEntry ? registryEntry[1].sector : "UNKNOWN";
-        return {
-          symbol, name: coin.name, price: coin.current_price,
-          priceChange24h: coin.price_change_percentage_24h || 0,
-          priceChange7d: coin.price_change_percentage_7d_in_currency || 0,
-          volume24h: coin.total_volume, marketCap: coin.market_cap, sector,
+
+    if (onChainPrices.size > 1) { // > 1 because USDC is always present
+      for (const [symbol, regData] of Object.entries(TOKEN_REGISTRY)) {
+        const price = onChainPrices.get(symbol);
+        if (!price || price <= 0) continue;
+
+        const change24h = computePriceChange(symbol, price, 24 * 60 * 60 * 1000);
+        const change7d = computePriceChange(symbol, price, 7 * 24 * 60 * 60 * 1000);
+        const volume = volumeData.get(symbol) || lastKnownPrices[symbol]?.volume || 0;
+        const marketCap = lastKnownPrices[symbol]?.marketCap || 0;
+
+        tokens.push({
+          symbol, name: regData.name, price,
+          priceChange24h: change24h,
+          priceChange7d: change7d,
+          volume24h: volume,
+          marketCap: marketCap,
+          sector: regData.sector,
+        });
+
+        // Update lastKnownPrices for light cycles and persistence
+        lastKnownPrices[symbol] = {
+          price, change24h, change7d,
+          volume, marketCap,
+          name: regData.name, sector: regData.sector,
         };
-      });
-      console.log(`  ✅ CoinGecko: ${tokens.length} tokens priced`);
+      }
+
+      // Record snapshot for self-accumulating history
+      recordPriceSnapshot(onChainPrices);
+      savePriceCache();
+      console.log(`  ✅ On-chain: ${tokens.length} tokens priced via DEX pools + Chainlink`);
     } else {
-      const reason = (marketResult as PromiseRejectedResult).reason;
-      console.error(`  \u274c CoinGecko FAILED: ${reason?.response?.status || ""} ${reason?.message || reason}`);
       // Fallback: use last-known-prices cache to prevent $0 portfolio
       const cachedCount = Object.keys(lastKnownPrices).length;
       if (cachedCount > 0) {
-        console.log(`  \u267b\ufe0f Using ${cachedCount} cached prices from last successful CoinGecko fetch`);
+        console.log(`  ♻️ On-chain pricing returned few results — using ${cachedCount} cached prices`);
         tokens = Object.entries(lastKnownPrices).map(([symbol, data]) => ({
           symbol, name: data.name, price: data.price,
           priceChange24h: data.change24h, priceChange7d: data.change7d,
           volume24h: data.volume, marketCap: data.marketCap, sector: data.sector,
         }));
-      }
-    }
-
-    // v6.1: DexScreener fallback — if CoinGecko returned no tokens or failed,
-    // fetch prices from DexScreener using on-chain token addresses (no API key needed)
-    if (tokens.length === 0 || tokens.every(t => !t.price || t.price === 0)) {
-      console.log(`  🔄 DexScreener fallback: CoinGecko returned 0 priced tokens, fetching from DexScreener...`);
-      try {
-        const tokenAddresses = Object.entries(TOKEN_REGISTRY)
-          .filter(([symbol]) => symbol !== "USDC")
-          .map(([_, t]) => t.address)
-          .join(",");
-        const dexRes = await axios.get(
-          `https://api.dexscreener.com/tokens/v1/base/${tokenAddresses}`,
-          { timeout: 15000 }
-        );
-        if (dexRes.data && Array.isArray(dexRes.data) && dexRes.data.length > 0) {
-          const dexTokens: MarketData["tokens"] = [];
-          const seenSymbols = new Set<string>();
-          for (const pair of dexRes.data) {
-            const addr = pair.baseToken?.address?.toLowerCase();
-            const registryEntry = Object.entries(TOKEN_REGISTRY).find(
-              ([_, t]) => t.address.toLowerCase() === addr
-            );
-            if (registryEntry && !seenSymbols.has(registryEntry[0])) {
-              const [symbol, regData] = registryEntry;
-              seenSymbols.add(symbol);
-              const price = parseFloat(pair.priceUsd || "0");
-              if (price > 0) {
-                dexTokens.push({
-                  symbol, name: regData.name, price,
-                  priceChange24h: pair.priceChange?.h24 || 0,
-                  priceChange7d: 0,
-                  volume24h: pair.volume?.h24 || 0,
-                  marketCap: pair.marketCap || 0,
-                  sector: regData.sector,
-                });
-                // Also update lastKnownPrices so light cycles have data
-                lastKnownPrices[symbol] = {
-                  price, change24h: pair.priceChange?.h24 || 0, change7d: 0,
-                  volume: pair.volume?.h24 || 0, marketCap: pair.marketCap || 0,
-                  name: regData.name, sector: regData.sector,
-                };
-              }
-            }
-          }
-          if (dexTokens.length > 0) {
-            tokens = dexTokens;
-            savePriceCache();
-            console.log(`  ✅ DexScreener fallback: ${dexTokens.length} tokens priced`);
-            // Cache the DexScreener result so subsequent cycles don't re-fetch
-            cacheManager.set(CacheKeys.COINGECKO_PRICES, { data: dexTokens.map(t => ({
-              id: TOKEN_REGISTRY[t.symbol]?.coingeckoId || t.symbol.toLowerCase(),
-              symbol: t.symbol.toLowerCase(), name: t.name,
-              current_price: t.price, price_change_percentage_24h: t.priceChange24h,
-              price_change_percentage_7d_in_currency: t.priceChange7d,
-              total_volume: t.volume24h, market_cap: t.marketCap,
-            })) }, CACHE_TTL.PRICE);
-          } else {
-            console.warn(`  ⚠️ DexScreener returned data but no valid prices`);
-          }
-        }
-      } catch (dexErr: any) {
-        console.error(`  ❌ DexScreener fallback also failed: ${dexErr?.message || dexErr}`);
-      }
-    }
-
-    // v6.2: Chainlink on-chain oracle — 3rd fallback for blue-chip prices
-    // If we still have no ETH/BTC prices, read directly from on-chain oracles
-    const hasETHPrice = tokens.some(t => t.symbol === "ETH" && t.price > 0);
-    if (!hasETHPrice || tokens.length === 0) {
-      try {
-        const chainlinkPrices = await fetchChainlinkPrices();
-        for (const [symbol, price] of chainlinkPrices) {
-          const existing = tokens.find(t => t.symbol === symbol);
-          if (!existing && TOKEN_REGISTRY[symbol]) {
-            const reg = TOKEN_REGISTRY[symbol];
-            tokens.push({
-              symbol, name: reg.name, price,
-              priceChange24h: 0, priceChange7d: 0,
-              volume24h: 0, marketCap: 0, sector: reg.sector,
-            });
-            lastKnownPrices[symbol] = {
-              price, change24h: 0, change7d: 0,
-              volume: 0, marketCap: 0, name: reg.name, sector: reg.sector,
-            };
-          } else if (existing && existing.price === 0) {
-            existing.price = price;
-            lastKnownPrices[symbol] = { ...lastKnownPrices[symbol], price };
-          }
-        }
-        if (chainlinkPrices.size > 0) {
-          console.log(`  🔗 Chainlink oracle backfill: ${chainlinkPrices.size} blue-chip prices`);
-        }
-      } catch (chainErr: any) {
-        console.error(`  ❌ Chainlink oracle fallback failed: ${chainErr?.message || chainErr}`);
       }
     }
 
@@ -5415,7 +5819,7 @@ async function getMarketData(): Promise<MarketData> {
 
     // Fetch technical indicators for all tokens
     console.log("📐 Computing technical indicators (RSI, MACD, Bollinger)...");
-    const indicators = await getTokenIndicators(tokens);
+    const indicators = getTokenIndicators(tokens);
     const indicatorCount = Object.values(indicators).filter(i => i.rsi14 !== null).length;
     console.log(`   ✅ Indicators computed for ${indicatorCount}/${Object.keys(indicators).length} tokens`);
 
@@ -5436,43 +5840,52 @@ async function getMarketData(): Promise<MarketData> {
     const marketRegime = determineMarketRegime(fearGreed.value, indicators, derivatives);
     console.log(`  🌐 Market Regime: ${marketRegime}`);
 
-    // v9.2: Signal health tracker — monitor which data sources are live vs degraded
-    // v10.0: Extract new intelligence layers
-    const globalMarket = globalMktResult.status === "fulfilled" ? globalMktResult.value : null;
-    const stablecoinSupply = stablecoinResult.status === "fulfilled" ? stablecoinResult.value : null;
-
-    // v10.0: Compute derived signals from existing data (no new API calls)
+    // v12.0: Compute derived signals — on-chain altseason + stablecoin, no CoinGecko
     const smartRetailDivergence = computeSmartRetailDivergence(derivatives);
     const fundingMeanReversion = computeFundingMeanReversion(derivatives);
     const tvlPriceDivergence = computeTVLPriceDivergence(defiLlama, tokens);
 
-    // v10.0: Update altseason signal for dynamic sector allocation
-    currentAltseasonSignal = globalMarket?.altseasonSignal || "NEUTRAL";
+    // v12.0: Altseason signal from BTC/ETH ratio (replaces CoinGecko global)
+    currentAltseasonSignal = computeLocalAltseasonSignal();
 
-    // v10.0: Sync history to state for persistence
+    // v12.0: Build globalMarket with available on-chain data
+    const globalMarket: GlobalMarketData | null = {
+      btcDominance: 0, // Not available on-chain — altseason signal derived from BTC/ETH ratio instead
+      ethDominance: 0,
+      totalMarketCap: 0,
+      totalVolume24h: 0,
+      defiMarketCap: null,
+      defiVolume24h: null,
+      btcDominanceChange7d: 0,
+      altseasonSignal: currentAltseasonSignal,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const stablecoinSupply = stablecoinData;
+
+    // Sync history to state for persistence
     state.fundingRateHistory = fundingRateHistory;
     state.btcDominanceHistory = btcDominanceHistory;
     state.stablecoinSupplyHistory = stablecoinSupplyHistory;
 
     lastSignalHealth = {
-      coingecko: marketResult.status === 'fulfilled' ? 'LIVE' : Object.keys(lastKnownPrices).length > 0 ? 'STALE' : 'DOWN',
+      onchain: onChainPrices.size > 1 ? 'LIVE' : Object.keys(lastKnownPrices).length > 0 ? 'STALE' : 'DOWN',
       fearGreed: fngResult.status === 'fulfilled' ? 'LIVE' : 'DOWN',
       defiLlama: defiResult.status === 'fulfilled' && defiResult.value ? 'LIVE' : 'DOWN',
       derivatives: 'DISABLED', // v11.5: Derivatives removed — geo-blocked and not actionable
       news: newsResult.status === 'fulfilled' && newsResult.value ? 'LIVE' : 'DOWN',
       macro: macroResult.status === 'fulfilled' && macroResult.value ? 'LIVE' : 'DOWN',
       momentum: lastMomentumSignal.dataAvailable ? 'LIVE' : 'DOWN',
-      // v10.0: New intelligence sources
-      globalMarket: globalMktResult.status === 'fulfilled' && globalMktResult.value ? 'LIVE' : 'DOWN',
-      stablecoinSupply: stablecoinResult.status === 'fulfilled' && stablecoinResult.value ? 'LIVE' : 'DOWN',
+      altseasonSignal: (priceHistoryStore.tokens['cbBTC']?.prices.length || 0) >= 24 && (priceHistoryStore.tokens['ETH']?.prices.length || priceHistoryStore.tokens['WETH']?.prices.length || 0) >= 24 ? 'LIVE' : 'BUILDING',
+      stablecoinSupply: stablecoinData ? 'LIVE' : 'DOWN',
       fundingHistory: 'DISABLED', // v11.5: depends on derivatives, permanently disabled
       lastUpdated: new Date().toISOString(),
     };
     const healthEntries = Object.entries(lastSignalHealth).filter(([k, v]) => k !== 'lastUpdated' && v !== 'DISABLED');
     const liveCount = healthEntries.filter(([, v]) => v === 'LIVE').length;
     const totalSources = healthEntries.length;
-    const downSources = healthEntries.filter(([, v]) => v === 'DOWN').map(([k]) => k);
-    console.log(`  📡 Signal Health: ${liveCount}/${totalSources} sources live${downSources.length > 0 ? ' | DOWN: ' + downSources.join(', ') : ''}`);
+    const downSources = healthEntries.filter(([, v]) => v === 'DOWN' || v === 'BUILDING').map(([k]) => k);
+    console.log(`  📡 Signal Health: ${liveCount}/${totalSources} sources live${downSources.length > 0 ? ' | DOWN/BUILDING: ' + downSources.join(', ') : ''}`);
 
     return { tokens, fearGreed, trendingTokens, indicators, defiLlama, derivatives, newsSentiment, macroData, marketRegime, globalMarket, smartRetailDivergence, fundingMeanReversion, tvlPriceDivergence, stablecoinSupply };
   } catch (error: any) {
@@ -5521,64 +5934,19 @@ interface TechnicalIndicators {
   confluenceScore: number;       // -100 to +100, aggregated signal strength
 }
 
-interface TokenWithIndicators {
-  symbol: string;
-  name: string;
-  price: number;
-  priceChange24h: number;
-  priceChange7d: number;
-  volume24h: number;
-  marketCap: number;
-  sector: string;
-  indicators: TechnicalIndicators;
-}
-
-// Cache for historical price data — refreshed per CACHE_TTL.PRICE_HISTORY (4h)
-const priceHistoryCache: Record<string, {
-  prices: number[];        // Hourly close prices (most recent last)
-  volumes: number[];       // Hourly volumes
-  timestamps: number[];    // Unix timestamps
-  lastFetched: number;     // Unix ms when last refreshed
-}> = {};
+// v12.0: Price history now comes from the self-accumulating on-chain store
+// No external API calls needed — data accumulates automatically each cycle
 
 /**
- * Fetch hourly price history for a token from CoinGecko (30 days = hourly auto-granularity)
+ * Get price history from the local self-accumulating store (replaces CoinGecko market_chart)
+ * Returns the accumulated hourly price/volume/timestamp arrays for a token by symbol.
  */
-async function fetchPriceHistory(coingeckoId: string): Promise<{ prices: number[]; volumes: number[]; timestamps: number[] }> {
-  try {
-    const response = await axios.get(
-      `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=usd&days=30`,
-      { timeout: 15000 }
-    );
-
-    const prices = response.data.prices.map((p: [number, number]) => p[1]);
-    const volumes = response.data.total_volumes.map((v: [number, number]) => v[1]);
-    const timestamps = response.data.prices.map((p: [number, number]) => p[0]);
-
-    return { prices, volumes, timestamps };
-  } catch (error: any) {
-    const msg = error?.response?.status === 429 ? "Rate limited (429)" : error?.message || String(error);
-    console.error(`  ⚠️ Price history fetch failed for ${coingeckoId}: ${msg}`);
+function getCachedPriceHistory(symbol: string): { prices: number[]; volumes: number[]; timestamps: number[] } {
+  const entry = priceHistoryStore.tokens[symbol];
+  if (!entry || entry.prices.length === 0) {
     return { prices: [], volumes: [], timestamps: [] };
   }
-}
-
-/**
- * Get cached price history, refreshing if stale
- */
-async function getCachedPriceHistory(coingeckoId: string): Promise<{ prices: number[]; volumes: number[]; timestamps: number[] }> {
-  const cached = priceHistoryCache[coingeckoId];
-  const now = Date.now();
-
-  if (cached && (now - cached.lastFetched) < CACHE_TTL.PRICE_HISTORY && cached.prices.length > 0) {
-    return cached;
-  }
-
-  const data = await fetchPriceHistory(coingeckoId);
-  if (data.prices.length > 0) {
-    priceHistoryCache[coingeckoId] = { ...data, lastFetched: now };
-  }
-  return data;
+  return { prices: entry.prices, volumes: entry.volumes, timestamps: entry.timestamps };
 }
 
 /**
@@ -5731,7 +6099,7 @@ function calculateSMA(prices: number[], period: number): number | null {
 
 /**
  * v8.3: Calculate ATR (Average True Range) — close-to-close variant
- * Uses |close[i] - close[i-1]| as True Range since CoinGecko only provides close prices.
+ * Uses |close[i] - close[i-1]| as True Range since the price history store records close prices.
  * Wilder's smoothing (same as RSI) for the averaging.
  */
 function calculateATR(prices: number[], period: number = 14): { atr: number; atrPercent: number } | null {
@@ -6004,16 +6372,16 @@ function calculateConfluence(
 }
 
 /**
- * Compute all technical indicators for a single token
+ * Compute all technical indicators for a single token (v12.0: symbol-based, no API calls)
  */
-async function computeIndicators(
-  coingeckoId: string,
+function computeIndicators(
+  symbol: string,
   currentPrice: number,
   priceChange24h: number,
   priceChange7d: number,
   volume24h: number
-): Promise<TechnicalIndicators> {
-  const history = await getCachedPriceHistory(coingeckoId);
+): TechnicalIndicators {
+  const history = getCachedPriceHistory(symbol);
 
   if (history.prices.length < 20) {
     // Not enough data — return neutral indicators
@@ -6064,71 +6432,26 @@ async function computeIndicators(
 }
 
 /**
- * Fetch technical indicators for all tokens — with rate limit awareness
- * Staggers requests to stay within CoinGecko free tier limits
+ * Compute technical indicators for all tokens (v12.0: fully local, no API calls)
+ * All data comes from the self-accumulating price history store — no rate limits, no batching needed.
  */
-async function getTokenIndicators(
+function getTokenIndicators(
   tokens: MarketData["tokens"]
-): Promise<Record<string, TechnicalIndicators>> {
+): Record<string, TechnicalIndicators> {
   const indicators: Record<string, TechnicalIndicators> = {};
 
-  // Deduplicate by coingeckoId (ETH and WETH share same ID)
-  const uniqueTokens: { symbol: string; coingeckoId: string; price: number; change24h: number; change7d: number; volume: number }[] = [];
-  const seen = new Set<string>();
-
   for (const token of tokens) {
+    if (token.symbol === "USDC") continue;
     const registry = TOKEN_REGISTRY[token.symbol];
-    if (!registry || token.symbol === "USDC") continue;
+    if (!registry) continue;
 
-    const cgId = registry.coingeckoId;
-    if (seen.has(cgId)) {
-      // Copy indicators from the first token with this ID
-      const firstToken = uniqueTokens.find(t => t.coingeckoId === cgId);
-      if (firstToken) {
-        // Will be copied after computation
-      }
-      continue;
-    }
-    seen.add(cgId);
-    uniqueTokens.push({
-      symbol: token.symbol, coingeckoId: cgId,
-      price: token.price, change24h: token.priceChange24h,
-      change7d: token.priceChange7d, volume: token.volume24h,
-    });
-  }
-
-  // Fetch in batches of 3 with 1s delay between batches
-  for (let i = 0; i < uniqueTokens.length; i += 3) {
-    const batch = uniqueTokens.slice(i, i + 3);
-    const results = await Promise.allSettled(
-      batch.map(t => computeIndicators(t.coingeckoId, t.price, t.change24h, t.change7d, t.volume))
+    indicators[token.symbol] = computeIndicators(
+      token.symbol,
+      token.price,
+      token.priceChange24h,
+      token.priceChange7d,
+      token.volume24h,
     );
-
-    for (let j = 0; j < batch.length; j++) {
-      const result = results[j];
-      if (result.status === "fulfilled") {
-        indicators[batch[j].symbol] = result.value;
-        // Copy to tokens sharing same coingeckoId
-        for (const token of tokens) {
-          const reg = TOKEN_REGISTRY[token.symbol];
-          if (reg && reg.coingeckoId === batch[j].coingeckoId && token.symbol !== batch[j].symbol) {
-            indicators[token.symbol] = result.value;
-          }
-        }
-      } else {
-        indicators[batch[j].symbol] = {
-          rsi14: null, macd: null, bollingerBands: null,
-          sma20: null, sma50: null, volumeChange24h: null,
-          atr14: null, atrPercent: null, adx14: null,
-          trendDirection: "SIDEWAYS", overallSignal: "NEUTRAL", confluenceScore: 0,
-        };
-      }
-    }
-
-    // Rate limit delay between batches
-    if (i + 3 < uniqueTokens.length) {
-      await new Promise(resolve => setTimeout(resolve, 1200));
-    }
   }
 
   return indicators;
@@ -7494,8 +7817,9 @@ async function sendNativeTransfer(account: any, to: string, amountETH: number): 
 // ============================================================================
 
 /**
- * Quick price check for light cycle determination.
- * Uses cached CoinGecko data (3-min TTL) — essentially free.
+ * Quick price check for light cycle determination (v12.0: on-chain fallback)
+ * Primary: lastKnownPrices (always populated after first heavy cycle)
+ * Fallback: fetchAllOnChainPrices() (replaces CoinGecko)
  */
 async function fetchQuickPrices(): Promise<Map<string, number>> {
   const prices = new Map<string, number>();
@@ -7508,22 +7832,19 @@ async function fetchQuickPrices(): Promise<Map<string, number>> {
     return prices;
   }
 
-  // Fallback: fetch from CoinGecko (will be cached by getMarketData on next heavy cycle)
+  // Fallback: on-chain DEX pool reads (no API keys, no rate limits)
   try {
-    const coingeckoIds = [...new Set(
-      Object.values(TOKEN_REGISTRY).map(t => t.coingeckoId).filter(Boolean)
-    )].join(",");
-    const res = await axios.get(
-      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coingeckoIds}&sparkline=false`,
-      { timeout: 10000 }
-    );
-    if (res.data && Array.isArray(res.data)) {
-      for (const coin of res.data) {
-        const registryEntry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.coingeckoId === coin.id);
-        const symbol = registryEntry ? registryEntry[0] : coin.symbol.toUpperCase();
-        prices.set(symbol, coin.current_price);
-      }
+    const onChainPrices = await fetchAllOnChainPrices();
+    for (const [symbol, price] of onChainPrices) {
+      prices.set(symbol, price);
+      lastKnownPrices[symbol] = {
+        price, change24h: 0, change7d: 0,
+        volume: 0, marketCap: 0,
+        name: TOKEN_REGISTRY[symbol]?.name || symbol,
+        sector: TOKEN_REGISTRY[symbol]?.sector || 'unknown',
+      };
     }
+    if (prices.size > 0) console.log(`  🔗 Quick prices: ${prices.size} tokens via on-chain reads`);
   } catch {
     // On failure, use whatever cached prices exist
     for (const [symbol, data] of Object.entries(lastKnownPrices)) {
@@ -8924,6 +9245,15 @@ async function main() {
     console.error("   Fix: Verify CDP_API_KEY_NAME, CDP_API_KEY_PRIVATE_KEY, CDP_WALLET_SECRET in Railway vars.");
   }
 
+  // === v12.0: ON-CHAIN PRICING — Pool Discovery ===
+  try {
+    console.log("\n🔗 Initializing on-chain pricing engine...");
+    await discoverPoolAddresses();
+    console.log(`  ✅ On-chain pricing ready: ${Object.keys(poolRegistry).length} pools`);
+  } catch (poolErr: any) {
+    console.warn(`  ⚠️ Pool discovery failed: ${poolErr.message?.substring(0, 150)} — will retry on first cycle`);
+  }
+
   // === v11.0: FAMILY PLATFORM INITIALIZATION ===
   try {
     if (familyManager.isEnabled() || process.env.FAMILY_TRADING_ENABLED === 'true') {
@@ -9147,30 +9477,17 @@ async function main() {
     } catch { /* non-critical */ }
   }
 
-  // v11.4.22: Bootstrap price history for core tokens (ETH, BTC) on startup.
-  // Only fetches 2 tokens to avoid exhausting CoinGecko's free tier rate limit before
-  // the first cycle. The remaining tokens get fetched by getTokenIndicators() during
-  // the first heavy cycle with its own rate-limited batching.
-  try {
-    console.log(`\n📊 Bootstrapping core price history (ETH, BTC)...`);
-    const coreCGIds = ['ethereum', 'bitcoin'];
-    const results = await Promise.allSettled(
-      coreCGIds.map(id => fetchPriceHistory(id))
-    );
-    let bootstrapped = 0;
-    for (let i = 0; i < coreCGIds.length; i++) {
-      const result = results[i];
-      if (result.status === 'fulfilled' && result.value.prices.length > 0) {
-        priceHistoryCache[coreCGIds[i]] = { ...result.value, lastFetched: Date.now() };
-        bootstrapped++;
-        console.log(`  ✅ ${coreCGIds[i]}: ${result.value.prices.length} hourly candles loaded`);
-      } else {
-        console.log(`  ⚠️ ${coreCGIds[i]}: failed to fetch`);
-      }
-    }
-    console.log(`  ✅ Core price history: ${bootstrapped}/${coreCGIds.length} — market regime detection ready`);
-  } catch (bootstrapErr: any) {
-    console.log(`  ⚠️ Price history bootstrap failed: ${bootstrapErr.message?.substring(0, 100)} — indicators will populate on first heavy cycle`);
+  // v12.0: Price history is self-accumulating from on-chain reads — no bootstrap needed.
+  // The priceHistoryStore is loaded from disk on startup (loadPriceHistoryStore).
+  // Indicators activate automatically once sufficient data points accumulate.
+  const historyPoints = Object.values(priceHistoryStore.tokens).reduce((max, t) => Math.max(max, t.prices.length), 0);
+  console.log(`\n📊 Price history store: ${Object.keys(priceHistoryStore.tokens).length} tokens, max ${historyPoints} data points`);
+  if (historyPoints >= 20) {
+    console.log(`  ✅ Technical indicators ready (RSI, Bollinger, SMA)`);
+  } else if (historyPoints > 0) {
+    console.log(`  ⏳ Accumulating — ${historyPoints}/20 points, indicators activate soon`);
+  } else {
+    console.log(`  ⏳ Fresh start — indicators will activate after ~20 hours of data collection`);
   }
 
   // Run immediately
@@ -9949,19 +10266,18 @@ function apiIntelligence() {
     stablecoinSupply: lastIntelligenceData?.stablecoinSupply || null,
     altseasonSignal: currentAltseasonSignal,
     dataSources: [
-      "CoinGecko (Prices + Global + Stablecoin Supply)",
+      "On-Chain DEX Pool Reads (Uniswap V3 / Aerodrome — Base RPC)",
+      "Chainlink Oracles (ETH/USD, BTC/USD — Base)",
+      "Self-Accumulating Price History (persistent hourly store)",
       "Fear & Greed Index",
       "DefiLlama (TVL/DEX/Protocols)",
-      "Binance (Funding/OI/Long-Short Ratios/Top Trader Positioning)",
-      "Binance (PAXG for real-time Gold)",
       "CryptoPanic (News Sentiment)",
       "FRED (Fed Rates/Yield Curve/CPI/M2/Dollar/Gold/Oil/VIX/S&P 500)",
-      "Technical Indicators (RSI/MACD/BB/SMA)",
-      "BTC Dominance & Altseason Rotation (CoinGecko Global)",
+      "Technical Indicators (RSI/MACD/BB/SMA/ATR/ADX)",
+      "BTC/ETH Ratio Altseason Signal (On-Chain Derived)",
       "Smart Money vs Retail Divergence (Binance Derived)",
-      "Funding Rate Mean-Reversion (Binance Derived)",
-      "TVL-Price Divergence (DefiLlama + CoinGecko Derived)",
-      "Stablecoin Capital Flow (CoinGecko)",
+      "TVL-Price Divergence (DefiLlama + On-Chain Derived)",
+      "USDC Supply Capital Flow (On-Chain totalSupply)",
     ],
   };
 }
