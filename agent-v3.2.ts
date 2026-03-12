@@ -498,7 +498,7 @@ async function fetchChainlinkPrices(): Promise<Map<string, number>> {
 interface PoolRegistryEntry {
   poolAddress: string;
   poolType: 'uniswapV3' | 'aerodrome' | 'aerodromeV3';
-  quoteToken: 'WETH' | 'USDC';
+  quoteToken: 'WETH' | 'USDC' | 'cbBTC' | 'VIRTUAL';
   token0IsBase: boolean; // true if our traded token is token0 in the pool
   token0Decimals: number;
   token1Decimals: number;
@@ -508,10 +508,12 @@ interface PoolRegistryEntry {
 }
 
 interface PoolRegistryFile {
-  version: 1;
+  version: number;
   discoveredAt: string;
   pools: Record<string, PoolRegistryEntry>;
 }
+
+const POOL_REGISTRY_VERSION = 2; // Bump to force re-discovery when DEX_TYPE_MAP changes
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
 
@@ -519,6 +521,7 @@ const POOL_REGISTRY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}
 
 // DEX ID to pool type mapping (from DexScreener's dexId field)
 const DEX_TYPE_MAP: Record<string, PoolRegistryEntry['poolType']> = {
+  // V3 / concentrated liquidity — use slot0()
   'uniswap_v3': 'uniswapV3',
   'uniswap-v3': 'uniswapV3',
   'baseswap_v3': 'uniswapV3',
@@ -527,13 +530,26 @@ const DEX_TYPE_MAP: Record<string, PoolRegistryEntry['poolType']> = {
   'aerodrome_slipstream': 'aerodromeV3', // Aerodrome CL (uses slot0 like Uni V3)
   'aerodrome-slipstream': 'aerodromeV3',
   'slipstream': 'aerodromeV3',
-  'aerodrome': 'aerodrome', // Aerodrome V2 (uses getReserves)
+  // V2 / constant product — use getReserves()
+  'aerodrome': 'aerodrome',
   'aerodrome_v2': 'aerodrome',
+  'uniswap': 'aerodrome',      // Uniswap V2 fork — getReserves()
+  'pancakeswap': 'aerodrome',   // PancakeSwap V2 fork — getReserves()
+  'sushiswap': 'aerodrome',     // SushiSwap V2 fork — getReserves()
+  'quickswap': 'aerodrome',     // QuickSwap V2 fork — getReserves()
+  'rocketswap': 'aerodrome',    // RocketSwap V2 fork — getReserves()
 };
 
-// WETH and USDC addresses on Base for pool pair detection
+// Token addresses on Base for pool pair detection
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006'.toLowerCase();
 const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
+const CBBTC_ADDRESS = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf'.toLowerCase();
+const VIRTUAL_ADDRESS = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
+
+// Decimals for quote tokens
+const QUOTE_DECIMALS: Record<string, number> = {
+  WETH: 18, USDC: 6, cbBTC: 8, VIRTUAL: 18,
+};
 
 /**
  * Discover pool addresses for all tokens via DexScreener (one-time bootstrap).
@@ -545,7 +561,7 @@ async function discoverPoolAddresses(): Promise<void> {
     if (fs.existsSync(POOL_REGISTRY_FILE)) {
       const data: PoolRegistryFile = JSON.parse(fs.readFileSync(POOL_REGISTRY_FILE, 'utf-8'));
       const age = Date.now() - new Date(data.discoveredAt).getTime();
-      if (data.version === 1 && age < POOL_DISCOVERY_MAX_AGE_MS && Object.keys(data.pools).length > 0) {
+      if (data.version === POOL_REGISTRY_VERSION && age < POOL_DISCOVERY_MAX_AGE_MS && Object.keys(data.pools).length > 0) {
         poolRegistry = data.pools;
         // Reset failure counts on fresh load
         for (const entry of Object.values(poolRegistry)) entry.consecutiveFailures = 0;
@@ -603,9 +619,11 @@ async function discoverPoolAddresses(): Promise<void> {
         // Determine which side is our token and what it's paired with
         const isToken0 = baseAddr === tokenAddr;
         const pairedAddr = isToken0 ? quoteAddr : baseAddr;
-        let quoteToken: 'WETH' | 'USDC';
+        let quoteToken: 'WETH' | 'USDC' | 'cbBTC' | 'VIRTUAL';
         if (pairedAddr === WETH_ADDRESS) quoteToken = 'WETH';
         else if (pairedAddr === USDC_ADDRESS) quoteToken = 'USDC';
+        else if (pairedAddr === CBBTC_ADDRESS) quoteToken = 'cbBTC';
+        else if (pairedAddr === VIRTUAL_ADDRESS) quoteToken = 'VIRTUAL';
         else continue; // paired with something else, skip
 
         // For slot0-based pools, token0IsBase refers to Uniswap's actual token0
@@ -615,8 +633,9 @@ async function discoverPoolAddresses(): Promise<void> {
         const addr0 = tokenAddr < pairedAddr ? tokenAddr : pairedAddr;
         const token0IsOurToken = addr0 === tokenAddr;
 
-        const dec0 = token0IsOurToken ? tokenInfo.decimals : (quoteToken === 'USDC' ? 6 : 18);
-        const dec1 = token0IsOurToken ? (quoteToken === 'USDC' ? 6 : 18) : tokenInfo.decimals;
+        const quoteDec = QUOTE_DECIMALS[quoteToken] || 18;
+        const dec0 = token0IsOurToken ? tokenInfo.decimals : quoteDec;
+        const dec1 = token0IsOurToken ? quoteDec : tokenInfo.decimals;
 
         newRegistry[symbol] = {
           poolAddress: pool.pairAddress,
@@ -645,7 +664,7 @@ async function discoverPoolAddresses(): Promise<void> {
     }
 
     // Persist to disk
-    const registryData: PoolRegistryFile = { version: 1, discoveredAt: new Date().toISOString(), pools: poolRegistry };
+    const registryData: PoolRegistryFile = { version: POOL_REGISTRY_VERSION, discoveredAt: new Date().toISOString(), pools: poolRegistry };
     const tmpFile = POOL_REGISTRY_FILE + '.tmp';
     fs.writeFileSync(tmpFile, JSON.stringify(registryData, null, 2));
     fs.renameSync(tmpFile, POOL_REGISTRY_FILE);
@@ -683,7 +702,7 @@ function decodeSqrtPriceX96(sqrtPriceX96Hex: string, token0Decimals: number, tok
  * Read a single token's price from its on-chain DEX pool.
  * Returns price in USD, or null on failure.
  */
-async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number): Promise<number | null> {
+async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number, btcUsdPrice: number = 0, virtualUsdPrice: number = 0): Promise<number | null> {
   const pool = poolRegistry[symbol];
   if (!pool) return null;
 
@@ -736,7 +755,11 @@ async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number): Prom
     }
 
     // Convert to USD
-    const priceUSD = pool.quoteToken === 'WETH' ? tokenPrice * ethUsdPrice : tokenPrice;
+    let priceUSD: number;
+    if (pool.quoteToken === 'WETH') priceUSD = tokenPrice * ethUsdPrice;
+    else if (pool.quoteToken === 'cbBTC') priceUSD = btcUsdPrice > 0 ? tokenPrice * btcUsdPrice : 0;
+    else if (pool.quoteToken === 'VIRTUAL') priceUSD = virtualUsdPrice > 0 ? tokenPrice * virtualUsdPrice : 0;
+    else priceUSD = tokenPrice; // USDC — already in USD
     if (priceUSD <= 0 || !isFinite(priceUSD)) return null;
 
     // Reset failure counter on success
@@ -804,25 +827,52 @@ async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
     prices.set('cbBTC', btcPrice);
   }
 
-  // Step 2: Fetch all other tokens from DEX pools in parallel
-  const poolSymbols = Object.keys(poolRegistry).filter(s => !prices.has(s));
-  const results = await Promise.allSettled(
-    poolSymbols.map(s => fetchOnChainTokenPrice(s, ethPrice))
+  // Step 2: Fetch tokens paired with WETH/USDC (no dependency on other token prices)
+  const pass1Symbols = Object.keys(poolRegistry).filter(s =>
+    !prices.has(s) && (poolRegistry[s].quoteToken === 'WETH' || poolRegistry[s].quoteToken === 'USDC')
+  );
+  const pass1Results = await Promise.allSettled(
+    pass1Symbols.map(s => fetchOnChainTokenPrice(s, ethPrice, btcPrice))
   );
 
-  for (let i = 0; i < poolSymbols.length; i++) {
-    const result = results[i];
+  for (let i = 0; i < pass1Symbols.length; i++) {
+    const result = pass1Results[i];
     if (result.status === 'fulfilled' && result.value !== null && result.value > 0) {
-      // Price sanity check against last known
-      const lastPrice = lastKnownPrices[poolSymbols[i]]?.price;
+      const lastPrice = lastKnownPrices[pass1Symbols[i]]?.price;
       if (lastPrice && lastPrice > 0) {
         const deviation = Math.abs(result.value - lastPrice) / lastPrice;
         if (deviation > PRICE_SANITY_MAX_DEVIATION) {
-          console.warn(`  ⚠️ Price sanity fail: ${poolSymbols[i]} on-chain=$${result.value.toFixed(4)} vs last=$${lastPrice.toFixed(4)} (${(deviation * 100).toFixed(1)}% deviation) — skipping`);
+          console.warn(`  ⚠️ Price sanity fail: ${pass1Symbols[i]} on-chain=$${result.value.toFixed(4)} vs last=$${lastPrice.toFixed(4)} (${(deviation * 100).toFixed(1)}% deviation) — skipping`);
           continue;
         }
       }
-      prices.set(poolSymbols[i], result.value);
+      prices.set(pass1Symbols[i], result.value);
+    }
+  }
+
+  // Step 3: Fetch tokens paired with cbBTC or VIRTUAL (need pass 1 prices)
+  const virtualUsdPrice = prices.get('VIRTUAL') || 0;
+  const pass2Symbols = Object.keys(poolRegistry).filter(s =>
+    !prices.has(s) && (poolRegistry[s].quoteToken === 'cbBTC' || poolRegistry[s].quoteToken === 'VIRTUAL')
+  );
+  if (pass2Symbols.length > 0) {
+    const pass2Results = await Promise.allSettled(
+      pass2Symbols.map(s => fetchOnChainTokenPrice(s, ethPrice, btcPrice, virtualUsdPrice))
+    );
+
+    for (let i = 0; i < pass2Symbols.length; i++) {
+      const result = pass2Results[i];
+      if (result.status === 'fulfilled' && result.value !== null && result.value > 0) {
+        const lastPrice = lastKnownPrices[pass2Symbols[i]]?.price;
+        if (lastPrice && lastPrice > 0) {
+          const deviation = Math.abs(result.value - lastPrice) / lastPrice;
+          if (deviation > PRICE_SANITY_MAX_DEVIATION) {
+            console.warn(`  ⚠️ Price sanity fail: ${pass2Symbols[i]} on-chain=$${result.value.toFixed(4)} vs last=$${lastPrice.toFixed(4)} (${(deviation * 100).toFixed(1)}% deviation) — skipping`);
+            continue;
+          }
+        }
+        prices.set(pass2Symbols[i], result.value);
+      }
     }
   }
 
@@ -1052,6 +1102,16 @@ async function fetchBaseUSDCSupply(): Promise<StablecoinSupplyData | null> {
     // Use BigInt to avoid precision loss on large supply values, then convert to USD
     const totalSupply = Number(BigInt(result)) / 1e6; // USDC has 6 decimals
     const now = new Date().toISOString();
+
+    // v12.0: Detect stale CoinGecko-era history (global supply ~$200B vs Base USDC ~$4B)
+    // If the most recent historical entry differs by >10x from current reading, purge history
+    if (stablecoinSupplyHistory.values.length > 0) {
+      const lastHistorical = stablecoinSupplyHistory.values[stablecoinSupplyHistory.values.length - 1].totalSupply;
+      if (lastHistorical > 0 && (totalSupply / lastHistorical < 0.1 || totalSupply / lastHistorical > 10)) {
+        console.log(`  🔄 Stablecoin history reset: last=$${(lastHistorical / 1e6).toFixed(1)}M vs current=$${(totalSupply / 1e6).toFixed(1)}M — data source changed`);
+        stablecoinSupplyHistory.values = [];
+      }
+    }
 
     // Track in existing stablecoinSupplyHistory for persistence
     stablecoinSupplyHistory.values.push({ timestamp: now, totalSupply });
