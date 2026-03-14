@@ -271,7 +271,7 @@ console.error = (...args: any[]) => {
 const SECTORS = {
   BLUE_CHIP: {
     name: "Blue Chip",
-    targetAllocation: 0.40, // 40% of portfolio
+    targetAllocation: 0.45, // 45% of portfolio
     description: "Safe, liquid assets - ETH, BTC",
     tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK"],
   },
@@ -283,7 +283,7 @@ const SECTORS = {
   },
   MEME_COINS: {
     name: "Meme Coins",
-    targetAllocation: 0.20, // 20% of portfolio
+    targetAllocation: 0.15, // 15% of portfolio
     description: "High risk/reward meme tokens",
     tokens: ["BRETT", "DEGEN", "TOSHI", "MOCHI", "NORMIE"],
   },
