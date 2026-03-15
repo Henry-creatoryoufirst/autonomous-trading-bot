@@ -533,7 +533,7 @@ interface PoolRegistryFile {
   pools: Record<string, PoolRegistryEntry>;
 }
 
-const POOL_REGISTRY_VERSION = 4; // v12.0.3: Bump — on-chain probing replaces label-guessing for V2/V3 detection
+const POOL_REGISTRY_VERSION = 5; // v12.2.1: Bump — force re-discovery for new tokens (cbXRP, CLANKER, KEYCAT, cbLTC)
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
 
@@ -606,12 +606,19 @@ async function discoverPoolAddresses(): Promise<void> {
     if (fs.existsSync(POOL_REGISTRY_FILE)) {
       const data: PoolRegistryFile = JSON.parse(fs.readFileSync(POOL_REGISTRY_FILE, 'utf-8'));
       const age = Date.now() - new Date(data.discoveredAt).getTime();
-      if (data.version === POOL_REGISTRY_VERSION && age < POOL_DISCOVERY_MAX_AGE_MS && Object.keys(data.pools).length > 0) {
+      // v12.2.1: Check if any TOKEN_REGISTRY tokens are missing from cached registry — force re-discover if so
+      const registryTokens = Object.keys(TOKEN_REGISTRY).filter(s => s !== 'USDC');
+      const cachedTokens = new Set(Object.keys(data.pools));
+      const missingTokens = registryTokens.filter(s => !cachedTokens.has(s) && s !== 'ETH'); // ETH aliases WETH
+      if (data.version === POOL_REGISTRY_VERSION && age < POOL_DISCOVERY_MAX_AGE_MS && Object.keys(data.pools).length > 0 && missingTokens.length === 0) {
         poolRegistry = data.pools;
         // Reset failure counts on fresh load
         for (const entry of Object.values(poolRegistry)) entry.consecutiveFailures = 0;
         console.log(`  ♻️  Pool registry loaded: ${Object.keys(poolRegistry).length} pools from cache (${(age / 3600000).toFixed(1)}h old)`);
         return;
+      }
+      if (missingTokens.length > 0) {
+        console.log(`  🔄 Pool registry stale — missing pools for: ${missingTokens.join(', ')}. Re-discovering...`);
       }
     }
   } catch { /* corrupt file — re-discover */ }
@@ -8281,8 +8288,17 @@ async function runTradingCycle() {
       balance.sector = TOKEN_REGISTRY[balance.symbol]?.sector;
     }
 
+    // v12.2.1: HOTFIX — exclude tokens with null/zero price from portfolio total.
+    // Unpriceable tokens (no DEX pool found) were showing $0 and dragging down the total,
+    // causing the AI to panic-sell real positions to "cut losses" on phantom-priced tokens.
+    const unpricedTokens = balances.filter(b => b.symbol !== 'USDC' && b.balance > 0 && !b.price);
+    if (unpricedTokens.length > 0) {
+      console.warn(`  ⚠️ UNPRICED TOKENS (excluded from portfolio total): ${unpricedTokens.map(b => b.symbol).join(', ')}`);
+    }
     state.trading.balances = balances;
-    const newPortfolioValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
+    const newPortfolioValue = balances
+      .filter(b => b.symbol === 'USDC' || b.price || b.usdValue > 0)
+      .reduce((sum, b) => sum + b.usdValue, 0);
 
     // v7.1 + v10.2 + v12.2: Phantom drop detection — if portfolio drops >10% in a single cycle,
     // it's almost certainly a price feed failure, not a real loss.
@@ -8577,10 +8593,14 @@ async function runTradingCycle() {
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
       // v11.4.11: CDP-supported tokens first. AIXBT/DEGEN moved to end (CDP unsupported).
+      // v12.2.1: HOTFIX — removed cbLTC, cbXRP, CLANKER, KEYCAT from forced deploy.
+      // These tokens lack on-chain pricing pools (no WETH/USDC pair on known DEXes),
+      // causing $0 price → phantom loss → AI panic-sells real positions.
+      // Only deploy into tokens the price engine can reliably price.
       const sectorTokenPool: Record<string, string[]> = {
-        BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH', 'cbLTC', 'cbXRP'],
-        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT', 'CLANKER'],
-        MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN', 'KEYCAT'],
+        BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
+        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT'],
+        MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
         DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'MORPHO', 'RSR', 'PENDLE'],
       };
 
