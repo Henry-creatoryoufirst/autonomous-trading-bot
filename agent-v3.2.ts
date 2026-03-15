@@ -9942,6 +9942,7 @@ function apiPortfolio() {
   const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
   const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
   const riskReward = calculateRiskRewardMetrics();
+  const perfStats = calculateTradePerformance();
   // v11.4.20: Daily P&L — use start-of-day baseline instead of unreliable lifetime deposit tracking
   const dailyBaseline = breakerState.dailyBaseline.value;
   const dailyPnl = dailyBaseline > 0 ? state.trading.totalPortfolioValue - dailyBaseline : 0;
@@ -9958,6 +9959,8 @@ function apiPortfolio() {
     unrealizedPnL: totalUnrealized,
     totalTrades: state.trading.totalTrades,
     successfulTrades: state.trading.successfulTrades,
+    // v12.2.4: Real P&L win rate (profitable sells / total sells) — NOT execution success rate
+    winRate: perfStats.winRate,
     totalCycles: state.totalCycles,
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
@@ -10273,7 +10276,7 @@ SECTORS:
 ${sectorInfo}
 
 PERFORMANCE METRICS:
-- Total Trades: ${portfolio.totalTrades} | Win Rate: ${portfolio.totalTrades > 0 ? (portfolio.successfulTrades / portfolio.totalTrades * 100).toFixed(1) : 0}%
+- Total Trades: ${portfolio.totalTrades} | Win Rate: ${portfolio.winRate !== undefined ? portfolio.winRate.toFixed(1) : 0}%
 - Profit Factor: ${n(riskReward.profitFactor).toFixed(2)} | Expectancy: $${n(riskReward.expectancy).toFixed(2)}
 - Avg Win: $${n(riskReward.avgWinUSD).toFixed(2)} | Avg Loss: $${n(riskReward.avgLossUSD).toFixed(2)}
 
@@ -11269,7 +11272,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
       <p class="text-sm font-semibold text-white mono" id="trade-count">--</p>
     </div>
     <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Success</p>
+      <p class="text-[9px] uppercase tracking-wider text-slate-500">Win Rate</p>
       <p class="text-sm font-semibold text-emerald-400 mono" id="success-rate">--</p>
     </div>
     <div class="glass rounded-lg p-3 text-center">
@@ -11483,7 +11486,7 @@ function renderPortfolio(p) {
   }
 
   $('trade-count').textContent = p.totalTrades;
-  $('success-rate').textContent = p.totalTrades > 0 ? ((p.successfulTrades/p.totalTrades)*100).toFixed(0) + '%' : '--';
+  $('success-rate').textContent = p.winRate !== undefined ? p.winRate.toFixed(0) + '%' : '--';
   $('cycle-count').textContent = p.totalCycles;
   $('uptime').textContent = p.uptime;
   $('peak-value').textContent = fmt(p.peakValue);
