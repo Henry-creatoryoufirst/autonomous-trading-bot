@@ -273,19 +273,19 @@ const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45, // 45% of portfolio
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
     targetAllocation: 0.20, // 20% of portfolio
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15, // 15% of portfolio
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI", "MOCHI", "NORMIE"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "MOCHI", "NORMIE", "KEYCAT"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -348,6 +348,16 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink",
     sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
   },
+  cbLTC: {
+    address: "0xcb17C9Db87B595717C857a08468793f5bAb6445F",
+    symbol: "cbLTC", name: "Coinbase Wrapped LTC", coingeckoId: "litecoin",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 8,
+  },
+  cbXRP: {
+    address: "0xcb585250f852C6c6bf90434AB21A00f02833a4af",
+    symbol: "cbXRP", name: "Coinbase Wrapped XRP", coingeckoId: "ripple",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 6,
+  },
   // === AI & AGENT TOKENS (20%) ===
   VIRTUAL: {
     address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
@@ -370,7 +380,12 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
   },
-  // === MEME COINS (20%) ===
+  CLANKER: {
+    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
+    symbol: "CLANKER", name: "Clanker", coingeckoId: "clanker",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 5, decimals: 18,
+  },
+  // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
     symbol: "BRETT", name: "Brett", coingeckoId: "brett",
@@ -394,6 +409,11 @@ const TOKEN_REGISTRY: Record<string, {
   NORMIE: {
     address: "0x7F12d13B34F5F4f0a9449c16Bcd42f0da47AF200",
     symbol: "NORMIE", name: "Normie", coingeckoId: "normie-base",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+  },
+  KEYCAT: {
+    address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
+    symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
   },
   // === DEFI PROTOCOLS (20%) ===
