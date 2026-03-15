@@ -1848,6 +1848,8 @@ interface TradeRecord {
     ethPrice: number;
     btcPrice: number;
   };
+  // v12.2: Store realized P&L at trade time (not retroactive) for accurate daily scoreboard
+  realizedPnL?: number;
   // V4.0: Enhanced signal context for self-learning
   signalContext?: {
     marketRegime: MarketRegime;
@@ -6990,15 +6992,19 @@ async function makeTradeDecision(
   // V4.0: Build intelligence layers
   const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData, marketData.globalMarket, marketData.smartRetailDivergence, marketData.fundingMeanReversion, marketData.tvlPriceDivergence, marketData.stablecoinSupply);
 
-  // v11.4.23: Compute today's realized P&L for payout-awareness
+  // v11.4.23 + v12.2: Compute today's realized P&L for payout-awareness (use stored P&L when available)
   const todayStr = new Date().toISOString().slice(0, 10);
   const todaySells = state.tradeHistory.filter(t => t.success && t.action === 'SELL' && t.timestamp.slice(0, 10) === todayStr);
   let todayRealizedPnL = 0;
   for (const t of todaySells) {
-    const cb = state.costBasis[t.fromToken];
-    if (cb && cb.averageCostBasis > 0) {
-      const tokensSold = t.tokenAmount || (t.amountUSD / (cb.averageCostBasis || 1));
-      todayRealizedPnL += t.amountUSD - tokensSold * cb.averageCostBasis;
+    if (t.realizedPnL !== undefined) {
+      todayRealizedPnL += t.realizedPnL;
+    } else {
+      const cb = state.costBasis[t.fromToken];
+      if (cb && cb.averageCostBasis > 0) {
+        const tokensSold = t.tokenAmount || (t.amountUSD / (cb.averageCostBasis || 1));
+        todayRealizedPnL += t.amountUSD - tokensSold * cb.averageCostBasis;
+      }
     }
   }
   const utcHour = new Date().getUTCHours();
@@ -7554,6 +7560,7 @@ async function executeSingleSwap(
     }
 
     // Update cost basis — prefer actual tokens, fall back to estimated
+    let tradeRealizedPnL = 0; // v12.2: capture realized P&L at trade time for daily scoreboard
     if (decision.action === "BUY" && decision.toToken !== "USDC") {
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price || 1;
       const tokensReceived = actualTokens > 0 ? actualTokens : (decision.amountUSD / tokenPrice);
@@ -7566,7 +7573,7 @@ async function executeSingleSwap(
     } else if (decision.action === "SELL" && decision.fromToken !== "USDC") {
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
       const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tokenPrice));
-      updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
+      tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
     }
 
     // Record trade with full signal context (V4.0)
@@ -7587,6 +7594,7 @@ async function executeSingleSwap(
       portfolioValueAfter: portfolioValueBefore - (lastGasPrice.fetchedAt > 0 ? (lastGasPrice.gweiL2 * 150000 / 1e9 * lastGasPrice.ethPriceUSD) : 0.15),
       reasoning: decision.reasoning,
       sector: decision.sector,
+      realizedPnL: tradeRealizedPnL, // v12.2: store at trade time for accurate daily P&L
       marketConditions: {
         fearGreed: marketData.fearGreed.value,
         ethPrice: marketData.tokens.find(t => t.symbol === "ETH")?.price || 0,
@@ -8276,21 +8284,21 @@ async function runTradingCycle() {
     state.trading.balances = balances;
     const newPortfolioValue = balances.reduce((sum, b) => sum + b.usdValue, 0);
 
-    // v7.1 + v10.2: Phantom drop detection — if portfolio drops >10% in a single cycle,
+    // v7.1 + v10.2 + v12.2: Phantom drop detection — if portfolio drops >10% in a single cycle,
     // it's almost certainly a price feed failure, not a real loss.
-    // (Even a flash crash rarely moves 10% in under 2 minutes across a diversified portfolio)
-    // Protect peakValue and use last known portfolio value instead.
+    // v12.2: Always set totalPortfolioValue to actual sum of balances (no permanent mismatch).
+    // Instead, protect circuit breaker and peak independently by skipping their updates on phantom drops.
     const prevValue = state.trading.totalPortfolioValue;
     const dropPercent = prevValue > 0 ? ((prevValue - newPortfolioValue) / prevValue) * 100 : 0;
-    if (dropPercent > 10 && prevValue > 100) {
+    const isPhantomDrop = dropPercent > 10 && prevValue > 100;
+    if (isPhantomDrop) {
+      const missingPrices = balances.filter(b => b.symbol !== 'USDC' && b.balance > 0 && !b.price).map(b => b.symbol);
       console.warn(`\n🛡️ PHANTOM DROP DETECTED: Portfolio $${prevValue.toFixed(2)} → $${newPortfolioValue.toFixed(2)} (-${dropPercent.toFixed(1)}% in one cycle)`);
-      console.warn(`   This is almost certainly a price feed outage — keeping previous value.`);
-      console.warn(`   Tokens missing prices: ${balances.filter(b => b.symbol !== 'USDC' && b.balance > 0 && !b.price).map(b => b.symbol).join(', ') || 'none'}`);
-      // Keep previous portfolio value to prevent circuit breaker / capital floor false triggers
-      state.trading.totalPortfolioValue = prevValue;
-    } else {
-      state.trading.totalPortfolioValue = newPortfolioValue;
+      console.warn(`   Tokens missing prices: ${missingPrices.join(', ') || 'none'}`);
+      console.warn(`   Portfolio value updated to actual — circuit breaker/peak protected.`);
     }
+    // v12.2: Always update to actual value so dashboard matches sum of balances
+    state.trading.totalPortfolioValue = newPortfolioValue;
 
     // v11.4.21: DEPOSIT DETECTION — reliable approach using portfolio value jumps.
     // Compare newPortfolioValue (this cycle's fully-priced total) vs prevValue (last cycle's total).
@@ -8316,7 +8324,8 @@ async function runTradingCycle() {
     }
     state.lastKnownUSDCBalance = currentUSDCBalance;
 
-    if (state.trading.totalPortfolioValue > state.trading.peakValue) {
+    // v12.2: Skip peak/baseline updates during phantom drops to prevent false drawdown triggers
+    if (!isPhantomDrop && state.trading.totalPortfolioValue > state.trading.peakValue) {
       state.trading.peakValue = state.trading.totalPortfolioValue;
     }
 
@@ -8330,7 +8339,10 @@ async function runTradingCycle() {
     // v11.4.21: Update daily/weekly baselines BEFORE capital floor / circuit breaker checks.
     // Previously this was only called inside checkCircuitBreaker(), which runs AFTER the capital
     // floor check. If the floor check returned early, dailyBaseline never got set → P&L stayed 0.
-    updateDrawdownBaselines(state.trading.totalPortfolioValue);
+    // v12.2: Skip baseline update during phantom drop to prevent false daily P&L swing
+    if (!isPhantomDrop) {
+      updateDrawdownBaselines(state.trading.totalPortfolioValue);
+    }
 
     // Display status — v11.4.20: Daily P&L from start-of-day baseline
     const dailyBase = breakerState.dailyBaseline.value;
@@ -8359,8 +8371,13 @@ async function runTradingCycle() {
       console.log(`\n⏳ COLD START: Portfolio value $0 — skipping capital floor (waiting for first balance fetch)`);
     }
 
+    // v12.2: Skip capital floor and circuit breaker checks during phantom drops (price feed glitch)
+    if (isPhantomDrop) {
+      console.warn(`   Skipping capital floor / circuit breaker checks this cycle (phantom drop).`);
+    }
+
     // Absolute minimum: if portfolio is below $50, halt ALL trading (prevent dust churn)
-    if (state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
+    if (!isPhantomDrop && state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
       console.log(`\n🚨 CAPITAL FLOOR BREACH: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < absolute minimum $${CAPITAL_FLOOR_ABSOLUTE_USD}`);
       console.log(`   ALL TRADING HALTED — wallet needs funding or manual intervention.`);
       state.trading.lastCheck = new Date();
@@ -8369,7 +8386,7 @@ async function runTradingCycle() {
 
     // Percentage floor: if portfolio < 60% of peak, HOLD-ONLY mode (stop-losses still fire)
     const capitalFloorValue = state.trading.peakValue * (CAPITAL_FLOOR_PERCENT / 100);
-    const belowCapitalFloor = state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
+    const belowCapitalFloor = !isPhantomDrop && state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
     if (belowCapitalFloor) {
       console.log(`\n⚠️ CAPITAL FLOOR: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < floor $${capitalFloorValue.toFixed(2)} (${CAPITAL_FLOOR_PERCENT}% of peak $${state.trading.peakValue.toFixed(2)})`);
       console.log(`   HOLD-ONLY mode active — no new buys, only stop-loss sells allowed.`);
@@ -8378,7 +8395,7 @@ async function runTradingCycle() {
     // === CIRCUIT BREAKERS ===
     // v10.3: Skip breakers when portfolio is $0 — cold-start artifact, not real drawdown
     // Hard halt: if drawdown exceeds 20% from peak, stop all trading this cycle
-    if (drawdown >= 20 && !belowCapitalFloor && state.trading.totalPortfolioValue > 0) {
+    if (!isPhantomDrop && drawdown >= 20 && !belowCapitalFloor && state.trading.totalPortfolioValue > 0) {
       console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% exceeds 20% threshold. Halting trading this cycle.`);
       console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Current: $${state.trading.totalPortfolioValue.toFixed(2)}`);
       state.trading.lastCheck = new Date();
@@ -8561,11 +8578,19 @@ async function runTradingCycle() {
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
       // v11.4.11: CDP-supported tokens first. AIXBT/DEGEN moved to end (CDP unsupported).
       const sectorTokenPool: Record<string, string[]> = {
-        BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
-        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT'],
-        MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
+        BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH', 'cbLTC', 'cbXRP'],
+        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT', 'CLANKER'],
+        MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN', 'KEYCAT'],
         DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'MORPHO', 'RSR', 'PENDLE'],
       };
+
+      // v12.2: Shuffle each sector's token list to prevent first-token bias (ETH dominance fix)
+      for (const tokens of Object.values(sectorTokenPool)) {
+        for (let i = tokens.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [tokens[i], tokens[j]] = [tokens[j], tokens[i]];
+        }
+      }
 
       const deployTargets: { token: string; sector: string }[] = [];
       const FORCED_DEPLOY_DEDUP_MINUTES = 2; // v11.4.20: 5 → 2 min — matches executeTrade dedup window
@@ -10285,15 +10310,21 @@ function apiDailyPnL() {
       dailyMap[day].buys++;
     } else if (trade.action === "SELL") {
       dailyMap[day].sells++;
-      // Compute realized P&L: sell proceeds minus cost of tokens sold
-      const cb = state.costBasis[trade.fromToken];
-      if (cb && cb.averageCostBasis > 0) {
-        const tokensSold = trade.tokenAmount || (trade.amountUSD / (cb.averageCostBasis || 1));
-        const costOfSold = tokensSold * cb.averageCostBasis;
-        const pnl = trade.amountUSD - costOfSold;
-        dailyMap[day].realized += pnl;
-        if (pnl > 0) dailyMap[day].wins++;
+      // v12.2: Use stored realizedPnL (accurate, captured at trade time) when available.
+      // Fall back to retroactive calc for historical trades that predate this fix.
+      let pnl = 0;
+      if (trade.realizedPnL !== undefined) {
+        pnl = trade.realizedPnL;
+      } else {
+        const cb = state.costBasis[trade.fromToken];
+        if (cb && cb.averageCostBasis > 0) {
+          const tokensSold = trade.tokenAmount || (trade.amountUSD / (cb.averageCostBasis || 1));
+          const costOfSold = tokensSold * cb.averageCostBasis;
+          pnl = trade.amountUSD - costOfSold;
+        }
       }
+      dailyMap[day].realized += pnl;
+      if (pnl > 0) dailyMap[day].wins++;
     }
   }
 
