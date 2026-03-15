@@ -7321,6 +7321,40 @@ async function executeTrade(
     return { success: false, error: "Trading disabled (dry run)" };
   }
 
+  // v12.2.1: PRICE GATE — never buy a token the price engine can't price.
+  // This prevents the catastrophic loop: buy unpriceable token → shows $0 → AI panic-sells everything.
+  if (decision.action === 'BUY' && decision.toToken !== 'USDC') {
+    const buyTokenPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price;
+    const hasPool = !!poolRegistry[decision.toToken] || decision.toToken === 'WETH' || decision.toToken === 'ETH';
+    if (!buyTokenPrice || buyTokenPrice <= 0) {
+      console.warn(`\n  🚫 PRICE GATE: ${decision.toToken} has no valid price — blocking BUY to prevent phantom loss`);
+      tradeInFlight.delete(dedupKey);
+      return { success: false, error: `Price gate: ${decision.toToken} has no price data` };
+    }
+    if (!hasPool) {
+      console.warn(`\n  🚫 POOL GATE: ${decision.toToken} not in pool registry — blocking BUY`);
+      tradeInFlight.delete(dedupKey);
+      return { success: false, error: `Pool gate: ${decision.toToken} has no pool entry` };
+    }
+  }
+
+  // v12.2.1: SELL LOSS GATE — in a green market, block sells at >5% loss unless stop-loss triggered.
+  // Prevents AI from panic-selling real positions due to bad data.
+  if (decision.action === 'SELL' && decision.fromToken !== 'USDC') {
+    const cb = state.costBasis[decision.fromToken];
+    const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 0;
+    if (cb && cb.averageCostBasis > 0 && tokenPrice > 0) {
+      const lossPct = ((tokenPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+      const isStopLoss = decision.reasoning?.includes('STOP_LOSS') || decision.reasoning?.includes('TRAILING_STOP');
+      const marketIsGreen = (lastMomentumSignal?.btcChange24h || 0) > 0.5 && (lastMomentumSignal?.ethChange24h || 0) > 0.5;
+      if (lossPct < -8 && marketIsGreen && !isStopLoss) {
+        console.warn(`\n  🛡️ SELL LOSS GATE: Blocking ${decision.fromToken} sell at ${lossPct.toFixed(1)}% loss in green market (BTC +${(lastMomentumSignal?.btcChange24h || 0).toFixed(1)}%)`);
+        tradeInFlight.delete(dedupKey);
+        return { success: false, error: `Sell loss gate: ${decision.fromToken} at ${lossPct.toFixed(1)}% loss in green market` };
+      }
+    }
+  }
+
   // v11.4.17: try/finally ensures in-flight lock is always released
   try {
     // v8.1: Dynamic gas price check (replaces hardcoded $0.15)
