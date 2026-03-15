@@ -2045,8 +2045,8 @@ const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: numb
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
   profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds (-20% floor, -6% ceiling)
-  trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds (-15% floor, -5% ceiling)
+  stopLossPercent:       { min: -25, max: -12, maxStep: 2 },    // v12.2.2: widened from -6% ceiling — was causing churn
+  trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },   // v12.2.2: widened from -5% ceiling — too tight for altcoins
   atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR stop multiplier
   atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR trail multiplier
 };
@@ -2846,6 +2846,16 @@ function loadTradeHistory() {
         state.strategyPatterns = parsed.strategyPatterns || {};
         if (parsed.adaptiveThresholds) {
           state.adaptiveThresholds = { ...DEFAULT_ADAPTIVE_THRESHOLDS, ...parsed.adaptiveThresholds };
+        }
+        // v12.2.2: Clamp stop-loss thresholds to new wider bounds — persisted state may have
+        // self-tightened to -6% which causes churn (buy → immediate stop → buy again loop).
+        if (state.adaptiveThresholds.stopLossPercent > -12) {
+          console.log(`  🔧 Widening persisted stop-loss from ${state.adaptiveThresholds.stopLossPercent}% → -15% (was too tight)`);
+          state.adaptiveThresholds.stopLossPercent = -15;
+        }
+        if (state.adaptiveThresholds.trailingStopPercent > -10) {
+          console.log(`  🔧 Widening persisted trailing stop from ${state.adaptiveThresholds.trailingStopPercent}% → -12% (was too tight)`);
+          state.adaptiveThresholds.trailingStopPercent = -12;
         }
         // v11.4.22: Force lower confluence thresholds until self-improvement has enough data.
         // Persisted state may have the old confluenceBuy=15 which blocks trades when RSI/MACD are null.

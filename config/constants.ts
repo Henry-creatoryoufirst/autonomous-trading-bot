@@ -316,8 +316,9 @@ export const ATR_TRAILING_STOP_MULTIPLIER = 2.0;
 /** ATR stop-loss floor — never wider than -25% regardless of ATR */
 export const ATR_STOP_FLOOR_PERCENT = -25;
 
-/** ATR stop-loss ceiling — never tighter than -6% regardless of ATR */
-export const ATR_STOP_CEILING_PERCENT = -6;
+/** ATR stop-loss ceiling — never tighter than -12% regardless of ATR
+ *  v12.2.2: Widened from -6% — was causing churn loop (buy → -6% stop → buy again) */
+export const ATR_STOP_CEILING_PERCENT = -12;
 
 /** Trail activates after position is +1×ATR% in profit */
 export const ATR_TRAIL_ACTIVATION_MULTIPLIER = 1.0;
@@ -463,7 +464,7 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * Bot was stuck at 29.6% — 0.4% below threshold — doing nothing with $1,482 USDC.
  * 20% ensures deployment mode fires for any meaningful cash drag.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v11.4.19: 30 → 20 — 29.6% was a dead zone
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 30; // v12.2.2: 20 → 30 — 20% was too aggressive, caused churn with stop-losses
 
 /** Confluence score reduction when in deployment mode (makes entries easier)
  *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */
