@@ -11229,11 +11229,11 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
 <body class="mesh-bg min-h-screen">
 
 <!-- Header -->
-<div class="border-b border-white/5 px-4 sm:px-6 py-4">
+<div class="border-b border-white/5 px-4 sm:px-6 py-2">
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
-      <h1 class="text-lg font-bold text-white">Schertzinger Trading Command</h1>
-      <p class="text-xs text-slate-500 mt-0.5">Autonomous Trading Agent v5.1.1</p>
+      <h1 class="text-sm font-bold text-white">Schertzinger Trading Command</h1>
+      <p class="text-[10px] text-slate-500">Autonomous Trading Agent v12.2</p>
     </div>
     <div class="flex items-center gap-3">
       <span class="pulse-dot inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -11244,72 +11244,72 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
 </div>
 
 <!-- Hero Metrics -->
-<div class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-    <div class="glass rounded-xl p-4">
-      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Portfolio</p>
-      <p class="text-xl sm:text-2xl font-bold text-white mono" id="portfolio-value">--</p>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+    <div class="glass rounded-lg p-2.5">
+      <p class="text-[9px] uppercase tracking-widest text-slate-500">Portfolio</p>
+      <p class="text-lg font-bold text-white mono" id="portfolio-value">--</p>
     </div>
-    <div class="glass rounded-xl p-4">
-      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Total P&L</p>
-      <p class="text-xl sm:text-2xl font-bold mono" id="total-pnl">--</p>
+    <div class="glass rounded-lg p-2.5">
+      <p class="text-[9px] uppercase tracking-widest text-slate-500">Total P&L</p>
+      <p class="text-lg font-bold mono" id="total-pnl">--</p>
     </div>
-    <div class="glass rounded-xl p-4">
-      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Realized</p>
-      <p class="text-lg font-semibold mono" id="realized-pnl">--</p>
+    <div class="glass rounded-lg p-2.5">
+      <p class="text-[9px] uppercase tracking-widest text-slate-500">Realized</p>
+      <p class="text-sm font-semibold mono" id="realized-pnl">--</p>
     </div>
-    <div class="glass rounded-xl p-4">
-      <p class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Harvested</p>
-      <p class="text-lg font-semibold mono text-amber-400" id="harvested-pnl">--</p>
-      <p class="text-[9px] text-slate-600" id="harvest-count"></p>
+    <div class="glass rounded-lg p-2.5">
+      <p class="text-[9px] uppercase tracking-widest text-slate-500">Harvested</p>
+      <p class="text-sm font-semibold mono text-amber-400" id="harvested-pnl">--</p>
+      <p class="text-[8px] text-slate-600" id="harvest-count"></p>
     </div>
   </div>
 
   <!-- Sub metrics -->
-  <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
-    <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Trades</p>
-      <p class="text-sm font-semibold text-white mono" id="trade-count">--</p>
+  <div class="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mt-2">
+    <div class="glass rounded p-1.5 text-center">
+      <p class="text-[8px] uppercase tracking-wider text-slate-500">Trades</p>
+      <p class="text-xs font-semibold text-white mono" id="trade-count">--</p>
     </div>
-    <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Win Rate</p>
-      <p class="text-sm font-semibold text-emerald-400 mono" id="success-rate">--</p>
+    <div class="glass rounded p-1.5 text-center">
+      <p class="text-[8px] uppercase tracking-wider text-slate-500">Win Rate</p>
+      <p class="text-xs font-semibold text-emerald-400 mono" id="success-rate">--</p>
     </div>
-    <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Cycles</p>
-      <p class="text-sm font-semibold text-white mono" id="cycle-count">--</p>
+    <div class="glass rounded p-1.5 text-center">
+      <p class="text-[8px] uppercase tracking-wider text-slate-500">Cycles</p>
+      <p class="text-xs font-semibold text-white mono" id="cycle-count">--</p>
     </div>
-    <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Uptime</p>
-      <p class="text-sm font-semibold text-white mono" id="uptime">--</p>
+    <div class="glass rounded p-1.5 text-center">
+      <p class="text-[8px] uppercase tracking-wider text-slate-500">Uptime</p>
+      <p class="text-xs font-semibold text-white mono" id="uptime">--</p>
     </div>
-    <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Peak</p>
-      <p class="text-sm font-semibold text-accent-gold mono" id="peak-value">--</p>
+    <div class="glass rounded p-1.5 text-center">
+      <p class="text-[8px] uppercase tracking-wider text-slate-500">Peak</p>
+      <p class="text-xs font-semibold text-accent-gold mono" id="peak-value">--</p>
     </div>
-    <div class="glass rounded-lg p-3 text-center">
-      <p class="text-[9px] uppercase tracking-wider text-slate-500">Drawdown</p>
-      <p class="text-sm font-semibold text-slate-400 mono" id="drawdown">--</p>
+    <div class="glass rounded p-1.5 text-center">
+      <p class="text-[8px] uppercase tracking-wider text-slate-500">Drawdown</p>
+      <p class="text-xs font-semibold text-slate-400 mono" id="drawdown">--</p>
     </div>
   </div>
 </div>
 
 <!-- Holdings + Sectors Grid -->
-<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-6">
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
 
     <!-- Holdings -->
-    <div class="lg:col-span-2 glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-4">Holdings & P&L</h2>
-      <div class="overflow-x-auto">
-        <table class="w-full text-xs">
-          <thead>
-            <tr class="text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-              <th class="pb-2 text-left">Token</th>
-              <th class="pb-2 text-right">Value</th>
-              <th class="pb-2 text-right hidden sm:table-cell">Avg Cost</th>
-              <th class="pb-2 text-right">P&L</th>
-              <th class="pb-2 text-right hidden sm:table-cell">Sector</th>
+    <div class="lg:col-span-2 glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-2">Holdings & P&L</h2>
+      <div class="overflow-x-auto max-h-[200px] overflow-y-auto">
+        <table class="w-full text-[11px]">
+          <thead class="sticky top-0 bg-surface-800">
+            <tr class="text-[9px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+              <th class="pb-1 text-left">Token</th>
+              <th class="pb-1 text-right">Value</th>
+              <th class="pb-1 text-right hidden sm:table-cell">Avg Cost</th>
+              <th class="pb-1 text-right">P&L</th>
+              <th class="pb-1 text-right hidden sm:table-cell">Sector</th>
             </tr>
           </thead>
           <tbody id="holdings-table"></tbody>
@@ -11318,30 +11318,30 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
     </div>
 
     <!-- Sector Allocation -->
-    <div class="glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-4">Sector Allocation</h2>
-      <div class="flex justify-center mb-4" style="height: 200px;">
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-2">Sector Allocation</h2>
+      <div class="flex justify-center mb-2" style="height: 130px;">
         <canvas id="sector-chart"></canvas>
       </div>
-      <div id="sector-list" class="space-y-2"></div>
+      <div id="sector-list" class="space-y-1"></div>
     </div>
   </div>
 </div>
 
 <!-- Trade Log -->
-<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
-  <div class="glass rounded-xl p-5">
-    <h2 class="text-sm font-semibold text-white mb-4">Recent Trades</h2>
-    <div class="overflow-x-auto">
-      <table class="w-full text-xs">
-        <thead>
-          <tr class="text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-            <th class="pb-2 text-left">Time</th>
-            <th class="pb-2 text-left">Action</th>
-            <th class="pb-2 text-left">Pair</th>
-            <th class="pb-2 text-right">Amount</th>
-            <th class="pb-2 text-center">Status</th>
-            <th class="pb-2 text-left hidden sm:table-cell">Reasoning</th>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
+  <div class="glass rounded-lg p-3">
+    <h2 class="text-xs font-semibold text-white mb-2">Recent Trades</h2>
+    <div class="overflow-x-auto max-h-[160px] overflow-y-auto">
+      <table class="w-full text-[11px]">
+        <thead class="sticky top-0 bg-surface-800">
+          <tr class="text-[9px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+            <th class="pb-1 text-left">Time</th>
+            <th class="pb-1 text-left">Action</th>
+            <th class="pb-1 text-left">Pair</th>
+            <th class="pb-1 text-right">Amount</th>
+            <th class="pb-1 text-center">Status</th>
+            <th class="pb-1 text-left hidden sm:table-cell">Reasoning</th>
           </tr>
         </thead>
         <tbody id="trades-table"></tbody>
@@ -11351,68 +11351,68 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
 </div>
 
 <!-- Phase 3: Self-Improvement Intelligence -->
-<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
     <!-- Top Patterns -->
-    <div class="glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-1">Top Patterns</h2>
-      <p class="text-[10px] text-slate-500 mb-3">Winning strategies by return</p>
-      <div id="top-patterns" class="space-y-2">
-        <p class="text-xs text-slate-600">Loading...</p>
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-0.5">Top Patterns</h2>
+      <p class="text-[9px] text-slate-500 mb-2">Winning strategies by return</p>
+      <div id="top-patterns" class="space-y-1 max-h-[120px] overflow-y-auto">
+        <p class="text-[11px] text-slate-600">Loading...</p>
       </div>
     </div>
     <!-- Adaptive Thresholds -->
-    <div class="glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-1">Adaptive Thresholds</h2>
-      <p class="text-[10px] text-slate-500 mb-3">Self-tuning parameters</p>
-      <div id="thresholds-display" class="space-y-2">
-        <p class="text-xs text-slate-600">Loading...</p>
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-0.5">Adaptive Thresholds</h2>
+      <p class="text-[9px] text-slate-500 mb-2">Self-tuning parameters</p>
+      <div id="thresholds-display" class="space-y-1 max-h-[120px] overflow-y-auto">
+        <p class="text-[11px] text-slate-600">Loading...</p>
       </div>
     </div>
     <!-- Latest Insights -->
-    <div class="glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-1">Latest Insights</h2>
-      <p class="text-[10px] text-slate-500 mb-3">Self-improvement engine</p>
-      <div id="latest-insights" class="space-y-2">
-        <p class="text-xs text-slate-600">Loading...</p>
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-0.5">Latest Insights</h2>
+      <p class="text-[9px] text-slate-500 mb-2">Self-improvement engine</p>
+      <div id="latest-insights" class="space-y-1 max-h-[120px] overflow-y-auto">
+        <p class="text-[11px] text-slate-600">Loading...</p>
       </div>
     </div>
   </div>
 </div>
 
 <!-- v5.1: Market Intelligence Dashboard -->
-<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
     <!-- Derivatives Positioning -->
-    <div class="glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-1">Derivatives Positioning</h2>
-      <p class="text-[10px] text-slate-500 mb-3">Smart money vs retail sentiment</p>
-      <div id="derivatives-intel" class="space-y-2">
-        <p class="text-xs text-slate-600">Loading...</p>
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-0.5">Derivatives Positioning</h2>
+      <p class="text-[9px] text-slate-500 mb-2">Smart money vs retail</p>
+      <div id="derivatives-intel" class="space-y-1">
+        <p class="text-[11px] text-slate-600">Loading...</p>
       </div>
     </div>
     <!-- Cross-Asset Correlation -->
-    <div class="glass rounded-xl p-5">
-      <h2 class="text-sm font-semibold text-white mb-1">Cross-Asset Intelligence</h2>
-      <p class="text-[10px] text-slate-500 mb-3">Gold, Oil, VIX, S&P 500</p>
-      <div id="cross-asset-intel" class="space-y-2">
-        <p class="text-xs text-slate-600">Loading...</p>
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-0.5">Cross-Asset Intelligence</h2>
+      <p class="text-[9px] text-slate-500 mb-2">Gold, Oil, VIX, S&P 500</p>
+      <div id="cross-asset-intel" class="space-y-1">
+        <p class="text-[11px] text-slate-600">Loading...</p>
       </div>
     </div>
-  </div>
-  <!-- Shadow Model Proposals -->
-  <div class="glass rounded-xl p-5 mt-4">
-    <h2 class="text-sm font-semibold text-white mb-1">Shadow Model Validation</h2>
-    <p class="text-[10px] text-slate-500 mb-3">Proposed threshold changes awaiting statistical confirmation</p>
-    <div id="shadow-proposals" class="space-y-2">
-      <p class="text-xs text-slate-600">Loading...</p>
+    <!-- Shadow Model Proposals -->
+    <div class="glass rounded-lg p-3">
+      <h2 class="text-xs font-semibold text-white mb-0.5">Shadow Model Validation</h2>
+      <p class="text-[9px] text-slate-500 mb-2">Pending threshold changes</p>
+      <div id="shadow-proposals" class="space-y-1 max-h-[120px] overflow-y-auto">
+        <p class="text-[11px] text-slate-600">Loading...</p>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- Footer -->
-<div class="border-t border-white/5 px-4 sm:px-6 py-4 text-center">
-  <p class="text-[10px] text-slate-600">Schertzinger Company Limited — Auto-refreshes every 30s</p>
+<div class="border-t border-white/5 px-4 sm:px-6 py-2 text-center">
+  <p class="text-[9px] text-slate-600">Schertzinger Company Limited — Auto-refreshes every 30s</p>
 </div>
 
 <script>
@@ -11465,17 +11465,17 @@ function renderPortfolio(p) {
   $('portfolio-value').textContent = fmt(p.totalValue);
   const pnlEl = $('total-pnl');
   pnlEl.textContent = 'Today: ' + pnlSign(p.pnl) + fmt(p.pnl) + ' (' + pnlSign(p.pnlPercent) + p.pnlPercent.toFixed(2) + '%)';
-  pnlEl.className = 'text-xl sm:text-2xl font-bold mono ' + pnlColor(p.pnl);
+  pnlEl.className = 'text-lg font-bold mono ' + pnlColor(p.pnl);
 
   const rEl = $('realized-pnl');
   rEl.textContent = pnlSign(p.realizedPnL) + fmt(p.realizedPnL);
-  rEl.className = 'text-lg font-semibold mono ' + pnlColor(p.realizedPnL);
+  rEl.className = 'text-sm font-semibold mono ' + pnlColor(p.realizedPnL);
 
   // v5.1.1: Harvested profits display
   const hEl = $('harvested-pnl');
   const harv = p.harvestedProfits || 0;
   hEl.textContent = harv > 0 ? pnlSign(harv) + fmt(harv) : '$0.00';
-  hEl.className = 'text-lg font-semibold mono ' + (harv > 0 ? 'text-amber-400' : 'text-slate-500');
+  hEl.className = 'text-sm font-semibold mono ' + (harv > 0 ? 'text-amber-400' : 'text-slate-500');
   const hcEl = $('harvest-count');
   if (hcEl) hcEl.textContent = (p.harvestCount || 0) > 0 ? p.harvestCount + ' harvests' : 'no harvests yet';
 
@@ -11504,13 +11504,13 @@ function renderHoldings(b) {
       const pnlPct = h.totalInvested > 0 ? (pnl / h.totalInvested * 100) : 0;
       const costStr = h.costBasis ? '$' + (h.costBasis < 0.01 ? h.costBasis.toFixed(6) : h.costBasis.toFixed(4)) : '-';
       return '<tr class="border-b border-white/5 hover:bg-white/[0.02]">' +
-        '<td class="py-2.5 font-semibold text-white">' + h.symbol + '</td>' +
-        '<td class="py-2.5 text-right mono text-slate-300">' + fmt(h.usdValue) + '</td>' +
-        '<td class="py-2.5 text-right mono text-slate-500 hidden sm:table-cell">' + costStr + '</td>' +
-        '<td class="py-2.5 text-right"><span class="px-1.5 py-0.5 rounded ' + pnlBg(pnl) + ' ' + pnlColor(pnl) + ' mono text-[11px]">' +
+        '<td class="py-1 font-semibold text-white">' + h.symbol + '</td>' +
+        '<td class="py-1 text-right mono text-slate-300">' + fmt(h.usdValue) + '</td>' +
+        '<td class="py-1 text-right mono text-slate-500 hidden sm:table-cell">' + costStr + '</td>' +
+        '<td class="py-1 text-right"><span class="px-1 py-0.5 rounded ' + pnlBg(pnl) + ' ' + pnlColor(pnl) + ' mono text-[10px]">' +
           pnlSign(pnl) + '$' + Math.abs(pnl).toFixed(2) + (h.totalInvested > 0 ? ' (' + pnlSign(pnlPct) + pnlPct.toFixed(1) + '%)' : '') +
         '</span></td>' +
-        '<td class="py-2.5 text-right text-slate-600 hidden sm:table-cell">' + (h.sector || '-') + '</td>' +
+        '<td class="py-1 text-right text-slate-600 hidden sm:table-cell">' + (h.sector || '-') + '</td>' +
       '</tr>';
     }).join('');
   $('holdings-table').innerHTML = rows || '<tr><td colspan="5" class="py-6 text-center text-slate-600">No holdings yet</td></tr>';
@@ -11557,12 +11557,12 @@ function renderTrades(t) {
     const statusIcon = tr.success ? '<span class="text-emerald-400">✓</span>' : '<span class="text-red-400">✗</span>';
     const reason = (tr.reasoning || '').substring(0, 60);
     return '<tr class="border-b border-white/5 hover:bg-white/[0.02]">' +
-      '<td class="py-2 text-slate-400 mono">' + time + '</td>' +
-      '<td class="py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ' + actionColor + '">' + tr.action + '</span></td>' +
-      '<td class="py-2 text-slate-300 mono">' + pair + '</td>' +
-      '<td class="py-2 text-right mono text-white">$' + (tr.amountUSD || 0).toFixed(2) + '</td>' +
-      '<td class="py-2 text-center">' + statusIcon + '</td>' +
-      '<td class="py-2 text-slate-500 truncate max-w-[200px] hidden sm:table-cell">' + reason + '</td></tr>';
+      '<td class="py-1 text-slate-400 mono">' + time + '</td>' +
+      '<td class="py-1"><span class="px-1 py-0.5 rounded text-[9px] font-semibold ' + actionColor + '">' + tr.action + '</span></td>' +
+      '<td class="py-1 text-slate-300 mono">' + pair + '</td>' +
+      '<td class="py-1 text-right mono text-white">$' + (tr.amountUSD || 0).toFixed(2) + '</td>' +
+      '<td class="py-1 text-center">' + statusIcon + '</td>' +
+      '<td class="py-1 text-slate-500 truncate max-w-[200px] hidden sm:table-cell">' + reason + '</td></tr>';
   }).join('');
 }
 
