@@ -48,20 +48,20 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'SF Mono', SFMono-Regular, ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, monospace;
 
-  --fs-xs: 0.6875rem;
-  --fs-sm: 0.75rem;
-  --fs-base: 0.8125rem;
-  --fs-md: 0.875rem;
-  --fs-lg: 1.125rem;
-  --fs-xl: 1.5rem;
-  --fs-2xl: 2rem;
-  --fs-3xl: 2.5rem;
+  --fs-xs: 0.625rem;
+  --fs-sm: 0.6875rem;
+  --fs-base: 0.75rem;
+  --fs-md: 0.8125rem;
+  --fs-lg: 0.9375rem;
+  --fs-xl: 1.125rem;
+  --fs-2xl: 1.375rem;
+  --fs-3xl: 1.75rem;
 
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
-  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
-  --space-12: 48px; --space-16: 64px;
+  --space-1: 3px; --space-2: 6px; --space-3: 8px; --space-4: 12px;
+  --space-5: 14px; --space-6: 16px; --space-8: 20px; --space-10: 24px;
+  --space-12: 28px; --space-16: 36px;
 
-  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 20px; --radius-full: 999px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-full: 999px;
 
   --shadow-xs: 0 1px 2px rgba(28, 25, 23, 0.04);
   --shadow-sm: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
@@ -100,7 +100,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-8);
-  height: 56px;
+  height: 40px;
   background: rgba(255, 255, 255, 0.82);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -182,9 +182,9 @@ body {
    MAIN CONTENT
    ============================================================================ */
 .main-content {
-  max-width: 1280px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: var(--space-8) var(--space-8) var(--space-16);
+  padding: var(--space-3) var(--space-5) var(--space-8);
 }
 
 /* ============================================================================
@@ -219,7 +219,7 @@ body {
 /* ============================================================================
    GRID SYSTEM
    ============================================================================ */
-.grid { display: grid; gap: var(--space-5); }
+.grid { display: grid; gap: var(--space-3); }
 .g-6 { grid-template-columns: repeat(6, 1fr); }
 .g-4 { grid-template-columns: repeat(4, 1fr); }
 .g-3 { grid-template-columns: repeat(3, 1fr); }
@@ -249,7 +249,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: var(--space-5);
+  padding: var(--space-3);
   position: relative;
   transition: border-color var(--dur-norm) var(--ease-out),
               box-shadow var(--dur-norm) var(--ease-out),
@@ -272,20 +272,20 @@ body {
   margin-bottom: var(--space-2);
 }
 .card-value {
-  font-size: var(--fs-2xl);
+  font-size: var(--fs-xl);
   font-weight: 700;
   font-family: var(--font-mono);
   line-height: 1.2;
   letter-spacing: -0.5px;
   color: var(--text-primary);
 }
-.card-value.sm { font-size: var(--fs-xl); }
+.card-value.sm { font-size: var(--fs-lg); }
 .card-sub { font-size: var(--fs-xs); color: var(--text-secondary); margin-top: 3px; }
 .positive { color: var(--green); }
 .negative { color: var(--red); }
 .neutral { color: var(--text-secondary); }
 .warn { color: var(--amber); }
-.kpi-spark { width: 100%; height: 28px; margin-top: var(--space-2); display: block; }
+.kpi-spark { width: 100%; height: 20px; margin-top: var(--space-1); display: block; }
 
 /* ============================================================================
    SECTION HEADERS
@@ -294,8 +294,8 @@ body {
   font-size: var(--fs-md);
   font-weight: 700;
   color: var(--text-primary);
-  margin: var(--space-10) 0 var(--space-5);
-  padding-bottom: var(--space-3);
+  margin: var(--space-4) 0 var(--space-2);
+  padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
@@ -305,7 +305,7 @@ body {
 /* ============================================================================
    KEY-VALUE ROWS
    ============================================================================ */
-.kv { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--border-subtle); }
+.kv { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: var(--fs-sm); border-bottom: 1px solid var(--border-subtle); }
 .kv:last-child { border-bottom: none; }
 .kv-label { color: var(--text-secondary); }
 .kv-value { font-weight: 600; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-primary); }
@@ -313,16 +313,16 @@ body {
 /* ============================================================================
    TABLES
    ============================================================================ */
-.table-wrap { overflow-x: auto; max-height: 440px; overflow-y: auto; }
+.table-wrap { overflow-x: auto; max-height: 240px; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 th {
-  text-align: left; padding: 10px 12px;
+  text-align: left; padding: 5px 8px;
   color: var(--text-muted); font-weight: 600; font-size: var(--fs-xs);
   text-transform: uppercase; letter-spacing: 0.04em;
   position: sticky; top: 0; background: var(--bg-card);
   border-bottom: 1px solid var(--border-default);
 }
-td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; color: var(--text-primary); }
+td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; color: var(--text-primary); }
 tr:hover td { background: var(--bg-subtle); }
 
 /* ============================================================================
@@ -346,10 +346,10 @@ tr:hover td { background: var(--bg-subtle); }
 /* ============================================================================
    FEED ITEMS
    ============================================================================ */
-.feed { display: flex; flex-direction: column; gap: var(--space-2); max-height: 360px; overflow-y: auto; }
+.feed { display: flex; flex-direction: column; gap: var(--space-1); max-height: 180px; overflow-y: auto; }
 .feed-item {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3);
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2);
   border-radius: var(--radius-md);
   background: var(--bg-subtle);
   font-size: var(--fs-sm);
@@ -375,17 +375,17 @@ tr:hover td { background: var(--bg-subtle); }
 /* ============================================================================
    HOLDINGS
    ============================================================================ */
-.holdings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-4); }
+.holdings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-2); }
 .holding-chip {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: var(--space-4);
+  padding: var(--space-2);
   transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
 }
 .holding-chip:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
-.holding-sym { font-weight: 700; font-size: var(--fs-md); color: var(--text-primary); }
-.holding-val { font-size: var(--fs-lg); font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: var(--text-primary); }
+.holding-sym { font-weight: 700; font-size: var(--fs-sm); color: var(--text-primary); }
+.holding-val { font-size: var(--fs-md); font-weight: 700; font-family: var(--font-mono); margin-top: 2px; color: var(--text-primary); }
 .holding-meta { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
 .sector-tag {
   font-size: 9px; font-weight: 700;
@@ -401,7 +401,7 @@ tr:hover td { background: var(--bg-subtle); }
 .stag-stable { background: var(--green-soft); color: var(--green); }
 
 /* Holdings bar */
-.holdings-bar { display: flex; height: 40px; border-radius: var(--radius-md); overflow: hidden; gap: 2px; }
+.holdings-bar { display: flex; height: 24px; border-radius: var(--radius-md); overflow: hidden; gap: 2px; }
 .hbar-seg {
   display: flex; align-items: center; justify-content: center;
   font-size: var(--fs-xs); font-weight: 700; color: #fff;
@@ -423,7 +423,7 @@ tr:hover td { background: var(--bg-subtle); }
 /* ============================================================================
    GAUGES
    ============================================================================ */
-.gauge-row { display: flex; gap: var(--space-8); justify-content: center; flex-wrap: wrap; }
+.gauge-row { display: flex; gap: var(--space-4); justify-content: center; flex-wrap: wrap; }
 .gauge-item { text-align: center; }
 .gauge-label { font-size: var(--fs-xs); color: var(--text-muted); font-weight: 600; margin-top: var(--space-1); text-transform: uppercase; letter-spacing: 0.04em; }
 .gauge-val { font-size: var(--fs-md); font-weight: 700; font-family: var(--font-mono); }
@@ -467,12 +467,16 @@ tr:hover td { background: var(--bg-subtle); }
 /* ============================================================================
    LOADING / EMPTY
    ============================================================================ */
-.loading { color: var(--text-muted); font-size: var(--fs-sm); padding: var(--space-5); text-align: center; }
+.loading { color: var(--text-muted); font-size: var(--fs-sm); padding: var(--space-3); text-align: center; }
+
+/* Collapsible details panel */
+#details-panel { max-height: 20000px; }
+#details-panel.collapsed { max-height: 0; overflow: hidden; }
 
 /* ============================================================================
    EQUITY CURVE
    ============================================================================ */
-.equity-canvas { width: 100%; height: 280px; display: block; }
+.equity-canvas { width: 100%; height: 150px; display: block; }
 
 /* ============================================================================
    DIVIDER
@@ -481,7 +485,7 @@ tr:hover td { background: var(--bg-subtle); }
   border: none;
   height: 1px;
   background: var(--border-subtle);
-  margin: var(--space-12) 0 0;
+  margin: var(--space-4) 0 0;
 }
 
 /* ============================================================================
@@ -490,7 +494,7 @@ tr:hover td { background: var(--bg-subtle); }
 @media (max-width: 767px) {
   .toast-container { bottom: auto; top: 72px; right: var(--space-4); left: var(--space-4); }
   .toast { max-width: 100%; }
-  .equity-canvas { height: 200px; }
+  .equity-canvas { height: 120px; }
   .gauge-row { gap: var(--space-4); }
   .section-hdr { margin-top: var(--space-8); }
   .hide-mobile { display: none; }
@@ -669,6 +673,10 @@ tr:hover td { background: var(--bg-subtle); }
   </div>
   <div class="holdings-grid" style="margin-top: var(--space-5)" id="holdingsGrid"><div class="loading">Loading...</div></div>
 
+  <div style="text-align:center;margin:var(--space-4) 0">
+    <button onclick="document.getElementById('details-panel').classList.toggle('collapsed');this.textContent=this.textContent.includes('Show')?'▾ Hide Details':'▸ Show Details'" style="background:var(--bg-subtle);border:1px solid var(--border-default);border-radius:var(--radius-full);padding:6px 20px;font-size:var(--fs-sm);font-weight:600;color:var(--text-secondary);cursor:pointer;transition:all 0.15s">▸ Show Details</button>
+  </div>
+  <div id="details-panel" class="collapsed" style="overflow:hidden;transition:max-height 0.4s ease">
   <div class="section-hdr">Cost Basis Detail</div>
   <div class="card">
     <div class="table-wrap">
@@ -926,6 +934,7 @@ tr:hover td { background: var(--bg-subtle); }
   <div class="section-hdr">Data Sources</div>
   <div class="card"><div id="dataSources" class="loading">Loading...</div></div>
 
+  </div><!-- details-panel -->
 </div><!-- main-content -->
 
 <!-- TOAST CONTAINER -->
