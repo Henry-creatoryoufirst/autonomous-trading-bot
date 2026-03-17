@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Aave V3 Yield Service
+ * Never Rest Capital — Aave V3 Yield Service
  * v11.0: Park idle USDC in Aave V3 on Base for yield (~2-5% APY)
  *
  * When the AI brain determines markets are RANGING or FEARFUL and USDC is idle,

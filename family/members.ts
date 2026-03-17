@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Family Member Manager
+ * Never Rest Capital — Family Member Manager
  * v11.0: CRUD operations for family members + config persistence
  *
  * Manages the family configuration file (family-config.json) which stores:
@@ -37,7 +37,7 @@ function createDefaultConfig(): FamilyConfig {
         riskProfile: 'AGGRESSIVE',
         status: 'ACTIVE',
         createdAt: new Date().toISOString(),
-        note: 'Founder — original STC wallet',
+        note: 'Founder — original NVR wallet',
       },
     ],
     riskProfiles: { ...DEFAULT_RISK_PROFILES },
@@ -123,7 +123,7 @@ export class FamilyMemberManager {
     const member: FamilyMember = {
       id: params.id,
       name: params.name,
-      cdpAccountName: `stc-${params.id}-trading`,
+      cdpAccountName: `nvr-${params.id}-trading`,
       walletAddress: '', // populated on first CDP call
       riskProfile: params.riskProfile,
       status: 'ONBOARDING',

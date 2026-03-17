@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Per-Token Cooldown System (v7.0)
+ * Never Rest Capital — Per-Token Cooldown System (v7.0)
  *
  * v7.0 upgrades:
  * - Signal-weighted re-entry: tokens can re-enter during cooldown if confluence score

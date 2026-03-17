@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Family Wallet Manager
+ * Never Rest Capital — Family Wallet Manager
  * v11.0: Multi-wallet management via CDP SDK
  *
  * One CdpClient instance, multiple named accounts.

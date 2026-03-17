@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Alpaca Markets API Client (v6.0)
+ * Never Rest Capital — Alpaca Markets API Client (v6.0)
  *
  * Handles stock & ETF trading via Alpaca's REST API.
  * Supports both paper and live trading modes.

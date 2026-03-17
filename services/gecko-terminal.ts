@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — GeckoTerminal DEX Intelligence Service
+ * Never Rest Capital — GeckoTerminal DEX Intelligence Service
  * v11.0: Real-time Base DEX data for the AI trading brain
  *
  * FREE API — no auth required, 30 calls/min rate limit.

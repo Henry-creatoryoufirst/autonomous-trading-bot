@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Market Session Awareness (v6.0)
+ * Never Rest Capital — Market Session Awareness (v6.0)
  *
  * Tracks US equity market sessions and adjusts strategy accordingly.
  * Pre-market, regular, after-hours, extended, weekend, holiday.

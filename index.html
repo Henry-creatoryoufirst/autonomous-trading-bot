@@ -867,7 +867,7 @@
     <script>
     // ---- Theme Switcher (index) ----
     (function initTheme2() {
-      const saved = localStorage.getItem('stc-index-theme');
+      const saved = localStorage.getItem('nvr-index-theme');
       if (saved && saved !== 'dark') {
         document.documentElement.setAttribute('data-theme2', saved);
       }
@@ -887,7 +887,7 @@
             } else {
               document.documentElement.setAttribute('data-theme2', theme);
             }
-            localStorage.setItem('stc-index-theme', theme);
+            localStorage.setItem('nvr-index-theme', theme);
           });
         });
       });

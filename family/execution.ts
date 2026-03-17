@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Family Trade Execution Fan-Out
+ * Never Rest Capital — Family Trade Execution Fan-Out
  * v11.0: Takes the shared brain's AI decision and executes per-member
  *
  * Flow:

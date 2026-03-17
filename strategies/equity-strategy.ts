@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Equity Strategy Engine (v6.0)
+ * Never Rest Capital — Equity Strategy Engine (v6.0)
  *
  * Stock & ETF entry/exit rules using the same framework as crypto.
  * Buy/sell confluence thresholds, sector rebalancing, stop-loss, take-profit.

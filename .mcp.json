@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "stc": {
+    "nvr": {
       "command": "node",
       "args": ["/Users/henryschertzinger/Desktop/Schertzinger Trading Command/autonomous-trading-bot/mcp/server.js"]
     },

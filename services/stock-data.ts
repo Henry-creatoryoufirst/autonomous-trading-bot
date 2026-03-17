@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Stock Technical Indicators Engine (v6.0)
+ * Never Rest Capital — Stock Technical Indicators Engine (v6.0)
  *
  * Computes RSI, MACD, Bollinger Bands, SMA, and confluence scoring
  * for equities using the same -100 to +100 scale as crypto.

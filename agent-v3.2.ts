@@ -1859,7 +1859,7 @@ function createCdpClient(): CdpClient {
 
 let cdpClient: CdpClient;
 
-// CDP account name — parameterized for multi-tenant deployments (create-stc-bot CLI)
+// CDP account name — parameterized for multi-tenant deployments (create-nvr-bot CLI)
 const CDP_ACCOUNT_NAME = process.env.CDP_ACCOUNT_NAME || "henry-trading-bot";
 
 // === v10.1: SMART ACCOUNT (Gasless Swaps on Base) ===
@@ -10841,7 +10841,7 @@ ${tradeLines || '(no trades yet)'}${directivesSection}
 AVAILABLE TOKENS: ${CONFIG.activeTokens.join(', ')}
 NOTE: This bot trades on Base network only. Tokens not in the registry (like SUI) can be added to the watchlist for research — the bot will note user interest even if it cannot trade them directly yet.`;
 
-  const systemPrompt = `You are the STC trading bot assistant. You have full access to your own live trading state AND you can take actions that affect trading behavior.
+  const systemPrompt = `You are the NVR trading bot assistant. You have full access to your own live trading state AND you can take actions that affect trading behavior.
 
 CAPABILITIES:
 - Answer questions about portfolio, positions, trades, strategy, and market outlook
@@ -11752,7 +11752,7 @@ const EMBEDDED_DASHBOARD = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Schertzinger Trading Command</title>
+<title>Never Rest Capital</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -11787,7 +11787,7 @@ body { font-family: 'Inter', system-ui; background: #060a14; color: #e2e8f0; }
 <div class="border-b border-white/5 px-4 sm:px-6 py-2">
   <div class="max-w-7xl mx-auto flex items-center justify-between">
     <div>
-      <h1 class="text-sm font-bold text-white">Schertzinger Trading Command</h1>
+      <h1 class="text-sm font-bold text-white">Never Rest Capital</h1>
       <p class="text-[10px] text-slate-500">Autonomous Trading Agent v12.2</p>
     </div>
     <div class="flex items-center gap-3">

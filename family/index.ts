@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Family Platform Module
+ * Never Rest Capital — Family Platform Module
  * v11.0: Public API for the family multi-wallet system
  *
  * Usage in agent-v3.2.ts:

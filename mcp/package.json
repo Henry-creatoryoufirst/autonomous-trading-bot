@@ -1,13 +1,13 @@
 {
-  "name": "stc-mcp-server",
+  "name": "nvr-mcp-server",
   "version": "1.0.0",
-  "description": "Schertzinger Trading Command — MCP Server for Claude Code",
+  "description": "Never Rest Capital — MCP Server for Claude Code",
   "main": "server.js",
   "bin": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "keywords": ["mcp", "trading", "stc"],
+  "keywords": ["mcp", "trading", "nvr"],
   "author": "Henry Schertzinger",
   "license": "ISC",
   "type": "commonjs",

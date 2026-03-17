@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =============================================================================
-// SCHERTZINGER TRADING COMMAND — MCP Server v1.0
-// Exposes all STC API endpoints as MCP tools for Claude Code sessions.
+// NEVER REST CAPITAL — MCP Server v1.0
+// Exposes all NVR API endpoints as MCP tools for Claude Code sessions.
 // Run via stdio transport: node server.js
 // =============================================================================
 
@@ -10,7 +10,7 @@ const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio
 const { z } = require("zod");
 
 const BASE_URL =
-  process.env.STC_API_URL ||
+  process.env.NVR_API_URL ||
   "https://autonomous-trading-bot-production.up.railway.app";
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,7 @@ async function fetchJSON(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`STC API ${res.status}: ${body || res.statusText}`);
+    throw new Error(`NVR API ${res.status}: ${body || res.statusText}`);
   }
   return res.json();
 }
@@ -48,7 +48,7 @@ function errorResult(err) {
 // ---------------------------------------------------------------------------
 
 const server = new McpServer({
-  name: "stc-trading-bot",
+  name: "nvr-trading-bot",
   version: "1.0.0",
 });
 
@@ -56,7 +56,7 @@ const server = new McpServer({
 
 server.tool(
   "get_portfolio",
-  "Get STC portfolio overview: total value, P&L, drawdown, deposits, harvest totals, and strategy allocations.",
+  "Get NVR portfolio overview: total value, P&L, drawdown, deposits, harvest totals, and strategy allocations.",
   async () => {
     try {
       return jsonResult(await fetchJSON("/api/portfolio"));
@@ -429,6 +429,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("STC MCP Server fatal error:", err);
+  console.error("NVR MCP Server fatal error:", err);
   process.exit(1);
 });

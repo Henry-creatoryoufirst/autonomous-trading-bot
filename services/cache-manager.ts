@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Smart Caching System (v6.0)
+ * Never Rest Capital — Smart Caching System (v6.0)
  *
  * Layered cache with different TTLs per data type.
  * Prevents API rate limit exhaustion on 2-minute trading cycles.

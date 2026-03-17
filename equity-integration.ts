@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Equity Integration Orchestrator (v6.0)
+ * Never Rest Capital — Equity Integration Orchestrator (v6.0)
  *
  * Plugs into agent-v3.2.ts to run equity trading cycles.
  * Handles initialization, cycle execution, and dashboard data.

@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Shared Type Definitions
+ * Never Rest Capital — Shared Type Definitions
  * Extracted from agent-v3.2.ts for v6.0 modular architecture
  */
 

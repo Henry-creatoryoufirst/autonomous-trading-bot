@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Trade Execution Queue (v7.0)
+ * Never Rest Capital — Trade Execution Queue (v7.0)
  *
  * Manages parallel trade EVALUATIONS vs serialized trade EXECUTIONS.
  *

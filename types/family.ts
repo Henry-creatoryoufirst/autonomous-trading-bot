@@ -1,5 +1,5 @@
 /**
- * Schertzinger Trading Command — Family Platform Types
+ * Never Rest Capital — Family Platform Types
  * v11.0: Multi-wallet family architecture (Path B — shared brain, individual wallets)
  */
 
