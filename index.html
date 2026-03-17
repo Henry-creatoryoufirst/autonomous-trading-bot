@@ -44,12 +44,151 @@
         };
     </script>
     <style>
+        :root {
+            --t-bg: #060a14;
+            --t-text: #e2e8f0;
+            --t-text-muted: #94a3b8;
+            --t-accent: #4c6ef5;
+            --t-accent-glow: rgba(76, 110, 245, 0.08);
+            --t-accent-border: rgba(76, 110, 245, 0.12);
+            --t-accent-border-hover: rgba(76, 110, 245, 0.3);
+            --t-glass: rgba(10, 14, 26, 0.6);
+            --t-glass-solid: rgba(10, 14, 26, 0.85);
+            --t-mesh1: rgba(76, 110, 245, 0.08);
+            --t-mesh2: rgba(168, 85, 247, 0.06);
+            --t-mesh3: rgba(16, 185, 129, 0.04);
+            --t-mesh4: rgba(56, 189, 248, 0.05);
+            --t-glow-from: rgba(76, 110, 245, 0.3);
+            --t-glow-to: rgba(16, 185, 129, 0.2);
+        }
+
+        /* ---- Theme: Light ---- */
+        [data-theme2="light"] {
+            --t-bg: #FAF8F5;
+            --t-text: #1C1917;
+            --t-text-muted: #78716C;
+            --t-accent: #B45309;
+            --t-accent-glow: rgba(180, 83, 9, 0.06);
+            --t-accent-border: rgba(120, 100, 70, 0.12);
+            --t-accent-border-hover: rgba(120, 100, 70, 0.25);
+            --t-glass: rgba(255, 255, 255, 0.7);
+            --t-glass-solid: rgba(255, 255, 255, 0.9);
+            --t-mesh1: rgba(180, 83, 9, 0.04);
+            --t-mesh2: rgba(146, 64, 14, 0.03);
+            --t-mesh3: rgba(22, 163, 74, 0.03);
+            --t-mesh4: rgba(37, 99, 235, 0.03);
+            --t-glow-from: rgba(180, 83, 9, 0.15);
+            --t-glow-to: rgba(22, 163, 74, 0.1);
+        }
+
+        /* ---- Theme: Blue ---- */
+        [data-theme2="blue"] {
+            --t-bg: #0C1929;
+            --t-text: #E0EAFF;
+            --t-text-muted: #7AA2D4;
+            --t-accent: #4C9EF6;
+            --t-accent-glow: rgba(76, 158, 246, 0.08);
+            --t-accent-border: rgba(76, 158, 246, 0.12);
+            --t-accent-border-hover: rgba(76, 158, 246, 0.3);
+            --t-glass: rgba(12, 25, 41, 0.6);
+            --t-glass-solid: rgba(12, 25, 41, 0.85);
+            --t-mesh1: rgba(76, 158, 246, 0.08);
+            --t-mesh2: rgba(96, 165, 250, 0.05);
+            --t-mesh3: rgba(52, 211, 153, 0.04);
+            --t-mesh4: rgba(56, 189, 248, 0.06);
+            --t-glow-from: rgba(76, 158, 246, 0.3);
+            --t-glow-to: rgba(52, 211, 153, 0.2);
+        }
+
+        /* ---- Theme: Sage ---- */
+        [data-theme2="sage"] {
+            --t-bg: #0F1610;
+            --t-text: #E8F0E6;
+            --t-text-muted: #8FB396;
+            --t-accent: #8FB396;
+            --t-accent-glow: rgba(143, 179, 150, 0.08);
+            --t-accent-border: rgba(143, 179, 150, 0.12);
+            --t-accent-border-hover: rgba(143, 179, 150, 0.3);
+            --t-glass: rgba(15, 22, 16, 0.6);
+            --t-glass-solid: rgba(15, 22, 16, 0.85);
+            --t-mesh1: rgba(143, 179, 150, 0.08);
+            --t-mesh2: rgba(110, 231, 160, 0.04);
+            --t-mesh3: rgba(212, 165, 48, 0.04);
+            --t-mesh4: rgba(94, 234, 212, 0.04);
+            --t-glow-from: rgba(143, 179, 150, 0.3);
+            --t-glow-to: rgba(212, 165, 48, 0.2);
+        }
+
+        /* ---- Theme: Purple ---- */
+        [data-theme2="purple"] {
+            --t-bg: #13111C;
+            --t-text: #EDE8F5;
+            --t-text-muted: #9B8EC4;
+            --t-accent: #B8A9E8;
+            --t-accent-glow: rgba(184, 169, 232, 0.08);
+            --t-accent-border: rgba(184, 169, 232, 0.12);
+            --t-accent-border-hover: rgba(184, 169, 232, 0.3);
+            --t-glass: rgba(19, 17, 28, 0.6);
+            --t-glass-solid: rgba(19, 17, 28, 0.85);
+            --t-mesh1: rgba(184, 169, 232, 0.08);
+            --t-mesh2: rgba(196, 181, 253, 0.05);
+            --t-mesh3: rgba(110, 231, 160, 0.03);
+            --t-mesh4: rgba(165, 243, 252, 0.04);
+            --t-glow-from: rgba(184, 169, 232, 0.3);
+            --t-glow-to: rgba(110, 231, 160, 0.2);
+        }
+
+        /* ---- Theme: Warm ---- */
+        [data-theme2="warm"] {
+            --t-bg: #1A1410;
+            --t-text: #F5EDE0;
+            --t-text-muted: #C4A872;
+            --t-accent: #D4A530;
+            --t-accent-glow: rgba(212, 165, 48, 0.08);
+            --t-accent-border: rgba(212, 165, 48, 0.12);
+            --t-accent-border-hover: rgba(212, 165, 48, 0.3);
+            --t-glass: rgba(26, 20, 16, 0.6);
+            --t-glass-solid: rgba(26, 20, 16, 0.85);
+            --t-mesh1: rgba(212, 165, 48, 0.08);
+            --t-mesh2: rgba(184, 134, 11, 0.05);
+            --t-mesh3: rgba(110, 231, 160, 0.03);
+            --t-mesh4: rgba(94, 234, 212, 0.04);
+            --t-glow-from: rgba(212, 165, 48, 0.3);
+            --t-glow-to: rgba(110, 231, 160, 0.2);
+        }
+
+        /* ---- Theme Picker (index) ---- */
+        .theme-picker-idx {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .theme-picker-idx .tp-label {
+            font-size: 0.6rem;
+            color: var(--t-text-muted);
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .theme-picker-idx .tp-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.15s ease, outline-color 0.15s ease;
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            flex-shrink: 0;
+        }
+        .theme-picker-idx .tp-dot:hover { transform: scale(1.15); }
+        .theme-picker-idx .tp-dot.active { outline-color: var(--t-accent); }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Inter', system-ui, sans-serif;
-            background: #060a14;
-            color: #e2e8f0;
+            background: var(--t-bg);
+            color: var(--t-text);
             min-height: 100vh;
             overflow-x: hidden;
         }
@@ -58,25 +197,25 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background:
-                radial-gradient(ellipse at 20% 20%, rgba(76, 110, 245, 0.08) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
-                radial-gradient(ellipse at 50% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 60%),
-                radial-gradient(ellipse at 90% 10%, rgba(56, 189, 248, 0.05) 0%, transparent 40%);
+                radial-gradient(ellipse at 20% 20%, var(--t-mesh1) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, var(--t-mesh2) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, var(--t-mesh3) 0%, transparent 60%),
+                radial-gradient(ellipse at 90% 10%, var(--t-mesh4) 0%, transparent 40%);
             pointer-events: none;
             z-index: 0;
         }
 
         .glass {
-            background: rgba(10, 14, 26, 0.6);
+            background: var(--t-glass);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(76, 110, 245, 0.12);
+            border: 1px solid var(--t-accent-border);
             border-radius: 16px;
         }
 
         .glass-hover:hover {
-            border-color: rgba(76, 110, 245, 0.3);
-            box-shadow: 0 0 30px rgba(76, 110, 245, 0.08);
+            border-color: var(--t-accent-border-hover);
+            box-shadow: 0 0 30px var(--t-accent-glow);
             transform: translateY(-2px);
             transition: all 0.3s ease;
         }
@@ -94,7 +233,7 @@
             content: '';
             position: absolute;
             top: -1px; left: -1px; right: -1px; bottom: -1px;
-            background: linear-gradient(135deg, rgba(76, 110, 245, 0.3), transparent 40%, transparent 60%, rgba(16, 185, 129, 0.2));
+            background: linear-gradient(135deg, var(--t-glow-from), transparent 40%, transparent 60%, var(--t-glow-to));
             border-radius: 17px;
             z-index: -1;
         }
@@ -103,7 +242,7 @@
             content: '';
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(10, 14, 26, 0.85);
+            background: var(--t-glass-solid);
             border-radius: 16px;
             z-index: -1;
         }
@@ -124,9 +263,9 @@
 
         .shimmer {
             background: linear-gradient(90deg,
-                rgba(76, 110, 245, 0.05) 25%,
-                rgba(76, 110, 245, 0.12) 50%,
-                rgba(76, 110, 245, 0.05) 75%);
+                var(--t-accent-glow) 25%,
+                var(--t-accent-border) 50%,
+                var(--t-accent-glow) 75%);
             background-size: 200% 100%;
             animation: shimmer 2s ease-in-out infinite;
         }
@@ -264,8 +403,8 @@
 
         /* Chart tooltip style */
         .chart-tooltip {
-            background: rgba(10, 14, 26, 0.95) !important;
-            border: 1px solid rgba(76, 110, 245, 0.3) !important;
+            background: var(--t-glass-solid) !important;
+            border: 1px solid var(--t-accent-border-hover) !important;
             border-radius: 8px !important;
             padding: 8px 12px !important;
             font-family: 'Inter', sans-serif !important;
@@ -293,6 +432,15 @@
                 </div>
             </div>
             <div class="flex items-center gap-4 mt-4 sm:mt-0">
+                <div class="theme-picker-idx glass px-3 py-2 rounded-full" id="themePicker2">
+                    <span class="tp-label">Theme</span>
+                    <button class="tp-dot active" data-theme2="dark" title="Dark" style="background: #060a14; border: 2px solid #2A3A52;"></button>
+                    <button class="tp-dot" data-theme2="light" title="Light" style="background: #FAF8F5; border: 2px solid #D6D0C4;"></button>
+                    <button class="tp-dot" data-theme2="blue" title="Blue" style="background: #0C1929; border: 2px solid #1A3A5C;"></button>
+                    <button class="tp-dot" data-theme2="sage" title="Sage" style="background: linear-gradient(135deg, #0F1610 50%, #D4A530 50%); border: 2px solid #2A3D28;"></button>
+                    <button class="tp-dot" data-theme2="purple" title="Lavender" style="background: #13111C; border: 2px solid #2E2945;"></button>
+                    <button class="tp-dot" data-theme2="warm" title="Warm Gold" style="background: #1A1410; border: 2px solid #3D2E1A;"></button>
+                </div>
                 <div class="flex items-center gap-2 glass px-4 py-2 rounded-full">
                     <div id="statusDot" class="w-2.5 h-2.5 rounded-full bg-accent-emerald pulse-live"></div>
                     <span id="statusText" class="text-xs font-semibold text-accent-emerald tracking-wide">LIVE</span>
@@ -716,6 +864,36 @@
     </div>
 
     <!-- ======================== JAVASCRIPT ======================== -->
+    <script>
+    // ---- Theme Switcher (index) ----
+    (function initTheme2() {
+      const saved = localStorage.getItem('stc-index-theme');
+      if (saved && saved !== 'dark') {
+        document.documentElement.setAttribute('data-theme2', saved);
+      }
+      document.addEventListener('DOMContentLoaded', () => {
+        const picker = document.getElementById('themePicker2');
+        if (!picker) return;
+        const dots = picker.querySelectorAll('.tp-dot');
+        const current = saved || 'dark';
+        dots.forEach(d => {
+          d.classList.toggle('active', d.dataset.theme2 === current);
+          d.addEventListener('click', () => {
+            const theme = d.dataset.theme2;
+            dots.forEach(b => b.classList.remove('active'));
+            d.classList.add('active');
+            if (theme === 'dark') {
+              document.documentElement.removeAttribute('data-theme2');
+            } else {
+              document.documentElement.setAttribute('data-theme2', theme);
+            }
+            localStorage.setItem('stc-index-theme', theme);
+          });
+        });
+      });
+    })();
+    </script>
+
     <script>
     (function() {
         'use strict';

@@ -3254,8 +3254,8 @@ let state: AgentState = {
     successfulTrades: 0,
     balances: [],
     totalPortfolioValue: 0,
-    initialValue: 2891, // v11.4.20: Actual seed capital — deposits tracked separately in totalDeposited
-    peakValue: 2891,
+    initialValue: 0, // v13.0: Start at $0 — actual value detected on first balance fetch. No hardcoded seed capital.
+    peakValue: 0, // v13.0: Start at $0 — peak tracks actual portfolio, not hardcoded values
     sectorAllocations: [],
   },
   tradeHistory: [],
@@ -3288,10 +3288,10 @@ let state: AgentState = {
   explorationState: { ...DEFAULT_EXPLORATION_STATE },
   lastReviewTradeIndex: 0,
   lastReviewTimestamp: null,
-  // v8.2: Deposit tracking — $1,200 seeded from March 2026 deposit
-  totalDeposited: 1200,
+  // v13.0: Deposit tracking — starts at $0, deposits detected automatically from on-chain activity
+  totalDeposited: 0,
   lastKnownUSDCBalance: 0,
-  depositHistory: [{ timestamp: '2026-03-03T00:00:00Z', amountUSD: 1200, newTotal: 1200 }],
+  depositHistory: [], // v13.0: No hardcoded deposit history — detected at runtime
   // v10.0: Market Intelligence Engine — persisted historical data
   fundingRateHistory: { btc: [] as number[], eth: [] as number[] },
   btcDominanceHistory: { values: [] as { timestamp: string; dominance: number }[] },
@@ -3313,10 +3313,10 @@ function loadTradeHistory() {
         const data = fs.readFileSync(file, "utf-8");
         const parsed = JSON.parse(data);
         state.tradeHistory = parsed.trades || [];
-        // v11.4.20: initialValue = ONLY the original seed capital ($2,891). Deposits tracked separately.
-        // Ignore INITIAL_PORTFOLIO_VALUE env var — it previously baked deposits into initial, causing double-counting.
-        state.trading.initialValue = 2891;
-        state.trading.peakValue = parsed.peakValue || 374;
+        // v13.0: Restore initialValue and peakValue from state file. Fresh bots start at $0.
+        // initialValue is set on first deposit detection or from persisted state.
+        state.trading.initialValue = parsed.initialValue || 0;
+        state.trading.peakValue = parsed.peakValue || 0;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
         // v11.4.12: Restore fields that were saved but never loaded back
@@ -3431,13 +3431,10 @@ function loadTradeHistory() {
             }
           }
         }
-        // v8.2: Restore deposit tracking
-        // v11.4.20: If state file has no deposit data (wiped state), fall back to known deposits
-        state.totalDeposited = parsed.totalDeposited || 1200; // Known: $1,200 deposited March 2026
+        // v13.0: Restore deposit tracking from state file. Fresh bots start at $0 with no deposit history.
+        state.totalDeposited = parsed.totalDeposited || 0;
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
-        state.depositHistory = (parsed.depositHistory && parsed.depositHistory.length > 0)
-          ? parsed.depositHistory
-          : [{ timestamp: '2026-03-03T00:00:00Z', amountUSD: 1200, newTotal: 1200 }];
+        state.depositHistory = parsed.depositHistory || [];
         if (state.totalDeposited > 0) {
           console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
         }
@@ -9959,6 +9956,12 @@ async function main() {
         if (startupValue > state.trading.peakValue) {
           state.trading.peakValue = startupValue;
         }
+        // v13.0: If initialValue is $0 (fresh bot, no state file), set it to first detected balance.
+        // This ensures "Capital in" displays correctly from the very first startup.
+        if (state.trading.initialValue === 0 && startupValue > 0) {
+          state.trading.initialValue = startupValue;
+          console.log(`  ✅ Initial capital set: $${startupValue.toFixed(2)} (first-time detection)`);
+        }
         // v11.3: Hydrate USDC balance on startup to prevent false deposit detection.
         // Without this, the first heavy cycle sees a huge USDC increase (from accumulated
         // sells during previous session) and misclassifies it as an external deposit,
@@ -11611,7 +11614,7 @@ const healthServer = http.createServer(async (req, res) => {
               applied.push(`removed last deposit: $${removed?.amountUSD}`);
             }
             // v11.4.20: Explicit deposit registration — adjusts totalDeposited, peakValue, breaker baselines.
-            // initialValue is NOT modified — it's the original seed ($2,891). All deposits go into totalDeposited.
+            // initialValue is NOT modified — it's the original seed capital. All deposits go into totalDeposited.
             if (typeof corrections.registerDeposit === 'number' && corrections.registerDeposit > 0) {
               const amt = corrections.registerDeposit;
               state.totalDeposited += amt;
