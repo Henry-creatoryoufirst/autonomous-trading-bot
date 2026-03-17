@@ -534,3 +534,28 @@ export const VOLUME_SELF_SUFFICIENT_POINTS = 168; // 7 days of hourly data
 
 /** Price sanity check — skip update if on-chain price deviates more than this from last known */
 export const PRICE_SANITY_MAX_DEVIATION = 0.50; // 50%
+
+// ============================================================================
+// v12.3: ON-CHAIN ORDER FLOW INTELLIGENCE
+// ============================================================================
+
+/** Number of blocks to look back for Swap events (~10 min on Base at 2s blocks) */
+export const ORDER_FLOW_BLOCK_LOOKBACK = 300;
+
+/** TWAP divergence threshold — |divergence| > this % triggers OVERBOUGHT/OVERSOLD signal */
+export const TWAP_DIVERGENCE_THRESHOLD_PCT = 2.0;
+
+/** Mild TWAP divergence — between this and full threshold gives partial signal */
+export const TWAP_MILD_THRESHOLD_PCT = 1.0;
+
+/** Number of ticks above and below current to read for depth analysis */
+export const TICK_DEPTH_RANGE = 5;
+
+/** Large trade threshold in USD — trades above this are "smart money" */
+export const LARGE_TRADE_THRESHOLD_USD = 5000;
+
+/** Uniswap V3 Swap event topic hash */
+export const SWAP_EVENT_TOPIC = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67';
+
+/** TWAP observation period in seconds (15 minutes) */
+export const TWAP_OBSERVATION_SECONDS = 900;

@@ -210,6 +210,14 @@ import {
   VOLUME_ENRICHMENT_INTERVAL_MS,
   VOLUME_SELF_SUFFICIENT_POINTS,
   PRICE_SANITY_MAX_DEVIATION,
+  // v12.3: On-Chain Order Flow Intelligence
+  ORDER_FLOW_BLOCK_LOOKBACK,
+  TWAP_DIVERGENCE_THRESHOLD_PCT,
+  TWAP_MILD_THRESHOLD_PCT,
+  TICK_DEPTH_RANGE,
+  LARGE_TRADE_THRESHOLD_USD,
+  SWAP_EVENT_TOPIC,
+  TWAP_OBSERVATION_SECONDS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -525,6 +533,7 @@ interface PoolRegistryEntry {
   dexName: string;
   liquidityUSD: number;
   consecutiveFailures: number;
+  tickSpacing?: number; // v12.3: Cached tick spacing (immutable per pool, read once)
 }
 
 interface PoolRegistryFile {
@@ -536,6 +545,16 @@ interface PoolRegistryFile {
 const POOL_REGISTRY_VERSION = 5; // v12.2.1: Bump — force re-discovery for new tokens (cbXRP, CLANKER, KEYCAT, cbLTC)
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
+
+// v12.3: Cached ticks from slot0 reads — updated every heavy cycle, used by tick depth analysis
+let lastPoolTicks: Record<string, number> = {};
+
+// v12.3: On-chain intelligence cache — persists between cycles
+let lastOnChainIntelligence: Record<string, {
+  twap: TechnicalIndicators["twapDivergence"];
+  orderFlow: TechnicalIndicators["orderFlow"];
+  tickDepth: TechnicalIndicators["tickDepth"];
+}> = {};
 
 const POOL_REGISTRY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/pool-registry.json` : "./logs/pool-registry.json";
 
@@ -776,6 +795,18 @@ async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number, btcUs
 
       // Strip '0x' prefix for decoding
       const rawPrice = decodeSqrtPriceX96(result.slice(2), pool.token0Decimals, pool.token1Decimals);
+
+      // v12.3: Parse tick from slot0 bytes 32-63 (int24 packed in int256) — free data, already fetched
+      try {
+        const tickHex = result.slice(2 + 64, 2 + 128); // bytes 32-63
+        const tickBigInt = BigInt('0x' + tickHex);
+        const tick = Number(tickBigInt > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+          ? tickBigInt - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+          : tickBigInt);
+        if (tick >= -887272 && tick <= 887272) { // Valid V3 tick range
+          lastPoolTicks[symbol] = tick;
+        }
+      } catch { /* tick parse failure is non-critical */ }
       if (rawPrice <= 0) return null;
 
       // rawPrice = amount of token1 per 1 token0 (price of token0 in token1 terms)
@@ -1024,6 +1055,452 @@ function recordPriceSnapshot(prices: Map<string, number>): void {
   // Save to disk periodically
   if (now - lastPriceHistorySaveTime >= PRICE_HISTORY_SAVE_INTERVAL_MS) {
     savePriceHistoryStore();
+  }
+}
+
+// ============================================================================
+// v12.3: ON-CHAIN ORDER FLOW INTELLIGENCE
+// Three systems: TWAP-Spot Divergence, Swap Event Order Flow, Tick Liquidity Depth
+// All use existing rpcCall() infrastructure — zero new API dependencies
+// ============================================================================
+
+/**
+ * 2A: Fetch TWAP-Spot divergence from V3 pool oracle.
+ * Calls observe([0, 900]) to get 15-minute TWAP, compares to current spot price.
+ * Only works for V3 pools (uniswapV3, aerodromeV3).
+ * Returns null if pool doesn't support oracle or cardinality too low.
+ */
+async function fetchTWAPDivergence(
+  symbol: string,
+  spotPrice: number,
+  ethPrice: number,
+  btcPrice: number = 0,
+  virtualPrice: number = 0
+): Promise<TechnicalIndicators["twapDivergence"]> {
+  const pool = poolRegistry[symbol];
+  if (!pool || (pool.poolType !== 'uniswapV3' && pool.poolType !== 'aerodromeV3')) return null;
+  if (spotPrice <= 0 || ethPrice <= 0) return null;
+
+  try {
+    // observe([0, 900]) — selector 0x883bdbfd, ABI-encoded dynamic uint32 array
+    const calldata = '0x883bdbfd' +
+      '0000000000000000000000000000000000000000000000000000000000000020' + // offset
+      '0000000000000000000000000000000000000000000000000000000000000002' + // length = 2
+      '0000000000000000000000000000000000000000000000000000000000000000' + // secondsAgo[0] = 0
+      '0000000000000000000000000000000000000000000000000000000000000384'; // secondsAgo[1] = 900
+
+    const result = await rpcCall('eth_call', [
+      { to: pool.poolAddress, data: calldata }, 'latest'
+    ]);
+
+    if (!result || result === '0x' || result.length < 258) return null; // Need at least 2 int56 values
+
+    // Decode response: (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128s)
+    // tickCumulatives is a dynamic array, starts at offset in response
+    // Layout: offset_ticks(32) + offset_spl(32) + [ticks_length(32) + tick0(32) + tick1(32)] + ...
+    const data = result.slice(2); // strip 0x
+
+    // Read offsets
+    const ticksOffset = parseInt(data.slice(0, 64), 16) * 2; // byte offset → hex char offset
+    const ticksLength = parseInt(data.slice(ticksOffset, ticksOffset + 64), 16);
+    if (ticksLength < 2) return null;
+
+    // Read tick cumulatives (int56 stored as int256)
+    const tick0Hex = data.slice(ticksOffset + 64, ticksOffset + 128);
+    const tick1Hex = data.slice(ticksOffset + 128, ticksOffset + 192);
+
+    const parseSigned256 = (hex: string): bigint => {
+      const val = BigInt('0x' + hex);
+      return val > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+        ? val - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+        : val;
+    };
+
+    const tickCum0 = parseSigned256(tick0Hex); // Now (most recent)
+    const tickCum1 = parseSigned256(tick1Hex); // 900 seconds ago
+
+    // TWAP tick = (tickCumNow - tickCumPast) / elapsed
+    const twapTick = Number(tickCum0 - tickCum1) / TWAP_OBSERVATION_SECONDS;
+
+    // Convert tick to price: price = 1.0001^tick
+    // This gives price of token0 in terms of token1
+    const twapRawPrice = Math.pow(1.0001, twapTick);
+
+    // Apply decimal adjustment (same as decodeSqrtPriceX96)
+    const decimalAdjustment = 10 ** (pool.token0Decimals - pool.token1Decimals);
+    let twapTokenPrice = twapRawPrice * decimalAdjustment;
+
+    // If our token is token1, invert
+    if (!pool.token0IsBase) {
+      twapTokenPrice = 1 / twapTokenPrice;
+    }
+
+    // Convert to USD
+    let twapPriceUSD: number;
+    if (pool.quoteToken === 'WETH') twapPriceUSD = twapTokenPrice * ethPrice;
+    else if (pool.quoteToken === 'cbBTC') twapPriceUSD = btcPrice > 0 ? twapTokenPrice * btcPrice : 0;
+    else if (pool.quoteToken === 'VIRTUAL') twapPriceUSD = virtualPrice > 0 ? twapTokenPrice * virtualPrice : 0;
+    else twapPriceUSD = twapTokenPrice; // USDC
+
+    if (twapPriceUSD <= 0 || !isFinite(twapPriceUSD)) return null;
+
+    // Calculate divergence
+    const divergencePct = ((spotPrice - twapPriceUSD) / twapPriceUSD) * 100;
+
+    let signal: "OVERSOLD" | "OVERBOUGHT" | "NORMAL";
+    if (divergencePct < -TWAP_DIVERGENCE_THRESHOLD_PCT) signal = "OVERSOLD";
+    else if (divergencePct > TWAP_DIVERGENCE_THRESHOLD_PCT) signal = "OVERBOUGHT";
+    else signal = "NORMAL";
+
+    return {
+      twapPrice: twapPriceUSD,
+      spotPrice,
+      divergencePct,
+      signal,
+    };
+  } catch {
+    return null; // observe() reverted — cardinality too low or pool doesn't support oracle
+  }
+}
+
+/**
+ * 2B: Fetch swap event order flow from DEX pool.
+ * Reads eth_getLogs for Swap events over last ~10 minutes (300 blocks on Base).
+ * Determines net buy/sell pressure (CVD) with trade size bucketing.
+ */
+async function fetchSwapOrderFlow(
+  symbol: string,
+  currentPrice: number,
+  ethPrice: number,
+  currentBlock: number
+): Promise<TechnicalIndicators["orderFlow"]> {
+  const pool = poolRegistry[symbol];
+  if (!pool || currentPrice <= 0 || ethPrice <= 0 || currentBlock <= 0) return null;
+
+  try {
+    const fromBlock = '0x' + Math.max(0, currentBlock - ORDER_FLOW_BLOCK_LOOKBACK).toString(16);
+    const toBlock = 'latest';
+
+    const logs = await rpcCall('eth_getLogs', [{
+      address: pool.poolAddress,
+      topics: [SWAP_EVENT_TOPIC],
+      fromBlock,
+      toBlock,
+    }]);
+
+    if (!logs || !Array.isArray(logs) || logs.length === 0) return null;
+
+    let buyVolumeUSD = 0;
+    let sellVolumeUSD = 0;
+    let largeBuyVolume = 0;
+    let tradeCount = 0;
+
+    for (const log of logs) {
+      try {
+        if (!log.data || log.data.length < 130) continue;
+        const data = log.data.slice(2); // strip 0x
+
+        // Swap event data layout:
+        // For V3: amount0 (int256, 32 bytes), amount1 (int256, 32 bytes), sqrtPriceX96 (uint160, 32 bytes), liquidity (uint128, 32 bytes), tick (int24, 32 bytes)
+        // For V2/Aerodrome: similar but may differ — we just need amount0 and amount1
+        const amount0Hex = data.slice(0, 64);
+        const amount1Hex = data.slice(64, 128);
+
+        const parseSigned = (hex: string): bigint => {
+          const val = BigInt('0x' + hex);
+          return val > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+            ? val - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+            : val;
+        };
+
+        const amount0 = parseSigned(amount0Hex);
+        const amount1 = parseSigned(amount1Hex);
+
+        // Determine buy/sell direction:
+        // In a swap, one amount is positive (received by pool) and one negative (sent by pool)
+        // If token0IsBase:
+        //   amount0 < 0 means pool sent token0 to user → user BOUGHT our token
+        //   amount0 > 0 means user sent token0 to pool → user SOLD our token
+        let isBuy: boolean;
+        let tradeAmountRaw: bigint;
+        let tradeDecimals: number;
+
+        if (pool.token0IsBase) {
+          isBuy = amount0 < 0n;
+          tradeAmountRaw = amount0 < 0n ? -amount0 : amount0;
+          tradeDecimals = pool.token0Decimals;
+        } else {
+          isBuy = amount1 < 0n;
+          tradeAmountRaw = amount1 < 0n ? -amount1 : amount1;
+          tradeDecimals = pool.token1Decimals;
+        }
+
+        const tradeAmountTokens = Number(tradeAmountRaw) / (10 ** tradeDecimals);
+        const tradeValueUSD = tradeAmountTokens * currentPrice;
+
+        if (tradeValueUSD <= 0 || !isFinite(tradeValueUSD) || tradeValueUSD > 10_000_000) continue; // Sanity check
+
+        tradeCount++;
+        if (isBuy) {
+          buyVolumeUSD += tradeValueUSD;
+          if (tradeValueUSD >= LARGE_TRADE_THRESHOLD_USD) {
+            largeBuyVolume += tradeValueUSD;
+          }
+        } else {
+          sellVolumeUSD += tradeValueUSD;
+        }
+      } catch {
+        continue; // Skip malformed logs
+      }
+    }
+
+    if (tradeCount === 0) return null;
+
+    const netBuyVolumeUSD = buyVolumeUSD - sellVolumeUSD;
+    const totalVolume = buyVolumeUSD + sellVolumeUSD;
+    const buyRatio = totalVolume > 0 ? buyVolumeUSD / totalVolume : 0.5;
+    const largeBuyPct = buyVolumeUSD > 0 ? (largeBuyVolume / buyVolumeUSD) * 100 : 0;
+
+    let signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
+    if (buyRatio > 0.65) signal = "STRONG_BUY";
+    else if (buyRatio > 0.55) signal = "BUY";
+    else if (buyRatio < 0.35) signal = "STRONG_SELL";
+    else if (buyRatio < 0.45) signal = "SELL";
+    else signal = "NEUTRAL";
+
+    return {
+      netBuyVolumeUSD: Math.round(netBuyVolumeUSD),
+      buyVolumeUSD: Math.round(buyVolumeUSD),
+      sellVolumeUSD: Math.round(sellVolumeUSD),
+      tradeCount,
+      largeBuyPct: Math.round(largeBuyPct),
+      signal,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 2C: Fetch tick liquidity depth around current price.
+ * Reads ticks above/below current to map on-chain support/resistance.
+ * Heavy cycle only — more RPC calls (~11 per pool).
+ */
+async function fetchTickLiquidityDepth(
+  symbol: string,
+  currentPrice: number,
+  ethPrice: number
+): Promise<TechnicalIndicators["tickDepth"]> {
+  const pool = poolRegistry[symbol];
+  if (!pool || (pool.poolType !== 'uniswapV3' && pool.poolType !== 'aerodromeV3')) return null;
+  if (currentPrice <= 0 || ethPrice <= 0) return null;
+
+  const currentTick = lastPoolTicks[symbol];
+  if (currentTick === undefined) return null;
+
+  try {
+    // Get tickSpacing (cached — immutable per pool)
+    if (!pool.tickSpacing) {
+      const tsResult = await rpcCall('eth_call', [
+        { to: pool.poolAddress, data: '0xd0c93a7c' }, 'latest'
+      ]);
+      if (tsResult && tsResult !== '0x') {
+        const tsVal = parseInt(tsResult, 16);
+        // int24 range: handle potential sign
+        pool.tickSpacing = tsVal > 8388607 ? tsVal - 16777216 : tsVal;
+        if (pool.tickSpacing <= 0 || pool.tickSpacing > 16384) {
+          pool.tickSpacing = undefined;
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+
+    const spacing = pool.tickSpacing!;
+
+    // Align current tick to tick spacing
+    const alignedTick = Math.floor(currentTick / spacing) * spacing;
+
+    // Read current liquidity
+    const liqResult = await rpcCall('eth_call', [
+      { to: pool.poolAddress, data: '0x1a686502' }, 'latest'
+    ]);
+    const inRangeLiquidity = liqResult && liqResult !== '0x' ? Number(BigInt(liqResult)) : 0;
+
+    // Read ticks above and below — batch with Promise.allSettled
+    const tickReads: Promise<{ tick: number; liquidityNet: bigint }>[] = [];
+
+    for (let i = 1; i <= TICK_DEPTH_RANGE; i++) {
+      // Below current price (support)
+      const tickBelow = alignedTick - (i * spacing);
+      tickReads.push(readTickLiquidityNet(pool.poolAddress, tickBelow));
+      // Above current price (resistance)
+      const tickAbove = alignedTick + (i * spacing);
+      tickReads.push(readTickLiquidityNet(pool.poolAddress, tickAbove));
+    }
+
+    const tickResults = await Promise.allSettled(tickReads);
+
+    let bidDepthRaw = 0n; // Support: positive liquidityNet below price
+    let askDepthRaw = 0n; // Resistance: negative liquidityNet above price (absolute)
+
+    for (let i = 0; i < TICK_DEPTH_RANGE; i++) {
+      const belowResult = tickResults[i * 2];
+      const aboveResult = tickResults[i * 2 + 1];
+
+      if (belowResult.status === 'fulfilled' && belowResult.value.liquidityNet > 0n) {
+        bidDepthRaw += belowResult.value.liquidityNet;
+      }
+      if (aboveResult.status === 'fulfilled') {
+        const net = aboveResult.value.liquidityNet;
+        if (net < 0n) askDepthRaw += -net; // Take absolute of negative
+      }
+    }
+
+    // Convert liquidity to USD approximation
+    // Each unit of liquidity ≈ sqrt(price) worth of value per tick range
+    // Simplified: liquidity × sqrtPrice × tickRange / 2^96 ≈ value in token terms
+    // For practical purposes, use currentPrice as proxy multiplier
+    const sqrtPrice = Math.sqrt(currentPrice);
+    const tickRangePrice = currentPrice * (Math.pow(1.0001, spacing) - 1); // Price diff per tick spacing
+
+    // Convert liquidity to approximate USD using quote token pricing
+    let quotePrice = 1; // USDC
+    if (pool.quoteToken === 'WETH') quotePrice = ethPrice;
+    else if (pool.quoteToken === 'cbBTC') quotePrice = lastKnownPrices['cbBTC']?.price || 0;
+    else if (pool.quoteToken === 'VIRTUAL') quotePrice = lastKnownPrices['VIRTUAL']?.price || 0;
+
+    // liquidity * tickRangePrice gives rough token-equivalent depth
+    // Divide by 10^18 to normalize (liquidity is in raw form)
+    const scaleFactor = tickRangePrice * quotePrice / (10 ** 18);
+    const bidDepthUSD = Number(bidDepthRaw) * scaleFactor;
+    const askDepthUSD = Number(askDepthRaw) * scaleFactor;
+    const inRangeLiqUSD = inRangeLiquidity * scaleFactor;
+
+    if (bidDepthUSD <= 0 && askDepthUSD <= 0) return null;
+
+    const depthRatio = askDepthUSD > 0 ? bidDepthUSD / askDepthUSD : bidDepthUSD > 0 ? 10 : 1;
+
+    let signal: "STRONG_SUPPORT" | "SUPPORT" | "BALANCED" | "RESISTANCE" | "STRONG_RESISTANCE";
+    if (depthRatio > 2.0) signal = "STRONG_SUPPORT";
+    else if (depthRatio > 1.3) signal = "SUPPORT";
+    else if (depthRatio < 0.5) signal = "STRONG_RESISTANCE";
+    else if (depthRatio < 0.77) signal = "RESISTANCE";
+    else signal = "BALANCED";
+
+    return {
+      bidDepthUSD: Math.round(bidDepthUSD),
+      askDepthUSD: Math.round(askDepthUSD),
+      depthRatio: Math.round(depthRatio * 100) / 100,
+      inRangeLiquidity: Math.round(inRangeLiqUSD),
+      signal,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Helper: Read liquidityNet for a specific tick from a V3 pool.
+ * ticks(int24) selector: 0xf30dba93
+ * Returns (uint128 liquidityGross, int128 liquidityNet, ...)
+ */
+async function readTickLiquidityNet(poolAddress: string, tick: number): Promise<{ tick: number; liquidityNet: bigint }> {
+  // ABI-encode int24 as int256 (two's complement for negative)
+  let tickHex: string;
+  if (tick >= 0) {
+    tickHex = tick.toString(16).padStart(64, '0');
+  } else {
+    // Two's complement for negative int256
+    const twosComp = BigInt('0x10000000000000000000000000000000000000000000000000000000000000000') + BigInt(tick);
+    tickHex = twosComp.toString(16).padStart(64, '0');
+  }
+
+  const result = await rpcCall('eth_call', [
+    { to: poolAddress, data: '0xf30dba93' + tickHex }, 'latest'
+  ]);
+
+  if (!result || result === '0x' || result.length < 130) {
+    return { tick, liquidityNet: 0n };
+  }
+
+  // liquidityNet is at bytes 32-63 (int128 stored as int256)
+  const netHex = result.slice(2 + 64, 2 + 128);
+  const netBigInt = BigInt('0x' + netHex);
+  const liquidityNet = netBigInt > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+    ? netBigInt - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+    : netBigInt;
+
+  return { tick, liquidityNet };
+}
+
+/**
+ * 2D: Orchestrator — fetch all on-chain intelligence for V3 pools.
+ * Launches TWAP + OrderFlow in parallel for each pool.
+ * Tick depth only on heavy cycles.
+ * Returns Record<symbol, { twap, orderFlow, tickDepth }>
+ */
+async function fetchAllOnChainIntelligence(
+  ethPrice: number,
+  onChainPrices: Map<string, number>,
+  includeTickDepth: boolean = true
+): Promise<Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }>> {
+  const result: Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }> = {};
+
+  if (ethPrice <= 0) return result;
+
+  try {
+    // Get current block number (1 call, used for all order flow queries)
+    const blockHex = await rpcCall('eth_blockNumber', []);
+    const currentBlock = blockHex ? parseInt(blockHex, 16) : 0;
+    if (currentBlock <= 0) return result;
+
+    const btcPrice = onChainPrices.get('cbBTC') || lastKnownPrices['cbBTC']?.price || 0;
+    const virtualPrice = onChainPrices.get('VIRTUAL') || lastKnownPrices['VIRTUAL']?.price || 0;
+
+    // Collect all V3 pools to analyze
+    const poolSymbols = Object.entries(poolRegistry)
+      .filter(([symbol, pool]) =>
+        (pool.poolType === 'uniswapV3' || pool.poolType === 'aerodromeV3') &&
+        symbol !== 'ETH' && symbol !== 'WETH' && symbol !== 'USDC' &&
+        pool.consecutiveFailures < 3
+      )
+      .map(([symbol]) => symbol);
+
+    // Launch TWAP + OrderFlow for each pool in parallel
+    const promises = poolSymbols.map(async (symbol) => {
+      const spotPrice = onChainPrices.get(symbol) || lastKnownPrices[symbol]?.price || 0;
+      if (spotPrice <= 0) return;
+
+      const [twap, orderFlow] = await Promise.all([
+        fetchTWAPDivergence(symbol, spotPrice, ethPrice, btcPrice, virtualPrice).catch(() => null),
+        fetchSwapOrderFlow(symbol, spotPrice, ethPrice, currentBlock).catch(() => null),
+      ]);
+
+      let tickDepth: TechnicalIndicators["tickDepth"] = null;
+      if (includeTickDepth) {
+        tickDepth = await fetchTickLiquidityDepth(symbol, spotPrice, ethPrice).catch(() => null);
+      }
+
+      result[symbol] = { twap, orderFlow, tickDepth };
+    });
+
+    await Promise.allSettled(promises);
+
+    // Log summary
+    const twapCount = Object.values(result).filter(r => r.twap).length;
+    const flowCount = Object.values(result).filter(r => r.orderFlow).length;
+    const depthCount = Object.values(result).filter(r => r.tickDepth).length;
+    console.log(`  📊 On-chain intelligence: ${twapCount} TWAP, ${flowCount} flow, ${depthCount} depth signals from ${poolSymbols.length} V3 pools`);
+
+    // Cache for light cycles
+    lastOnChainIntelligence = result;
+
+    return result;
+  } catch (e: any) {
+    console.error(`  ⚠️ On-chain intelligence failed: ${e?.message || String(e)}`);
+    return result;
   }
 }
 
@@ -4395,6 +4872,7 @@ let lastSignalHealth: Record<string, string> = {
   onchain: 'UNKNOWN', fearGreed: 'UNKNOWN', defiLlama: 'UNKNOWN',
   derivatives: 'UNKNOWN', news: 'UNKNOWN', macro: 'UNKNOWN',
   momentum: 'UNKNOWN', altseasonSignal: 'UNKNOWN', stablecoinSupply: 'UNKNOWN',
+  onChainFlow: 'UNKNOWN', // v12.3: On-chain order flow intelligence
   lastUpdated: '',
 };
 
@@ -5904,15 +6382,14 @@ async function getMarketData(): Promise<MarketData> {
     })();
 
     // v12.0: On-chain pricing — fetch all token prices from DEX pools in parallel
-    const onChainPricesPromise = fetchAllOnChainPrices();
-    const volumePromise = enrichVolumeData();
-    const stablecoinPromise = fetchBaseUSDCSupply();
+    const onChainPrices = await fetchAllOnChainPrices();
 
-    // Await all parallel fetches
-    const [onChainPrices, volumeData, stablecoinData] = await Promise.all([
-      onChainPricesPromise,
-      volumePromise,
-      stablecoinPromise,
+    // v12.3: After prices are resolved, launch volume + stablecoin + on-chain intelligence in parallel
+    const ethPrice = onChainPrices.get('ETH') || onChainPrices.get('WETH') || lastKnownPrices['ETH']?.price || lastKnownPrices['WETH']?.price || 0;
+    const [volumeData, stablecoinData, onChainIntel] = await Promise.all([
+      enrichVolumeData(),
+      fetchBaseUSDCSupply(),
+      fetchAllOnChainIntelligence(ethPrice, onChainPrices, true), // includeTickDepth on heavy cycles
     ]);
     const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult } = await intelligencePromise;
 
@@ -5975,7 +6452,7 @@ async function getMarketData(): Promise<MarketData> {
 
     // Fetch technical indicators for all tokens
     console.log("📐 Computing technical indicators (RSI, MACD, Bollinger)...");
-    const indicators = getTokenIndicators(tokens);
+    const indicators = getTokenIndicators(tokens, onChainIntel);
     const indicatorCount = Object.values(indicators).filter(i => i.rsi14 !== null).length;
     console.log(`   ✅ Indicators computed for ${indicatorCount}/${Object.keys(indicators).length} tokens`);
 
@@ -6035,6 +6512,9 @@ async function getMarketData(): Promise<MarketData> {
       altseasonSignal: (priceHistoryStore.tokens['cbBTC']?.prices.length || 0) >= 24 && (priceHistoryStore.tokens['ETH']?.prices.length || priceHistoryStore.tokens['WETH']?.prices.length || 0) >= 24 ? 'LIVE' : 'BUILDING',
       stablecoinSupply: stablecoinData ? 'LIVE' : 'DOWN',
       fundingHistory: 'DISABLED', // v11.5: depends on derivatives, permanently disabled
+      onChainFlow: Object.keys(onChainIntel).length > 0
+        ? (Object.values(onChainIntel).filter(r => r.twap || r.orderFlow).length > Object.keys(onChainIntel).length * 0.5 ? 'LIVE' : 'BUILDING')
+        : 'DOWN', // v12.3: On-chain order flow intelligence
       lastUpdated: new Date().toISOString(),
     };
     const healthEntries = Object.entries(lastSignalHealth).filter(([k, v]) => k !== 'lastUpdated' && v !== 'DISABLED');
@@ -6088,6 +6568,28 @@ interface TechnicalIndicators {
   trendDirection: "STRONG_UP" | "UP" | "SIDEWAYS" | "DOWN" | "STRONG_DOWN";
   overallSignal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
   confluenceScore: number;       // -100 to +100, aggregated signal strength
+  // v12.3: On-Chain Order Flow Intelligence
+  twapDivergence?: {
+    twapPrice: number;          // 15-min TWAP from pool oracle
+    spotPrice: number;          // Current spot from sqrtPriceX96
+    divergencePct: number;      // (spot - twap) / twap * 100
+    signal: "OVERSOLD" | "OVERBOUGHT" | "NORMAL";
+  } | null;
+  orderFlow?: {
+    netBuyVolumeUSD: number;    // Positive = net buying, negative = net selling
+    buyVolumeUSD: number;       // Total buy-side volume (10 min window)
+    sellVolumeUSD: number;      // Total sell-side volume
+    tradeCount: number;         // Number of swaps in window
+    largeBuyPct: number;        // % of buy volume from trades >$5K (smart money)
+    signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
+  } | null;
+  tickDepth?: {
+    bidDepthUSD: number;        // Total LP capital below current price (support)
+    askDepthUSD: number;        // Total LP capital above current price (resistance)
+    depthRatio: number;         // bid/ask ratio — >1.5 = strong support, <0.67 = strong resistance
+    inRangeLiquidity: number;   // Current liquidity() value in USD terms
+    signal: "STRONG_SUPPORT" | "SUPPORT" | "BALANCED" | "RESISTANCE" | "STRONG_RESISTANCE";
+  } | null;
 }
 
 // v12.0: Price history now comes from the self-accumulating on-chain store
@@ -6425,7 +6927,11 @@ function calculateConfluence(
   priceChange24h: number,
   priceChange7d: number,
   adx: TechnicalIndicators["adx14"] = null,
-  atr: { atr: number; atrPercent: number } | null = null
+  atr: { atr: number; atrPercent: number } | null = null,
+  // v12.3: On-Chain Order Flow Intelligence
+  twapDivergence: TechnicalIndicators["twapDivergence"] = null,
+  orderFlow: TechnicalIndicators["orderFlow"] = null,
+  tickDepth: TechnicalIndicators["tickDepth"] = null
 ): { score: number; signal: TechnicalIndicators["overallSignal"] } {
   let score = 0;
   let signals = 0;
@@ -6512,6 +7018,39 @@ function calculateConfluence(
   // v11.5: Fear & Greed mechanical adjustment REMOVED — F&G reflects lagging sentiment,
   // not actionable alpha. Let technical indicators and on-chain data drive confluence.
 
+  // v12.3: TWAP-Spot Divergence (weight: ±15) — manipulation-resistant overbought/oversold
+  if (twapDivergence) {
+    signals++;
+    const div = twapDivergence.divergencePct;
+    if (div < -TWAP_DIVERGENCE_THRESHOLD_PCT) score += 15;           // Spot below TWAP = discount
+    else if (div < -TWAP_MILD_THRESHOLD_PCT) score += 8;             // Mild oversold
+    else if (div > TWAP_DIVERGENCE_THRESHOLD_PCT) score -= 15;       // Spot above TWAP = premium
+    else if (div > TWAP_MILD_THRESHOLD_PCT) score -= 8;              // Mild overbought
+  }
+
+  // v12.3: Order Flow CVD (weight: ±15) — real buy/sell pressure from Swap events
+  if (orderFlow) {
+    signals++;
+    if (orderFlow.signal === "STRONG_BUY") score += 15;
+    else if (orderFlow.signal === "BUY") score += 8;
+    else if (orderFlow.signal === "STRONG_SELL") score -= 15;
+    else if (orderFlow.signal === "SELL") score -= 8;
+    // Smart money confirmation bonus
+    if (orderFlow.largeBuyPct > 50) score += 3;                       // >50% from large trades
+    else if (orderFlow.largeBuyPct < 20 && (orderFlow.signal === "BUY" || orderFlow.signal === "STRONG_BUY")) {
+      score -= 3;                                                      // Retail-only buys less reliable
+    }
+  }
+
+  // v12.3: Tick Liquidity Depth (weight: ±12) — on-chain support/resistance
+  if (tickDepth) {
+    signals++;
+    if (tickDepth.signal === "STRONG_SUPPORT") score += 12;
+    else if (tickDepth.signal === "SUPPORT") score += 6;
+    else if (tickDepth.signal === "STRONG_RESISTANCE") score -= 12;
+    else if (tickDepth.signal === "RESISTANCE") score -= 6;
+  }
+
   // Normalize to -100 to +100
   const normalizedScore = Math.max(-100, Math.min(100, score));
 
@@ -6535,7 +7074,8 @@ function computeIndicators(
   currentPrice: number,
   priceChange24h: number,
   priceChange7d: number,
-  volume24h: number
+  volume24h: number,
+  onChainIntel?: { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }
 ): TechnicalIndicators {
   const history = getCachedPriceHistory(symbol);
 
@@ -6572,7 +7112,10 @@ function computeIndicators(
   const adxData = calculateADX(prices, 14);
 
   const trendDirection = determineTrend(prices, sma20, sma50);
-  const { score, signal } = calculateConfluence(rsi14, macd, bollingerBands, trendDirection, priceChange24h, priceChange7d, adxData, atrData);
+  const twap = onChainIntel?.twap ?? null;
+  const orderFlow = onChainIntel?.orderFlow ?? null;
+  const tickDepth = onChainIntel?.tickDepth ?? null;
+  const { score, signal } = calculateConfluence(rsi14, macd, bollingerBands, trendDirection, priceChange24h, priceChange7d, adxData, atrData, twap, orderFlow, tickDepth);
 
   return {
     rsi14, macd, bollingerBands,
@@ -6584,6 +7127,10 @@ function computeIndicators(
     trendDirection,
     overallSignal: signal,
     confluenceScore: score,
+    // v12.3: On-chain intelligence
+    twapDivergence: twap,
+    orderFlow: orderFlow,
+    tickDepth: tickDepth,
   };
 }
 
@@ -6592,7 +7139,8 @@ function computeIndicators(
  * All data comes from the self-accumulating price history store — no rate limits, no batching needed.
  */
 function getTokenIndicators(
-  tokens: MarketData["tokens"]
+  tokens: MarketData["tokens"],
+  onChainIntel?: Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }>
 ): Record<string, TechnicalIndicators> {
   const indicators: Record<string, TechnicalIndicators> = {};
 
@@ -6607,6 +7155,7 @@ function getTokenIndicators(
       token.priceChange24h,
       token.priceChange7d,
       token.volume24h,
+      onChainIntel?.[token.symbol],
     );
   }
 
@@ -6657,9 +7206,48 @@ function formatIndicatorsForPrompt(indicators: Record<string, TechnicalIndicator
       parts.push(`Vol=${ind.volumeChange24h > 0 ? "+" : ""}${ind.volumeChange24h.toFixed(0)}%vs7dAvg`);
     }
 
+    // v12.3: On-chain order flow intelligence
+    if (ind.twapDivergence) {
+      parts.push(`TWAP=${ind.twapDivergence.divergencePct > 0 ? "+" : ""}${ind.twapDivergence.divergencePct.toFixed(1)}%(${ind.twapDivergence.signal})`);
+    }
+    if (ind.orderFlow) {
+      const netStr = ind.orderFlow.netBuyVolumeUSD >= 0 ? `+$${(ind.orderFlow.netBuyVolumeUSD / 1000).toFixed(1)}K` : `-$${(Math.abs(ind.orderFlow.netBuyVolumeUSD) / 1000).toFixed(1)}K`;
+      const buyPct = Math.round((ind.orderFlow.buyVolumeUSD / (ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD || 1)) * 100);
+      parts.push(`Flow=${ind.orderFlow.signal}(net${netStr},${buyPct}%buy,${ind.orderFlow.largeBuyPct}%lg)`);
+    }
+    if (ind.tickDepth) {
+      parts.push(`Depth=${ind.tickDepth.signal}(bid/ask=${ind.tickDepth.depthRatio.toFixed(1)})`);
+    }
+
     parts.push(`Signal=${ind.overallSignal}(${ind.confluenceScore > 0 ? "+" : ""}${ind.confluenceScore})`);
 
     lines.push(`  ${parts.join(" | ")}`);
+  }
+
+  // v12.3: Add on-chain flow summary for tokens with strongest signals
+  const flowSummary: string[] = [];
+  const depthSummary: string[] = [];
+  for (const token of tokens) {
+    if (token.symbol === "USDC") continue;
+    const ind = indicators[token.symbol];
+    if (!ind) continue;
+    if (ind.orderFlow && ind.orderFlow.signal !== "NEUTRAL") {
+      const buyPct = Math.round((ind.orderFlow.buyVolumeUSD / (ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD || 1)) * 100);
+      const netStr = ind.orderFlow.netBuyVolumeUSD >= 0 ? `$${(ind.orderFlow.netBuyVolumeUSD / 1000).toFixed(1)}K net` : `-$${(Math.abs(ind.orderFlow.netBuyVolumeUSD) / 1000).toFixed(1)}K net`;
+      const desc = (ind.orderFlow.signal === "STRONG_BUY" || ind.orderFlow.signal === "BUY")
+        ? `${token.symbol} buy pressure (${buyPct}% buys, ${netStr})`
+        : `${token.symbol} selling (${buyPct}% buys, ${netStr})`;
+      flowSummary.push(desc);
+    }
+    if (ind.tickDepth && ind.tickDepth.signal !== "BALANCED") {
+      depthSummary.push(`${token.symbol} ${ind.tickDepth.signal.toLowerCase().replace('_', ' ')} (${ind.tickDepth.depthRatio.toFixed(1)}x ratio)`);
+    }
+  }
+  if (flowSummary.length > 0) {
+    lines.push(`  📊 ON-CHAIN FLOW: ${flowSummary.slice(0, 4).join(", ")}`);
+  }
+  if (depthSummary.length > 0) {
+    lines.push(`  📊 LIQUIDITY: ${depthSummary.slice(0, 4).join(", ")}`);
   }
 
   return lines.join("\n");
