@@ -1867,8 +1867,9 @@ interface TradeRecord {
     ethFundingRate: number | null;       // ETH funding rate at time of trade
     baseTVLChange24h: number | null;     // Base chain TVL change
     baseDEXVolume24h: number | null;     // Base DEX volume
-    triggeredBy: "AI" | "STOP_LOSS" | "PROFIT_TAKE" | "EXPLORATION";  // What initiated the trade
+    triggeredBy: "AI" | "STOP_LOSS" | "PROFIT_TAKE" | "EXPLORATION" | "FORCED_DEPLOY";  // What initiated the trade
     isExploration?: boolean;  // V5.0: Whether this was an exploration trade
+    isForced?: boolean;       // v12.2.7: Whether this was a forced deployment trade
     // v5.1: Enhanced context
     btcPositioning?: string | null;      // BTC positioning signal
     ethPositioning?: string | null;      // ETH positioning signal
@@ -2130,9 +2131,21 @@ function describePattern(patternId: string): string {
 function analyzeStrategyPatterns(): void {
   const patterns: Record<string, StrategyPattern> = {};
 
-  // Process each non-HOLD successful trade
-  for (const trade of state.tradeHistory) {
-    if (!trade.success || trade.action === "HOLD" || trade.action === "REBALANCE") continue;
+  // v12.2.7: Filter out forced/exploration trades — they pollute pattern recognition
+  // because they were executed by mechanical pressure, not signal quality.
+  // The engine should only learn from trades the AI actually chose.
+  const aiTrades = state.tradeHistory.filter(t => {
+    if (!t.success || t.action === "HOLD" || t.action === "REBALANCE") return false;
+    if (t.signalContext?.isExploration) return false;
+    if (t.signalContext?.isForced) return false;
+    if (t.signalContext?.triggeredBy === "EXPLORATION" || t.signalContext?.triggeredBy === "FORCED_DEPLOY") return false;
+    // Also catch legacy forced trades by reasoning prefix
+    if (t.reasoning?.startsWith("FORCED_DEPLOY:") || t.reasoning?.startsWith("DEPLOYMENT_FALLBACK:") || t.reasoning?.startsWith("DIRECT_DEPLOYMENT:")) return false;
+    return true;
+  });
+
+  // Process each non-HOLD AI-driven trade
+  for (const trade of aiTrades) {
     const patternId = classifyTradePattern(trade);
 
     if (!patterns[patternId]) {
@@ -2214,7 +2227,8 @@ function analyzeStrategyPatterns(): void {
   }
 
   state.strategyPatterns = patterns;
-  console.log(`  🧠 Strategy patterns analyzed: ${Object.keys(patterns).length} patterns from ${state.tradeHistory.length} trades`);
+  const excludedCount = state.tradeHistory.filter(t => t.success && t.action !== "HOLD" && t.action !== "REBALANCE").length - aiTrades.length;
+  console.log(`  🧠 Strategy patterns analyzed: ${Object.keys(patterns).length} patterns from ${aiTrades.length} AI trades (${excludedCount} forced/exploration trades excluded)`);
 }
 
 /**
@@ -4482,7 +4496,14 @@ function getEffectiveKellyCeiling(portfolioValue: number): number {
 function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number; kellyPct: number; rawKelly: number; winRate: number; avgWin: number; avgLoss: number } {
   const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue); // v10.3: dynamic ceiling
   const recentTrades = state.tradeHistory.slice(-KELLY_ROLLING_WINDOW);
-  const sells = recentTrades.filter(t => t.action === 'SELL' && t.success);
+  // v12.2.7: Exclude forced/exploration sells from Kelly — they dilute the real win rate.
+  // Kelly should reflect the AI's edge, not mechanical deployment outcomes.
+  const sells = recentTrades.filter(t => {
+    if (t.action !== 'SELL' || !t.success) return false;
+    if (t.signalContext?.isExploration || t.signalContext?.isForced) return false;
+    if (t.signalContext?.triggeredBy === "EXPLORATION" || t.signalContext?.triggeredBy === "FORCED_DEPLOY") return false;
+    return true;
+  });
 
   // Need minimum sample size for statistical validity
   // v11.4.22: Increased fallback from FLOOR×3 ($15) to 5% of portfolio (capped at ceiling).
@@ -6903,6 +6924,7 @@ interface TradeDecision {
   reasoning: string;
   sector?: string;
   isExploration?: boolean;
+  isForced?: boolean; // v12.2.7: Tag forced deploy / fallback trades — excluded from self-improvement engine
 }
 
 async function makeTradeDecision(
@@ -7095,7 +7117,7 @@ ENTRY RULES (when to BUY):
 5. MOMENTUM DEPLOYMENT: When BTC/ETH are moving +3%+ in 24h, deploy USDC more readily. Don't sit in 70%+ USDC when the market is running
 6. DEX VOLUME SPIKES: Token with >2x normal volume AND buy-heavy pressure (>55% buys) = strong BUY signal
 7. TVL-PRICE DIVERGENCE: DeFi token with rising TVL but flat price = undervalued, prioritize buying
-8. BIAS TO ACTION: You are a TRADING bot. Holding idle cash is the worst position. If you see ANY reasonable entry with positive confluence, TAKE IT. A mediocre trade beats no trade
+8. QUALITY OVER QUANTITY: You are a TRADING bot but NOT a churning bot. Only enter when 2+ signals align with clear conviction. A missed trade costs nothing — a bad trade costs slippage, fees, and capital. Patience IS a position
 
 EXIT RULES (when to SELL):
 1. PROFIT HARVESTING: Auto-harvests at +25%, +50%, +100%, +200% gain tiers. When recommending SELL, consider harvest history
@@ -7112,20 +7134,18 @@ REGIME STRATEGY:
 - RANGING: Mean-reversion. Buy oversold, sell overbought
 - VOLATILE: More trades, smaller sizes. Buy at dislocated prices
 ${cashDeployment?.active ? `
-═══ 💵 CASH DEPLOYMENT MODE — ACTIVE ═══
+═══ 💵 CASH DEPLOYMENT AWARENESS ═══
 Portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} idle). Deploy budget: $${cashDeployment.deployBudget.toFixed(0)}.
-${cashDeployment.cashPercent > 85 ? `🚨 CRITICAL: You are a trading bot holding almost entirely cash. Return ${Math.min(4, CASH_DEPLOYMENT_MAX_ENTRIES)} BUY actions NOW.` : `Return ${Math.min(3, CASH_DEPLOYMENT_MAX_ENTRIES)} BUY actions across underweight sectors.`}
-- Focus on: most oversold tokens (RSI < 50), underweight sectors, volume picking up
+Look for quality entries in underweight sectors. Prefer tokens with 2+ confirming signals.
+- Focus on: most oversold tokens (RSI < 40), underweight sectors, volume confirming
 - Size: $${Math.min(40, cashDeployment.deployBudget / 4).toFixed(0)}-$${Math.min(80, cashDeployment.deployBudget / 3).toFixed(0)} per trade
 - Confluence threshold lowered by ${cashDeployment.confluenceDiscount} points
-- HOLD is NOT acceptable with ${cashDeployment.cashPercent.toFixed(0)}% cash. Deploy capital
+- HOLD is acceptable if no quality entries exist. Better to wait than force bad trades
 ` : ''}
 RISK RULES:
 1. No single token > 25% of portfolio
-2. ${cashDeployment?.active && cashDeployment.cashPercent > 85
-    ? `CRITICAL DEPLOYMENT: HOLD zone is DISABLED. Any token with confluence > -5 is buyable.`
-    : cashDeployment?.active
-    ? `Deployment mode: HOLD only if confluence < ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)}`
+2. ${cashDeployment?.active
+    ? `Cash is high — prefer entries with confluence > ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)}, but HOLD if nothing qualifies`
     : 'HOLD only if confluence is between -15 and +15 (no clear signal)'}
 3. Don't chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
 4. Minimum trade $1.00
@@ -7660,8 +7680,9 @@ async function executeSingleSwap(
         ethFundingRate: marketData.derivatives?.ethFundingRate || null,
         baseTVLChange24h: marketData.defiLlama?.baseTVLChange24h || null,
         baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
-        triggeredBy: decision.isExploration ? "EXPLORATION" : "AI",
+        triggeredBy: decision.isExploration ? "EXPLORATION" : decision.isForced ? "FORCED_DEPLOY" : "AI",
         isExploration: decision.isExploration || false,
+        isForced: decision.isForced || false,
         // v5.1: Enhanced signal context
         btcPositioning: marketData.derivatives?.btcPositioningSignal || null,
         ethPositioning: marketData.derivatives?.ethPositioningSignal || null,
@@ -8700,6 +8721,7 @@ async function runTradingCycle() {
             amountUSD: deploySize,
             reasoning: `FORCED_DEPLOY: Pre-AI deployment into ${target.token} — ${preAiCashPct.toFixed(0)}% cash is too high. Sector: ${target.sector}`,
             sector: target.sector,
+            isForced: true,
           };
           console.log(`   📦 Deploying $${deploySize.toFixed(0)} → ${target.token}`);
           const result = await executeTrade(deployDecision, marketData);
@@ -8753,12 +8775,12 @@ async function runTradingCycle() {
     console.log("\n🧠 AI analyzing portfolio & market...");
     let decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
 
-    // v11.4.14: DEPLOYMENT FALLBACK — if AI returns HOLD while deployment mode is active,
-    // auto-generate BUY decisions. The AI keeps returning HOLD even with deployment prompts.
-    // No separate threshold — if deployment mode is on, HOLD is not acceptable.
+    // v12.2.7: DEPLOYMENT FALLBACK — only fires after 3+ consecutive HOLDs AND cash >65%.
+    // Previously fired immediately on any HOLD in deployment mode, overriding AI judgment.
+    // Now gives the AI 3 chances to find quality entries before mechanical fallback.
     const allHold = decisions.every(d => d.action === 'HOLD');
-    if (allHold && deploymentCheck.active) {
-      console.log(`\n⚡ DEPLOYMENT FALLBACK: AI returned HOLD with ${deploymentCheck.cashPercent.toFixed(0)}% USDC — overriding with auto-deployment`);
+    if (allHold && deploymentCheck.active && state.explorationState.consecutiveHolds >= 3 && deploymentCheck.cashPercent > 65) {
+      console.log(`\n⚡ DEPLOYMENT FALLBACK: ${state.explorationState.consecutiveHolds} consecutive HOLDs with ${deploymentCheck.cashPercent.toFixed(0)}% USDC — deploying into best-scoring entries`);
 
       // Pick tokens from the most underweight sectors
       const underweightSectors = sectorAllocations
@@ -8802,6 +8824,7 @@ async function runTradingCycle() {
             amountUSD: sizePerTrade,
             reasoning: `DEPLOYMENT_FALLBACK: Auto-deploy into ${bestToken} (${sector.name} sector underweight by ${sector.drift.toFixed(1)}%). AI returned HOLD but portfolio is ${deploymentCheck.cashPercent.toFixed(0)}% cash.`,
             sector: sectorKey,
+            isForced: true,
           });
           console.log(`   📦 Auto-BUY: $${sizePerTrade.toFixed(0)} → ${bestToken} (${sector.name}, drift: ${sector.drift.toFixed(1)}%)`);
         }
@@ -9019,70 +9042,11 @@ async function runTradingCycle() {
       // All decisions were HOLD
       state.explorationState.consecutiveHolds++;
 
-      // v11.4.14: POST-GUARDRAIL DEPLOYMENT FALLBACK — no cash% gate.
-      // If ALL decisions ended up as HOLD and deployment mode is active, force buys.
-      if (deploymentCheck.active) {
-        console.log(`\n⚡⚡ POST-GUARDRAIL FALLBACK: ${state.explorationState.consecutiveHolds} consecutive HOLDs with ${deploymentCheck.cashPercent.toFixed(0)}% cash — forcing direct buys`);
-
-        // Build buy targets from most underweight sectors
-        const sectorPicks: { token: string; sector: string; sectorName: string; drift: number }[] = [];
-        const sortedSectors = [...sectorAllocations].sort((a, b) => a.drift - b.drift);
-
-        for (const sector of sortedSectors.slice(0, 4)) {
-          const sectorKey = Object.keys(SECTORS).find(k => SECTORS[k as keyof typeof SECTORS].name === sector.name) as keyof typeof SECTORS | undefined;
-          if (!sectorKey) continue;
-          const tokens = SECTORS[sectorKey].tokens.filter(t => t !== 'USDC' && t !== 'WETH');
-          // Pick token with smallest current holding (most room to grow)
-          let bestToken = '';
-          let smallestHolding = Infinity;
-          for (const token of tokens) {
-            const bal = balances.find(b => b.symbol === token);
-            const holdingPct = bal ? ((bal.usdValue || 0) / state.trading.totalPortfolioValue) * 100 : 0;
-            if (holdingPct < smallestHolding && holdingPct < 10) {
-              smallestHolding = holdingPct;
-              bestToken = token;
-            }
-          }
-          if (bestToken) {
-            sectorPicks.push({ token: bestToken, sector: sectorKey, sectorName: sector.name, drift: sector.drift });
-          }
-        }
-
-        const directBuySize = Math.min(100, deploymentCheck.deployBudget / sectorPicks.length); // v11.4.13: $100 max (was $40)
-        let directBuysExecuted = 0;
-
-        for (const pick of sectorPicks.slice(0, 3)) {
-          if (directBuySize < 5) break;
-          console.log(`   📦 DIRECT BUY: $${directBuySize.toFixed(0)} → ${pick.token} (${pick.sectorName}, drift: ${pick.drift.toFixed(1)}%)`);
-          const directDecision: TradeDecision = {
-            action: 'BUY',
-            fromToken: 'USDC',
-            toToken: pick.token,
-            amountUSD: directBuySize,
-            reasoning: `DIRECT_DEPLOYMENT: Force-buy ${pick.token} — portfolio ${deploymentCheck.cashPercent.toFixed(0)}% cash, ${pick.sectorName} sector underweight by ${pick.drift.toFixed(1)}%. All AI decisions were HOLD for ${state.explorationState.consecutiveHolds} cycles.`,
-            sector: pick.sector,
-          };
-          try {
-            const result = await executeTrade(directDecision, marketData);
-            if (result.success) {
-              directBuysExecuted++;
-              console.log(`   ✅ Direct buy executed: ${pick.token}`);
-            } else {
-              console.log(`   ❌ Direct buy failed: ${pick.token} — ${result.error}`);
-            }
-          } catch (err: any) {
-            console.log(`   ❌ Direct buy error: ${pick.token} — ${err.message}`);
-          }
-        }
-
-        if (directBuysExecuted > 0) {
-          anyTradeExecuted = true;
-          state.explorationState.consecutiveHolds = 0;
-          state.explorationState.lastTradeTimestamp = new Date().toISOString();
-          analyzeStrategyPatterns();
-          saveTradeHistory();
-          console.log(`   ⚡ Direct deployment: ${directBuysExecuted} buys executed`);
-        }
+      // v12.2.7: POST-GUARDRAIL FALLBACK REMOVED — was the 4th forced-buy mechanism
+      // stacking on Pre-AI Forced Deploy + AI Prompt Override + Deployment Fallback.
+      // When AI says HOLD after guardrails, respect it. The AI has the most context.
+      if (deploymentCheck.active && state.explorationState.consecutiveHolds >= 5) {
+        console.log(`\n📊 AI has returned HOLD for ${state.explorationState.consecutiveHolds} consecutive cycles with ${deploymentCheck.cashPercent.toFixed(0)}% cash — respecting AI judgment`);
       }
     }
 

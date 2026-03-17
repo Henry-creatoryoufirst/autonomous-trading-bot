@@ -150,7 +150,7 @@ export const REVIEW_TRADE_INTERVAL = 10;
 export const REVIEW_TIME_INTERVAL_HOURS = 24;
 
 /** Stagnation threshold — trigger exploration trade if no trade in this many hours */
-export const STAGNATION_THRESHOLD_HOURS = 1; // v11.4.22: 48 → 1h — bot must stay active
+export const STAGNATION_THRESHOLD_HOURS = 4; // v12.2.7: 1h → 4h — 1h was too aggressive, contributed to overtrading. Let AI breathe
 
 /** Max exploration trade amount (USD) */
 export const EXPLORATION_TRADE_USD = 50; // v11.4.22: $3 → $50 — build real positions
@@ -464,7 +464,7 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * Bot was stuck at 29.6% — 0.4% below threshold — doing nothing with $1,482 USDC.
  * 20% ensures deployment mode fires for any meaningful cash drag.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 30; // v12.2.2: 20 → 30 — 20% was too aggressive, caused churn with stop-losses
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 50; // v12.2.7: 30 → 50 — four forced deploy mechanisms stacked, causing churn loop (buy → stop → buy). Let AI decide deployment
 
 /** Confluence score reduction when in deployment mode (makes entries easier)
  *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */
