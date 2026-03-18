@@ -27,16 +27,16 @@ export const VOLUME_SPIKE_THRESHOLD = 2.0;
 // ============================================================================
 
 /** Minimum cycle interval in seconds (maximum vigilance during volatility) */
-export const ADAPTIVE_MIN_INTERVAL_SEC = 30;
+export const ADAPTIVE_MIN_INTERVAL_SEC = 60; // v14.2: 30→60s — even max vigilance shouldn't be sub-minute
 
 /** Maximum cycle interval in seconds (calm markets, conserve API quota) */
 export const ADAPTIVE_MAX_INTERVAL_SEC = 300; // 5 minutes
 
 /** Default cycle interval in seconds (normal conditions) */
-export const ADAPTIVE_DEFAULT_INTERVAL_SEC = 120; // 2 minutes
+export const ADAPTIVE_DEFAULT_INTERVAL_SEC = 300; // v14.2: 120→300s (5 min) — matches VOLATILITY_SPEED_MAP.NORMAL
 
 /** Emergency rapid-fire interval in seconds (triggered by large drops) */
-export const EMERGENCY_INTERVAL_SEC = 15;
+export const EMERGENCY_INTERVAL_SEC = 30; // v14.2: 15→30s — even emergencies don't need 15s cycles
 
 /** Emergency trigger: any position drops this much → immediate heavy cycle */
 export const EMERGENCY_DROP_THRESHOLD = -0.05; // -5%
@@ -52,12 +52,12 @@ export const PORTFOLIO_SENSITIVITY_TIERS = [
 
 /** Volatility levels that control cycle speed */
 export const VOLATILITY_SPEED_MAP = {
-  EXTREME: 30,    // 30s cycles — market is on fire
-  HIGH: 45,       // 45s cycles — significant movement
-  ELEVATED: 60,   // 60s cycles — above normal activity
-  NORMAL: 120,    // 2min cycles — standard conditions
-  LOW: 180,       // 3min cycles — quiet market
-  DEAD: 300,      // 5min cycles — nothing happening
+  EXTREME: 60,    // v14.2: 30→60s cycles — reduce churn, 308 trades/day was killing the portfolio
+  HIGH: 120,      // v14.2: 45→120s cycles — 2min minimum for significant movement
+  ELEVATED: 180,  // v14.2: 60→180s cycles — 3min for above normal activity
+  NORMAL: 300,    // v14.2: 120→300s cycles — 5min standard conditions
+  LOW: 300,       // 5min cycles — quiet market (unchanged)
+  DEAD: 300,      // 5min cycles — nothing happening (unchanged)
 } as const;
 
 /** WebSocket reconnect delay in ms */
@@ -591,8 +591,20 @@ export const RIDE_THE_WAVE_MIN_MOVE = 5;
 /** Deploy this % of portfolio on a wave ride entry */
 export const RIDE_THE_WAVE_SIZE_PCT = 4;
 
-/** Dedup window in minutes for scale-up buys (shorter than normal 5min) */
-export const SCALE_UP_DEDUP_WINDOW_MINUTES = 1;
+/** Dedup window in minutes for scale-up buys (shorter than normal 15min) */
+export const SCALE_UP_DEDUP_WINDOW_MINUTES = 5; // v14.2: 1→5 min — reduce churn on scale-up/wave trades
+
+/** Dedup window in minutes for forced deploy buys */
+export const FORCED_DEPLOY_DEDUP_WINDOW_MINUTES = 10; // v14.2: was hardcoded 2min → 10min constant
+
+/** Dedup window in minutes for momentum exit sells */
+export const MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES = 5; // v14.2: was hardcoded 1min → 5min constant
+
+/** Dedup window in minutes for normal AI trades */
+export const NORMAL_DEDUP_WINDOW_MINUTES = 15; // v14.2: was hardcoded 5min → 15min constant
+
+/** Maximum trades to execute per cycle (prevents churn) */
+export const MAX_TRADES_PER_CYCLE = 3; // v14.2: cap total trades per cycle — stop-loss > momentum-exit > profit-take > AI > scale-up > forced-deploy > ride-the-wave
 
 /** Max position percent override for tokens showing strong momentum */
 export const MOMENTUM_MAX_POSITION_PERCENT = 15;

@@ -228,6 +228,10 @@ import {
   RIDE_THE_WAVE_MIN_MOVE,
   RIDE_THE_WAVE_SIZE_PCT,
   SCALE_UP_DEDUP_WINDOW_MINUTES,
+  FORCED_DEPLOY_DEDUP_WINDOW_MINUTES,
+  MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES,
+  NORMAL_DEDUP_WINDOW_MINUTES,
+  MAX_TRADES_PER_CYCLE,
   MOMENTUM_MAX_POSITION_PERCENT,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
@@ -317,7 +321,7 @@ const SECTORS = {
 // v11.4.11: Tokens that CDP SDK's routing service cannot swap (returns "Invalid request").
 // CoinbaseSmartWallet uses AA — can't fall back to direct DEX calls either.
 // These are skipped during forced deployment rotation; alternatives from the same sector are used.
-const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
+const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL', 'MORPHO', 'cbLTC', 'PENDLE']);
 
 // Complete token registry with addresses and metadata
 const TOKEN_REGISTRY: Record<string, {
@@ -7956,12 +7960,12 @@ async function executeTrade(
   const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
   const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
-  // v13.0: Scale-up/wave-ride buys on winning positions get 1min cooldown to allow rapid scaling
+  // v14.2: Dedup windows increased across the board to reduce churn (was 308 trades/day)
   const isScaleUpTier = dedupTier === 'SCALE_UP' || dedupTier === 'RIDE_THE_WAVE';
-  const dedupWindowMinutes = isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES
-    : dedupTier === 'MOMENTUM_EXIT' ? 1
-    : dedupTier === 'FORCED_DEPLOY' ? 2
-    : 5; // v11.4.22: 15 → 5 min — faster position building, bot needs to stay active
+  const dedupWindowMinutes = isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES        // 5 min (was 1)
+    : dedupTier === 'MOMENTUM_EXIT' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES          // 5 min (was 1)
+    : dedupTier === 'FORCED_DEPLOY' ? FORCED_DEPLOY_DEDUP_WINDOW_MINUTES          // 10 min (was 2)
+    : NORMAL_DEDUP_WINDOW_MINUTES; // 15 min (was 5) — stop rapid re-trading of same tokens
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
   // v11.4.17: In-flight lock — prevent parallel cycles from both passing dedup check
   if (tradeInFlight.has(dedupKey)) {
@@ -9337,7 +9341,7 @@ async function runTradingCycle() {
         BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
         AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT'],
         MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
-        DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'MORPHO', 'RSR', 'PENDLE'],
+        DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'RSR'],  // v14.2: removed MORPHO, PENDLE (CDP unsupported)
       };
 
       // v12.2: Shuffle each sector's token list to prevent first-token bias (ETH dominance fix)
@@ -9349,7 +9353,7 @@ async function runTradingCycle() {
       }
 
       const deployTargets: { token: string; sector: string }[] = [];
-      const FORCED_DEPLOY_DEDUP_MINUTES = 2; // v11.4.20: 5 → 2 min — matches executeTrade dedup window
+      const FORCED_DEPLOY_DEDUP_MINUTES = FORCED_DEPLOY_DEDUP_WINDOW_MINUTES; // v14.2: uses constant (10 min)
       for (const [sector, tokens] of Object.entries(sectorTokenPool)) {
         // Pick the token in this sector that's NOT in the dedup log and not blocked
         for (const token of tokens) {
@@ -9367,7 +9371,7 @@ async function runTradingCycle() {
         }
       }
 
-      const deploySize = Math.min(150, preAiUSDC * 0.10); // v11.4.13: 10% of USDC per token, max $150 (was 5%/$80)
+      const deploySize = Math.max(25, Math.min(150, preAiUSDC * 0.10)); // v14.2: min $25 per deploy (was no floor), max $150, 10% of USDC
       let preAiBuys = 0;
       for (const target of deployTargets) {
         try {
@@ -9622,6 +9626,35 @@ async function runTradingCycle() {
         decisions = fallbackBuys;
         console.log(`   Generated ${fallbackBuys.length} fallback BUY decisions`);
       }
+    }
+
+    // v14.2: MAX_TRADES_PER_CYCLE GUARD — cap total trades to prevent churn
+    // Priority order: stop-loss > momentum-exit > profit-take > AI > scale-up > forced-deploy > ride-the-wave
+    if (decisions.filter(d => d.action !== 'HOLD').length > MAX_TRADES_PER_CYCLE) {
+      const priorityOrder = (d: TradeDecision): number => {
+        const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
+        switch (tier) {
+          case 'STOP_LOSS': return 0;
+          case 'MOMENTUM_EXIT': return 1;
+          case 'PROFIT_TAKE': return 2;
+          default: return 3; // AI
+          case 'SCALE_UP': return 4;
+          case 'FORCED_DEPLOY': return 5;
+          case 'DEPLOYMENT_FALLBACK': return 5;
+          case 'RIDE_THE_WAVE': return 6;
+        }
+      };
+      const actionDecisions = decisions.filter(d => d.action !== 'HOLD');
+      const holdDecisions = decisions.filter(d => d.action === 'HOLD');
+      actionDecisions.sort((a, b) => priorityOrder(a) - priorityOrder(b));
+      const kept = actionDecisions.slice(0, MAX_TRADES_PER_CYCLE);
+      const dropped = actionDecisions.length - MAX_TRADES_PER_CYCLE;
+      console.log(`\n⚠️ TRADE_CAP: Dropping ${dropped} lower-priority trades this cycle (max ${MAX_TRADES_PER_CYCLE} per cycle)`);
+      for (const d of actionDecisions.slice(MAX_TRADES_PER_CYCLE)) {
+        const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
+        console.log(`   Dropped: ${tier} ${d.action} ${d.fromToken}→${d.toToken} $${d.amountUSD.toFixed(0)}`);
+      }
+      decisions = [...kept, ...holdDecisions];
     }
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
