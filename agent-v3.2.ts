@@ -90,6 +90,9 @@ import * as dotenv from "dotenv";
 import cron from "node-cron";
 import axios from "axios";
 import { parseUnits, formatUnits, formatEther, getAddress, type Address } from "viem";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+const BOT_VERSION: string = _require("./package.json").version;
 
 // === DERIVATIVES MODULE IMPORTS (v6.0) ===
 import { CoinbaseAdvancedTradeClient } from "./services/services/coinbase-advanced-trade.js";
@@ -3492,7 +3495,7 @@ function loadTradeHistory() {
 function saveTradeHistory() {
   try {
     const data = {
-      version: "12.0",
+      version: BOT_VERSION,
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
@@ -11161,7 +11164,7 @@ function apiPortfolio() {
     uptime: `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`,
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
-    version: "12.0",
+    version: BOT_VERSION,
     // v8.2: Deposit tracking — separate injected capital from trading gains
     totalDeposited: state.totalDeposited,
     depositCount: state.depositHistory.length,
@@ -11663,7 +11666,7 @@ let lastIntelligenceData: {
 function apiIntelligence() {
   const perf = calculateTradePerformance();
   return {
-    version: "12.0",
+    version: BOT_VERSION,
     defiLlama: lastIntelligenceData?.defi || null,
     derivatives: lastIntelligenceData?.derivatives || null,
     newsSentiment: lastIntelligenceData?.news || null,
@@ -11702,7 +11705,7 @@ function apiPatterns() {
   const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
   const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
   return {
-    version: "12.0",
+    version: BOT_VERSION,
     totalPatterns: patterns.length,
     patternsWithData: patterns.filter(p => p.stats.sampleSize >= 3).length,
     topPerformers,
@@ -11714,7 +11717,7 @@ function apiPatterns() {
 function apiReviews() {
   const reviews = state.performanceReviews.slice(-10);
   return {
-    version: "12.0",
+    version: BOT_VERSION,
     totalReviews: state.performanceReviews.length,
     latestReview: reviews.length > 0 ? reviews[reviews.length - 1] : null,
     recentReviews: reviews,
@@ -11725,7 +11728,7 @@ function apiReviews() {
 
 function apiThresholds() {
   return {
-    version: "12.0",
+    version: BOT_VERSION,
     currentThresholds: state.adaptiveThresholds,
     bounds: THRESHOLD_BOUNDS,
     defaults: DEFAULT_ADAPTIVE_THRESHOLDS,
