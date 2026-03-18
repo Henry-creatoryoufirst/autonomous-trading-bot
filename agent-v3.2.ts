@@ -218,6 +218,16 @@ import {
   LARGE_TRADE_THRESHOLD_USD,
   SWAP_EVENT_TOPIC,
   TWAP_OBSERVATION_SECONDS,
+  // v13.0: Scale-Into-Winners
+  SCALE_UP_MIN_GAIN_PCT,
+  SCALE_UP_BUY_RATIO_MIN,
+  SCALE_UP_SIZE_PCT,
+  MOMENTUM_EXIT_BUY_RATIO,
+  MOMENTUM_EXIT_MIN_PROFIT,
+  RIDE_THE_WAVE_MIN_MOVE,
+  RIDE_THE_WAVE_SIZE_PCT,
+  SCALE_UP_DEDUP_WINDOW_MINUTES,
+  MOMENTUM_MAX_POSITION_PERCENT,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -329,141 +339,141 @@ const TOKEN_REGISTRY: Record<string, {
   ETH: {
     address: "native",
     symbol: "ETH", name: "Ethereum", coingeckoId: "ethereum",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
   },
   WETH: {
     address: "0x4200000000000000000000000000000000000006",
     symbol: "WETH", name: "Wrapped Ethereum", coingeckoId: "ethereum",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
   },
   cbBTC: {
     address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
     symbol: "cbBTC", name: "Coinbase Wrapped BTC", coingeckoId: "bitcoin",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 8,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8,
   },
   cbETH: {
     address: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22",
     symbol: "cbETH", name: "Coinbase Staked ETH", coingeckoId: "coinbase-wrapped-staked-eth",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
   },
   wstETH: {
     address: "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452",
     symbol: "wstETH", name: "Wrapped Lido Staked ETH", coingeckoId: "wrapped-steth",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
   },
   LINK: {
     address: "0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196",
     symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 18,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
   },
   cbLTC: {
     address: "0xcb17C9Db87B595717C857a08468793f5bAb6445F",
     symbol: "cbLTC", name: "Coinbase Wrapped LTC", coingeckoId: "litecoin",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 8,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8,
   },
   cbXRP: {
     address: "0xcb585250f852C6c6bf90434AB21A00f02833a4af",
     symbol: "cbXRP", name: "Coinbase Wrapped XRP", coingeckoId: "ripple",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 5, decimals: 6,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 6,
   },
   // === AI & AGENT TOKENS (20%) ===
   VIRTUAL: {
     address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
     symbol: "VIRTUAL", name: "Virtuals Protocol", coingeckoId: "virtual-protocol",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 5, decimals: 18,
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   AIXBT: {
     address: "0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825",
     symbol: "AIXBT", name: "aixbt by Virtuals", coingeckoId: "aixbt",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 5, decimals: 18,
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   // GAME removed — insufficient liquidity on Base DEX pools (failed 5+ consecutive swaps)
   HIGHER: {
     address: "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   VVV: {
     address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   CLANKER: {
     address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
     symbol: "CLANKER", name: "Clanker", coingeckoId: "clanker",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 5, decimals: 18,
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
     symbol: "BRETT", name: "Brett", coingeckoId: "brett",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   DEGEN: {
     address: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
     symbol: "DEGEN", name: "Degen", coingeckoId: "degen-base",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   TOSHI: {
     address: "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4",
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   MOCHI: {
     address: "0xF6e932Ca12afa26665dC4dDE7e27be02A7c02e50",
     symbol: "MOCHI", name: "Mochi", coingeckoId: "mochi-2",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   NORMIE: {
     address: "0x7F12d13B34F5F4f0a9449c16Bcd42f0da47AF200",
     symbol: "NORMIE", name: "Normie", coingeckoId: "normie-base",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   KEYCAT: {
     address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
     symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 3, decimals: 18,
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   // === DEFI PROTOCOLS (20%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
     symbol: "AERO", name: "Aerodrome Finance", coingeckoId: "aerodrome-finance",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
     symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   SEAM: {
     address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
     symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   EXTRA: {
     address: "0x2Dad3a13ef0C6366220f989157009e501e7938F8",
     symbol: "EXTRA", name: "Extra Finance", coingeckoId: "extra-finance",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   BAL: {
     address: "0x4158734D47Fc9692176B5085E0F52ee0Da5d47F1",
     symbol: "BAL", name: "Balancer", coingeckoId: "balancer",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   MORPHO: {
     address: "0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842",
     symbol: "MORPHO", name: "Morpho", coingeckoId: "morpho",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   PENDLE: {
     address: "0xa99F6E6785da0F5d6FB42495Fe424BCE029Eeb3E",
     symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   RSR: {
     address: "0xaB36452DbAC151bE02b16Ca17d8919826072f64a",
     symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 5, decimals: 18,
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
 };
 
@@ -1755,13 +1765,13 @@ const CONFIG = {
     intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || String(DEFAULT_TRADING_INTERVAL_MINUTES)),
     // V3.1: Risk-adjusted position sizing
     maxPositionPercent: 25,  // No single token > 25% of portfolio
-    minPositionUSD: 5,       // Minimum position size
+    minPositionUSD: 15,      // Minimum position size — no dust trades
     rebalanceThreshold: 10,  // Rebalance if sector drift > 10%
     slippageBps: 100,        // 1% slippage tolerance for swaps
     // V5.1.1: Tiered Profit Harvesting — scale out in tranches, bank small wins consistently
     profitTaking: {
       enabled: true,
-      targetPercent: 20,        // Legacy: original trigger (used by adaptive thresholds as base)
+      targetPercent: 30,        // Let winners run to 30% before harvesting
       sellPercent: 30,          // Legacy: original sell amount
       minHoldingUSD: 5,         // Don't trigger if holding < $5
       cooldownHours: 8,         // v11.4.13: 24h → 8h — need harvests to happen for payouts. 24h was too restrictive
@@ -2536,7 +2546,7 @@ const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   confluenceSell: -8,     // v11.4.22: Symmetrical with buy threshold
   confluenceStrongBuy: 30, // v11.4.22: Lowered from 40 — more achievable for conviction trades
   confluenceStrongSell: -30, // v11.4.22: Symmetrical
-  profitTakeTarget: 20,
+  profitTakeTarget: 30,    // Let winners run to 30% before harvesting
   profitTakeSellPercent: 30,
   stopLossPercent: -15,       // v6.2: tightened from -25%
   trailingStopPercent: -12,   // v6.2: tightened from -20%
@@ -4768,6 +4778,21 @@ function getAdjustedSectorTargets(signal: AltseasonSignal): Record<string, numbe
     adjusted.MEME_COINS = Math.max(0.10, (adjusted.MEME_COINS || 0) + BTC_DOMINANCE_SECTOR_BOOST.MEME_COINS);
     adjusted.DEFI = Math.max(0.15, (adjusted.DEFI || 0) + BTC_DOMINANCE_SECTOR_BOOST.DEFI);
   }
+
+  // v14.0: Blue Chip Momentum Boost — when BTC is trending up (+2% 24h), temporarily
+  // raise BLUE_CHIP target from base to 50% by reducing MEME_COINS allocation.
+  // This stacks with BTC_DOMINANCE_FLIGHT but also fires independently on BTC uptrends.
+  const btcPrice = lastKnownPrices['cbBTC'] || lastKnownPrices['BTC'];
+  if (btcPrice && btcPrice.change24h >= 2) {
+    const currentBlueChip = adjusted.BLUE_CHIP || 0;
+    const currentMeme = adjusted.MEME_COINS || 0;
+    if (currentBlueChip < 0.50) {
+      const boost = Math.min(0.10, 0.50 - currentBlueChip); // Boost up to 50%
+      adjusted.BLUE_CHIP = currentBlueChip + boost;
+      adjusted.MEME_COINS = Math.max(0.05, currentMeme - boost); // Take from meme allocation
+    }
+  }
+
   const sum = Object.values(adjusted).reduce((a, b) => a + b, 0);
   if (sum > 0 && Math.abs(sum - 1.0) > 0.001) {
     for (const key of Object.keys(adjusted)) adjusted[key] = adjusted[key] / sum;
@@ -4835,17 +4860,24 @@ function calculateMarketMomentum(): MarketMomentumSignal {
   score = Math.max(-100, Math.min(100, score));
 
   // Calculate position multiplier based on momentum score
-  // Score > +30: market is moving, deploy more aggressively (up to 1.5x)
+  // v14.0: More aggressive momentum deployment
+  // Score > +20: market is moving, deploy more aggressively (up to 1.5x)
+  // BTC/ETH +3% or more in 24h: immediate 1.5x multiplier (catching the wave)
   // Score < -30: market is dropping, be cautious (down to 0.5x)
-  // Between -30 and +30: normal sizing (1.0x)
   let positionMultiplier = 1.0;
-  if (score > 30) {
-    positionMultiplier = 1.0 + Math.min(0.5, (score - 30) / 140); // +30 to +100 → 1.0 to 1.5
+
+  // v14.0: Direct BTC/ETH momentum boost — when majors move +3%, go 1.5x immediately
+  const btcStrongMomentum = (btc24h ?? 0) >= 3;
+  const ethStrongMomentum = (eth24h ?? 0) >= 3;
+  if (btcStrongMomentum || ethStrongMomentum) {
+    positionMultiplier = 1.5;
+  } else if (score > 20) {
+    positionMultiplier = 1.0 + Math.min(0.5, (score - 20) / 160); // +20 to +100 → 1.0 to 1.5
   } else if (score < -30) {
     positionMultiplier = 1.0 + Math.max(-0.5, (score + 30) / 140); // -30 to -100 → 1.0 to 0.5
   }
 
-  const deploymentBias = score > 30 ? 'AGGRESSIVE' : score < -30 ? 'CAUTIOUS' : 'NORMAL';
+  const deploymentBias = (btcStrongMomentum || ethStrongMomentum || score > 20) ? 'AGGRESSIVE' : score < -30 ? 'CAUTIOUS' : 'NORMAL';
 
   return {
     score: Math.round(score * 10) / 10,
@@ -4929,7 +4961,7 @@ interface BreakerState {
   consecutiveLosses: number;
   lastBreakerTriggered: string | null;    // ISO timestamp when breaker last fired
   lastBreakerReason: string | null;
-  breakerSizeReductionUntil: string | null; // ISO timestamp — 50% size reduction expires
+  breakerSizeReductionUntil: string | null; // ISO timestamp — 30% size reduction expires
   dailyBaseline: { date: string; value: number };   // Reset at midnight UTC
   weeklyBaseline: { weekStart: string; value: number }; // Reset Monday midnight UTC
   // v10.4: Rolling window loss tracker — catches bad streaks even with scattered wins
@@ -7037,6 +7069,25 @@ function calculateConfluence(
     else if (orderFlow.largeBuyPct < 20 && (orderFlow.signal === "BUY" || orderFlow.signal === "STRONG_BUY")) {
       score -= 3;                                                      // Retail-only buys less reliable
     }
+
+    // v14.0: "Catching Fire" signal — DEX buy ratio > 60% with high volume = strong momentum
+    const buyRatio = orderFlow.buyVolumeUSD / (orderFlow.buyVolumeUSD + orderFlow.sellVolumeUSD);
+    if (buyRatio > 0.60 && orderFlow.tradeCount > 50) {
+      score += 10; // Bonus for catching-fire momentum (volume + buy pressure)
+    }
+
+    // v14.0: Momentum reversal — buy ratio drops below 45% = sellers taking over
+    // This is an exit signal that should push held positions toward SELL
+    if (buyRatio < 0.45) {
+      score -= 12; // Buyers turning into sellers — strong exit pressure
+    }
+  }
+
+  // v14.0: BTC/ETH strong momentum confluence boost — when majors are running +3%, lower the bar by 5pts
+  const btc24hMom = lastMomentumSignal?.btcChange24h ?? 0;
+  const eth24hMom = lastMomentumSignal?.ethChange24h ?? 0;
+  if (btc24hMom >= 3 || eth24hMom >= 3) {
+    score += 5; // Lower effective confluence threshold by boosting score when market is running
   }
 
   // v12.3: Tick Liquidity Depth (weight: ±12) — on-chain support/resistance
@@ -7550,7 +7601,7 @@ async function makeTradeDecision(
     const deployPerTrade = cashDeployment.deployBudget / CASH_DEPLOYMENT_MAX_ENTRIES;
     maxBuyAmount = Math.min(Math.max(maxBuyAmount, deployPerTrade), availableUSDC);
   }
-  console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 50% CUT' : ''}${cashDeployment?.active ? ' | 💵 DEPLOY MODE' : ''}`);
+  console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 30% CUT' : ''}${cashDeployment?.active ? ' | 💵 DEPLOY MODE' : ''}`);
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
   // v6.1: Merge static tokens with dynamically discovered tokens
   const discoveredTokensList = tokenDiscoveryEngine?.getTradableTokens() || [];
@@ -7689,7 +7740,7 @@ ${volumeSpikeSection}
 ${tradeHistoryContext}${tradeHistorySummary}
 
 ${discoveryIntel}═══ TRADING LIMITS ═══
-- Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 50%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
+- Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 30%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}
 
 ═══ STRATEGY FRAMEWORK v12.0 ═══
@@ -7699,19 +7750,24 @@ ENTRY RULES (when to BUY):
 2. SECTOR PRIORITY: Buy into the most underweight sector first
 3. VOLUME CONFIRMATION: Prefer tokens where volume is above 7-day average
 4. TREND ALIGNMENT: Prefer buying tokens in UP or STRONG_UP trends
-5. MOMENTUM DEPLOYMENT: When BTC/ETH are moving +3%+ in 24h, deploy USDC more readily. Don't sit in 70%+ USDC when the market is running
-6. DEX VOLUME SPIKES: Token with >2x normal volume AND buy-heavy pressure (>55% buys) = strong BUY signal
-7. TVL-PRICE DIVERGENCE: DeFi token with rising TVL but flat price = undervalued, prioritize buying
-8. QUALITY OVER QUANTITY: You are a TRADING bot but NOT a churning bot. Only enter when 2+ signals align with clear conviction. A missed trade costs nothing — a bad trade costs slippage, fees, and capital. Patience IS a position
+5. MOMENTUM DEPLOYMENT: When BTC/ETH are moving +3%+ in 24h, deploy USDC AGGRESSIVELY with 1.5x position sizes. Don't sit in idle USDC when the market is running — this is where money is made
+6. CATCHING FIRE: Token with DEX buy ratio >60% AND volume >2x 7-day average = STRONG BUY — apply 1.5x position size. This is real on-chain demand, not noise
+7. DEX VOLUME SPIKES: Token with >2x normal volume AND buy-heavy pressure (>55% buys) = strong BUY signal
+8. TVL-PRICE DIVERGENCE: DeFi token with rising TVL but flat price = undervalued, prioritize buying
+9. QUALITY OVER QUANTITY: You are a TRADING bot but NOT a churning bot. Only enter when 2+ signals align with clear conviction. A missed trade costs nothing — a bad trade costs slippage, fees, and capital. Patience IS a position
+10. SCALE INTO WINNERS: When an existing position is up ${SCALE_UP_MIN_GAIN_PCT}%+ from cost basis AND has strong momentum (buy ratio > ${SCALE_UP_BUY_RATIO_MIN}%, volume above average), INCREASE the position by 2-4x the original size. This is the most important rule. Small scout positions that prove themselves deserve real capital. A $2 position up 8% is a signal to deploy $50-100 more, not to sit and watch.
+11. RIDE THE WAVE: If a token is up ${RIDE_THE_WAVE_MIN_MOVE}%+ in the last 4 hours with increasing volume, this is a momentum trade opportunity. Deploy ${RIDE_THE_WAVE_SIZE_PCT}% of portfolio immediately. Don't wait for confluence of 3 indicators. Volume + price action IS the signal.
 
 EXIT RULES (when to SELL):
-1. PROFIT HARVESTING: Auto-harvests at +25%, +50%, +100%, +200% gain tiers. When recommending SELL, consider harvest history
+1. PROFIT HARVESTING: Auto-harvests at +30%, +50%, +100%, +200% gain tiers. Let winners run to 30% before first harvest
 2. OVERBOUGHT EXIT: Sell if RSI > 75 AND MACD turning bearish
 3. STOP LOSS: Sell if token is down >20% in 7d and trend is STRONG_DOWN
 4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
 5. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim
 6. CAPITAL RECYCLING: If USDC < $10, SELL 20-30% of your highest-gain position to free capital. A bot with $0 USDC cannot compound
-7. DAILY PAYOUT AWARENESS: Every day at 8 AM UTC, REALIZED profits are distributed to stakeholders. Unrealized gains don't count. Today's realized P&L: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.${payoutUrgency ? ` ⚠️ <4h to settlement — sell a portion of winners NOW to lock in realized profit for distribution.` : ''} Always be banking wins, not just holding them
+7. MOMENTUM REVERSAL: When a held token's DEX buy ratio drops below 45% (buyers turning into sellers), this is a SELL signal regardless of profit/loss. Exit before the crowd
+8. MOMENTUM EXIT: When a held position shows buy ratio dropping below ${MOMENTUM_EXIT_BUY_RATIO}% OR MACD crosses bearish AFTER a profitable run of ${MOMENTUM_EXIT_MIN_PROFIT}%+, SELL the position. Don't wait for stop-loss. The momentum wave is over. Take the profit and redeploy.
+9. DAILY PAYOUT AWARENESS: Every day at 8 AM UTC, REALIZED profits are distributed to stakeholders. Unrealized gains don't count. Today's realized P&L: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.${payoutUrgency ? ` ⚠️ <4h to settlement — sell a portion of winners NOW to lock in realized profit for distribution.` : ''} Always be banking wins, not just holding them
 
 REGIME STRATEGY:
 - TRENDING_UP: Maximum aggression. Buy dips, deploy idle USDC
@@ -7733,15 +7789,15 @@ RISK RULES:
     ? `Cash is high — prefer entries with confluence > ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)}, but HOLD if nothing qualifies`
     : 'HOLD only if confluence is between -15 and +15 (no clear signal)'}
 3. Don't chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
-4. Minimum trade $1.00
+4. Minimum trade $15.00 — if you can't size at least $15, skip the trade entirely. No dust positions
 
 DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Technical signals + DeFi flows > DEX Intelligence (volume spikes + buy/sell pressure) > TVL-Price Divergence > Stablecoin Capital Flow > Cross-Asset Correlations > News sentiment > Sector rebalancing
 
 For SELLING: fromToken = token symbol, toToken = USDC
 For BUYING: fromToken = USDC, toToken = token symbol
 
-DIVERSIFICATION RULE: NEVER buy the same token more than 2 cycles in a row. Rotate across sectors and tokens.
-If a token already holds >20% of portfolio, do NOT buy more — pick a different underweight token or HOLD.
+DIVERSIFICATION RULE: NEVER buy the same token more than 2 cycles in a row UNLESS it is a SCALE-UP candidate (up ${SCALE_UP_MIN_GAIN_PCT}%+ from cost basis with strong momentum). Winners deserve concentration. Rotate for NEW positions only.
+If a token already holds >20% of portfolio, do NOT buy more UNLESS it qualifies for SCALE INTO WINNERS (up ${SCALE_UP_MIN_GAIN_PCT}%+ with buy ratio >${SCALE_UP_BUY_RATIO_MIN}%).
 
 CRITICAL: Respond with ONLY raw JSON. NO prose, NO explanation outside JSON, NO markdown.
 v9.2 MULTI-TRADE: You may return a JSON ARRAY of actions per cycle to deploy capital across multiple tokens simultaneously.
@@ -7899,7 +7955,12 @@ async function executeTrade(
   const dedupToken = decision.action === 'SELL' ? decision.fromToken : decision.toToken;
   const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
-  const dedupWindowMinutes = dedupTier === 'FORCED_DEPLOY' ? 2 : 5; // v11.4.22: 15 → 5 min — faster position building, bot needs to stay active
+  // v13.0: Scale-up/wave-ride buys on winning positions get 1min cooldown to allow rapid scaling
+  const isScaleUpTier = dedupTier === 'SCALE_UP' || dedupTier === 'RIDE_THE_WAVE';
+  const dedupWindowMinutes = isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES
+    : dedupTier === 'MOMENTUM_EXIT' ? 1
+    : dedupTier === 'FORCED_DEPLOY' ? 2
+    : 5; // v11.4.22: 15 → 5 min — faster position building, bot needs to stay active
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
   // v11.4.17: In-flight lock — prevent parallel cycles from both passing dedup check
   if (tradeInFlight.has(dedupKey)) {
@@ -9360,6 +9421,122 @@ async function runTradingCycle() {
     console.log("\n🧠 AI analyzing portfolio & market...");
     let decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
 
+    // === v13.0: SCALE-INTO-WINNERS ENGINE ===
+    // Check each held position for scale-up candidates and momentum exits.
+    // These are injected alongside (not replacing) the AI's decisions.
+    {
+      const scaleUpDecisions: TradeDecision[] = [];
+      const momentumExitDecisions: TradeDecision[] = [];
+      const availableUSDCForScale = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+      const portfolioVal = state.trading.totalPortfolioValue;
+
+      for (const holding of balances) {
+        if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
+        if (!holding.usdValue || holding.usdValue < 1) continue;
+
+        const cb = state.costBasis[holding.symbol];
+        if (!cb || !cb.avgCostBasis || cb.avgCostBasis <= 0) continue;
+
+        const currentPrice = marketData.tokens.find(t => t.symbol === holding.symbol)?.price || 0;
+        if (currentPrice <= 0) continue;
+
+        const gainPct = ((currentPrice - cb.avgCostBasis) / cb.avgCostBasis) * 100;
+        const ind = marketData.indicators[holding.symbol];
+
+        // Get buy ratio from DEX intelligence or on-chain order flow
+        let buyRatioPct = 50; // default neutral
+        if (lastDexIntelligence) {
+          const dexPressure = lastDexIntelligence.buySellPressure.find(p => p.symbol === holding.symbol);
+          if (dexPressure) buyRatioPct = dexPressure.buyRatioH1 * 100;
+        }
+        if (ind?.orderFlow) {
+          const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
+          if (totalFlow > 0) buyRatioPct = (ind.orderFlow.buyVolumeUSD / totalFlow) * 100;
+        }
+
+        const volumeAboveAvg = (ind?.volumeChange24h ?? 0) > 0; // volume > 7-day average
+        const volumeSpike = (ind?.volumeChange24h ?? 0) > 50; // volume 1.5x+ average
+        const macdBearish = ind?.macd ? ind.macd.histogram < 0 && ind.macd.signal === 'BEARISH' : false;
+
+        // --- SCALE-UP CANDIDATE ---
+        // Position up 3%+ with strong momentum → deploy real capital
+        if (gainPct >= SCALE_UP_MIN_GAIN_PCT && (buyRatioPct > SCALE_UP_BUY_RATIO_MIN || volumeSpike)) {
+          const scaleSize = Math.min(
+            portfolioVal * (SCALE_UP_SIZE_PCT / 100),
+            availableUSDCForScale * 0.4 // Don't blow entire USDC on one scale-up
+          );
+          if (scaleSize >= 5 && availableUSDCForScale >= 10) {
+            console.log(`\n🎯 SCALE-UP CANDIDATE: ${holding.symbol} up ${gainPct.toFixed(1)}% | buy ratio: ${buyRatioPct.toFixed(0)}% | vol: ${(ind?.volumeChange24h ?? 0).toFixed(0)}%`);
+            scaleUpDecisions.push({
+              action: 'BUY',
+              fromToken: 'USDC',
+              toToken: holding.symbol,
+              amountUSD: Math.round(scaleSize * 100) / 100,
+              reasoning: `SCALE_UP: ${holding.symbol} scout position up ${gainPct.toFixed(1)}% with buy ratio ${buyRatioPct.toFixed(0)}%. Deploying real capital into proven winner.`,
+              sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+            });
+          }
+        }
+
+        // --- MOMENTUM EXIT ---
+        // Position was up 5%+ but momentum is now reversing → take profit before wave breaks
+        if (gainPct >= MOMENTUM_EXIT_MIN_PROFIT && (buyRatioPct < MOMENTUM_EXIT_BUY_RATIO || macdBearish)) {
+          const sellReason = buyRatioPct < MOMENTUM_EXIT_BUY_RATIO
+            ? `buy ratio collapsed to ${buyRatioPct.toFixed(0)}%`
+            : 'MACD crossed bearish';
+          console.log(`\n⚡ MOMENTUM EXIT: ${holding.symbol} was up ${gainPct.toFixed(1)}% but ${sellReason}`);
+          momentumExitDecisions.push({
+            action: 'SELL',
+            fromToken: holding.symbol,
+            toToken: 'USDC',
+            amountUSD: holding.usdValue * 0.8, // Sell 80% — keep a small position in case it recovers
+            reasoning: `MOMENTUM_EXIT: ${holding.symbol} up ${gainPct.toFixed(1)}% but ${sellReason}. Taking profit before reversal.`,
+            sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+          });
+        }
+      }
+
+      // --- RIDE THE WAVE ---
+      // Tokens with strong short-term moves + volume → momentum entry regardless of current holdings
+      for (const token of marketData.tokens) {
+        if (token.symbol === 'USDC' || token.symbol === 'ETH' || token.symbol === 'WETH') continue;
+        // Use 24h price change as proxy (we don't have 4h data); require >5% AND volume spike
+        if (token.priceChange24h >= RIDE_THE_WAVE_MIN_MOVE) {
+          const ind = marketData.indicators[token.symbol];
+          const volAboveAvg = (ind?.volumeChange24h ?? 0) > 50; // 1.5x+ volume
+          if (!volAboveAvg) continue;
+
+          // Don't wave-ride if we already have a scale-up for this token
+          if (scaleUpDecisions.some(d => d.toToken === token.symbol)) continue;
+          // Don't wave-ride if AI already decided to buy this token
+          if (decisions.some(d => d.action === 'BUY' && d.toToken === token.symbol)) continue;
+
+          const waveSize = Math.min(
+            portfolioVal * (RIDE_THE_WAVE_SIZE_PCT / 100),
+            availableUSDCForScale * 0.3
+          );
+          if (waveSize >= 5 && availableUSDCForScale >= 10) {
+            console.log(`\n🌊 RIDE THE WAVE: ${token.symbol} up ${token.priceChange24h.toFixed(1)}% with ${(ind?.volumeChange24h ?? 0).toFixed(0)}% volume spike`);
+            scaleUpDecisions.push({
+              action: 'BUY',
+              fromToken: 'USDC',
+              toToken: token.symbol,
+              amountUSD: Math.round(waveSize * 100) / 100,
+              reasoning: `RIDE_THE_WAVE: ${token.symbol} up ${token.priceChange24h.toFixed(1)}% in 24h with volume ${(ind?.volumeChange24h ?? 0).toFixed(0)}% above average. Momentum trade.`,
+              sector: TOKEN_REGISTRY[token.symbol]?.sector,
+            });
+          }
+        }
+      }
+
+      // Inject scale-up and momentum exit decisions alongside AI decisions
+      if (scaleUpDecisions.length > 0 || momentumExitDecisions.length > 0) {
+        console.log(`\n📊 SCALE-INTO-WINNERS: ${scaleUpDecisions.length} scale-ups, ${momentumExitDecisions.length} momentum exits`);
+        // Momentum exits go first (free up capital), then AI decisions, then scale-ups
+        decisions = [...momentumExitDecisions, ...decisions, ...scaleUpDecisions];
+      }
+    }
+
     // v12.2.7: DEPLOYMENT FALLBACK — only fires after 3+ consecutive HOLDs AND cash >65%.
     // Previously fired immediately on any HOLD in deployment mode, overriding AI judgment.
     // Now gives the AI 3 chances to find quality entries before mechanical fallback.
@@ -9524,6 +9701,26 @@ async function runTradingCycle() {
             console.log(`   📣 Directive sizing: ×${dirAdj.positionSizeMultiplier} ($${preDirSize.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
           }
         }
+
+        // v14.0: "Catching Fire" momentum multiplier — 1.5x size when on-chain order flow
+        // shows buy ratio > 60% with significant volume (>50 trades in lookback window)
+        const tokenFlow = marketData.indicators[decision.toToken]?.orderFlow;
+        if (tokenFlow) {
+          const totalFlowVol = tokenFlow.buyVolumeUSD + tokenFlow.sellVolumeUSD;
+          const tokenBuyRatio = totalFlowVol > 0 ? tokenFlow.buyVolumeUSD / totalFlowVol : 0.5;
+          if (tokenBuyRatio > 0.60 && tokenFlow.tradeCount > 50) {
+            const preCatchingFire = decision.amountUSD;
+            decision.amountUSD = Math.min(Math.round(decision.amountUSD * 1.5 * 100) / 100, remainingUSDC);
+            console.log(`   🔥 CATCHING FIRE: ${decision.toToken} buy ratio ${(tokenBuyRatio * 100).toFixed(0)}% with ${tokenFlow.tradeCount} trades — 1.5x size ($${preCatchingFire.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+          }
+        }
+
+        // v14.0: Enforce minimum $15 position — no dust trades
+        if (decision.amountUSD < KELLY_POSITION_FLOOR_USD) {
+          console.log(`   🚫 DUST GUARD: $${decision.amountUSD.toFixed(2)} < $${KELLY_POSITION_FLOOR_USD} minimum — skipping trade`);
+          decision.action = "HOLD";
+          decision.reasoning = `Position size $${decision.amountUSD.toFixed(2)} below $${KELLY_POSITION_FLOOR_USD} minimum — not worth the fees`;
+        }
       }
 
       // === POSITION SIZE GUARD ===
@@ -9537,9 +9734,12 @@ async function runTradingCycle() {
         const afterBuyPercent = (afterBuyValue / state.trading.totalPortfolioValue) * 100;
 
         const tokenSector = TOKEN_REGISTRY[decision.toToken]?.sector;
-        const sectorLimit = tokenSector && SECTOR_STOP_LOSS_OVERRIDES[tokenSector]
+        // v13.0: Scale-up / momentum trades get elevated position cap (15% minimum)
+        const isScaleUpOrWave = decision.reasoning?.startsWith('SCALE_UP:') || decision.reasoning?.startsWith('RIDE_THE_WAVE:');
+        const baseSectorLimit = tokenSector && SECTOR_STOP_LOSS_OVERRIDES[tokenSector]
           ? SECTOR_STOP_LOSS_OVERRIDES[tokenSector].maxPositionPercent
           : CONFIG.trading.maxPositionPercent;
+        const sectorLimit = isScaleUpOrWave ? Math.max(baseSectorLimit, MOMENTUM_MAX_POSITION_PERCENT) : baseSectorLimit;
 
         if (afterBuyPercent > sectorLimit) {
           const maxBuyUSD = Math.max(0, (sectorLimit / 100) * state.trading.totalPortfolioValue - currentValue);

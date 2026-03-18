@@ -279,7 +279,7 @@ export const TOKEN_HEAVY_ANALYSIS_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
  * When portfolio drops below this floor, the bot enters HOLD-ONLY mode
  * (no new buys, only stop-loss sells allowed).
  */
-export const CAPITAL_FLOOR_PERCENT = 60; // Hold-only if portfolio < 60% of peak
+export const CAPITAL_FLOOR_PERCENT = 40; // Hold-only if portfolio < 40% of peak — only block buys at severe drawdown
 
 /**
  * Absolute minimum portfolio value (USD) below which ALL trading halts.
@@ -352,12 +352,12 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  * Kelly % = (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
  * Position = Kelly% × KELLY_FRACTION × Portfolio
  */
-export const KELLY_FRACTION = 0.25;           // Quarter Kelly — crypto-appropriate conservatism
+export const KELLY_FRACTION = 0.5;            // Half Kelly — aggressive capital deployment
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
-export const KELLY_POSITION_FLOOR_USD = 5;    // Minimum viable trade
-export const KELLY_POSITION_CEILING_PCT = 10;  // v10.4: 10% of portfolio per trade (was 8%) — let the AI deploy capital
-export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 25; // v11.4.6: Boost for <$10K portfolios — $5K × 25% = $1,250 max per position
+export const KELLY_POSITION_FLOOR_USD = 15;   // Minimum $15 trade — no dust positions
+export const KELLY_POSITION_CEILING_PCT = 18;  // 18% of portfolio per trade — bigger positions, less fragmentation
+export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**
@@ -375,12 +375,12 @@ export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calcula
  * Portfolio-Wide Drawdown Circuit Breaker
  * Triggers on ANY of these conditions
  */
-export const BREAKER_CONSECUTIVE_LOSSES = 3;   // 3 consecutive losing trades → pause
-export const BREAKER_DAILY_DD_PCT = 5;         // 5% daily drawdown → pause
-export const BREAKER_WEEKLY_DD_PCT = 10;       // 10% weekly drawdown → pause
+export const BREAKER_CONSECUTIVE_LOSSES = 5;   // 5 consecutive losing trades → pause (less hair-trigger)
+export const BREAKER_DAILY_DD_PCT = 8;         // 8% daily drawdown → pause
+export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
-export const BREAKER_PAUSE_HOURS = 2;          // Pause duration after breaker triggers
-export const BREAKER_SIZE_REDUCTION = 0.5;     // 50% size reduction for 24h after breaker
+export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
+export const BREAKER_SIZE_REDUCTION = 0.7;     // 30% size reduction for 24h after breaker
 export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
 
 // ============================================================================
@@ -464,7 +464,7 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * Bot was stuck at 29.6% — 0.4% below threshold — doing nothing with $1,482 USDC.
  * 20% ensures deployment mode fires for any meaningful cash drag.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 50; // v12.2.7: 30 → 50 — four forced deploy mechanisms stacked, causing churn loop (buy → stop → buy). Let AI decide deployment
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 25; // Deploy when cash exceeds 25% — stop sitting on idle capital
 
 /** Confluence score reduction when in deployment mode (makes entries easier)
  *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */
@@ -472,14 +472,14 @@ export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 20;
 
 /** Maximum percentage of excess cash to deploy per cycle (prevents all-in)
  *  v11.4.13: Raised from 50% → 65% — deploy faster, the bot needs to be in the market */
-export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 65;
+export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 80;
 
 /** Minimum USDC to always keep as reserve (gas + emergency buffer) */
 export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 150;
 
 /** Number of tokens to target per deployment cycle (spread across sectors)
  *  v11.4.13: Raised from 6 → 8 — more entries per cycle for maximum deployment speed */
-export const CASH_DEPLOYMENT_MAX_ENTRIES = 8;
+export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
 
 // v11.2: CRASH-BUYING OVERRIDE — Let Cash Deployment punch through breaker during extreme fear
 /** Fear & Greed threshold: at or below this, deployment mode can override the institutional breaker */
@@ -559,3 +559,34 @@ export const SWAP_EVENT_TOPIC = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb6
 
 /** TWAP observation period in seconds (15 minutes) */
 export const TWAP_OBSERVATION_SECONDS = 900;
+
+// ============================================================================
+// v13.0: SCALE-INTO-WINNERS — Deploy real capital into proven positions
+// ============================================================================
+
+/** Position must be up this % from cost basis to qualify for scale-up */
+export const SCALE_UP_MIN_GAIN_PCT = 3;
+
+/** Buy ratio must exceed this % to confirm momentum for scale-up */
+export const SCALE_UP_BUY_RATIO_MIN = 55;
+
+/** Deploy this % of portfolio on each scale-up buy */
+export const SCALE_UP_SIZE_PCT = 4;
+
+/** Exit when buy ratio drops below this % on a profitable position */
+export const MOMENTUM_EXIT_BUY_RATIO = 45;
+
+/** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
+export const MOMENTUM_EXIT_MIN_PROFIT = 5;
+
+/** Token must be up this %+ in 4h to qualify as a wave ride */
+export const RIDE_THE_WAVE_MIN_MOVE = 5;
+
+/** Deploy this % of portfolio on a wave ride entry */
+export const RIDE_THE_WAVE_SIZE_PCT = 4;
+
+/** Dedup window in minutes for scale-up buys (shorter than normal 5min) */
+export const SCALE_UP_DEDUP_WINDOW_MINUTES = 1;
+
+/** Max position percent override for tokens showing strong momentum */
+export const MOMENTUM_MAX_POSITION_PERCENT = 15;
