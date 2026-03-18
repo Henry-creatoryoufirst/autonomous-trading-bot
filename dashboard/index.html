@@ -774,6 +774,172 @@ tr:hover td { background: var(--bg-subtle); }
   .section-hdr { margin-top: var(--space-8); }
   .hide-mobile { display: none; }
 }
+
+/* ============================================================================
+   TAB NAV BAR
+   ============================================================================ */
+.tab-nav {
+  display: flex;
+  gap: 0;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 40px;
+  z-index: 190;
+  padding: 0 var(--space-8);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-nav::-webkit-scrollbar { display: none; }
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+}
+.tab-btn:hover { color: var(--text-secondary); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.tab-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 767px) {
+  .tab-nav { padding: 0 var(--space-4); top: 40px; }
+  .tab-btn { padding: 8px 12px; font-size: var(--fs-xs); }
+}
+
+/* ============================================================================
+   SIMULATE TAB
+   ============================================================================ */
+.sim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+  padding: var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.sim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+.sim-field label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.sim-field input {
+  padding: 7px 10px;
+  font-size: var(--fs-base);
+  font-family: var(--font-mono);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  width: 100%;
+  transition: border-color var(--dur-fast);
+  outline: none;
+}
+.sim-field input:focus { border-color: var(--accent); }
+
+.sim-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-left: auto;
+}
+.sim-run-btn {
+  padding: 8px 20px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #1E3A5F 0%, #2563EB 100%);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+}
+.sim-run-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.sim-run-btn:active { transform: translateY(0); }
+.sim-run-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.sim-compare-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.sim-compare-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+.sim-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  gap: 10px;
+}
+.sim-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: simSpin 0.7s linear infinite;
+}
+@keyframes simSpin { to { transform: rotate(360deg); } }
+
+.sim-results { margin-top: var(--space-4); }
+
+.sim-equity-canvas {
+  width: 100%;
+  height: 200px;
+  display: block;
+}
+
+.sim-delta {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  margin-top: 2px;
+}
+.sim-delta.up { color: var(--green); }
+.sim-delta.down { color: var(--red); }
+
+@media (max-width: 767px) {
+  .sim-controls { flex-direction: column; align-items: stretch; }
+  .sim-actions { margin-left: 0; justify-content: flex-end; }
+  .sim-field { min-width: 0; }
+  .sim-equity-canvas { height: 160px; }
+}
 </style>
 </head>
 <body>
@@ -811,8 +977,23 @@ tr:hover td { background: var(--bg-subtle); }
   </div>
 </header>
 
-<!-- MAIN CONTENT — Single Infinite Scroll -->
+<!-- TAB NAV -->
+<nav class="tab-nav" id="tabNav">
+  <button class="tab-btn active" data-tab="overview">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Overview
+  </button>
+  <button class="tab-btn" data-tab="simulate">
+    <svg viewBox="0 0 24 24"><path d="M9 3L7 21M17 3l-2 18M6 8h14M4 16h14"/><circle cx="10" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r="1" fill="currentColor" stroke="none"/></svg>
+    Simulate
+  </button>
+</nav>
+
+<!-- MAIN CONTENT -->
 <div class="main-content">
+
+<!-- TAB: OVERVIEW -->
+<div id="tab-overview">
 
   <!-- BANNERS -->
   <div class="banner banner-emergency" id="emergencyBanner" style="display:none"></div>
@@ -1219,6 +1400,141 @@ tr:hover td { background: var(--bg-subtle); }
   <div class="card"><div id="dataSources" class="loading">Loading...</div></div>
 
   </div><!-- details-panel -->
+</div><!-- tab-overview -->
+
+<!-- TAB: SIMULATE -->
+<div id="tab-simulate" style="display:none">
+
+  <!-- Controls -->
+  <div class="sim-controls">
+    <div class="sim-field">
+      <label>Starting Capital ($)</label>
+      <input type="number" id="simCapital" value="500" min="10" step="50">
+    </div>
+    <div class="sim-field">
+      <label>Profit Take (%)</label>
+      <input type="number" id="simProfitTake" value="20" min="1" max="100" step="1">
+    </div>
+    <div class="sim-field">
+      <label>Stop Loss (%)</label>
+      <input type="number" id="simStopLoss" value="15" min="1" max="100" step="1">
+    </div>
+    <div class="sim-field">
+      <label>Kelly Fraction</label>
+      <input type="number" id="simKelly" value="0.5" min="0.01" max="1" step="0.05">
+    </div>
+    <div class="sim-field">
+      <label>Max Position (%)</label>
+      <input type="number" id="simMaxPos" value="18" min="1" max="100" step="1">
+    </div>
+    <div class="sim-actions">
+      <label class="sim-compare-toggle">
+        <input type="checkbox" id="simCompare">
+        Compare vs Current
+      </label>
+      <button class="sim-run-btn" id="simRunBtn" onclick="runSimulation()">Run Simulation</button>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="simLoading" style="display:none" class="sim-loading">
+    <div class="sim-spinner"></div>
+    Running simulation...
+  </div>
+
+  <!-- Results (hidden until simulation completes) -->
+  <div id="simResults" class="sim-results" style="display:none">
+
+    <!-- KPI Cards -->
+    <div class="grid g-6" style="margin-top: var(--space-4)">
+      <div class="card">
+        <div class="card-label">Total Return</div>
+        <div class="card-value" id="sim-return">--</div>
+        <div class="card-sub" id="sim-return-sub">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Max Drawdown</div>
+        <div class="card-value" id="sim-drawdown">--</div>
+        <div class="card-sub" id="sim-drawdown-sub">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Win Rate</div>
+        <div class="card-value" id="sim-winrate">--</div>
+        <div class="card-sub" id="sim-winrate-sub">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Profit Factor</div>
+        <div class="card-value" id="sim-pf">--</div>
+        <div class="card-sub" id="sim-pf-sub">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Sharpe Ratio</div>
+        <div class="card-value" id="sim-sharpe">--</div>
+        <div class="card-sub" id="sim-sharpe-sub">--</div>
+      </div>
+      <div class="card">
+        <div class="card-label">vs HOLD</div>
+        <div class="card-value" id="sim-hold">--</div>
+        <div class="card-sub" id="sim-hold-sub">Baseline comparison</div>
+      </div>
+    </div>
+
+    <!-- Equity Curve -->
+    <div class="card" style="margin-top: var(--space-4)">
+      <div class="card-label">Simulated Equity Curve</div>
+      <canvas class="sim-equity-canvas" id="simEquityCurve"></canvas>
+      <div id="simEquityLegend" style="display:none;margin-top:var(--space-2);gap:16px;font-size:var(--fs-xs);color:var(--text-secondary)"></div>
+    </div>
+
+    <!-- Simulated Trades Table -->
+    <div class="card" style="margin-top: var(--space-4)">
+      <div class="card-label">Simulated Trades <span style="color:var(--text-muted);font-weight:400;font-size:11px">(last 20)</span></div>
+      <div class="table-wrap" style="max-height:400px">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Action</th>
+              <th>Token</th>
+              <th>Amount</th>
+              <th>P&L</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody id="simTradesBody">
+            <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">Run a simulation to see results</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Compare Delta (shown only in compare mode) -->
+    <div id="simCompareSection" style="display:none;margin-top:var(--space-4)">
+      <div class="section-hdr">A/B Comparison Delta</div>
+      <div class="grid g-4">
+        <div class="card">
+          <div class="card-label">Return Delta</div>
+          <div class="card-value" id="sim-d-return">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Win Rate Delta</div>
+          <div class="card-value" id="sim-d-winrate">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Drawdown Delta</div>
+          <div class="card-value" id="sim-d-drawdown">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Sharpe Delta</div>
+          <div class="card-value" id="sim-d-sharpe">--</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- simResults -->
+
+</div><!-- tab-simulate -->
+
 </div><!-- main-content -->
 
 <!-- TOAST CONTAINER -->
@@ -2697,6 +3013,254 @@ setInterval(fetchAll, 30000);
   sendBtn.addEventListener('click', send);
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
 })();
+
+// ============================================================================
+// TAB NAVIGATION
+// ============================================================================
+(function() {
+  const tabBtns = document.querySelectorAll('.tab-btn[data-tab]');
+  const tabPanels = {
+    overview: document.getElementById('tab-overview'),
+    simulate: document.getElementById('tab-simulate')
+  };
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      // Update buttons
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // Show/hide panels
+      Object.entries(tabPanels).forEach(([key, panel]) => {
+        if (panel) panel.style.display = key === target ? '' : 'none';
+      });
+    });
+  });
+})();
+
+// ============================================================================
+// SIMULATE TAB
+// ============================================================================
+function runSimulation() {
+  const btn = $('simRunBtn');
+  const loading = $('simLoading');
+  const results = $('simResults');
+  const isCompare = $('simCompare').checked;
+
+  // Build query params from inputs
+  const params = new URLSearchParams();
+  const cap = $('simCapital').value;
+  const pt = $('simProfitTake').value;
+  const sl = $('simStopLoss').value;
+  const kf = $('simKelly').value;
+  const mp = $('simMaxPos').value;
+
+  if (cap) params.set('startingCapital', cap);
+  if (pt) params.set('profitTakePercent', pt);
+  if (sl) params.set('stopLossPercent', sl);
+  if (kf) params.set('kellyFraction', kf);
+  if (mp) params.set('maxPositionPercent', mp);
+  if (isCompare) params.set('compare', 'true');
+
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  loading.style.display = 'flex';
+  results.style.display = 'none';
+
+  fetch('/api/simulate?' + params.toString())
+    .then(r => {
+      if (!r.ok) throw new Error('Simulation failed (' + r.status + ')');
+      return r.json();
+    })
+    .then(data => {
+      loading.style.display = 'none';
+      results.style.display = '';
+
+      if (isCompare && data.a && data.b) {
+        renderSimResults(data.a);
+        renderSimEquityCurve(data.a.equityCurve, data.b.equityCurve);
+        renderSimCompare(data.delta);
+        $('simCompareSection').style.display = '';
+      } else {
+        renderSimResults(data);
+        renderSimEquityCurve(data.equityCurve);
+        $('simCompareSection').style.display = 'none';
+      }
+
+      renderSimTrades(isCompare && data.a ? data.a.trades : data.trades);
+    })
+    .catch(err => {
+      loading.style.display = 'none';
+      results.style.display = '';
+      $('sim-return').textContent = 'Error';
+      $('sim-return-sub').textContent = err.message;
+      console.error('Simulation error:', err);
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = 'Run Simulation';
+    });
+}
+
+function renderSimResults(d) {
+  const retClass = (d.totalReturn || 0) >= 0 ? 'positive' : 'negative';
+  $('sim-return').className = 'card-value ' + retClass;
+  $('sim-return').textContent = fmtUSD(d.totalReturn);
+  $('sim-return-sub').textContent = fmtPct(d.totalReturnPct);
+
+  $('sim-drawdown').className = 'card-value negative';
+  $('sim-drawdown').textContent = fmtPct(-(Math.abs(d.maxDrawdownPct || d.maxDrawdown || 0)));
+  $('sim-drawdown-sub').textContent = fmtUSD(-(Math.abs(d.maxDrawdown || 0))) + ' peak-to-trough';
+
+  $('sim-winrate').textContent = fmt(d.winRate, 1) + '%';
+  $('sim-winrate-sub').textContent = (d.winningTrades || 0) + 'W / ' + (d.losingTrades || 0) + 'L of ' + (d.totalTrades || 0);
+
+  $('sim-pf').textContent = fmt(d.profitFactor, 2);
+  $('sim-pf-sub').textContent = 'Avg W: ' + fmtUSD(d.avgWin) + ' / Avg L: ' + fmtUSD(d.avgLoss);
+
+  $('sim-sharpe').textContent = fmt(d.sharpeRatio, 2);
+  $('sim-sharpe-sub').textContent = 'Risk-adjusted return';
+
+  // vs HOLD
+  const holdRet = d.holdBaseline || 0;
+  const stratRet = d.totalReturnPct || 0;
+  const delta = stratRet - holdRet;
+  const holdClass = delta >= 0 ? 'positive' : 'negative';
+  $('sim-hold').className = 'card-value ' + holdClass;
+  $('sim-hold').textContent = (delta >= 0 ? '+' : '') + fmt(delta, 1) + '%';
+  $('sim-hold-sub').textContent = 'HOLD baseline: ' + fmtPct(holdRet);
+}
+
+function renderSimEquityCurve(curveA, curveB) {
+  const canvas = $('simEquityCurve');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const ptsA = curveA || [];
+  if (ptsA.length < 2) {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#A8A29E';
+    ctx.font = '13px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Not enough data for equity curve', w / 2, h / 2);
+    return;
+  }
+
+  const ptsB = curveB || [];
+  const allPts = ptsA.concat(ptsB.length ? ptsB : []);
+  const pad = { top: 28, right: 14, bottom: 24, left: 60 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+  const min = Math.min(...allPts) * 0.98;
+  const max = Math.max(...allPts) * 1.02;
+  const range = max - min || 1;
+
+  // Grid lines
+  const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || 'rgba(120,100,70,0.06)';
+  const labelColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#A8A29E';
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (i / 4) * ph;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(w - pad.right, y);
+    ctx.stroke();
+    const val = max - (i / 4) * range;
+    ctx.fillStyle = labelColor;
+    ctx.font = '10px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('$' + val.toFixed(0), pad.left - 6, y + 3);
+  }
+  ctx.setLineDash([]);
+
+  function drawLine(pts, color) {
+    const toX = i => pad.left + (i / (pts.length - 1)) * pw;
+    const toY = v => pad.top + (1 - (v - min) / range) * ph;
+    ctx.beginPath();
+    pts.forEach((v, i) => {
+      const x = toX(i), y = toY(v);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // Gradient fill
+    ctx.lineTo(toX(pts.length - 1), pad.top + ph);
+    ctx.lineTo(toX(0), pad.top + ph);
+    ctx.closePath();
+    const rgb = color === '#3B82F6' ? '59,130,246' : (pts[pts.length - 1] >= pts[0] ? '22,163,74' : '220,38,38');
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ph);
+    grad.addColorStop(0, 'rgba(' + rgb + ',0.08)');
+    grad.addColorStop(1, 'rgba(' + rgb + ',0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  const legend = $('simEquityLegend');
+  if (ptsB.length > 1) {
+    drawLine(ptsB, '#3B82F6');
+    const positiveA = ptsA[ptsA.length - 1] >= ptsA[0];
+    drawLine(ptsA, positiveA ? '#22C55E' : '#EF4444');
+    legend.style.display = 'flex';
+    legend.innerHTML =
+      '<span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:3px;background:#22C55E;border-radius:2px;display:inline-block"></span> Strategy A (Custom)</span>' +
+      '<span style="display:flex;align-items:center;gap:4px"><span style="width:12px;height:3px;background:#3B82F6;border-radius:2px;display:inline-block"></span> Strategy B (Current)</span>';
+  } else {
+    const positive = ptsA[ptsA.length - 1] >= ptsA[0];
+    drawLine(ptsA, positive ? '#22C55E' : '#EF4444');
+    legend.style.display = 'none';
+  }
+}
+
+function renderSimTrades(trades) {
+  const tbody = $('simTradesBody');
+  if (!trades || trades.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px">No trades in simulation</td></tr>';
+    return;
+  }
+  const last20 = trades.slice(-20).reverse();
+  tbody.innerHTML = last20.map(t => {
+    const isBuy = (t.action || '').toUpperCase() === 'BUY';
+    const actionClass = isBuy ? 'pill-green' : 'pill-red';
+    const pnl = t.realizedPnl || 0;
+    const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+    const time = t.timestamp ? new Date(t.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--';
+    return '<tr>' +
+      '<td>' + time + '</td>' +
+      '<td><span class="pill ' + actionClass + '">' + (t.action || '--').toUpperCase() + '</span></td>' +
+      '<td style="font-weight:600">' + (t.token || '--') + '</td>' +
+      '<td style="font-family:var(--font-mono)">' + fmtUSD(t.amountUSD) + '</td>' +
+      '<td class="' + pnlClass + '" style="font-family:var(--font-mono)">' + (pnl !== 0 ? (pnl > 0 ? '+' : '') + fmtUSD(pnl) : '--') + '</td>' +
+      '<td style="color:var(--text-secondary);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (t.reason || '') + '">' + (t.reason || '--') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function renderSimCompare(delta) {
+  if (!delta) return;
+  function setDelta(id, val, suffix) {
+    const el = $(id);
+    if (!el) return;
+    const num = Number(val);
+    const positive = num >= 0;
+    el.className = 'card-value ' + (positive ? 'positive' : 'negative');
+    el.textContent = (positive ? '+' : '') + (suffix === '%' ? fmt(num, 2) + '%' : fmtUSD(num));
+  }
+  setDelta('sim-d-return', delta.totalReturn || delta.totalReturnPct, '$');
+  setDelta('sim-d-winrate', delta.winRate, '%');
+  setDelta('sim-d-drawdown', delta.maxDrawdownPct || delta.maxDrawdown, '%');
+  setDelta('sim-d-sharpe', delta.sharpeRatio, '');
+}
 </script>
 </body>
 </html>
