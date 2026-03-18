@@ -940,6 +940,133 @@ tr:hover td { background: var(--bg-subtle); }
   .sim-field { min-width: 0; }
   .sim-equity-canvas { height: 160px; }
 }
+
+/* ============================================================================
+   STRATEGY LAB
+   ============================================================================ */
+.lab-section { margin-top: var(--space-8); }
+.lab-section-hdr {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lab-section-hdr .lab-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--purple-dim);
+  color: var(--purple);
+}
+
+.lab-btn {
+  padding: 7px 18px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #6D28D9 0%, #7C3AED 100%);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity var(--dur-fast), transform var(--dur-fast);
+  font-family: var(--font-sans);
+}
+.lab-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.lab-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.lab-version-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.lab-version-table th {
+  text-align: left;
+  padding: 6px 10px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-default);
+}
+.lab-version-table td {
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.lab-version-table tr.lab-best td {
+  background: var(--green-dim);
+  font-weight: 600;
+}
+
+.lab-paper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-3);
+}
+.lab-paper-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-xs);
+}
+.lab-paper-card .lab-paper-name {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+.lab-paper-card .lab-paper-stat {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+.lab-paper-card .lab-paper-stat .mono {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.lab-sparkline {
+  width: 100%;
+  height: 30px;
+  display: block;
+  margin-top: var(--space-2);
+}
+
+.lab-equity-canvas {
+  width: 100%;
+  height: 250px;
+  display: block;
+}
+.lab-equity-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.lab-equity-legend span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lab-legend-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
 </style>
 </head>
 <body>
@@ -1532,6 +1659,53 @@ tr:hover td { background: var(--bg-subtle); }
     </div>
 
   </div><!-- simResults -->
+
+  <!-- ================================================================
+       STRATEGY LAB
+       ================================================================ -->
+
+  <!-- Version Backtest Section -->
+  <div class="lab-section">
+    <div class="lab-section-hdr">Version Comparison <span class="lab-badge">Strategy Lab</span></div>
+    <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-3)">
+      <button class="lab-btn" id="labBacktestBtn" onclick="runVersionBacktest()">Run Version Backtest</button>
+      <span id="labBacktestStatus" style="font-size:var(--fs-xs);color:var(--text-muted)"></span>
+    </div>
+    <div id="labBacktestResults" style="display:none">
+      <div class="card" style="overflow-x:auto">
+        <table class="lab-version-table" id="labVersionTable">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Name</th>
+              <th>Return %</th>
+              <th>Max DD %</th>
+              <th>Win Rate</th>
+              <th>P.Factor</th>
+              <th>Sharpe</th>
+              <th>Trades</th>
+              <th>vs HOLD</th>
+            </tr>
+          </thead>
+          <tbody id="labVersionBody"></tbody>
+        </table>
+      </div>
+      <!-- Overlaid Equity Curves -->
+      <div class="card" style="margin-top:var(--space-4)">
+        <div class="card-label">Version Equity Curves (Overlaid)</div>
+        <canvas class="lab-equity-canvas" id="labEquityCurve"></canvas>
+        <div class="lab-equity-legend" id="labEquityLegend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live Paper Portfolios Section -->
+  <div class="lab-section">
+    <div class="lab-section-hdr">Live Paper Portfolios <span class="lab-badge">Real-Time</span></div>
+    <div class="lab-paper-grid" id="labPaperGrid">
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:var(--fs-sm);grid-column:1/-1">Loading paper portfolios...</div>
+    </div>
+  </div>
 
 </div><!-- tab-simulate -->
 
@@ -3261,6 +3435,234 @@ function renderSimCompare(delta) {
   setDelta('sim-d-drawdown', delta.maxDrawdownPct || delta.maxDrawdown, '%');
   setDelta('sim-d-sharpe', delta.sharpeRatio, '');
 }
+
+// ============================================================================
+// STRATEGY LAB
+// ============================================================================
+
+const LAB_COLORS = ['#7C3AED', '#2563EB', '#0891B2', '#16A34A', '#D97706', '#DC2626', '#EC4899', '#6366F1'];
+let labBacktestData = null;
+
+function runVersionBacktest() {
+  var btn = $('labBacktestBtn');
+  var status = $('labBacktestStatus');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  status.textContent = 'Backtesting all strategy versions...';
+
+  fetch('/api/version-backtest')
+    .then(function(r) { if (!r.ok) throw new Error('Failed (' + r.status + ')'); return r.json(); })
+    .then(function(data) {
+      labBacktestData = data;
+      $('labBacktestResults').style.display = '';
+      status.textContent = data.count + ' versions compared at ' + new Date(data.runAt).toLocaleTimeString();
+      renderVersionTable(data.results);
+      renderVersionEquityCurves(data.results);
+    })
+    .catch(function(err) {
+      status.textContent = 'Error: ' + err.message;
+      console.error('Version backtest error:', err);
+    })
+    .finally(function() {
+      btn.disabled = false;
+      btn.textContent = 'Run Version Backtest';
+    });
+}
+
+function renderVersionTable(results) {
+  var tbody = $('labVersionBody');
+  if (!results || results.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:20px">No results</td></tr>';
+    return;
+  }
+  var bestIdx = 0;
+  tbody.innerHTML = results.map(function(r, i) {
+    if (r.returnPct > results[bestIdx].returnPct) bestIdx = i;
+    var retClass = r.returnPct >= 0 ? 'positive' : 'negative';
+    var vsHoldClass = r.vsHold >= 0 ? 'positive' : 'negative';
+    return '<tr' + (i === bestIdx ? ' class="lab-best"' : '') + '>' +
+      '<td style="font-weight:700;color:var(--text-primary);font-family:var(--font-sans)">' + r.version + '</td>' +
+      '<td style="font-family:var(--font-sans);color:var(--text-secondary)">' + r.name + '</td>' +
+      '<td class="' + retClass + '">' + (r.returnPct >= 0 ? '+' : '') + fmt(r.returnPct, 1) + '%</td>' +
+      '<td class="negative">' + fmt(-Math.abs(r.maxDrawdownPct), 1) + '%</td>' +
+      '<td>' + fmt((r.winRate || 0) * 100, 0) + '%</td>' +
+      '<td>' + fmt(r.profitFactor, 2) + '</td>' +
+      '<td>' + fmt(r.sharpeRatio, 2) + '</td>' +
+      '<td>' + (r.totalTrades || 0) + '</td>' +
+      '<td class="' + vsHoldClass + '">' + (r.vsHold >= 0 ? '+' : '') + fmt(r.vsHold, 1) + '%</td>' +
+      '</tr>';
+  }).join('');
+  // Re-highlight best after innerHTML
+  var rows = tbody.querySelectorAll('tr');
+  if (rows[bestIdx]) rows[bestIdx].classList.add('lab-best');
+}
+
+function renderVersionEquityCurves(results) {
+  var canvas = $('labEquityCurve');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var w = canvas.offsetWidth;
+  var h = canvas.offsetHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  if (!results || results.length === 0) return;
+
+  var pad = { top: 28, right: 14, bottom: 24, left: 60 };
+  var pw = w - pad.left - pad.right;
+  var ph = h - pad.top - pad.bottom;
+
+  // Find global min/max across all curves
+  var allMin = Infinity, allMax = -Infinity;
+  results.forEach(function(r) {
+    if (!r.equityCurve || r.equityCurve.length < 2) return;
+    r.equityCurve.forEach(function(v) {
+      if (v < allMin) allMin = v;
+      if (v > allMax) allMax = v;
+    });
+  });
+  allMin *= 0.98; allMax *= 1.02;
+  var range = allMax - allMin || 1;
+
+  // Grid lines
+  var gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || 'rgba(120,100,70,0.06)';
+  var labelColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#A8A29E';
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (var g = 0; g <= 4; g++) {
+    var gy = pad.top + (g / 4) * ph;
+    ctx.beginPath(); ctx.moveTo(pad.left, gy); ctx.lineTo(w - pad.right, gy); ctx.stroke();
+    ctx.fillStyle = labelColor;
+    ctx.font = '10px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('$' + (allMax - (g / 4) * range).toFixed(0), pad.left - 6, gy + 3);
+  }
+  ctx.setLineDash([]);
+
+  // Draw each version curve
+  var legend = $('labEquityLegend');
+  var legendHTML = '';
+  results.forEach(function(r, idx) {
+    if (!r.equityCurve || r.equityCurve.length < 2) return;
+    var color = LAB_COLORS[idx % LAB_COLORS.length];
+    var pts = r.equityCurve;
+    ctx.beginPath();
+    pts.forEach(function(v, i) {
+      var x = pad.left + (i / (pts.length - 1)) * pw;
+      var y = pad.top + (1 - (v - allMin) / range) * ph;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = idx === 0 ? 2.5 : 1.5;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    legendHTML += '<span><span class="lab-legend-swatch" style="background:' + color + '"></span> ' +
+      r.version + ' (' + (r.returnPct >= 0 ? '+' : '') + fmt(r.returnPct, 1) + '%)</span>';
+  });
+  legend.innerHTML = legendHTML;
+}
+
+// === Paper Portfolios ===
+
+function loadPaperPortfolios() {
+  fetch('/api/paper-portfolios')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (!data || !data.portfolios || data.portfolios.length === 0) {
+        $('labPaperGrid').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:var(--fs-sm);grid-column:1/-1">No paper portfolios active. They will be created on the next bot cycle.</div>';
+        return;
+      }
+      renderPaperPortfolios(data.portfolios, data.liveReturnPct);
+    })
+    .catch(function() {
+      $('labPaperGrid').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:var(--fs-sm);grid-column:1/-1">Could not load paper portfolios</div>';
+    });
+}
+
+function renderPaperPortfolios(portfolios, liveReturnPct) {
+  var grid = $('labPaperGrid');
+  grid.innerHTML = portfolios.map(function(p, idx) {
+    var retClass = p.metrics.totalReturnPct >= 0 ? 'positive' : 'negative';
+    var vsLive = p.metrics.totalReturnPct - (liveReturnPct || 0);
+    var vsLiveClass = vsLive >= 0 ? 'positive' : 'negative';
+    return '<div class="lab-paper-card">' +
+      '<div class="lab-paper-name">' + p.id + ' <span style="font-weight:400;color:var(--text-muted);font-size:var(--fs-xs)">(' + p.strategyVersion + ')</span></div>' +
+      '<div class="lab-paper-stat"><span>Value</span><span class="mono">' + fmtUSD(p.metrics.totalValue) + '</span></div>' +
+      '<div class="lab-paper-stat"><span>Return</span><span class="mono ' + retClass + '">' + (p.metrics.totalReturnPct >= 0 ? '+' : '') + fmt(p.metrics.totalReturnPct, 1) + '%</span></div>' +
+      '<div class="lab-paper-stat"><span>Win Rate</span><span class="mono">' + fmt(p.metrics.winRate, 0) + '%</span></div>' +
+      '<div class="lab-paper-stat"><span>Trades</span><span class="mono">' + p.tradeCount + '</span></div>' +
+      '<div class="lab-paper-stat"><span>Max DD</span><span class="mono negative">' + fmt(-Math.abs(p.metrics.maxDrawdown), 1) + '%</span></div>' +
+      '<div class="lab-paper-stat"><span>vs Live Bot</span><span class="mono ' + vsLiveClass + '">' + (vsLive >= 0 ? '+' : '') + fmt(vsLive, 1) + '%</span></div>' +
+      '<canvas class="lab-sparkline" id="labSparkline' + idx + '"></canvas>' +
+      '</div>';
+  }).join('');
+
+  // Load detailed equity curves for sparklines
+  portfolios.forEach(function(p, idx) {
+    fetch('/api/paper-portfolio/' + p.id)
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(detail) {
+        if (!detail || !detail.equityCurve || detail.equityCurve.length < 2) return;
+        var canvas = $('labSparkline' + idx);
+        if (!canvas) return;
+        drawSparkline(canvas, detail.equityCurve.map(function(pt) { return pt.value; }));
+      })
+      .catch(function() {});
+  });
+}
+
+function drawSparkline(canvas, values) {
+  var ctx = canvas.getContext('2d');
+  var dpr = window.devicePixelRatio || 1;
+  var w = canvas.offsetWidth;
+  var h = canvas.offsetHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  if (values.length < 2) return;
+  var min = Math.min.apply(null, values) * 0.99;
+  var max = Math.max.apply(null, values) * 1.01;
+  var range = max - min || 1;
+  var positive = values[values.length - 1] >= values[0];
+
+  ctx.beginPath();
+  values.forEach(function(v, i) {
+    var x = (i / (values.length - 1)) * w;
+    var y = (1 - (v - min) / range) * h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = positive ? 'var(--green)' : 'var(--red)';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+// Auto-load paper portfolios when simulate tab is shown
+(function() {
+  var loaded = false;
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (btn.dataset.tab === 'simulate' && !loaded) {
+        loaded = true;
+        loadPaperPortfolios();
+      }
+    });
+  });
+  // Also refresh paper portfolios every 60s if tab is visible
+  setInterval(function() {
+    var simTab = document.getElementById('tab-simulate');
+    if (simTab && simTab.style.display !== 'none') {
+      loadPaperPortfolios();
+    }
+  }, 60000);
+})();
 </script>
 </body>
 </html>

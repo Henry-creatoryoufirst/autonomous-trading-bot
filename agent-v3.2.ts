@@ -108,6 +108,16 @@ import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } 
 // === NVR-SPEC-001: BACKTESTING & SIMULATION ENGINE ===
 import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from './services/simulator.js';
 
+// === STRATEGY LAB: Paper Trading + Version Registry + Multi-Version Backtester ===
+import { STRATEGY_VERSIONS, getVersion, type StrategyVersion } from './services/strategy-versions.js';
+import {
+  createPaperPortfolio, getPaperPortfolio, getAllPaperPortfolios,
+  evaluatePaperTrade, updatePaperPortfolio, getPaperPortfolioSummary,
+  savePaperPortfolios, loadPaperPortfolios,
+  type PaperPortfolio, type TokenSignal,
+} from './services/paper-trader.js';
+import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from './services/version-backtester.js';
+
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./services/cache-manager.js";
 import { CACHE_TTL } from "./config/constants.js";
@@ -10484,6 +10494,63 @@ async function runTradingCycle() {
     console.error("Cycle error:", error.message);
   }
 
+  // === STRATEGY LAB: Paper Trading Update ===
+  try {
+    const paperPortfolios = getAllPaperPortfolios();
+    if (paperPortfolios.length > 0 && marketData?.tokens && marketData?.indicators) {
+      // Build current prices map for portfolio valuation
+      const currentPricesMap: Record<string, number> = {};
+      for (const t of marketData.tokens) {
+        if (t.price > 0) currentPricesMap[t.symbol] = t.price;
+      }
+
+      for (const pp of paperPortfolios) {
+        try {
+          const sv = getVersion(pp.strategyVersion);
+
+          // Evaluate paper trades for each token with indicator data
+          let tradesThisCycle = 0;
+          for (const [symbol, ind] of Object.entries(marketData.indicators)) {
+            if (tradesThisCycle >= sv.config.maxTradesPerCycle) break;
+            const tokenInfo = marketData.tokens.find((t: any) => t.symbol === symbol);
+            if (!tokenInfo || tokenInfo.price <= 0) continue;
+
+            const signal: TokenSignal = {
+              symbol,
+              price: tokenInfo.price,
+              rsi: ind.rsi14 || 50,
+              macd: ind.macd?.signal || 'NEUTRAL',
+              confluence: ind.confluenceScore || 0,
+              buyRatio: 0.5,
+            };
+
+            const trade = evaluatePaperTrade(pp, sv.config, signal);
+            if (trade) tradesThisCycle++;
+          }
+
+          // Update portfolio metrics with current prices
+          updatePaperPortfolio(pp, currentPricesMap);
+        } catch (ppErr: any) {
+          // Silent — don't let paper trading errors affect the live bot
+        }
+      }
+
+      // Save paper portfolios every 10 cycles
+      if (state.totalCycles % 10 === 0) {
+        savePaperPortfolios();
+      }
+
+      // Log paper portfolio summary
+      const bestPaper = paperPortfolios.reduce((best, p) =>
+        p.metrics.totalReturnPct > (best?.metrics.totalReturnPct || -Infinity) ? p : best, paperPortfolios[0]);
+      if (bestPaper) {
+        console.log(`   [StrategyLab] ${paperPortfolios.length} paper portfolios | Best: ${bestPaper.id} (${bestPaper.metrics.totalReturnPct >= 0 ? '+' : ''}${bestPaper.metrics.totalReturnPct.toFixed(1)}%)`);
+      }
+    }
+  } catch (paperErr: any) {
+    // Paper trading errors must never affect live bot operation
+  }
+
   // Summary
   const derivSummary = derivativesEngine?.isEnabled()
     ? ` | Deriv Positions: ${derivativesEngine?.getState()?.openPositionCount || 0} | Deriv P&L: $${(derivativesEngine?.getState()?.totalUnrealizedPnl || 0).toFixed(2)}`
@@ -10815,6 +10882,26 @@ async function main() {
   console.log(`  💾 State file: ${CONFIG.logFile}`);
   console.log(`  💾 PERSIST_DIR: ${process.env.PERSIST_DIR || '(not set — using ./logs)'}`);
   console.log(`  💾 Loaded: ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis, peak $${state.trading.peakValue.toFixed(2)}`);
+
+  // === STRATEGY LAB: Initialize Paper Portfolios ===
+  loadPaperPortfolios();
+  const paperVersions = ["v14.0", "v14.1", "aggressive"];
+  for (const vId of paperVersions) {
+    const existingId = `paper-${vId}`;
+    if (!getPaperPortfolio(existingId)) {
+      try {
+        const sv = getVersion(vId);
+        const capital = state.trading.totalPortfolioValue > 0 ? state.trading.totalPortfolioValue : 500;
+        createPaperPortfolio(existingId, sv.version, capital);
+        console.log(`  [StrategyLab] Created paper portfolio: ${existingId} ($${capital.toFixed(0)} capital)`);
+      } catch (err: any) {
+        console.warn(`  [StrategyLab] Could not create paper-${vId}: ${err.message}`);
+      }
+    }
+  }
+  if (getAllPaperPortfolios().length > 0) {
+    console.log(`  [StrategyLab] ${getAllPaperPortfolios().length} paper portfolio(s) active`);
+  }
 
   // v11.4.22: Clear stale circuit breaker on startup.
   // Must run AFTER loadTradeHistory() because that restores breakerState from persisted file.
@@ -12460,8 +12547,60 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       }
 
-      default:
+      // === STRATEGY LAB API ENDPOINTS ===
+      case '/api/strategy-versions': {
+        sendJSON(res, 200, STRATEGY_VERSIONS);
+        break;
+      }
+
+      case '/api/paper-portfolios': {
+        const portfolios = getAllPaperPortfolios();
+        sendJSON(res, 200, {
+          portfolios: portfolios.map(p => getPaperPortfolioSummary(p)),
+          count: portfolios.length,
+          liveValue: state.trading.totalPortfolioValue,
+          liveReturnPct: state.trading.initialValue > 0
+            ? ((state.trading.totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue) * 100
+            : 0,
+        });
+        break;
+      }
+
+      case '/api/version-backtest': {
+        try {
+          const capital = parseFloat(url.searchParams.get('capital') || '500');
+          const results = runAllVersionBacktestsFromDisk(capital);
+          sendJSON(res, 200, {
+            results: summarizeBacktestResults(results),
+            count: results.length,
+            runAt: new Date().toISOString(),
+          });
+        } catch (err: any) {
+          sendJSON(res, 500, { error: `Version backtest failed: ${err.message}` });
+        }
+        break;
+      }
+
+      default: {
+        // Handle dynamic route: /api/paper-portfolio/:id
+        if (url.pathname.startsWith('/api/paper-portfolio/')) {
+          const id = url.pathname.replace('/api/paper-portfolio/', '');
+          const portfolio = getPaperPortfolio(id);
+          if (portfolio) {
+            sendJSON(res, 200, {
+              ...getPaperPortfolioSummary(portfolio),
+              trades: portfolio.trades.slice(-100),
+              equityCurve: portfolio.equityCurve.length > 500
+                ? portfolio.equityCurve.filter((_: any, i: number) => i === 0 || i === portfolio.equityCurve.length - 1 || i % Math.ceil(portfolio.equityCurve.length / 500) === 0)
+                : portfolio.equityCurve,
+            });
+          } else {
+            sendJSON(res, 404, { error: `Paper portfolio "${id}" not found` });
+          }
+          break;
+        }
         sendJSON(res, 404, { error: 'Not found' });
+      }
     }
   } catch (err: any) {
     console.error('HTTP error:', err.message);
