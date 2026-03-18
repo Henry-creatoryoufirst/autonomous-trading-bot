@@ -195,6 +195,7 @@ import {
   CASH_DEPLOYMENT_MAX_DEPLOY_PCT,
   CASH_DEPLOYMENT_MIN_RESERVE_USD,
   CASH_DEPLOYMENT_MAX_ENTRIES,
+  CASH_DEPLOY_REQUIRES_MOMENTUM,
   // v11.2: Crash-Buying Breaker Override
   DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX,
   DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
@@ -9298,8 +9299,32 @@ async function runTradingCycle() {
     // as exploration trades above.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
-    // v11.4.19: 20% threshold (matches deployment mode constant) — if deployment mode is on, forced deploy fires too
+    // v11.4.19: threshold — if deployment mode is on, forced deploy fires too
+    // v14.1: Now gated behind market momentum check to avoid buying into falling knives
     if (preAiCashPct > CASH_DEPLOYMENT_THRESHOLD_PCT && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
+      // v14.1: MOMENTUM GATE — Don't force-buy into falling markets
+      // SCALE_UP and RIDE_THE_WAVE are unaffected (they run independently below, are opportunity-based)
+      let shouldForceDeploy = true;
+      if (CASH_DEPLOY_REQUIRES_MOMENTUM) {
+        const deployMomentum = calculateMarketMomentum();
+        const btcEthAvgChange = (deployMomentum.btcChange24h + deployMomentum.ethChange24h) / 2;
+        if (btcEthAvgChange < 0) {
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
+          console.log(`   Skipping forced deploy — market momentum negative (BTC ${deployMomentum.btcChange24h >= 0 ? '+' : ''}${deployMomentum.btcChange24h.toFixed(2)}%, ETH ${deployMomentum.ethChange24h >= 0 ? '+' : ''}${deployMomentum.ethChange24h.toFixed(2)}%, avg ${btcEthAvgChange >= 0 ? '+' : ''}${btcEthAvgChange.toFixed(2)}%), preserving cash`);
+          console.log(`   SCALE_UP and RIDE_THE_WAVE still active — will catch opportunities independently`);
+          shouldForceDeploy = false;
+        } else if (deployMomentum.score < 0) {
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
+          console.log(`   Skipping forced deploy — portfolio momentum score negative (${deployMomentum.score.toFixed(1)}), preserving cash`);
+          console.log(`   SCALE_UP and RIDE_THE_WAVE still active — will catch opportunities independently`);
+          shouldForceDeploy = false;
+        } else {
+          // Market conditions neutral-to-positive — proceed with forced deployment
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — market momentum OK (score: ${deployMomentum.score.toFixed(1)}, BTC/ETH avg: ${btcEthAvgChange >= 0 ? '+' : ''}${btcEthAvgChange.toFixed(2)}%), deploying`);
+        }
+      }
+
+      if (shouldForceDeploy) {
       console.log(`\n⚡ PRE-AI FORCED DEPLOYMENT: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — deploying before AI call`);
 
       // Build target list from most underweight sectors, rotating tokens to avoid dedup
@@ -9369,20 +9394,20 @@ async function runTradingCycle() {
             sector: target.sector,
             isForced: true,
           };
-          console.log(`   📦 Deploying $${deploySize.toFixed(0)} → ${target.token}`);
+          console.log(`   📦 FORCED_DEPLOY: $${deploySize.toFixed(0)} → ${target.token}`);
           const result = await executeTrade(deployDecision, marketData);
           if (result.success) {
             preAiBuys++;
-            console.log(`   ✅ ${target.token} buy executed`);
+            console.log(`   ✅ FORCED_DEPLOY: ${target.token} buy executed`);
           } else {
-            console.log(`   ❌ ${target.token} failed: ${result.error}`);
+            console.log(`   ❌ FORCED_DEPLOY: ${target.token} failed: ${result.error}`);
           }
         } catch (err: any) {
-          console.log(`   ❌ ${target.token} error: ${err.message}`);
+          console.log(`   ❌ FORCED_DEPLOY: ${target.token} error: ${err.message}`);
         }
       }
       if (preAiBuys > 0) {
-        console.log(`   ⚡ Pre-AI deployment: ${preAiBuys} buys executed`);
+        console.log(`   ⚡ FORCED_DEPLOY: ${preAiBuys} buys executed`);
         saveTradeHistory();
         // Refresh balances for the AI call
         const refreshedBalances = await getBalances();
@@ -9390,6 +9415,7 @@ async function runTradingCycle() {
           balances = refreshedBalances;
         }
       }
+      } // end if (shouldForceDeploy)
     }
 
     // === v11.1: CASH DEPLOYMENT ENGINE ===

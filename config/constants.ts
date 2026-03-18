@@ -464,7 +464,7 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * Bot was stuck at 29.6% — 0.4% below threshold — doing nothing with $1,482 USDC.
  * 20% ensures deployment mode fires for any meaningful cash drag.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 25; // Deploy when cash exceeds 25% — stop sitting on idle capital
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 40; // v14.1: 25% → 40% — not as lazy as 50, not as aggressive as 25. Pairs with momentum gate to avoid buying falling knives.
 
 /** Confluence score reduction when in deployment mode (makes entries easier)
  *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */
@@ -480,6 +480,12 @@ export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 150;
 /** Number of tokens to target per deployment cycle (spread across sectors)
  *  v11.4.13: Raised from 6 → 8 — more entries per cycle for maximum deployment speed */
 export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
+
+/** v14.1: Gate forced cash deployment behind market momentum check.
+ *  When true, FORCED_DEPLOY only fires when BTC+ETH avg 24h change >= 0 AND
+ *  portfolio momentum score >= 0. Prevents buying into falling knives.
+ *  SCALE_UP and RIDE_THE_WAVE are unaffected — those are opportunity-based. */
+export const CASH_DEPLOY_REQUIRES_MOMENTUM = true;
 
 // v11.2: CRASH-BUYING OVERRIDE — Let Cash Deployment punch through breaker during extreme fear
 /** Fear & Greed threshold: at or below this, deployment mode can override the institutional breaker */
