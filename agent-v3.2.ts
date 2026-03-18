@@ -460,7 +460,7 @@ const TOKEN_REGISTRY: Record<string, {
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   EXTRA: {
-    address: "0x2Dad3a13ef0C6366220f989157009e501e7938F8",
+    address: "0x2dAD3a13ef0C6366220f989157009e501e7938F8",
     symbol: "EXTRA", name: "Extra Finance", coingeckoId: "extra-finance",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
@@ -475,7 +475,7 @@ const TOKEN_REGISTRY: Record<string, {
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   PENDLE: {
-    address: "0xa99F6E6785da0F5d6FB42495Fe424BCE029Eeb3E",
+    address: "0xA99F6e6785Da0F5d6fB42495Fe424BCE029Eeb3E",
     symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
