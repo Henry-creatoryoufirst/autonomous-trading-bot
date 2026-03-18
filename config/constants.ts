@@ -608,3 +608,40 @@ export const MAX_TRADES_PER_CYCLE = 3; // v14.2: cap total trades per cycle — 
 
 /** Max position percent override for tokens showing strong momentum */
 export const MOMENTUM_MAX_POSITION_PERCENT = 15;
+
+// ============================================================================
+// v14.1: SMART TRIM (Momentum Deceleration Exit)
+// ============================================================================
+
+/** Number of buy ratio readings to store per token */
+export const DECEL_HISTORY_LENGTH = 5;
+
+/** Min drop from peak buy ratio before trim activates (percentage points) */
+export const DECEL_MIN_DROP_FROM_PEAK = 8;
+
+/** Consecutive deceleration cycles before first trim */
+export const DECEL_MIN_CYCLES = 2;
+
+/** Base trim % per cycle */
+export const DECEL_BASE_TRIM_PCT = 10;
+
+/** Moderate deceleration threshold (acceleration < -this) */
+export const DECEL_MODERATE_THRESHOLD = 3;
+
+/** Severe deceleration threshold (acceleration < -this) */
+export const DECEL_SEVERE_THRESHOLD = 6;
+
+/** Max trim per cycle (%) */
+export const DECEL_MAX_TRIM_PCT = 30;
+
+/** Min position value (USD) to bother trimming */
+export const DECEL_MIN_POSITION_USD = 10;
+
+/** Cooldown between trims in seconds */
+export const DECEL_TRIM_COOLDOWN_SEC = 120;
+
+/** Min profit % before trimming activates */
+export const DECEL_MIN_PROFIT_PCT = 3;
+
+/** Dedup window in minutes for decel trim sells */
+export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;

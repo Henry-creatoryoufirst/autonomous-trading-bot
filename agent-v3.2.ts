@@ -105,6 +105,9 @@ import { EquityIntegration } from './equity-integration.js';
 // === v6.1: TOKEN DISCOVERY ENGINE ===
 import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from './services/token-discovery.js';
 
+// === NVR-SPEC-001: BACKTESTING & SIMULATION ENGINE ===
+import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from './services/simulator.js';
+
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./services/cache-manager.js";
 import { CACHE_TTL } from "./config/constants.js";
@@ -236,6 +239,8 @@ import {
   NORMAL_DEDUP_WINDOW_MINUTES,
   MAX_TRADES_PER_CYCLE,
   MOMENTUM_MAX_POSITION_PERCENT,
+  // v14.1: Smart Trim (Momentum Deceleration Exit)
+  DECEL_TRIM_DEDUP_WINDOW_MINUTES,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -245,6 +250,10 @@ import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from './services/aave-yield.js';
+
+// === v14.1: MOMENTUM DECELERATION DETECTOR (Smart Trim) ===
+import { createDecelState, updateBuyRatioHistory, detectDeceleration } from './services/deceleration-detector.js';
+import type { DecelState } from './services/deceleration-detector.js';
 import type { YieldState } from './services/aave-yield.js';
 
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
@@ -1929,6 +1938,9 @@ let yieldCycleCount = 0;
 // === v11.0: DEX INTELLIGENCE STATE ===
 let lastDexIntelligence: DexIntelligence | null = null;
 let dexIntelFetchCount = 0;
+
+// === v14.1: MOMENTUM DECELERATION STATE (per-token) ===
+const decelStates: Record<string, DecelState> = {};
 
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
@@ -7971,6 +7983,7 @@ async function executeTrade(
   const isScaleUpTier = dedupTier === 'SCALE_UP' || dedupTier === 'RIDE_THE_WAVE';
   const dedupWindowMinutes = isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES        // 5 min (was 1)
     : dedupTier === 'MOMENTUM_EXIT' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES          // 5 min (was 1)
+    : dedupTier === 'DECEL_TRIM' ? DECEL_TRIM_DEDUP_WINDOW_MINUTES                // 3 min — v14.1 smart trim
     : dedupTier === 'FORCED_DEPLOY' ? FORCED_DEPLOY_DEDUP_WINDOW_MINUTES          // 10 min (was 2)
     : NORMAL_DEDUP_WINDOW_MINUTES; // 15 min (was 5) — stop rapid re-trading of same tokens
   if (!state.tradeDedupLog) state.tradeDedupLog = {};
@@ -9842,6 +9855,7 @@ async function runTradingCycle() {
     {
       const scaleUpDecisions: TradeDecision[] = [];
       const momentumExitDecisions: TradeDecision[] = [];
+      const decelTrimDecisions: TradeDecision[] = [];
       const availableUSDCForScale = balances.find(b => b.symbol === 'USDC')?.balance || 0;
       const portfolioVal = state.trading.totalPortfolioValue;
 
@@ -9868,6 +9882,10 @@ async function runTradingCycle() {
           const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
           if (totalFlow > 0) buyRatioPct = (ind.orderFlow.buyVolumeUSD / totalFlow) * 100;
         }
+
+        // v14.1: Update deceleration history for Smart Trim
+        if (!decelStates[holding.symbol]) decelStates[holding.symbol] = createDecelState();
+        updateBuyRatioHistory(decelStates[holding.symbol], buyRatioPct);
 
         const volumeAboveAvg = (ind?.volumeChange24h ?? 0) > 0; // volume > 7-day average
         const volumeSpike = (ind?.volumeChange24h ?? 0) > 50; // volume 1.5x+ average
@@ -9909,6 +9927,29 @@ async function runTradingCycle() {
             sector: TOKEN_REGISTRY[holding.symbol]?.sector,
           });
         }
+
+        // --- v14.1: DECEL_TRIM (Smart Trim) ---
+        // Buy ratio still above 45% but momentum is decelerating → trim gradually
+        // Only fires when momentum exit did NOT fire (they're mutually exclusive)
+        if (!momentumExitDecisions.some(d => d.fromToken === holding.symbol)) {
+          const decelState = decelStates[holding.symbol];
+          if (decelState) {
+            const trimSignal = detectDeceleration(decelState, gainPct, holding.usdValue);
+            if (trimSignal.shouldTrim) {
+              const trimAmount = holding.usdValue * (trimSignal.trimPercent / 100);
+              console.log(`\n✂️ DECEL_TRIM: ${holding.symbol} trim ${trimSignal.trimPercent}% ($${trimAmount.toFixed(2)}) — ${trimSignal.reason}`);
+              decelTrimDecisions.push({
+                action: 'SELL',
+                fromToken: holding.symbol,
+                toToken: 'USDC',
+                amountUSD: trimAmount,
+                reasoning: `DECEL_TRIM: ${trimSignal.reason}`,
+                sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+              });
+              decelState.lastTrimTime = Date.now();
+            }
+          }
+        }
       }
 
       // --- RIDE THE WAVE ---
@@ -9944,11 +9985,11 @@ async function runTradingCycle() {
         }
       }
 
-      // Inject scale-up and momentum exit decisions alongside AI decisions
-      if (scaleUpDecisions.length > 0 || momentumExitDecisions.length > 0) {
-        console.log(`\n📊 SCALE-INTO-WINNERS: ${scaleUpDecisions.length} scale-ups, ${momentumExitDecisions.length} momentum exits`);
-        // Momentum exits go first (free up capital), then AI decisions, then scale-ups
-        decisions = [...momentumExitDecisions, ...decisions, ...scaleUpDecisions];
+      // Inject scale-up, decel trim, and momentum exit decisions alongside AI decisions
+      if (scaleUpDecisions.length > 0 || momentumExitDecisions.length > 0 || decelTrimDecisions.length > 0) {
+        console.log(`\n📊 SCALE-INTO-WINNERS: ${scaleUpDecisions.length} scale-ups, ${momentumExitDecisions.length} momentum exits, ${decelTrimDecisions.length} decel trims`);
+        // Priority: momentum exits first, then decel trims, then AI decisions, then scale-ups
+        decisions = [...momentumExitDecisions, ...decelTrimDecisions, ...decisions, ...scaleUpDecisions];
       }
     }
 
@@ -10021,6 +10062,7 @@ async function runTradingCycle() {
         switch (tier) {
           case 'STOP_LOSS': return 0;
           case 'MOMENTUM_EXIT': return 1;
+          case 'DECEL_TRIM': return 1.5; // v14.1: after momentum exit, before profit take
           case 'PROFIT_TAKE': return 2;
           default: return 3; // AI
           case 'SCALE_UP': return 4;
@@ -11067,6 +11109,15 @@ function sendJSON(res: http.ServerResponse, status: number, data: any, req?: htt
   const corsOrigin = ALLOWED_ORIGINS.has(origin) ? origin : '';
   res.writeHead(status, { 'Content-Type': 'application/json', ...(corsOrigin ? { 'Access-Control-Allow-Origin': corsOrigin } : {}) });
   res.end(JSON.stringify(data));
+}
+
+/** Downsample an array to N evenly-spaced points (for equity curve API responses) */
+function downsample(arr: number[], n: number): number[] {
+  if (arr.length <= n) return arr;
+  const result: number[] = [];
+  const step = (arr.length - 1) / (n - 1);
+  for (let i = 0; i < n; i++) result.push(arr[Math.round(i * step)]);
+  return result;
 }
 
 // v10.2: Auth token for sensitive endpoints (set API_AUTH_TOKEN env var, or defaults to random)
@@ -12379,6 +12430,33 @@ const healthServer = http.createServer(async (req, res) => {
           })),
           count: active.length,
         });
+        break;
+      }
+
+      // === NVR-SPEC-001: SIMULATION API ===
+      case '/api/simulate': {
+        try {
+          const history = loadPriceHistory();
+          const compare = url.searchParams.get('compare') === 'true';
+          if (compare) {
+            const configB: SimConfig = { ...DEFAULT_SIM_CONFIG };
+            for (const [key, val] of url.searchParams.entries()) {
+              if (key === 'compare') continue;
+              if (key in configB) (configB as any)[key] = parseFloat(val);
+            }
+            const result = compareStrategies(DEFAULT_SIM_CONFIG, configB, history);
+            sendJSON(res, 200, result);
+          } else {
+            const cfg: SimConfig = { ...DEFAULT_SIM_CONFIG };
+            for (const [key, val] of url.searchParams.entries()) {
+              if (key in cfg) (cfg as any)[key] = parseFloat(val);
+            }
+            const result = runSimulation(cfg, history);
+            sendJSON(res, 200, { ...result, trades: result.trades.slice(-100), equityCurve: result.equityCurve.length > 500 ? downsample(result.equityCurve, 500) : result.equityCurve });
+          }
+        } catch (err: any) {
+          sendJSON(res, 500, { error: `Simulation failed: ${err.message}` });
+        }
         break;
       }
 
