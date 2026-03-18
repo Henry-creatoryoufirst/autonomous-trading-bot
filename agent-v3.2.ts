@@ -89,7 +89,7 @@ import * as fs from "fs";
 import * as dotenv from "dotenv";
 import cron from "node-cron";
 import axios from "axios";
-import { parseUnits, formatUnits, formatEther, type Address } from "viem";
+import { parseUnits, formatUnits, formatEther, getAddress, type Address } from "viem";
 
 // === DERIVATIVES MODULE IMPORTS (v6.0) ===
 import { CoinbaseAdvancedTradeClient } from "./services/services/coinbase-advanced-trade.js";
@@ -321,7 +321,11 @@ const SECTORS = {
 // v11.4.11: Tokens that CDP SDK's routing service cannot swap (returns "Invalid request").
 // CoinbaseSmartWallet uses AA — can't fall back to direct DEX calls either.
 // These are skipped during forced deployment rotation; alternatives from the same sector are used.
-const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL', 'MORPHO', 'cbLTC', 'PENDLE']);
+const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
+
+// v14.3: Tokens that CDP SDK can't swap but CAN be traded via direct DEX swap (Uniswap V3 / Aerodrome).
+// These are NOT blocked — executeDirectDexSwap handles them via account.sendTransaction().
+const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'PENDLE']);
 
 // Complete token registry with addresses and metadata
 const TOKEN_REGISTRY: Record<string, {
@@ -8097,6 +8101,374 @@ async function executeTrade(
   }
 }
 
+// ============================================================================
+// v14.3: DIRECT DEX SWAP — Uniswap V3 SwapRouter on Base
+// For tokens that CDP SDK's routing service can't handle (MORPHO, cbLTC, PENDLE).
+// Uses account.sendTransaction() — same pattern as Permit2 approvals and Aave interactions.
+// ============================================================================
+
+const UNISWAP_V3_SWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481" as Address;
+const DEX_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
+const DEX_WETH = "0x4200000000000000000000000000000000000006" as Address;
+
+// exactInputSingle(ExactInputSingleParams) selector: 0x04e45aaf
+// struct ExactInputSingleParams {
+//   address tokenIn, address tokenOut, uint24 fee,
+//   address recipient, uint256 amountIn,
+//   uint256 amountOutMinimum, uint160 sqrtPriceLimitX96
+// }
+const EXACT_INPUT_SINGLE_SELECTOR = "0x04e45aaf";
+
+// exactInput(ExactInputParams) selector: 0xb858183f
+// struct ExactInputParams {
+//   bytes path, address recipient, uint256 amountIn,
+//   uint256 amountOutMinimum
+// }
+const EXACT_INPUT_SELECTOR = "0xb858183f";
+
+/**
+ * Build Uniswap V3 exactInputSingle calldata.
+ * ABI: exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))
+ */
+function buildExactInputSingleCalldata(
+  tokenIn: Address,
+  tokenOut: Address,
+  fee: number,
+  recipient: Address,
+  amountIn: bigint,
+  amountOutMin: bigint,
+): `0x${string}` {
+  const params = [
+    tokenIn.slice(2).toLowerCase().padStart(64, "0"),
+    tokenOut.slice(2).toLowerCase().padStart(64, "0"),
+    fee.toString(16).padStart(64, "0"),
+    recipient.slice(2).toLowerCase().padStart(64, "0"),
+    amountIn.toString(16).padStart(64, "0"),
+    amountOutMin.toString(16).padStart(64, "0"),
+    "0".padStart(64, "0"), // sqrtPriceLimitX96 = 0 (no limit)
+  ].join("");
+  return `${EXACT_INPUT_SINGLE_SELECTOR}${params}` as `0x${string}`;
+}
+
+/**
+ * Build Uniswap V3 exactInput calldata for multi-hop swaps (token -> WETH -> USDC).
+ * Path encoding: tokenIn (20 bytes) + fee (3 bytes) + intermediary (20 bytes) + fee (3 bytes) + tokenOut (20 bytes)
+ * ABI: exactInput((bytes,address,uint256,uint256))
+ */
+function buildExactInputMultihopCalldata(
+  path: `0x${string}`,
+  recipient: Address,
+  amountIn: bigint,
+  amountOutMin: bigint,
+): `0x${string}` {
+  // ABI encode the tuple: (bytes path, address recipient, uint256 amountIn, uint256 amountOutMin)
+  // Dynamic type (bytes) gets offset pointer first
+  const offsetToPath = "0000000000000000000000000000000000000000000000000000000000000080"; // 128 = 4*32
+  const recipientEncoded = recipient.slice(2).toLowerCase().padStart(64, "0");
+  const amountInEncoded = amountIn.toString(16).padStart(64, "0");
+  const amountOutMinEncoded = amountOutMin.toString(16).padStart(64, "0");
+
+  // bytes path: length (32 bytes) + data (padded to 32-byte boundary)
+  const pathHex = path.startsWith("0x") ? path.slice(2) : path;
+  const pathByteLength = pathHex.length / 2;
+  const pathLengthEncoded = pathByteLength.toString(16).padStart(64, "0");
+  const pathPadded = pathHex.padEnd(Math.ceil(pathHex.length / 64) * 64, "0");
+
+  return `${EXACT_INPUT_SELECTOR}${offsetToPath}${recipientEncoded}${amountInEncoded}${amountOutMinEncoded}${pathLengthEncoded}${pathPadded}` as `0x${string}`;
+}
+
+/**
+ * Encode a multi-hop path for Uniswap V3: tokenIn + fee + intermediary + fee + tokenOut
+ * Each address is 20 bytes, each fee is 3 bytes.
+ */
+function encodeV3Path(tokens: Address[], fees: number[]): `0x${string}` {
+  let path = tokens[0].slice(2).toLowerCase();
+  for (let i = 0; i < fees.length; i++) {
+    path += fees[i].toString(16).padStart(6, "0"); // 3 bytes = 6 hex chars
+    path += tokens[i + 1].slice(2).toLowerCase();
+  }
+  return `0x${path}` as `0x${string}`;
+}
+
+/**
+ * Execute a direct DEX swap via Uniswap V3 SwapRouter on Base.
+ * Used as fallback for tokens CDP SDK cannot route (MORPHO, cbLTC, PENDLE).
+ * Sends the transaction through CDP's account.sendTransaction() — same as approvals/Aave.
+ */
+async function executeDirectDexSwap(
+  decision: TradeDecision,
+  marketData: MarketData,
+): Promise<{ success: boolean; txHash?: string; error?: string; actualTokens?: number }> {
+  const portfolioValueBefore = state.trading.totalPortfolioValue;
+
+  try {
+    const isSell = decision.action === "SELL" || decision.action === "REBALANCE";
+    const tokenSymbol = isSell ? decision.fromToken : decision.toToken;
+    const tokenAddress = getAddress(getTokenAddress(tokenSymbol)) as Address;
+    const tokenDecimals = getTokenDecimals(tokenSymbol);
+
+    // Determine swap direction
+    let tokenIn: Address, tokenOut: Address, fromDecimals: number;
+    if (isSell) {
+      // Selling token for USDC
+      tokenIn = tokenAddress;
+      tokenOut = DEX_USDC;
+      fromDecimals = tokenDecimals;
+    } else {
+      // Buying token with USDC
+      tokenIn = DEX_USDC;
+      tokenOut = tokenAddress;
+      fromDecimals = 6; // USDC decimals
+    }
+
+    // Calculate the amount to swap
+    let fromAmount: bigint;
+    if (isSell) {
+      const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 1;
+      const tokenAmount = decision.amountUSD / tokenPrice;
+      fromAmount = parseUnits(tokenAmount.toFixed(Math.min(fromDecimals, 8)), fromDecimals);
+    } else {
+      fromAmount = parseUnits(decision.amountUSD.toFixed(6), 6);
+    }
+
+    console.log(`\n  🔄 EXECUTING DIRECT DEX SWAP (Uniswap V3 Router):`);
+    console.log(`     ${decision.fromToken} → ${decision.toToken}`);
+    console.log(`     Token: ${tokenSymbol} (${tokenAddress})`);
+    console.log(`     Amount: ${formatUnits(fromAmount, fromDecimals)} ${isSell ? decision.fromToken : 'USDC'} (~$${decision.amountUSD.toFixed(2)})`);
+    console.log(`     Router: ${UNISWAP_V3_SWAP_ROUTER}`);
+    console.log(`     Network: Base Mainnet`);
+
+    // Get the CDP-managed account
+    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+    const walletAddress = account.address as Address;
+    console.log(`     Account: ${walletAddress}`);
+
+    // Step 1: Approve the Uniswap V3 SwapRouter to spend tokenIn (if needed)
+    const APPROVE_SELECTOR = "0x095ea7b3";
+    const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+    const allowanceData = "0xdd62ed3e" +
+      walletAddress.slice(2).padStart(64, "0") +
+      UNISWAP_V3_SWAP_ROUTER.slice(2).padStart(64, "0");
+
+    const currentAllowance = await rpcCall("eth_call", [{
+      to: tokenIn,
+      data: allowanceData
+    }, "latest"]);
+
+    if (currentAllowance === "0x" || currentAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(currentAllowance) < fromAmount) {
+      console.log(`     🔓 Approving SwapRouter to spend ${isSell ? decision.fromToken : 'USDC'}...`);
+      const approveData = APPROVE_SELECTOR +
+        UNISWAP_V3_SWAP_ROUTER.slice(2).padStart(64, "0") +
+        MAX_UINT256.slice(2);
+
+      const approveTx = await account.sendTransaction({
+        network: "base",
+        transaction: {
+          to: tokenIn,
+          data: approveData as `0x${string}`,
+          value: BigInt(0),
+        },
+      });
+      console.log(`     ✅ SwapRouter approved: ${approveTx.transactionHash}`);
+      console.log(`     ⏳ Waiting 8s for approval to propagate...`);
+      await new Promise(resolve => setTimeout(resolve, 8000));
+    } else {
+      console.log(`     ✅ SwapRouter already approved for ${isSell ? decision.fromToken : 'USDC'}`);
+    }
+
+    // Step 2: Snapshot token balance BEFORE swap
+    const balanceToken = isSell ? decision.fromToken : decision.toToken;
+    let preSwapBalance = 0;
+    try {
+      preSwapBalance = await getTokenBalance(balanceToken);
+    } catch { /* non-critical */ }
+
+    // Step 3: Calculate minimum output with slippage protection
+    // Use 2% slippage for DEX-direct swaps (slightly more than CDP since we're doing manual routing)
+    const slippageBps = 200; // 2%
+    const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 0;
+    let expectedOutput: number;
+    let outDecimals: number;
+    if (isSell) {
+      expectedOutput = decision.amountUSD; // Expect ~amountUSD in USDC
+      outDecimals = 6;
+    } else {
+      expectedOutput = tokenPrice > 0 ? decision.amountUSD / tokenPrice : 0;
+      outDecimals = tokenDecimals;
+    }
+    const minOutput = expectedOutput * (1 - slippageBps / 10000);
+    const amountOutMin = minOutput > 0 ? parseUnits(minOutput.toFixed(Math.min(outDecimals, 8)), outDecimals) : BigInt(0);
+    console.log(`     🛡️ Slippage: ${slippageBps / 100}% | Min output: ${formatUnits(amountOutMin, outDecimals)}`);
+
+    // Step 4: Try swap routes — first direct, then multi-hop via WETH
+    const FEE_TIERS = [3000, 10000, 500]; // 0.3%, 1%, 0.05%
+    let txHash = '';
+    let swapSuccess = false;
+
+    // Try direct single-hop first (tokenIn -> tokenOut) with each fee tier
+    for (const fee of FEE_TIERS) {
+      if (swapSuccess) break;
+      try {
+        console.log(`     🔄 Trying direct swap (fee: ${fee / 10000}%)...`);
+        const calldata = buildExactInputSingleCalldata(
+          tokenIn, tokenOut, fee, walletAddress, fromAmount, amountOutMin
+        );
+
+        const result = await account.sendTransaction({
+          network: "base",
+          transaction: {
+            to: UNISWAP_V3_SWAP_ROUTER,
+            data: calldata,
+            value: BigInt(0),
+          },
+        });
+        txHash = result.transactionHash;
+        swapSuccess = true;
+        console.log(`     ✅ Direct swap succeeded (fee: ${fee / 10000}%)`);
+      } catch (e: any) {
+        const msg = e?.message || '';
+        console.log(`     ⚠️ Direct swap failed (fee: ${fee / 10000}%): ${msg.substring(0, 100)}`);
+      }
+    }
+
+    // If direct swap failed, try multi-hop via WETH
+    if (!swapSuccess) {
+      for (const fee1 of [3000, 10000]) {
+        if (swapSuccess) break;
+        for (const fee2 of [500, 3000]) {
+          if (swapSuccess) break;
+          try {
+            console.log(`     🔄 Trying multi-hop: ${isSell ? decision.fromToken : 'USDC'} →(${fee1})→ WETH →(${fee2})→ ${isSell ? 'USDC' : decision.toToken}...`);
+            const path = encodeV3Path(
+              [tokenIn, DEX_WETH, tokenOut],
+              [fee1, fee2]
+            );
+            const calldata = buildExactInputMultihopCalldata(
+              path, walletAddress, fromAmount, amountOutMin
+            );
+
+            const result = await account.sendTransaction({
+              network: "base",
+              transaction: {
+                to: UNISWAP_V3_SWAP_ROUTER,
+                data: calldata,
+                value: BigInt(0),
+              },
+            });
+            txHash = result.transactionHash;
+            swapSuccess = true;
+            console.log(`     ✅ Multi-hop swap succeeded (${fee1}/${fee2})`);
+          } catch (e: any) {
+            const msg = e?.message || '';
+            console.log(`     ⚠️ Multi-hop failed (${fee1}/${fee2}): ${msg.substring(0, 100)}`);
+          }
+        }
+      }
+    }
+
+    if (!swapSuccess) {
+      throw new Error(`All DEX swap routes failed for ${tokenSymbol}. Tried direct (3 fee tiers) + multi-hop via WETH.`);
+    }
+
+    console.log(`\n  ✅ DIRECT DEX TRADE EXECUTED!`);
+    console.log(`     TX Hash: ${txHash}`);
+    console.log(`     🔍 View: https://basescan.org/tx/${txHash}`);
+
+    // Update state
+    state.trading.lastTrade = new Date();
+    state.trading.totalTrades++;
+    state.trading.successfulTrades++;
+
+    // Read actual token balance AFTER swap with retry
+    let postSwapBalance = 0;
+    let actualTokens = 0;
+    for (let balAttempt = 1; balAttempt <= 5; balAttempt++) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? 2000 : 3000));
+        postSwapBalance = await getTokenBalance(balanceToken);
+        actualTokens = Math.abs(postSwapBalance - preSwapBalance);
+        if (actualTokens > 0) {
+          console.log(`     📊 Actual tokens ${isSell ? 'sent' : 'received'}: ${actualTokens.toFixed(8)} ${balanceToken} (${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
+          break;
+        }
+        if (balAttempt < 5) console.log(`     ⏳ Balance unchanged (attempt ${balAttempt}/5), retrying...`);
+      } catch (e: any) {
+        if (balAttempt === 5) console.warn(`     ⚠️ Post-swap balance check failed: ${e.message?.substring(0, 60)} — using estimate`);
+      }
+    }
+
+    // Update cost basis
+    let tradeRealizedPnL = 0;
+    if (!isSell && decision.toToken !== "USDC") {
+      const tPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price || 1;
+      const tokensReceived = actualTokens > 0 ? actualTokens : (decision.amountUSD / tPrice);
+      updateCostBasisAfterBuy(decision.toToken, decision.amountUSD, tokensReceived);
+    } else if (isSell && decision.fromToken !== "USDC") {
+      const tPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
+      const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tPrice));
+      tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
+    }
+
+    // Record trade
+    const tradedToken = isSell ? decision.fromToken : decision.toToken;
+    const tradedIndicators = marketData.indicators[tradedToken];
+    const record: TradeRecord = {
+      timestamp: new Date().toISOString(),
+      cycle: state.totalCycles,
+      action: decision.action,
+      fromToken: decision.fromToken,
+      toToken: decision.toToken,
+      amountUSD: decision.amountUSD,
+      tokenAmount: decision.tokenAmount,
+      txHash,
+      success: true,
+      portfolioValueBefore,
+      portfolioValueAfter: portfolioValueBefore - (lastGasPrice.fetchedAt > 0 ? (lastGasPrice.gweiL2 * 150000 / 1e9 * lastGasPrice.ethPriceUSD) : 0.15),
+      reasoning: `[DEX-DIRECT] ${decision.reasoning}`,
+      sector: decision.sector,
+      realizedPnL: tradeRealizedPnL,
+      marketConditions: {
+        fearGreed: marketData.fearGreed.value,
+        ethPrice: marketData.tokens.find(t => t.symbol === "ETH")?.price || 0,
+        btcPrice: marketData.tokens.find(t => t.symbol === "cbBTC")?.price || 0,
+      },
+      signalContext: {
+        marketRegime: marketData.marketRegime,
+        confluenceScore: tradedIndicators?.confluenceScore || 0,
+        rsi: tradedIndicators?.rsi14 || null,
+        macdSignal: tradedIndicators?.macd?.signal || null,
+        btcFundingRate: marketData.derivatives?.btcFundingRate || null,
+        ethFundingRate: marketData.derivatives?.ethFundingRate || null,
+        baseTVLChange24h: marketData.defiLlama?.baseTVLChange24h || null,
+        baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
+        triggeredBy: decision.isExploration ? "EXPLORATION" : decision.isForced ? "FORCED_DEPLOY" : "AI",
+        isExploration: decision.isExploration || false,
+        isForced: decision.isForced || false,
+        btcPositioning: marketData.derivatives?.btcPositioningSignal || null,
+        ethPositioning: marketData.derivatives?.ethPositioningSignal || null,
+        crossAssetSignal: marketData.macroData?.crossAssets?.crossAssetSignal || null,
+        adaptiveSlippage: slippageBps,
+      },
+    };
+    state.tradeHistory.push(record);
+    if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
+    saveTradeHistory();
+
+    return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
+
+  } catch (error: any) {
+    const errorMsg = error.message || String(error);
+    console.error(`\n  ❌ DIRECT DEX SWAP FAILED:`);
+    console.error(`     Error: ${errorMsg}`);
+    if (error.stack) console.error(`     Stack: ${error.stack.split('\n').slice(0, 3).join('\n     ')}`);
+
+    state.trading.totalTrades++;
+
+    return { success: false, error: errorMsg };
+  }
+}
+
 /**
  * Execute a single atomic swap (used directly for small orders, or called per-slice by TWAP).
  * v8.1: Now returns actualTokens from pre/post balance diff.
@@ -8107,6 +8479,13 @@ async function executeSingleSwap(
 ): Promise<{ success: boolean; txHash?: string; error?: string; actualTokens?: number }> {
 
   const portfolioValueBefore = state.trading.totalPortfolioValue;
+
+  // v14.3: Route DEX_SWAP_TOKENS directly through DEX — skip CDP SDK entirely
+  const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
+  if (DEX_SWAP_TOKENS.has(tradeToken)) {
+    console.log(`  🔀 ${tradeToken} is a DEX-routed token — using direct DEX swap (skipping CDP SDK)`);
+    return await executeDirectDexSwap(decision, marketData);
+  }
 
   try {
     // Get token addresses for the swap
@@ -8237,9 +8616,10 @@ async function executeSingleSwap(
           // v5.1: If slippage too tight, relax slightly and retry (but never above base config)
           adaptiveSlippage = Math.min(adaptiveSlippage + 25, CONFIG.trading.slippageBps);
           console.log(`     ⚠️ Slippage too tight, relaxing to ${adaptiveSlippage}bps and retrying...`);
-        } else if (swapMsg.includes("Invalid request")) {
-          // v11.4.11: CDP SDK doesn't support this token pair — throw immediately
-          console.log(`     ⚠️ CDP SDK rejected swap ("Invalid request") — token pair not supported`);
+        } else if (swapMsg.includes("Invalid request") || swapMsg.includes("payment method") || swapMsg.includes("not supported") || swapMsg.includes("invalid")) {
+          // v14.3: CDP SDK can't route this token — fall back to direct DEX swap
+          console.log(`     ⚠️ CDP SDK rejected swap — will fall back to direct DEX swap`);
+          console.log(`     Reason: ${swapMsg.substring(0, 120)}`);
           cdpSwapFailed = true;
           break;
         } else {
@@ -8248,10 +8628,12 @@ async function executeSingleSwap(
       }
     }
 
-    // v11.4.10: If CDP SDK doesn't support the token pair, throw immediately.
-    // The forced deploy rotation will skip unsupported tokens via CDP_UNSUPPORTED_TOKENS list.
+    // v14.3: If CDP SDK doesn't support the token pair, fall back to direct DEX swap.
+    // This handles MORPHO, cbLTC, PENDLE and any other tokens CDP can't route.
     if (cdpSwapFailed) {
-      throw new Error(`CDP SDK does not support ${decision.fromToken}→${decision.toToken} swap (Invalid request)`);
+      const failedToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
+      console.log(`     🔀 CDP swap failed, falling back to direct DEX swap for ${failedToken}`);
+      return await executeDirectDexSwap(decision, marketData);
     }
 
     console.log(`\n  ✅ TRADE EXECUTED SUCCESSFULLY!`);
