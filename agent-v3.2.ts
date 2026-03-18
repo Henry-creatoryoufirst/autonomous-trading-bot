@@ -11256,9 +11256,12 @@ function apiSectors() {
   };
 }
 
-function apiTrades(limit: number) {
+function apiTrades(limit: number, includeFailures: boolean = false) {
+  const filtered = includeFailures
+    ? state.tradeHistory
+    : state.tradeHistory.filter(t => t.success !== false);
   return {
-    trades: state.tradeHistory.slice(-limit).reverse(),
+    trades: filtered.slice(-limit).reverse(),
     totalTrades: state.trading.totalTrades,
     successfulTrades: state.trading.successfulTrades,
   };
@@ -11822,7 +11825,10 @@ const healthServer = http.createServer(async (req, res) => {
         sendJSON(res, 200, apiSectors());
         break;
       case '/api/trades':
-        sendJSON(res, 200, apiTrades(parseInt(url.searchParams.get('limit') || '50')));
+        sendJSON(res, 200, apiTrades(
+          parseInt(url.searchParams.get('limit') || '50'),
+          url.searchParams.get('include_failures') === 'true'
+        ));
         break;
       case '/api/daily-pnl':
         sendJSON(res, 200, apiDailyPnL());

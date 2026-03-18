@@ -2084,8 +2084,9 @@ function renderOverview() {
 }
 
 function renderTradeFeed() {
-  const trades = (Store.data.trades?.trades || []).slice(0, 8);
-  $('tradeFeed').innerHTML = trades.length === 0 ? '<div class="loading">No trades</div>' :
+  const allTrades = (Store.data.trades?.trades || []).filter(t => t.success !== false);
+  const trades = allTrades.slice(0, 8);
+  $('tradeFeed').innerHTML = trades.length === 0 ? '<div class="loading">No trades yet</div>' :
     trades.map(t => {
       const isBuy = t.action === 'BUY';
       const cls = isBuy ? 'buy' : 'sell';
