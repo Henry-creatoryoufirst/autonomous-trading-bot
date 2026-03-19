@@ -105,6 +105,9 @@ import { EquityIntegration } from './equity-integration.js';
 // === v6.1: TOKEN DISCOVERY ENGINE ===
 import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from './services/token-discovery.js';
 
+// === NVR-SPEC-NL: NATURAL LANGUAGE STRATEGY CONFIG ===
+import { parseStrategyInstruction, isStrategyInstruction, type ConfigChange, type ParseResult, type ConfigDirective } from './services/strategy-config.js';
+
 // === NVR-SPEC-001: BACKTESTING & SIMULATION ENGINE ===
 import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from './services/simulator.js';
 
@@ -251,6 +254,10 @@ import {
   MOMENTUM_MAX_POSITION_PERCENT,
   // v14.1: Smart Trim (Momentum Deceleration Exit)
   DECEL_TRIM_DEDUP_WINDOW_MINUTES,
+  // v15.3: Yield Optimizer
+  YIELD_CHECK_INTERVAL_CYCLES,
+  YIELD_MIN_DIFFERENTIAL_PCT,
+  YIELD_MIN_IDLE_USD,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -261,6 +268,10 @@ import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from './services/aave-yield.js';
 
+// === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
+import { yieldOptimizer } from './services/yield-optimizer.js';
+import type { ProtocolYield } from './services/yield-optimizer.js';
+
 // === v14.1: MOMENTUM DECELERATION DETECTOR (Smart Trim) ===
 import { createDecelState, updateBuyRatioHistory, detectDeceleration } from './services/deceleration-detector.js';
 import type { DecelState } from './services/deceleration-detector.js';
@@ -269,6 +280,11 @@ import type { YieldState } from './services/aave-yield.js';
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
 import { geckoTerminalService } from './services/gecko-terminal.js';
 import type { DexIntelligence } from './services/gecko-terminal.js';
+
+// === v15.0: MULTI-AGENT SWARM ARCHITECTURE ===
+import { runSwarm, formatSwarmForPrompt, setLatestSwarmDecisions, getLatestSwarmDecisions, getLastSwarmRunTime } from './services/swarm/orchestrator.js';
+import type { SwarmDecision } from './services/swarm/agent-framework.js';
+import { SIGNAL_ENGINE } from './config/constants.js';
 
 dotenv.config();
 
@@ -1989,6 +2005,10 @@ let yieldEnabled = process.env.AAVE_YIELD_ENABLED !== 'false'; // default ON
 let lastYieldAction: string | null = null;
 let yieldCycleCount = 0;
 
+// === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER STATE ===
+let yieldOptimizerCycleCount = 0;
+let lastYieldRates: ProtocolYield[] = [];
+
 // === v11.0: DEX INTELLIGENCE STATE ===
 let lastDexIntelligence: DexIntelligence | null = null;
 let dexIntelFetchCount = 0;
@@ -3317,6 +3337,8 @@ interface AgentState {
   tradeDedupLog?: Record<string, string>; // "symbol:action:tier" → ISO timestamp of last execution
   // v11.4.16: User Directives — chat commands that influence trading decisions
   userDirectives?: UserDirective[];
+  // NVR-NL: Config directives from natural language strategy instructions
+  configDirectives?: ConfigDirective[];
 }
 
 // v11.4.16: User Directive types — instructions from the dashboard chat that affect bot behavior
@@ -3386,17 +3408,25 @@ let state: AgentState = {
   stablecoinSupplyHistory: { values: [] as { timestamp: string; totalSupply: number }[] },
   // v11.4.16: User Directives from dashboard chat
   userDirectives: [] as UserDirective[],
+  // NVR-NL: Config directives from natural language strategy config
+  configDirectives: [] as ConfigDirective[],
   // v14.0: Withdraw system
   withdrawPaused: false,
 } as any;
 
 // v14.0: Pending withdrawal confirmations (in-memory only, not persisted)
 const pendingWithdrawals: Map<string, { toAddress: string; amountUSD: number; token: string; createdAt: number }> = new Map();
+
+// NVR-NL: Pending config change confirmations (in-memory, expires after 5 min)
+const pendingConfigChanges: Map<string, { parseResult: ParseResult; instruction: string; createdAt: number }> = new Map();
 // Cleanup stale confirmations every 5 min
 setInterval(() => {
   const now = Date.now();
   for (const [id, w] of pendingWithdrawals) {
     if (now - w.createdAt > 5 * 60 * 1000) pendingWithdrawals.delete(id);
+  }
+  for (const [id, c] of pendingConfigChanges) {
+    if (now - c.createdAt > 5 * 60 * 1000) pendingConfigChanges.delete(id);
   }
 }, 5 * 60 * 1000);
 
@@ -3538,6 +3568,13 @@ function loadTradeHistory() {
         if (state.totalDeposited > 0) {
           console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
         }
+        // NVR-NL: Restore user directives and config directives
+        state.userDirectives = parsed.userDirectives || [];
+        state.configDirectives = parsed.configDirectives || [];
+        const activeDir = (state.userDirectives || []).length + (state.configDirectives || []).filter((d: ConfigDirective) => d.active).length;
+        if (activeDir > 0) {
+          console.log(`  📝 Restored ${activeDir} active directives (${state.userDirectives.length} user, ${state.configDirectives.filter((d: ConfigDirective) => d.active).length} config)`);
+        }
         // v9.0: Migrate existing cost basis entries — backfill ATR fields
         for (const sym of Object.keys(state.costBasis)) {
           const cb = state.costBasis[sym];
@@ -3629,6 +3666,9 @@ function saveTradeHistory() {
       // v11.4.7: Safety guards
       sanityAlerts: (state.sanityAlerts || []).slice(-50),
       tradeDedupLog: state.tradeDedupLog || {},
+      // NVR-NL: Persist user directives and config directives
+      userDirectives: (state.userDirectives || []).slice(-30),
+      configDirectives: (state.configDirectives || []).filter((d: ConfigDirective) => d.active).slice(-30),
     };
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
@@ -7836,6 +7876,30 @@ async function makeTradeDecision(
   // Build technical indicators summary for the AI
   const indicatorsSummary = formatIndicatorsForPrompt(marketData.indicators, marketData.tokens);
 
+  // v15.0: Run swarm before Claude call — inject consensus as context
+  let swarmPromptSection = '';
+  if (SIGNAL_ENGINE === 'swarm') {
+    try {
+      const swarmTokens = marketData.tokens.filter(t => t.symbol !== 'USDC' && t.symbol !== 'WETH').map(t => ({
+        symbol: t.symbol, price: t.price, priceChange24h: t.priceChange24h, volume24h: t.volume24h, sector: t.sector,
+        indicators: marketData.indicators[t.symbol] || undefined,
+      }));
+      const _uBal = balances.find(b => b.symbol === 'USDC');
+      const _tVal = totalPortfolioValue || 1;
+      const _cPct = _uBal ? (_uBal.usdValue / _tVal) * 100 : 50;
+      const _pos: Record<string, { usdValue: number; gainPct?: number; costBasis?: number }> = {};
+      for (const b of balances) { if (b.symbol === 'USDC') continue; const cb = state.costBasis[b.symbol]; _pos[b.symbol] = { usdValue: b.usdValue, gainPct: cb ? ((b.usdValue - cb.totalCostBasis) / cb.totalCostBasis) * 100 : undefined, costBasis: cb?.avgCostPerUnit }; }
+      const _sa: Record<string, number> = {};
+      for (const s of sectorAllocations) _sa[s.name] = s.currentPercent;
+      const btcD = marketData.tokens.find(t => t.symbol === 'cbBTC' || t.symbol === 'BTC');
+      const ethD = marketData.tokens.find(t => t.symbol === 'ETH');
+      const swarmDecs = runSwarm(swarmTokens, { totalValue: _tVal, cashPercent: _cPct, positions: _pos, sectorAllocations: _sa }, { fearGreedIndex: marketData.fearGreed.value, fearGreedClassification: marketData.fearGreed.classification, btc24hChange: btcD?.priceChange24h || 0, eth24hChange: ethD?.priceChange24h || 0, regime: marketData.marketRegime });
+      setLatestSwarmDecisions(swarmDecs);
+      swarmPromptSection = '\n\n' + formatSwarmForPrompt(swarmDecs) + '\n';
+      console.log(`   [SWARM] Ran 5 micro-agents on ${swarmTokens.length} tokens`);
+    } catch (e: any) { console.warn('[SWARM] Error running swarm for local mode:', e.message); }
+  }
+
   // Find tokens with strongest buy/sell signals
   const strongBuySignals = Object.entries(marketData.indicators)
     .filter(([_, ind]) => ind.confluenceScore >= 30)
@@ -7943,6 +8007,7 @@ ${indicatorsSummary || "  No indicator data available"}
 
 ${strongBuySignals.length > 0 ? `🟢 STRONGEST BUY SIGNALS: ${strongBuySignals.join(", ")}` : ""}
 ${strongSellSignals.length > 0 ? `🔴 STRONGEST SELL SIGNALS: ${strongSellSignals.join(", ")}` : ""}
+${swarmPromptSection}
 
 ${intelligenceSummary}
 
@@ -9420,6 +9485,35 @@ async function produceSignals(): Promise<void> {
     const marketData = await getMarketData();
     const signals: TradingSignal[] = [];
 
+    // v15.0: SWARM MODE — multi-agent voting replaces single confluence in producer mode
+    if (SIGNAL_ENGINE === 'swarm') {
+      console.log('[SIGNAL PRODUCER] Using SWARM engine (5 micro-agents)');
+      const _swarmTokens = Object.entries(TOKEN_REGISTRY)
+        .filter(([s]) => s !== 'USDC' && s !== 'WETH')
+        .map(([symbol, tokenInfo]) => { const td = marketData.tokens.find(t => t.symbol === symbol); return td ? { symbol, price: td.price, priceChange24h: td.priceChange24h, volume24h: td.volume24h, sector: td.sector || tokenInfo.sector, indicators: marketData.indicators[symbol] || undefined } : null; })
+        .filter(Boolean) as any[];
+      const _usdcBal = state.trading.balances.find(b => b.symbol === 'USDC');
+      const _totalVal = state.trading.totalPortfolioValue || 1;
+      const _cashPct = _usdcBal ? (_usdcBal.usdValue / _totalVal) * 100 : 50;
+      const _swarmPos: Record<string, { usdValue: number; gainPct?: number; costBasis?: number }> = {};
+      for (const b of state.trading.balances) { if (b.symbol === 'USDC') continue; const cb = state.costBasis[b.symbol]; _swarmPos[b.symbol] = { usdValue: b.usdValue, gainPct: cb ? ((b.usdValue - cb.totalCostBasis) / cb.totalCostBasis) * 100 : undefined, costBasis: cb?.avgCostPerUnit }; }
+      const _sectorAlloc: Record<string, number> = {};
+      for (const sa of state.trading.sectorAllocations) _sectorAlloc[sa.name] = sa.currentPercent;
+      const _btcData = marketData.tokens.find(t => t.symbol === 'cbBTC' || t.symbol === 'BTC');
+      const _ethData = marketData.tokens.find(t => t.symbol === 'ETH');
+      const _swarmDecisions = runSwarm(_swarmTokens, { totalValue: _totalVal, cashPercent: _cashPct, positions: _swarmPos, sectorAllocations: _sectorAlloc }, { fearGreedIndex: marketData.fearGreed.value, fearGreedClassification: marketData.fearGreed.classification, btc24hChange: _btcData?.priceChange24h || 0, eth24hChange: _ethData?.priceChange24h || 0, regime: marketData.marketRegime });
+      setLatestSwarmDecisions(_swarmDecisions);
+      for (const d of _swarmDecisions) {
+        const td = marketData.tokens.find(t => t.symbol === d.token);
+        const ind = marketData.indicators[d.token];
+        let br: number | null = null;
+        if (ind?.orderFlow) { const tf = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD; if (tf > 0) br = (ind.orderFlow.buyVolumeUSD / tf) * 100; }
+        const confluence = Math.round(d.totalScore * 50);
+        const vb = d.votes.map(v => `${v.agent}:${v.action}(${v.confidence}%)`).join(' ');
+        signals.push({ token: d.token, action: d.finalAction, confluence, reasoning: `Swarm ${d.consensus}% consensus [${vb}]`, indicators: { rsi14: ind?.rsi14 ?? null, macdSignal: ind?.macd?.signal ?? null, macdHistogram: ind?.macd?.histogram ?? null, bollingerSignal: ind?.bollingerBands?.signal ?? null, bollingerPercentB: ind?.bollingerBands?.percentB ?? null, volumeChange24h: ind?.volumeChange24h ?? null, buyRatio: br, adx: ind?.adx14?.adx ?? null, atrPercent: ind?.atrPercent ?? null }, price: td?.price || 0, priceChange24h: td?.priceChange24h || 0, sector: td?.sector || '' });
+      }
+    } else {
+    // CLASSIC MODE — original single confluence calculation
     for (const [symbol, tokenInfo] of Object.entries(TOKEN_REGISTRY)) {
       if (symbol === 'USDC' || symbol === 'WETH') continue;
 
@@ -9501,6 +9595,7 @@ async function produceSignals(): Promise<void> {
         sector: tokenData.sector || tokenInfo.sector,
       });
     }
+    } // end classic/swarm branch
 
     const now = new Date();
     const intervalMs = (CONFIG.trading.intervalMinutes || 5) * 60 * 1000;
@@ -10844,6 +10939,42 @@ async function runTradingCycle() {
       }
     }
 
+    // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER CYCLE ===
+    // Compare rates across Aave, Compound, Morpho, Moonwell every YIELD_CHECK_INTERVAL_CYCLES cycles.
+    if (yieldEnabled) {
+      try {
+        yieldOptimizerCycleCount++;
+        if (yieldOptimizerCycleCount % YIELD_CHECK_INTERVAL_CYCLES === 1) {
+          const rates = await yieldOptimizer.getCurrentRates();
+          lastYieldRates = rates;
+          const best = rates[0];
+          const current = yieldOptimizer.getCurrentProtocol();
+
+          if (rates.length > 0) {
+            console.log(`\n  🔍 YIELD OPTIMIZER: Checked ${rates.length} protocols`);
+            rates.forEach(r => {
+              const marker = r.protocol === current ? ' ◀ current' : '';
+              const bestMarker = r === best ? ' ★ best' : '';
+              console.log(`     ${r.protocol.padEnd(10)} ${r.apy.toFixed(2)}% APY  [${r.status}]${marker}${bestMarker}`);
+            });
+
+            // Check if rebalancing is warranted
+            if (best && yieldOptimizer.shouldRebalance(current, best, YIELD_MIN_DIFFERENTIAL_PCT)) {
+              const deposited = aaveYieldService.getState().depositedUSDC;
+              if (deposited >= YIELD_MIN_IDLE_USD) {
+                const result = await yieldOptimizer.rebalance(current, best.protocol, deposited);
+                if (result.success) {
+                  console.log(`  🔄 ${result.message}`);
+                }
+              }
+            }
+          }
+        }
+      } catch (yieldOptErr: any) {
+        console.error(`  ❌ Yield optimizer cycle error: ${yieldOptErr?.message?.substring(0, 200)}`);
+      }
+    }
+
   } catch (error: any) {
     console.error("Cycle error:", error.message);
   }
@@ -10919,7 +11050,9 @@ async function runTradingCycle() {
   }
   if (yieldEnabled && aaveYieldService.getState().depositedUSDC > 0) {
     const ys = aaveYieldService.getState();
-    console.log(`   Yield: $${ys.aTokenBalance.toFixed(2)} in Aave (~${ys.estimatedAPY}% APY) | Earned: $${ys.totalYieldEarned.toFixed(4)}`);
+    const bestRate = lastYieldRates.length > 0 ? lastYieldRates[0] : null;
+    const bestInfo = bestRate ? ` | Best: ${bestRate.protocol} ${bestRate.apy.toFixed(2)}%` : '';
+    console.log(`   Yield: $${ys.aTokenBalance.toFixed(2)} in Aave (~${ys.estimatedAPY}% APY) | Earned: $${ys.totalYieldEarned.toFixed(4)}${bestInfo}`);
   }
   if (lastDexIntelligence) {
     const di = lastDexIntelligence;
@@ -11172,6 +11305,15 @@ async function main() {
       console.log(`  📈 Deposited: $${ys.depositedUSDC.toFixed(2)} | Yield earned: $${ys.totalYieldEarned.toFixed(4)}`);
       console.log(`  📊 Estimated APY: ~${ys.estimatedAPY}%`);
       console.log(`  ⚙️ Config: Keep $500 liquid, min deposit $50, min withdraw $25`);
+      // v15.3: Initialize yield optimizer — fetch initial rates
+      try {
+        const rates = await yieldOptimizer.getCurrentRates();
+        lastYieldRates = rates;
+        console.log(`  🔍 Yield Optimizer: ${rates.length} protocols monitored`);
+        rates.forEach(r => console.log(`     ${r.protocol.padEnd(10)} ${r.apy.toFixed(2)}% APY  [${r.status}]`));
+      } catch (optErr: any) {
+        console.warn(`  ⚠️ Yield optimizer init: ${optErr?.message?.substring(0, 100)} — will retry on cycle`);
+      }
     } catch (yieldInitErr: any) {
       console.warn(`  ⚠️ Aave yield init: ${yieldInitErr.message?.substring(0, 150)} — will retry on first cycle`);
     }
@@ -12175,6 +12317,85 @@ function removeUserDirective(id: string): boolean {
   return state.userDirectives.length < before;
 }
 
+// NVR-NL: Apply parsed config changes as config directives + user directives
+function applyConfigChanges(parseResult: ParseResult, instruction: string): ConfigDirective {
+  const directive: ConfigDirective = {
+    id: `cfg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    instruction,
+    changes: parseResult.changes,
+    appliedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    active: true,
+  };
+
+  if (!state.configDirectives) state.configDirectives = [];
+  state.configDirectives.push(directive);
+  if (state.configDirectives.length > 30) {
+    state.configDirectives = state.configDirectives.filter((d: ConfigDirective) => d.active).slice(-30);
+  }
+
+  // Create corresponding UserDirectives so changes feed into the AI prompt
+  for (const change of parseResult.changes) {
+    if (change.parameter === 'tradingEnabled') {
+      CONFIG.trading.enabled = change.newValue;
+      console.log(`[NL Config] Trading ${change.newValue ? 'ENABLED' : 'DISABLED'} by user instruction`);
+    } else if (change.parameter.startsWith('sectorTargets.')) {
+      const sector = change.parameter.replace('sectorTargets.', '');
+      addUserDirective({
+        type: 'ALLOCATION',
+        instruction: `Adjust ${sector} target allocation to ${change.newValue}%`,
+        sector,
+        value: change.newValue,
+        source: `NL Config: ${instruction.substring(0, 50)}`,
+      });
+    } else if (change.parameter.startsWith('blacklist.')) {
+      const token = change.parameter.replace('blacklist.', '');
+      addUserDirective({
+        type: 'AVOID',
+        instruction: `Avoid buying ${token} — user instruction`,
+        token,
+        source: `NL Config: avoid ${token}`,
+      });
+    } else if (change.parameter.startsWith('watchlist.')) {
+      const token = change.parameter.replace('watchlist.', '');
+      addUserDirective({
+        type: 'WATCHLIST',
+        instruction: `Research and watch ${token} — user requested`,
+        token,
+        source: `NL Config: watch ${token}`,
+      });
+    } else {
+      addUserDirective({
+        type: 'GENERAL',
+        instruction: `${change.parameter}: ${change.oldValue} -> ${change.newValue}`,
+        source: `NL Config: ${instruction.substring(0, 50)}`,
+      });
+    }
+  }
+
+  console.log(`[NL Config] Applied ${parseResult.changes.length} config changes from: "${instruction.substring(0, 60)}"`);
+  saveTradeHistory();
+  return directive;
+}
+
+// NVR-NL: Get active config directives
+function getActiveConfigDirectives(): ConfigDirective[] {
+  const directives = state.configDirectives || [];
+  const now = new Date().toISOString();
+  return directives.filter((d: ConfigDirective) => d.active && (!d.expiresAt || d.expiresAt > now));
+}
+
+// NVR-NL: Remove a config directive by ID
+function removeConfigDirective(id: string): boolean {
+  if (!state.configDirectives) return false;
+  const directive = state.configDirectives.find((d: ConfigDirective) => d.id === id);
+  if (!directive) return false;
+  directive.active = false;
+  console.log(`[NL Config] Removed config directive: ${id}`);
+  saveTradeHistory();
+  return true;
+}
+
 // v11.4.16: Chat tool definitions for Claude tool_use
 const CHAT_TOOLS: any[] = [
   {
@@ -12915,6 +13136,20 @@ const healthServer = http.createServer(async (req, res) => {
           ...aaveYieldService.toJSON(),
           lastAction: lastYieldAction,
           yieldCycles: yieldCycleCount,
+          optimizer: yieldOptimizer.toJSON(),
+        });
+        break;
+      case '/api/yield-rates':
+        sendJSON(res, 200, {
+          enabled: yieldEnabled,
+          currentProtocol: yieldOptimizer.getCurrentProtocol(),
+          rates: lastYieldRates.length > 0 ? lastYieldRates : yieldOptimizer.getRates(),
+          aaveDeposited: aaveYieldService.getState().depositedUSDC,
+          aaveBalance: aaveYieldService.getState().aTokenBalance,
+          totalYieldEarned: aaveYieldService.getState().totalYieldEarned,
+          lastRateCheck: yieldOptimizer.getState().lastRateCheck,
+          checkCount: yieldOptimizer.getCheckCount(),
+          rebalanceCount: yieldOptimizer.getState().rebalanceCount,
         });
         break;
 
@@ -13224,6 +13459,64 @@ const healthServer = http.createServer(async (req, res) => {
               return;
             }
 
+            // NVR-NL: Check for "confirm" — apply pending config change
+            const msgLower = message.toLowerCase().trim();
+            if (msgLower === 'confirm' || msgLower === 'yes' || msgLower === 'apply') {
+              // Find most recent pending config change
+              const entries = [...pendingConfigChanges.entries()];
+              if (entries.length > 0) {
+                const [confId, pending] = entries[entries.length - 1];
+                const directive = applyConfigChanges(pending.parseResult, pending.instruction);
+                pendingConfigChanges.delete(confId);
+                sendJSON(res, 200, {
+                  response: `Applied. ${pending.parseResult.summary}\n\nDirective ID: ${directive.id} (active for 24h). Say "list directives" to see all active changes.`,
+                  configApplied: true,
+                  directiveId: directive.id,
+                });
+                return;
+              }
+            }
+
+            // NVR-NL: Try strategy config parser first (keyword matching, no AI needed)
+            if (isStrategyInstruction(message)) {
+              const parseResult = parseStrategyInstruction(message, {
+                stopLossPercent: Math.abs(CONFIG.trading.stopLoss.percentThreshold),
+                profitTakePercent: CONFIG.trading.profitTaking.targetPercent,
+                tradingEnabled: CONFIG.trading.enabled,
+              });
+
+              if (parseResult.understood && parseResult.summary === 'QUERY') {
+                // Fall through to normal chat handling below
+              } else if (parseResult.understood && parseResult.summary === 'STRATEGY_QUERY') {
+                const activeCfg = getActiveConfigDirectives();
+                const cfgList = activeCfg.length > 0
+                  ? activeCfg.map((d: ConfigDirective, i: number) => `${i + 1}. "${d.instruction}" (${new Date(d.appliedAt).toLocaleString()})`).join('\n')
+                  : 'No active config directives — running default strategy.';
+                sendJSON(res, 200, { response: `Current strategy config directives:\n${cfgList}` });
+                return;
+              } else if (parseResult.understood && parseResult.changes.length > 0) {
+                if (parseResult.requiresConfirmation) {
+                  const confId = `cfgconf-${Date.now()}`;
+                  pendingConfigChanges.set(confId, { parseResult, instruction: message, createdAt: Date.now() });
+                  const changeList = parseResult.changes.map(c => `  ${c.parameter}: ${c.oldValue} -> ${c.newValue}`).join('\n');
+                  sendJSON(res, 200, {
+                    response: `I understand. Here is what I will change:\n\n${parseResult.summary}\n\nDetails:\n${changeList}\n\nReply "confirm" to apply these changes.`,
+                    pendingConfirmation: true,
+                  });
+                  return;
+                } else {
+                  // No confirmation needed (e.g. watchlist adds)
+                  const directive = applyConfigChanges(parseResult, message);
+                  sendJSON(res, 200, {
+                    response: `Done. ${parseResult.summary}\n\nDirective ID: ${directive.id} (active for 24h).`,
+                    configApplied: true,
+                    directiveId: directive.id,
+                  });
+                  return;
+                }
+              }
+            }
+
             // NVR Central Mode: Chat fallback — no Claude API needed
             if (signalMode === 'central') {
               const portfolio = apiPortfolio();
@@ -13236,15 +13529,20 @@ const healthServer = http.createServer(async (req, res) => {
               const usdcBalance = usdcBal?.balance || 0;
               const cashPct = totalValue > 0 ? ((usdcBalance / totalValue) * 100).toFixed(0) : '0';
 
+              const activeCfgDirectives = getActiveConfigDirectives();
+              const cfgSection = activeCfgDirectives.length > 0
+                ? '\n\nActive strategy directives:\n' + activeCfgDirectives.map((d: ConfigDirective) => `- ${d.instruction}`).join('\n')
+                : '';
+
               const summary = [
                 `Portfolio: $${totalValue.toFixed(2)} | P&L: ${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`,
                 `Win Rate: ${winRate.toFixed(1)}% | Trades: ${totalTrades}`,
                 `Cash: $${usdcBalance.toFixed(2)} (${cashPct}%)`,
                 `Drawdown: ${portfolio.drawdown.toFixed(1)}% | Peak: $${portfolio.peakValue.toFixed(2)}`,
                 '',
-                'AI chat requires local mode. Here is your portfolio summary.',
-                'Your bot is receiving trading signals from the NVR central service.',
-              ].join('\n');
+                'You can configure strategy via chat: "be more aggressive", "set stop loss to 10%", "avoid BRETT", etc.',
+                'AI chat requires local mode for full conversation.',
+              ].join('\n') + cfgSection;
 
               sendJSON(res, 200, { response: summary });
               return;
@@ -13262,9 +13560,10 @@ const healthServer = http.createServer(async (req, res) => {
 
       // v11.4.16: User Directives API
       case '/api/directives': {
-        const active = getActiveDirectives();
+        const activeUserDir = getActiveDirectives();
+        const activeCfgDir = getActiveConfigDirectives();
         sendJSON(res, 200, {
-          directives: active.map(d => ({
+          directives: activeUserDir.map(d => ({
             id: d.id,
             type: d.type,
             instruction: d.instruction,
@@ -13274,7 +13573,16 @@ const healthServer = http.createServer(async (req, res) => {
             createdAt: d.createdAt,
             expiresAt: d.expiresAt,
           })),
-          count: active.length,
+          configDirectives: activeCfgDir.map((d: ConfigDirective) => ({
+            id: d.id,
+            instruction: d.instruction,
+            changes: d.changes,
+            appliedAt: d.appliedAt,
+            expiresAt: d.expiresAt,
+            active: d.active,
+          })),
+          count: activeUserDir.length,
+          configCount: activeCfgDir.length,
         });
         break;
       }
@@ -13417,6 +13725,22 @@ const healthServer = http.createServer(async (req, res) => {
         } catch (err: any) {
           sendJSON(res, 500, { error: `Version backtest failed: ${err.message}` });
         }
+        break;
+      }
+
+      // === v15.0: SWARM STATUS API ===
+      case '/api/swarm-status': {
+        const _swarmDecs = getLatestSwarmDecisions();
+        const _swarmTime = getLastSwarmRunTime();
+        sendJSON(res, 200, {
+          engine: SIGNAL_ENGINE,
+          agents: ['momentum', 'flow', 'risk', 'sentiment', 'trend'],
+          lastRunTime: _swarmTime?.toISOString() || null,
+          lastDecisions: _swarmDecs.map(d => ({
+            token: d.token, finalAction: d.finalAction, totalScore: d.totalScore, consensus: d.consensus,
+            votes: d.votes.map(v => ({ agent: v.agent, action: v.action, confidence: v.confidence, reasoning: v.reasoning, weight: v.weight })),
+          })),
+        }, req);
         break;
       }
 
@@ -13659,6 +13983,19 @@ const healthServer = http.createServer(async (req, res) => {
       }
 
       default: {
+        // NVR-NL: DELETE /api/directives/:id — remove a directive
+        if (url.pathname.startsWith('/api/directives/') && req.method === 'DELETE') {
+          const id = url.pathname.replace('/api/directives/', '');
+          const removedUser = removeUserDirective(id);
+          const removedConfig = removeConfigDirective(id);
+          if (removedUser || removedConfig) {
+            sendJSON(res, 200, { success: true, removed: id });
+          } else {
+            sendJSON(res, 404, { success: false, error: `Directive "${id}" not found` });
+          }
+          break;
+        }
+
         // Handle dynamic route: /api/paper-portfolio/:id
         if (url.pathname.startsWith('/api/paper-portfolio/')) {
           const id = url.pathname.replace('/api/paper-portfolio/', '');

@@ -1,0 +1,69 @@
+/**
+ * Momentum Micro-Agent
+ *
+ * Focuses ONLY on: RSI, MACD, Bollinger, price momentum, volume spikes.
+ * Pure math — no Claude API calls.
+ * Weight: 30%
+ */
+
+import type { MicroAgentInput, MicroAgentVote, SwarmAction } from '../agent-framework.js';
+import { SWARM_AGENT_WEIGHTS } from '../../../config/constants.js';
+
+export function momentumAgent(input: MicroAgentInput): MicroAgentVote {
+  const { rsi, macd, bollingerSignal, volumeSpike, price24hChange } = input.indicators;
+  let score = 0;
+  let confidence = 50;
+  const reasons: string[] = [];
+
+  // RSI signals
+  if (rsi !== undefined) {
+    if (rsi < 25) { score += 3; confidence += 15; reasons.push(`RSI deeply oversold (${rsi.toFixed(0)})`); }
+    else if (rsi < 35) { score += 1; confidence += 8; reasons.push(`RSI oversold (${rsi.toFixed(0)})`); }
+    else if (rsi > 80) { score -= 3; confidence += 15; reasons.push(`RSI extremely overbought (${rsi.toFixed(0)})`); }
+    else if (rsi > 70) { score -= 2; confidence += 10; reasons.push(`RSI overbought (${rsi.toFixed(0)})`); }
+  } else {
+    confidence -= 15;
+  }
+
+  // MACD signals
+  if (macd) {
+    if (macd === 'BULLISH') { score += 1; confidence += 5; reasons.push('MACD bullish crossover'); }
+    else if (macd === 'BEARISH') { score -= 1; confidence += 5; reasons.push('MACD bearish crossover'); }
+  }
+
+  // Bollinger Band signals
+  if (bollingerSignal) {
+    if (bollingerSignal === 'OVERSOLD') { score += 1; confidence += 5; reasons.push('BB oversold'); }
+    else if (bollingerSignal === 'OVERBOUGHT') { score -= 1; confidence += 5; reasons.push('BB overbought'); }
+  }
+
+  // Volume spike amplifies conviction
+  if (volumeSpike !== undefined) {
+    if (volumeSpike > 2) { confidence += 10; reasons.push(`Volume spike ${volumeSpike.toFixed(1)}x`); }
+    else if (volumeSpike < 0.5) { confidence -= 5; reasons.push('Low volume'); }
+  }
+
+  // Price momentum context
+  if (price24hChange !== undefined) {
+    if (price24hChange > 5) { score += 1; reasons.push(`Strong momentum +${price24hChange.toFixed(1)}%`); }
+    else if (price24hChange < -5) { score -= 1; reasons.push(`Negative momentum ${price24hChange.toFixed(1)}%`); }
+  }
+
+  // Map score to action
+  let action: SwarmAction;
+  if (score >= 4) action = 'STRONG_BUY';
+  else if (score >= 2) action = 'BUY';
+  else if (score <= -4) action = 'STRONG_SELL';
+  else if (score <= -2) action = 'SELL';
+  else action = 'HOLD';
+
+  confidence = Math.max(10, Math.min(100, confidence));
+
+  return {
+    agent: 'momentum',
+    action,
+    confidence,
+    reasoning: reasons.length > 0 ? reasons.join('; ') : 'No clear momentum signals',
+    weight: SWARM_AGENT_WEIGHTS.momentum,
+  };
+}

@@ -1426,6 +1426,20 @@ tr:hover td { background: var(--bg-subtle); }
     </div>
   </div>
 
+  <!-- NVR-NL: Active Strategy Directives -->
+  <div id="directivesPanel" style="display:none;margin-top:var(--space-3)">
+    <div class="card" style="padding:var(--space-4) var(--space-5)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">
+        <div style="display:flex;align-items:center;gap:var(--space-2)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <span style="font-size:var(--fs-sm);font-weight:600;color:var(--text-primary);letter-spacing:0.3px">Active Strategy Directives</span>
+        </div>
+        <span id="directivesCount" style="font-size:var(--fs-xs);color:var(--text-muted)"></span>
+      </div>
+      <div id="directivesList" style="display:flex;flex-direction:column;gap:var(--space-2)"></div>
+    </div>
+  </div>
+
   <!-- ================================================================
        2. EQUITY CURVE + SECTOR ALLOCATION
        ================================================================ -->
@@ -1516,6 +1530,32 @@ tr:hover td { background: var(--bg-subtle); }
     <div class="card"><div class="card-label">Total Harvested</div><div class="card-value positive" id="harvest-total">--</div><div class="card-sub" id="harvest-count">--</div></div>
     <div class="card"><div class="card-label">Daily Payouts</div><div class="card-value" id="harvest-auto">--</div><div class="card-sub" id="harvest-auto-sub">--</div></div>
     <div class="card"><div class="card-label">Last Payout</div><div class="card-value" id="harvest-last">--</div><div class="card-sub" id="harvest-last-sub">--</div></div>
+  </div>
+
+  <!-- ================================================================
+       4b. YIELD OPTIMIZER
+       ================================================================ -->
+  <div class="section-hdr">Yield Optimizer</div>
+  <div class="grid g-4">
+    <div class="card"><div class="card-label">Current Protocol</div><div class="card-value sm" id="yo-current">--</div><div class="card-sub" id="yo-current-sub">--</div></div>
+    <div class="card"><div class="card-label">Deposited</div><div class="card-value sm" id="yo-deposited">--</div><div class="card-sub" id="yo-deposited-sub">Earning yield</div></div>
+    <div class="card"><div class="card-label">Yield Earned</div><div class="card-value sm positive" id="yo-earned">--</div><div class="card-sub" id="yo-earned-sub">All time</div></div>
+    <div class="card"><div class="card-label">Status</div><div class="card-value sm" id="yo-status">--</div><div class="card-sub" id="yo-status-sub">--</div></div>
+  </div>
+  <div class="card" style="margin-top:var(--space-3)">
+    <div class="card-label">Protocol Rates (USDC on Base)</div>
+    <table style="width:100%;font-size:var(--fs-sm);margin-top:var(--space-2)">
+      <thead><tr style="color:var(--text-muted);text-align:left;font-size:var(--fs-xs)">
+        <th style="padding:4px 8px">Protocol</th>
+        <th style="padding:4px 8px">APY</th>
+        <th style="padding:4px 8px">Your Deposit</th>
+        <th style="padding:4px 8px">Status</th>
+      </tr></thead>
+      <tbody id="yo-rates-table">
+        <tr><td colspan="4" style="padding:8px;color:var(--text-muted);text-align:center">Loading rates...</td></tr>
+      </tbody>
+    </table>
+    <div style="color:var(--text-muted);font-size:10px;margin-top:6px" id="yo-last-check">Last checked: --</div>
   </div>
 
   <hr class="section-divider">
@@ -1825,6 +1865,21 @@ tr:hover td { background: var(--bg-subtle); }
   <div class="card" style="margin-top:var(--space-4)">
     <div class="card-label" style="margin-bottom:var(--space-3)">Signal Distribution Over Time</div>
     <canvas id="sigHistoryCanvas" width="800" height="220" style="width:100%;height:220px"></canvas>
+  </div>
+
+  <!-- v15.0: Swarm Intelligence Panel -->
+  <div class="card" style="margin-top:var(--space-4)" id="swarmPanel">
+    <div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-4)">
+      <div class="card-label" style="margin:0">Swarm Intelligence</div>
+      <span id="swarmEngineBadge" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-full);font-size:var(--fs-xs);font-weight:600;background:var(--purple-dim);color:var(--purple)">
+        <span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>
+        SWARM
+      </span>
+      <span id="swarmAgentCount" style="font-size:var(--fs-xs);color:var(--text-muted)">5 agents</span>
+    </div>
+    <div id="swarmDecisionsContainer" style="font-size:var(--fs-sm)">
+      <div style="text-align:center;padding:16px;color:var(--text-muted)">Loading swarm data...</div>
+    </div>
   </div>
 
 </div><!-- tab-signals -->
@@ -2668,12 +2723,13 @@ async function fetchAll() {
     'health','api/portfolio','api/balances','api/trades?limit=100',
     'api/indicators','api/intelligence','api/patterns','api/reviews',
     'api/thresholds','api/adaptive','api/derivatives','api/discovery',
-    'api/cache','api/auto-harvest','api/sectors','api/equity','api/daily-pnl'
+    'api/cache','api/auto-harvest','api/sectors','api/equity','api/daily-pnl',
+    'api/yield-rates','api/directives'
   ];
   const keys = [
     'health','portfolio','balances','trades','indicators','intelligence',
     'patterns','reviews','thresholds','adaptive','derivatives','discovery',
-    'cache','autoHarvest','sectors','equity','dailyPnl'
+    'cache','autoHarvest','sectors','equity','dailyPnl','yieldRates','directives'
   ];
 
   const results = await Promise.allSettled(
@@ -2710,11 +2766,125 @@ function render() {
   renderBadges();
   renderOverview();
   renderHoldings();
+  renderYieldOptimizer();
   renderIntelligence();
   renderTrades();
   renderDiscovery();
   renderEngine();
   renderTechnicals();
+  renderDirectives();
+}
+
+// ============================================================================
+// ACTIVE STRATEGY DIRECTIVES
+// ============================================================================
+function renderDirectives() {
+  const d = Store.data.directives;
+  if (!d) return;
+  const panel = $('directivesPanel');
+  const list = $('directivesList');
+  const countEl = $('directivesCount');
+  const allDirectives = [
+    ...(d.configDirectives || []).map(cd => ({
+      id: cd.id,
+      instruction: cd.instruction,
+      appliedAt: cd.appliedAt,
+      expiresAt: cd.expiresAt,
+      type: 'config',
+      changes: cd.changes || [],
+    })),
+    ...(d.directives || []).map(ud => ({
+      id: ud.id,
+      instruction: ud.instruction,
+      appliedAt: ud.createdAt,
+      expiresAt: ud.expiresAt,
+      type: ud.type || 'user',
+      changes: [],
+    })),
+  ];
+
+  if (allDirectives.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  countEl.textContent = allDirectives.length + ' active';
+  list.innerHTML = allDirectives.map(dir => {
+    const ago = fmtAgo(dir.appliedAt);
+    const typeBadge = dir.type === 'config' ? 'CONFIG' : dir.type;
+    return `<div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-2) var(--space-3);background:var(--bg-subtle);border-radius:var(--radius-sm);font-size:var(--fs-xs)">
+      <span style="background:var(--accent-dim);color:var(--accent);padding:1px 6px;border-radius:var(--radius-full);font-size:9px;font-weight:700;letter-spacing:0.5px;flex-shrink:0">${typeBadge}</span>
+      <span style="flex:1;color:var(--text-primary);line-height:1.4">${dir.instruction}</span>
+      <span style="color:var(--text-muted);flex-shrink:0;white-space:nowrap">${ago}</span>
+      <button onclick="removeDirective('${dir.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px 4px;font-size:12px;line-height:1;border-radius:var(--radius-sm);transition:color var(--dur-fast)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'" title="Remove directive">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+async function removeDirective(id) {
+  try {
+    const res = await fetch('/api/directives/' + id, { method: 'DELETE' });
+    if (res.ok) {
+      fetchAll();
+    }
+  } catch (e) {
+    console.error('Failed to remove directive:', e);
+  }
+}
+
+// ============================================================================
+// YIELD OPTIMIZER
+// ============================================================================
+function renderYieldOptimizer() {
+  const yr = Store.data.yieldRates;
+  if (!yr) return;
+
+  // Summary cards
+  const proto = yr.currentProtocol || 'aave';
+  $('yo-current').textContent = proto.charAt(0).toUpperCase() + proto.slice(1);
+  const currentRate = (yr.rates || []).find(r => r.protocol === proto);
+  $('yo-current-sub').textContent = currentRate ? currentRate.apy.toFixed(2) + '% APY' : '--';
+
+  $('yo-deposited').textContent = '$' + (yr.aaveDeposited || 0).toFixed(2);
+  $('yo-deposited-sub').textContent = yr.aaveBalance > yr.aaveDeposited
+    ? 'Balance: $' + (yr.aaveBalance || 0).toFixed(2)
+    : 'Earning yield';
+
+  $('yo-earned').textContent = '+$' + (yr.totalYieldEarned || 0).toFixed(4);
+  $('yo-earned-sub').textContent = yr.checkCount ? yr.checkCount + ' rate checks' : 'All time';
+
+  $('yo-status').textContent = yr.enabled ? 'Auto-optimizing' : 'Disabled';
+  $('yo-status').style.color = yr.enabled ? 'var(--green)' : 'var(--text-muted)';
+  $('yo-status-sub').textContent = yr.rebalanceCount > 0 ? yr.rebalanceCount + ' rebalances' : 'Monitoring rates';
+
+  // Rates table
+  const rates = yr.rates || [];
+  const tbody = $('yo-rates-table');
+  if (rates.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="padding:8px;color:var(--text-muted);text-align:center">No rate data yet</td></tr>';
+  } else {
+    const bestApy = Math.max(...rates.map(r => r.apy));
+    tbody.innerHTML = rates.map(r => {
+      const isBest = r.apy === bestApy;
+      const isCurrent = r.protocol === proto;
+      const rowBg = isBest ? 'background:var(--green-dim)' : '';
+      const apyColor = isBest ? 'color:var(--green);font-weight:600' : '';
+      const badge = isCurrent ? '<span style="background:var(--accent-dim);color:var(--accent);padding:1px 5px;border-radius:4px;font-size:10px;margin-left:4px">IN USE</span>' : '';
+      const bestBadge = isBest && !isCurrent ? '<span style="background:var(--green-dim);color:var(--green);padding:1px 5px;border-radius:4px;font-size:10px;margin-left:4px">BEST</span>' : '';
+      const statusColor = r.status === 'active' ? 'var(--green)' : 'var(--text-muted)';
+      return '<tr style="' + rowBg + '">' +
+        '<td style="padding:4px 8px;font-weight:500">' + r.protocol.charAt(0).toUpperCase() + r.protocol.slice(1) + badge + bestBadge + '</td>' +
+        '<td style="padding:4px 8px;' + apyColor + '">' + r.apy.toFixed(2) + '%</td>' +
+        '<td style="padding:4px 8px">$' + (r.deposited || 0).toFixed(2) + '</td>' +
+        '<td style="padding:4px 8px;color:' + statusColor + '">' + (r.status === 'active' ? 'Active' : 'Monitored') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  $('yo-last-check').textContent = yr.lastRateCheck
+    ? 'Last checked: ' + new Date(yr.lastRateCheck).toLocaleString()
+    : 'Last checked: --';
 }
 
 // ============================================================================
@@ -4347,6 +4517,70 @@ function drawSparkline(canvas, values) {
       ctx.fillText(item.label, lx + 14, legendY + 3);
     });
   }
+
+  // ====================================================================
+  // v15.0: SWARM INTELLIGENCE PANEL
+  // ====================================================================
+  function fetchSwarmStatus() {
+    fetch('/api/swarm-status')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { if (d) renderSwarmPanel(d); })
+      .catch(function() {});
+  }
+
+  function renderSwarmPanel(d) {
+    var container = $('swarmDecisionsContainer');
+    if (!container) return;
+    var badge = $('swarmEngineBadge');
+    if (badge) {
+      var isSwarm = d.engine === 'swarm';
+      badge.textContent = isSwarm ? 'SWARM' : 'CLASSIC';
+      badge.style.background = isSwarm ? 'var(--purple-dim)' : 'var(--bg-subtle)';
+      badge.style.color = isSwarm ? 'var(--purple)' : 'var(--text-muted)';
+    }
+    var decisions = d.lastDecisions || [];
+    if (decisions.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">No swarm decisions yet — waiting for first cycle</div>';
+      return;
+    }
+    var actionColors = { STRONG_BUY: 'var(--green)', BUY: 'var(--green)', HOLD: 'var(--text-muted)', SELL: 'var(--red)', STRONG_SELL: 'var(--red)' };
+    var actionBg = { STRONG_BUY: 'var(--green-dim)', BUY: 'var(--green-dim)', HOLD: 'var(--bg-subtle)', SELL: 'var(--red-dim)', STRONG_SELL: 'var(--red-dim)' };
+    var html = '<table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--border-default)">';
+    html += '<th style="text-align:left;padding:6px 8px;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs)">Token</th>';
+    html += '<th style="text-align:center;padding:6px 8px;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs)">Decision</th>';
+    html += '<th style="text-align:right;padding:6px 8px;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs)">Score</th>';
+    html += '<th style="text-align:right;padding:6px 8px;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs)">Consensus</th>';
+    html += '<th style="text-align:left;padding:6px 8px;color:var(--text-muted);font-weight:500;font-size:var(--fs-xs)">Agent Votes</th>';
+    html += '</tr></thead><tbody>';
+    decisions.forEach(function(d) {
+      var scoreColor = d.totalScore > 0 ? 'var(--green)' : d.totalScore < 0 ? 'var(--red)' : 'var(--text-muted)';
+      var consensusColor = d.consensus >= 80 ? 'var(--green)' : d.consensus >= 60 ? 'var(--amber)' : 'var(--text-muted)';
+      // Build vote badges
+      var voteBadges = (d.votes || []).map(function(v) {
+        var vc = actionColors[v.action] || 'var(--text-muted)';
+        var vb = actionBg[v.action] || 'transparent';
+        return '<span title="' + v.reasoning + '" style="display:inline-block;padding:1px 5px;border-radius:var(--radius-full);font-size:9px;font-weight:600;color:' + vc + ';background:' + vb + ';margin:1px;cursor:help">' + v.agent.charAt(0).toUpperCase() + ':' + v.action.replace('STRONG_','S') + '</span>';
+      }).join('');
+      // Consensus bar
+      var consensusBar = '<div style="display:inline-flex;align-items:center;gap:4px"><div style="width:40px;height:4px;background:var(--bg-subtle);border-radius:2px;overflow:hidden"><div style="width:' + d.consensus + '%;height:100%;background:' + consensusColor + ';border-radius:2px"></div></div><span style="font-size:9px;color:' + consensusColor + '">' + d.consensus + '%</span></div>';
+      html += '<tr style="border-bottom:1px solid var(--border-subtle)">';
+      html += '<td style="padding:5px 8px;font-weight:600;font-size:var(--fs-sm);color:var(--text-primary)">' + d.token + '</td>';
+      html += '<td style="padding:5px 8px;text-align:center"><span style="display:inline-block;padding:2px 8px;border-radius:var(--radius-full);font-size:var(--fs-xs);font-weight:600;color:' + (actionColors[d.finalAction] || 'var(--text-muted)') + ';background:' + (actionBg[d.finalAction] || 'transparent') + '">' + d.finalAction + '</span></td>';
+      html += '<td style="padding:5px 8px;text-align:right;font-family:var(--font-mono);font-size:var(--fs-xs);color:' + scoreColor + '">' + (d.totalScore >= 0 ? '+' : '') + d.totalScore.toFixed(2) + '</td>';
+      html += '<td style="padding:5px 8px;text-align:right">' + consensusBar + '</td>';
+      html += '<td style="padding:5px 8px">' + voteBadges + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  }
+
+  // Fetch swarm status when signals tab loads and on refresh
+  var origFetchSig = fetchSignalDashboard;
+  fetchSignalDashboard = function() {
+    origFetchSig();
+    fetchSwarmStatus();
+  };
 })();
 </script>
 </body>

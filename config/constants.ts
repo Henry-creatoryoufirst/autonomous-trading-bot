@@ -645,3 +645,52 @@ export const DECEL_MIN_PROFIT_PCT = 3;
 
 /** Dedup window in minutes for decel trim sells */
 export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
+
+// ============================================================================
+// v15.0: MULTI-AGENT SWARM ARCHITECTURE
+// ============================================================================
+
+/** Signal engine mode: 'swarm' uses multi-agent voting, 'classic' uses single confluence */
+export const SIGNAL_ENGINE: 'swarm' | 'classic' = (process.env.SIGNAL_ENGINE as any) || 'swarm';
+
+/** Agent weights — how much each micro-agent's vote counts (must sum to 1.0) */
+export const SWARM_AGENT_WEIGHTS = {
+  momentum:  0.30,  // RSI, MACD, Bollinger, volume spikes
+  flow:      0.25,  // DEX buy/sell ratio, volume
+  risk:      0.25,  // Position sizing, portfolio exposure, drawdown
+  sentiment: 0.10,  // Fear & Greed, BTC/ETH trend, market regime
+  trend:     0.10,  // ADX, price direction, trend strength
+} as const;
+
+/** Numeric score for each action (used in weighted voting) */
+export const SWARM_ACTION_SCORES: Record<string, number> = {
+  STRONG_BUY:  2,
+  BUY:         1,
+  HOLD:        0,
+  SELL:       -1,
+  STRONG_SELL: -2,
+};
+
+/** Score thresholds to map aggregated score to final action */
+export const SWARM_SCORE_THRESHOLDS = {
+  STRONG_BUY:   1.5,
+  BUY:          1.0,
+  SELL:        -1.0,
+  STRONG_SELL: -1.5,
+} as const;
+
+// ============================================================================
+// v15.3: YIELD OPTIMIZER — Multi-protocol yield comparison & rebalancing
+// ============================================================================
+
+/** Check yield rates every N heavy cycles (~60 min at 30 cycles × 2min) */
+export const YIELD_CHECK_INTERVAL_CYCLES = 30;
+
+/** Minimum APY difference (percentage points) to trigger a rebalance */
+export const YIELD_MIN_DIFFERENTIAL_PCT = 0.5;
+
+/** Minimum idle USDC (USD) to bother optimizing across protocols */
+export const YIELD_MIN_IDLE_USD = 50;
+
+/** Auto-compound accrued rewards every N hours */
+export const YIELD_AUTO_COMPOUND_INTERVAL_HOURS = 12;
