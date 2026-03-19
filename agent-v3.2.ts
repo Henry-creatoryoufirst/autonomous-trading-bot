@@ -1860,7 +1860,10 @@ const CONFIG = {
 // SERVICES - CDP SDK + ANTHROPIC
 // ============================================================================
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// NVR Signal Service: Only initialize Anthropic client if not in central mode (central mode fetches signals remotely)
+const anthropic = (process.env.SIGNAL_MODE !== 'central')
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null as any; // Central mode doesn't need Anthropic — signals come from remote producer
 
 // Initialize CDP Client - supports both old and new env var naming
 // CDP SDK credential format (verified from source):
@@ -1899,6 +1902,11 @@ function createCdpClient(): CdpClient {
 }
 
 let cdpClient: CdpClient;
+
+// === NVR CENTRAL SIGNAL SERVICE — Module State ===
+let signalMode: 'local' | 'central' | 'producer' = 'local'; // Set in main() based on env
+let latestSignals: SignalPayload | null = null;
+let signalCycleNumber = 0;
 
 // CDP account name — parameterized for multi-tenant deployments (create-nvr-bot CLI)
 const CDP_ACCOUNT_NAME = process.env.CDP_ACCOUNT_NAME || "henry-trading-bot";
@@ -4614,6 +4622,46 @@ interface MarketData {
   fundingMeanReversion: FundingRateMeanReversion | null;
   tvlPriceDivergence: TVLPriceDivergence | null;
   stablecoinSupply: StablecoinSupplyData | null;
+}
+
+// ============================================================================
+// NVR CENTRAL SIGNAL SERVICE — Phase 1 Interfaces
+// ============================================================================
+
+interface TradingSignal {
+  token: string;
+  action: "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
+  confluence: number;
+  reasoning: string;
+  indicators: {
+    rsi14: number | null;
+    macdSignal: string | null;
+    macdHistogram: number | null;
+    bollingerSignal: string | null;
+    bollingerPercentB: number | null;
+    volumeChange24h: number | null;
+    buyRatio: number | null;
+    adx: number | null;
+    atrPercent: number | null;
+  };
+  price: number;
+  priceChange24h: number;
+  sector: string;
+}
+
+interface SignalPayload {
+  timestamp: string;
+  cycleNumber: number;
+  marketRegime: string;
+  fearGreedIndex: number;
+  fearGreedClassification: string;
+  signals: TradingSignal[];
+  meta: {
+    version: string;
+    generatedAt: string;
+    nextExpectedAt: string;
+    ttlSeconds: number;
+  };
 }
 
 /**
@@ -7597,6 +7645,89 @@ interface TradeDecision {
   isForced?: boolean; // v12.2.7: Tag forced deploy / fallback trades — excluded from self-improvement engine
 }
 
+// ============================================================================
+// NVR CENTRAL SIGNAL SERVICE — CONSUMER MODE (Phase 2)
+// When signalMode === 'central', this replaces the Claude AI call with
+// signals fetched from the NVR central signal service.
+// ============================================================================
+
+async function fetchCentralSignals(portfolioContext: any): Promise<TradeDecision[]> {
+  const signalUrl = process.env.SIGNAL_URL;
+  if (!signalUrl) {
+    console.error('[CENTRAL] No SIGNAL_URL configured');
+    return []; // HOLD everything
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const headers: Record<string, string> = { 'Accept': 'application/json' };
+    if (process.env.SIGNAL_API_KEY) {
+      headers['X-Signal-Key'] = process.env.SIGNAL_API_KEY;
+    }
+
+    const response = await fetch(`${signalUrl}/signals/latest`, {
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      console.error(`[CENTRAL] Signal service returned ${response.status}`);
+      return [];
+    }
+
+    const payload = await response.json() as SignalPayload;
+
+    // Check freshness - signals should be less than 10 minutes old
+    const signalAge = Date.now() - new Date(payload.timestamp).getTime();
+    if (signalAge > (payload.meta?.ttlSeconds || 600) * 1000) {
+      console.warn(`[CENTRAL] Stale signals (${Math.round(signalAge / 1000)}s old). Holding.`);
+      return [];
+    }
+
+    console.log(`[CENTRAL] Received ${payload.signals.length} signals (cycle ${payload.cycleNumber}, regime: ${payload.marketRegime})`);
+
+    // Map signals to TradeDecision[]
+    const decisions: TradeDecision[] = [];
+
+    for (const signal of payload.signals) {
+      if (signal.action === 'HOLD') continue;
+
+      const isBuy = signal.action === 'STRONG_BUY' || signal.action === 'BUY';
+      const isSell = signal.action === 'STRONG_SELL' || signal.action === 'SELL';
+
+      if (isBuy) {
+        decisions.push({
+          action: 'BUY',
+          fromToken: 'USDC',
+          toToken: signal.token,
+          amountUSD: 0, // Will be sized locally by position sizing logic
+          reasoning: `CENTRAL_SIGNAL: ${signal.action} (confluence ${signal.confluence}) - ${signal.reasoning}`,
+        });
+      } else if (isSell) {
+        decisions.push({
+          action: 'SELL',
+          fromToken: signal.token,
+          toToken: 'USDC',
+          amountUSD: 0, // Will be sized locally
+          reasoning: `CENTRAL_SIGNAL: ${signal.action} (confluence ${signal.confluence}) - ${signal.reasoning}`,
+        });
+      }
+    }
+
+    return decisions;
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.error('[CENTRAL] Signal service timed out (15s)');
+    } else {
+      console.error('[CENTRAL] Failed to fetch signals:', err.message);
+    }
+    return []; // HOLD on failure
+  }
+}
+
 async function makeTradeDecision(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
   marketData: MarketData,
@@ -9218,7 +9349,139 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
   return { isHeavy: false, reason: 'No significant changes' };
 }
 
+// ============================================================================
+// NVR CENTRAL SIGNAL SERVICE — Signal Production (Phase 1)
+// ============================================================================
+
+async function produceSignals(): Promise<void> {
+  signalCycleNumber++;
+  const cycleStart = Date.now();
+  console.log(`\n[SIGNAL PRODUCER] Cycle #${signalCycleNumber} — collecting market data...`);
+
+  try {
+    const marketData = await getMarketData();
+    const signals: TradingSignal[] = [];
+
+    for (const [symbol, tokenInfo] of Object.entries(TOKEN_REGISTRY)) {
+      if (symbol === 'USDC' || symbol === 'WETH') continue;
+
+      const tokenData = marketData.tokens.find(t => t.symbol === symbol);
+      if (!tokenData) continue;
+
+      const ind = marketData.indicators[symbol];
+
+      let confluence = 0;
+      const reasons: string[] = [];
+
+      // RSI signal
+      if (ind?.rsi14 !== null && ind?.rsi14 !== undefined) {
+        if (ind.rsi14 < 30) { confluence += 20; reasons.push(`RSI oversold (${ind.rsi14.toFixed(1)})`); }
+        else if (ind.rsi14 > 70) { confluence -= 20; reasons.push(`RSI overbought (${ind.rsi14.toFixed(1)})`); }
+      }
+
+      // MACD signal
+      if (ind?.macd) {
+        if (ind.macd.signal === 'BULLISH') { confluence += 15; reasons.push('MACD bullish'); }
+        else if (ind.macd.signal === 'BEARISH') { confluence -= 15; reasons.push('MACD bearish'); }
+      }
+
+      // Bollinger signal
+      if (ind?.bollingerBands) {
+        if (ind.bollingerBands.signal === 'OVERSOLD') { confluence += 10; reasons.push('BB oversold'); }
+        else if (ind.bollingerBands.signal === 'OVERBOUGHT') { confluence -= 10; reasons.push('BB overbought'); }
+      }
+
+      // Buy ratio from order flow
+      let buyRatio: number | null = null;
+      if (ind?.orderFlow) {
+        const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
+        if (totalFlow > 0) {
+          buyRatio = (ind.orderFlow.buyVolumeUSD / totalFlow) * 100;
+          if (buyRatio > 60) { confluence += 15; reasons.push(`Strong buying (${buyRatio.toFixed(0)}%)`); }
+          else if (buyRatio < 40) { confluence -= 15; reasons.push(`Strong selling (${buyRatio.toFixed(0)}%)`); }
+        }
+      }
+
+      // Volume spike
+      if (ind?.volumeChange24h !== null && ind?.volumeChange24h !== undefined) {
+        const volumeMultiple = 1 + (ind.volumeChange24h / 100);
+        if (volumeMultiple >= 1.5) { confluence += 10; reasons.push(`Volume spike (${volumeMultiple.toFixed(1)}x)`); }
+      }
+
+      // ADX trend strength + direction
+      if (ind?.adx14 && ind.adx14.adx > 25) {
+        if (tokenData.priceChange24h > 0) { confluence += 10; reasons.push(`Strong uptrend (ADX ${ind.adx14.adx.toFixed(0)})`); }
+        else if (tokenData.priceChange24h < 0) { confluence -= 10; reasons.push(`Strong downtrend (ADX ${ind.adx14.adx.toFixed(0)})`); }
+      }
+
+      // Map confluence to action
+      let action: TradingSignal['action'];
+      if (confluence >= 40) action = 'STRONG_BUY';
+      else if (confluence >= 15) action = 'BUY';
+      else if (confluence <= -40) action = 'STRONG_SELL';
+      else if (confluence <= -15) action = 'SELL';
+      else action = 'HOLD';
+
+      signals.push({
+        token: symbol,
+        action,
+        confluence,
+        reasoning: reasons.length > 0 ? reasons.join('; ') : 'No strong signals',
+        indicators: {
+          rsi14: ind?.rsi14 ?? null,
+          macdSignal: ind?.macd?.signal ?? null,
+          macdHistogram: ind?.macd?.histogram ?? null,
+          bollingerSignal: ind?.bollingerBands?.signal ?? null,
+          bollingerPercentB: ind?.bollingerBands?.percentB ?? null,
+          volumeChange24h: ind?.volumeChange24h ?? null,
+          buyRatio: buyRatio,
+          adx: ind?.adx14?.adx ?? null,
+          atrPercent: ind?.atrPercent ?? null,
+        },
+        price: tokenData.price,
+        priceChange24h: tokenData.priceChange24h,
+        sector: tokenData.sector || tokenInfo.sector,
+      });
+    }
+
+    const now = new Date();
+    const intervalMs = (CONFIG.trading.intervalMinutes || 5) * 60 * 1000;
+    const nextExpected = new Date(now.getTime() + intervalMs);
+
+    latestSignals = {
+      timestamp: now.toISOString(),
+      cycleNumber: signalCycleNumber,
+      marketRegime: marketData.marketRegime,
+      fearGreedIndex: marketData.fearGreed.value,
+      fearGreedClassification: marketData.fearGreed.classification,
+      signals,
+      meta: {
+        version: '1.0.0',
+        generatedAt: now.toISOString(),
+        nextExpectedAt: nextExpected.toISOString(),
+        ttlSeconds: Math.round(intervalMs / 1000) * 2,
+      },
+    };
+
+    const actionCounts: Record<string, number> = {};
+    for (const sig of signals) {
+      actionCounts[sig.action] = (actionCounts[sig.action] || 0) + 1;
+    }
+    const summary = Object.entries(actionCounts).map(([a, c]) => `${c} ${a}`).join(', ');
+    console.log(`[SIGNAL PRODUCER] Produced signals: ${summary} (${(Date.now() - cycleStart)}ms)`);
+
+  } catch (err: any) {
+    console.error(`[SIGNAL PRODUCER] Error producing signals: ${err.message?.substring(0, 300)}`);
+  }
+}
+
 async function runTradingCycle() {
+  // NVR Signal Service: In producer mode, only produce signals — skip all trading logic
+  if (signalMode === 'producer') {
+    await produceSignals();
+    return;
+  }
+
   state.totalCycles++;
   const cycleStart = Date.now();
 
@@ -9855,9 +10118,39 @@ async function runTradingCycle() {
       crashBuyingOverrideActive = false;
     }
 
-    // AI decision
-    console.log("\n🧠 AI analyzing portfolio & market...");
-    let decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
+    // AI decision (or central signal fetch)
+    let decisions: TradeDecision[];
+
+    if (signalMode === 'central') {
+      console.log("\n📡 Fetching signals from NVR central service...");
+      decisions = await fetchCentralSignals({ balances, marketData, portfolioValue: state.trading.totalPortfolioValue });
+
+      // Apply local position sizing to each central signal decision
+      const portfolioValue = state.trading.totalPortfolioValue;
+      const availableUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+      for (const decision of decisions) {
+        if (decision.amountUSD === 0 && decision.action === 'BUY') {
+          // 4% of portfolio per trade, capped by available USDC and max buy size
+          decision.amountUSD = Math.min(
+            CONFIG.trading.maxBuySize,
+            portfolioValue * 0.04,
+            availableUSDC * 0.9, // Leave 10% USDC buffer
+          );
+        }
+        if (decision.amountUSD === 0 && decision.action === 'SELL') {
+          // Sell 50% of position by default for central signals
+          const holding = balances.find(b => b.symbol === decision.fromToken);
+          if (holding) {
+            decision.amountUSD = holding.usdValue * 0.5;
+          }
+        }
+      }
+      console.log(`  📡 Central decisions: ${decisions.length} (${decisions.filter(d => d.action === 'BUY').length} buys, ${decisions.filter(d => d.action === 'SELL').length} sells)`);
+    } else {
+      // Existing Claude AI call — unchanged
+      console.log("\n🧠 AI analyzing portfolio & market...");
+      decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
+    }
 
     // === v13.0: SCALE-INTO-WINNERS ENGINE ===
     // Check each held position for scale-up candidates and momentum exits.
@@ -10638,13 +10931,30 @@ function displayBanner() {
 async function main() {
   displayBanner();
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("❌ ANTHROPIC_API_KEY not set");
+  // === NVR SIGNAL SERVICE: Mode Detection ===
+  signalMode = (process.env.SIGNAL_MODE as typeof signalMode) || (process.env.ANTHROPIC_API_KEY ? 'local' : 'central');
+  console.log(`[SIGNAL MODE] Running in ${signalMode} mode`);
+
+  if (signalMode === 'local' && !process.env.ANTHROPIC_API_KEY) {
+    console.error("ANTHROPIC_API_KEY required for local mode");
+    process.exit(1);
+  }
+  if (signalMode === 'central' && !process.env.SIGNAL_URL) {
+    console.error("SIGNAL_URL required for central mode");
+    process.exit(1);
+  }
+  if (signalMode === 'producer' && !process.env.ANTHROPIC_API_KEY) {
+    console.error("ANTHROPIC_API_KEY required for producer mode");
     process.exit(1);
   }
 
+  // In producer mode, skip CDP wallet initialization entirely — only market data + Claude needed
+  if (signalMode === 'producer') {
+    console.log("[SIGNAL MODE] Producer mode — skipping CDP wallet initialization");
+  }
+
   // Initialize CDP client with EOA account
-  try {
+  if (signalMode !== 'producer') try {
     console.log("\n🔧 Initializing CDP SDK...");
     cdpClient = createCdpClient();
     console.log("  ✅ CDP Client created");
@@ -10768,7 +11078,8 @@ async function main() {
   }
 
   // === v11.0: FAMILY PLATFORM INITIALIZATION ===
-  try {
+  // NVR Signal Service: Skip wallet-dependent init in producer mode
+  if (signalMode !== 'producer') try {
     if (familyManager.isEnabled() || process.env.FAMILY_TRADING_ENABLED === 'true') {
       console.log("\n👨‍👩‍👧‍👦 Initializing Family Platform...");
       familyWalletManager = new WalletManager(cdpClient);
@@ -10789,7 +11100,7 @@ async function main() {
   }
 
   // === v11.0: AAVE V3 YIELD SERVICE INITIALIZATION ===
-  if (yieldEnabled) {
+  if (yieldEnabled && signalMode !== 'producer') {
     try {
       aaveYieldService.enable();
       const walletAddr = CONFIG.walletAddress;
@@ -12491,6 +12802,33 @@ const healthServer = http.createServer(async (req, res) => {
               sendJSON(res, 400, { error: 'message required' });
               return;
             }
+
+            // NVR Central Mode: Chat fallback — no Claude API needed
+            if (signalMode === 'central') {
+              const portfolio = apiPortfolio();
+              const perfStats = calculateTradePerformance();
+              const totalValue = portfolio.totalValue || 0;
+              const pnlPercent = portfolio.pnlPercent || 0;
+              const winRate = portfolio.winRate || 0;
+              const totalTrades = portfolio.totalTrades || 0;
+              const usdcBal = (apiBalances().balances || []).find((b: any) => b.symbol === 'USDC');
+              const usdcBalance = usdcBal?.balance || 0;
+              const cashPct = totalValue > 0 ? ((usdcBalance / totalValue) * 100).toFixed(0) : '0';
+
+              const summary = [
+                `Portfolio: $${totalValue.toFixed(2)} | P&L: ${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`,
+                `Win Rate: ${winRate.toFixed(1)}% | Trades: ${totalTrades}`,
+                `Cash: $${usdcBalance.toFixed(2)} (${cashPct}%)`,
+                `Drawdown: ${portfolio.drawdown.toFixed(1)}% | Peak: $${portfolio.peakValue.toFixed(2)}`,
+                '',
+                'AI chat requires local mode. Here is your portfolio summary.',
+                'Your bot is receiving trading signals from the NVR central service.',
+              ].join('\n');
+
+              sendJSON(res, 200, { response: summary });
+              return;
+            }
+
             const result = await handleChatRequest(message.substring(0, 500), history || []);
             sendJSON(res, 200, result);
           } catch (err: any) {
@@ -12579,6 +12917,37 @@ const healthServer = http.createServer(async (req, res) => {
           sendJSON(res, 500, { error: `Version backtest failed: ${err.message}` });
         }
         break;
+      }
+
+      // === NVR CENTRAL SIGNAL SERVICE — Signal API Endpoint ===
+      case '/signals/latest': {
+        // Simple API key check
+        const signalKey = req.headers['x-signal-key'];
+        const expectedKey = process.env.SIGNAL_API_KEY;
+        if (expectedKey && signalKey !== expectedKey) {
+          sendJSON(res, 401, { error: 'Invalid signal key' });
+          return;
+        }
+
+        if (!latestSignals) {
+          sendJSON(res, 503, { error: 'No signals produced yet. Service is starting up.' });
+          return;
+        }
+
+        const etag = `"cycle-${latestSignals.cycleNumber}"`;
+        if (req.headers['if-none-match'] === etag) {
+          res.writeHead(304);
+          res.end();
+          return;
+        }
+
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'ETag': etag,
+          'Cache-Control': 'public, max-age=120',
+        });
+        res.end(JSON.stringify(latestSignals));
+        return;
       }
 
       default: {
