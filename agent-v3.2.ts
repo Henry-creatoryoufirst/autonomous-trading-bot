@@ -2403,7 +2403,7 @@ function initPriceStream() {
 interface TradeRecord {
   timestamp: string;
   cycle: number;
-  action: "BUY" | "SELL" | "HOLD" | "REBALANCE";
+  action: "BUY" | "SELL" | "HOLD" | "REBALANCE" | "WITHDRAW";
   fromToken: string;
   toToken: string;
   amountUSD: number;
@@ -3386,7 +3386,19 @@ let state: AgentState = {
   stablecoinSupplyHistory: { values: [] as { timestamp: string; totalSupply: number }[] },
   // v11.4.16: User Directives from dashboard chat
   userDirectives: [] as UserDirective[],
-};
+  // v14.0: Withdraw system
+  withdrawPaused: false,
+} as any;
+
+// v14.0: Pending withdrawal confirmations (in-memory only, not persisted)
+const pendingWithdrawals: Map<string, { toAddress: string; amountUSD: number; token: string; createdAt: number }> = new Map();
+// Cleanup stale confirmations every 5 min
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, w] of pendingWithdrawals) {
+    if (now - w.createdAt > 5 * 60 * 1000) pendingWithdrawals.delete(id);
+  }
+}, 5 * 60 * 1000);
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -7670,7 +7682,7 @@ function calculateSectorAllocations(
 // ============================================================================
 
 interface TradeDecision {
-  action: "BUY" | "SELL" | "HOLD" | "REBALANCE";
+  action: "BUY" | "SELL" | "HOLD" | "REBALANCE" | "WITHDRAW";
   fromToken: string;
   toToken: string;
   amountUSD: number;
@@ -8153,6 +8165,12 @@ async function executeTrade(
   decision: TradeDecision,
   marketData: MarketData
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
+
+  // v14.0: Block trading during active withdrawal to prevent race conditions
+  if ((state as any).withdrawPaused) {
+    console.log(`  ⏸️ Trade blocked — withdrawal in progress`);
+    return { success: false, error: 'Trading paused during withdrawal' };
+  }
 
   // v11.4.7: TRADE DEDUP GUARD — block same token/action/tier combo within window
   // Prevents runaway loops where the same trade fires repeatedly
@@ -13484,6 +13502,160 @@ const healthServer = http.createServer(async (req, res) => {
         });
         res.end(JSON.stringify(latestSignals));
         return;
+      }
+
+      // v14.0: Withdraw funds endpoint — two-step confirmation flow
+      case '/api/withdraw': {
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+          break;
+        }
+        let withdrawBody = '';
+        let withdrawBodyTooLarge = false;
+        req.on('data', (chunk: Buffer) => {
+          withdrawBody += chunk.toString();
+          if (withdrawBody.length > 10_000) { withdrawBodyTooLarge = true; req.destroy(); }
+        });
+        req.on('end', async () => {
+          if (withdrawBodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large' }); return; }
+          try {
+            const body = JSON.parse(withdrawBody);
+            const { toAddress, amountUSD, token: tokenParam, confirmationId, confirm } = body;
+            const token = (tokenParam || 'USDC').toUpperCase();
+
+            // Step 2: Confirm and execute a pending withdrawal
+            if (confirmationId && confirm === true) {
+              const pending = pendingWithdrawals.get(confirmationId);
+              if (!pending) {
+                sendJSON(res, 400, { success: false, error: 'Confirmation expired or invalid. Please start a new withdrawal.' });
+                return;
+              }
+              pendingWithdrawals.delete(confirmationId);
+
+              // Pause trading
+              (state as any).withdrawPaused = true;
+              console.log(`\n💸 [WITHDRAW] Executing: $${pending.amountUSD.toFixed(2)} ${pending.token} → ${pending.toAddress}`);
+
+              try {
+                const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+                let txHash: string;
+
+                if (pending.token === 'USDC') {
+                  txHash = await sendUSDCTransfer(account, pending.toAddress, pending.amountUSD);
+                } else {
+                  // For other tokens, use USDC transfer (primary use case)
+                  txHash = await sendUSDCTransfer(account, pending.toAddress, pending.amountUSD);
+                }
+
+                console.log(`[WITHDRAW] ✅ TX: ${txHash}`);
+                console.log(`[WITHDRAW] 🔍 https://basescan.org/tx/${txHash}`);
+
+                // Log withdrawal in trade history
+                state.tradeHistory.push({
+                  timestamp: new Date().toISOString(),
+                  cycle: state.totalCycles,
+                  action: 'WITHDRAW' as any,
+                  fromToken: pending.token,
+                  toToken: 'EXTERNAL',
+                  amountUSD: pending.amountUSD,
+                  txHash,
+                  success: true,
+                  portfolioValueBefore: state.trading.totalPortfolioValue,
+                  reasoning: `Manual withdrawal: $${pending.amountUSD.toFixed(2)} ${pending.token} to ${pending.toAddress.slice(0, 6)}...${pending.toAddress.slice(-4)}`,
+                  marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
+                } as TradeRecord);
+
+                // Adjust peak value like payouts do (prevent false drawdown triggers)
+                if (state.trading.peakValue > pending.amountUSD) {
+                  state.trading.peakValue -= pending.amountUSD;
+                  if (breakerState.dailyBaseline.value > pending.amountUSD) breakerState.dailyBaseline.value -= pending.amountUSD;
+                  if (breakerState.weeklyBaseline.value > pending.amountUSD) breakerState.weeklyBaseline.value -= pending.amountUSD;
+                }
+
+                saveTradeHistory();
+                (state as any).withdrawPaused = false;
+
+                sendJSON(res, 200, {
+                  success: true,
+                  txHash,
+                  amountSent: pending.amountUSD,
+                  token: pending.token,
+                  toAddress: pending.toAddress,
+                });
+              } catch (err: any) {
+                console.error(`[WITHDRAW] ❌ FAILED: ${err.message}`);
+                (state as any).withdrawPaused = false;
+                sendJSON(res, 500, { success: false, error: err.message || 'Transfer failed' });
+              }
+              return;
+            }
+
+            // Step 1: Validate and create pending confirmation
+            if (!toAddress || typeof toAddress !== 'string') {
+              sendJSON(res, 400, { success: false, error: 'Missing destination address (toAddress)' });
+              return;
+            }
+            if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
+              sendJSON(res, 400, { success: false, error: 'Invalid Ethereum address — must start with 0x and be 42 characters' });
+              return;
+            }
+            if (!amountUSD || typeof amountUSD !== 'number' || amountUSD <= 0) {
+              sendJSON(res, 400, { success: false, error: 'Amount must be a positive number' });
+              return;
+            }
+
+            // Check available balance
+            const walletAddr = CONFIG.walletAddress;
+            const usdcBal = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6);
+            const minReserve = 10; // Keep $10 for gas
+            const maxWithdrawable = Math.max(0, usdcBal - minReserve);
+            const portfolioTotal = state.trading.totalPortfolioValue || usdcBal;
+
+            if (amountUSD > maxWithdrawable) {
+              sendJSON(res, 400, {
+                success: false,
+                error: `Insufficient balance. Available: $${maxWithdrawable.toFixed(2)} USDC (keeping $${minReserve} reserve). Current balance: $${usdcBal.toFixed(2)}`,
+                availableBalance: maxWithdrawable,
+              });
+              return;
+            }
+
+            // Safety guard: max 90% of total portfolio
+            if (amountUSD > portfolioTotal * 0.9) {
+              sendJSON(res, 400, {
+                success: false,
+                error: `Safety limit: Cannot withdraw more than 90% of total portfolio ($${(portfolioTotal * 0.9).toFixed(2)}). To withdraw more, contact admin.`,
+                maxAllowed: Math.floor(portfolioTotal * 0.9 * 100) / 100,
+              });
+              return;
+            }
+
+            // Create confirmation
+            const confId = `w-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+            pendingWithdrawals.set(confId, {
+              toAddress,
+              amountUSD,
+              token,
+              createdAt: Date.now(),
+            });
+
+            console.log(`[WITHDRAW] Confirmation created: ${confId} — $${amountUSD.toFixed(2)} ${token} → ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}`);
+
+            sendJSON(res, 200, {
+              success: true,
+              confirmationId: confId,
+              message: `Ready to send $${amountUSD.toFixed(2)} ${token} to ${toAddress}. Confirm within 5 minutes.`,
+              amountUSD,
+              token,
+              toAddress,
+              availableBalance: maxWithdrawable,
+            });
+          } catch (parseErr: any) {
+            sendJSON(res, 400, { success: false, error: 'Invalid JSON body: ' + parseErr.message });
+          }
+        });
+        return; // Don't end response here — it's handled in req.on('end')
       }
 
       default: {

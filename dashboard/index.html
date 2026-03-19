@@ -506,6 +506,145 @@ body {
 .col-span-3 { grid-column: span 3; }
 .col-span-full { grid-column: 1 / -1; }
 
+/* ============================================================================
+   WITHDRAW MODAL
+   ============================================================================ */
+.withdraw-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: var(--radius-full);
+  background: var(--bg-subtle); border: 1px solid var(--border-default);
+  color: var(--text-secondary); font-size: var(--fs-sm); font-family: var(--font-sans);
+  cursor: pointer; transition: all var(--dur-fast) var(--ease-out);
+  font-weight: 500;
+}
+.withdraw-btn:hover {
+  background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+}
+.withdraw-overlay {
+  display: none; position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  align-items: center; justify-content: center;
+}
+.withdraw-overlay.active { display: flex; }
+.withdraw-modal {
+  background: var(--bg-card); border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl); padding: var(--space-8);
+  width: 420px; max-width: 92vw; box-shadow: var(--shadow-lg);
+  animation: modalIn 0.25s var(--ease-spring) forwards;
+}
+@keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.withdraw-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-6); }
+.withdraw-title { font-size: var(--fs-lg); font-weight: 700; color: var(--text-primary); }
+.withdraw-subtitle { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
+.withdraw-close {
+  background: none; border: none; color: var(--text-muted); font-size: 22px;
+  cursor: pointer; padding: 0; line-height: 1; transition: color var(--dur-fast);
+}
+.withdraw-close:hover { color: var(--text-primary); }
+.withdraw-balance {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-subtle); border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5); margin-bottom: var(--space-5);
+}
+.withdraw-balance-label { font-size: var(--fs-sm); color: var(--text-muted); font-weight: 500; }
+.withdraw-balance-value { font-size: var(--fs-md); font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); }
+.withdraw-field { margin-bottom: var(--space-4); }
+.withdraw-label { display: block; font-size: var(--fs-xs); font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-2); text-transform: uppercase; letter-spacing: 0.5px; }
+.withdraw-input {
+  width: 100%; padding: var(--space-3) var(--space-4);
+  background: var(--bg-subtle); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); color: var(--text-primary);
+  font-size: var(--fs-base); font-family: var(--font-mono);
+  outline: none; transition: border-color var(--dur-fast);
+  box-sizing: border-box;
+}
+.withdraw-input:focus { border-color: var(--accent); }
+.withdraw-input::placeholder { color: var(--text-muted); }
+.withdraw-quick-btns { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.withdraw-quick-btns button {
+  flex: 1; padding: 4px 0; border-radius: var(--radius-sm);
+  background: var(--bg-subtle); border: 1px solid var(--border-subtle);
+  color: var(--text-secondary); font-size: var(--fs-xs); font-weight: 600;
+  cursor: pointer; transition: all var(--dur-fast); font-family: var(--font-sans);
+}
+.withdraw-quick-btns button:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.withdraw-warning {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  background: var(--amber-dim); border: 1px solid rgba(217,119,6,0.15);
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0; font-size: var(--fs-xs); color: var(--amber); line-height: 1.5;
+}
+.withdraw-warning svg { flex-shrink: 0; margin-top: 1px; color: var(--amber); }
+.withdraw-review-btn {
+  width: 100%; padding: var(--space-3) 0; border-radius: var(--radius-md);
+  background: var(--accent); color: #fff; border: none;
+  font-size: var(--fs-base); font-weight: 600; cursor: pointer;
+  transition: all var(--dur-fast); font-family: var(--font-sans);
+}
+.withdraw-review-btn:hover { filter: brightness(1.1); }
+.withdraw-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.withdraw-error {
+  background: var(--red-dim); border: 1px solid rgba(220,38,38,0.2);
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-3); font-size: var(--fs-xs); color: var(--red); line-height: 1.4;
+}
+.withdraw-confirm-summary {
+  background: var(--bg-subtle); border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5); margin-bottom: var(--space-5);
+}
+.withdraw-confirm-row {
+  display: flex; justify-content: space-between; padding: var(--space-2) 0;
+  font-size: var(--fs-sm); color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.withdraw-confirm-row:last-child { border-bottom: none; }
+.withdraw-confirm-amount { font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-md); }
+.withdraw-confirm-addr { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-primary); word-break: break-all; max-width: 200px; text-align: right; }
+.withdraw-back-btn {
+  flex: 1; padding: var(--space-3) 0; border-radius: var(--radius-md);
+  background: var(--bg-subtle); border: 1px solid var(--border-default);
+  color: var(--text-secondary); font-size: var(--fs-base); font-weight: 500;
+  cursor: pointer; transition: all var(--dur-fast); font-family: var(--font-sans);
+}
+.withdraw-back-btn:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.withdraw-confirm-btn {
+  flex: 2; padding: var(--space-3) 0; border-radius: var(--radius-md);
+  background: var(--accent); color: #fff; border: none;
+  font-size: var(--fs-base); font-weight: 600; cursor: pointer;
+  transition: all var(--dur-fast); font-family: var(--font-sans);
+}
+.withdraw-confirm-btn:hover { filter: brightness(1.1); }
+.withdraw-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.withdraw-loading { text-align: center; padding: var(--space-10) 0; color: var(--text-secondary); font-size: var(--fs-sm); }
+.withdraw-spinner {
+  width: 36px; height: 36px; border: 3px solid var(--border-default);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto var(--space-4);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.withdraw-success { text-align: center; padding: var(--space-6) 0; }
+.withdraw-success-icon {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--green-dim); color: var(--green);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 700; margin: 0 auto var(--space-4);
+  border: 2px solid rgba(22,163,74,0.2);
+}
+.withdraw-success-title { font-size: var(--fs-lg); font-weight: 700; color: var(--text-primary); margin-bottom: var(--space-2); }
+.withdraw-success-amount { font-family: var(--font-mono); font-size: var(--fs-md); color: var(--text-secondary); margin-bottom: var(--space-4); }
+.withdraw-tx-link {
+  display: inline-block; color: var(--accent); font-size: var(--fs-sm);
+  text-decoration: none; font-weight: 500; margin-bottom: var(--space-5);
+}
+.withdraw-tx-link:hover { text-decoration: underline; }
+.withdraw-done-btn {
+  padding: var(--space-3) var(--space-10); border-radius: var(--radius-md);
+  background: var(--bg-subtle); border: 1px solid var(--border-default);
+  color: var(--text-primary); font-size: var(--fs-base); font-weight: 500;
+  cursor: pointer; transition: all var(--dur-fast); font-family: var(--font-sans);
+}
+.withdraw-done-btn:hover { border-color: var(--border-hover); }
+
 @media (max-width: 1199px) {
   .g-6 { grid-template-columns: repeat(3, 1fr); }
   .g-5 { grid-template-columns: repeat(3, 1fr); }
@@ -644,6 +783,9 @@ tr:hover td { background: var(--bg-subtle); }
 }
 .feed-icon.buy { background: var(--green-soft); color: var(--green); }
 .feed-icon.sell { background: var(--red-soft); color: var(--red); }
+.feed-item.withdraw { border-left: 3px solid var(--amber); }
+.feed-icon.withdraw { background: var(--amber-soft); color: var(--amber); }
+.withdraw-color { color: var(--amber) !important; }
 .feed-body { flex: 1; min-width: 0; }
 .feed-token { font-weight: 700; color: var(--text-primary); }
 .feed-amt { font-family: var(--font-mono); font-weight: 600; margin-left: var(--space-2); }
@@ -1101,10 +1243,93 @@ tr:hover td { background: var(--bg-subtle); }
     <button class="theme-dot" data-theme="purple" title="Lavender" style="background: #13111C; border-color: #2E2945;"></button>
     <button class="theme-dot" data-theme="warm" title="Warm Gold" style="background: #1A1410; border-color: #3D2E1A;"></button>
   </div>
-  <div class="top-right">
+  <div class="top-right" style="display:flex;align-items:center;gap:var(--space-3)">
+    <button class="withdraw-btn" id="withdrawBtn" onclick="openWithdrawModal()" title="Withdraw Funds">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+      <span>Withdraw</span>
+    </button>
     <span class="updated-text" id="lastUpdated">Loading...</span>
   </div>
 </header>
+
+<!-- WITHDRAW MODAL -->
+<div class="withdraw-overlay" id="withdrawOverlay" onclick="if(event.target===this)closeWithdrawModal()">
+  <div class="withdraw-modal">
+    <div class="withdraw-header">
+      <div>
+        <div class="withdraw-title">Withdraw Funds</div>
+        <div class="withdraw-subtitle">Send USDC from your bot wallet</div>
+      </div>
+      <button class="withdraw-close" onclick="closeWithdrawModal()">&times;</button>
+    </div>
+
+    <!-- Step 1: Input -->
+    <div id="withdrawStep1">
+      <div class="withdraw-balance">
+        <span class="withdraw-balance-label">Available</span>
+        <span class="withdraw-balance-value" id="withdrawAvailable">Loading...</span>
+      </div>
+
+      <div class="withdraw-field">
+        <label class="withdraw-label">Destination Address</label>
+        <input type="text" class="withdraw-input" id="withdrawAddress" placeholder="0x..." spellcheck="false" autocomplete="off" />
+      </div>
+
+      <div class="withdraw-field">
+        <label class="withdraw-label">Amount (USDC)</label>
+        <input type="number" class="withdraw-input" id="withdrawAmount" placeholder="0.00" min="1" step="0.01" />
+        <div class="withdraw-quick-btns">
+          <button onclick="setWithdrawPct(25)">25%</button>
+          <button onclick="setWithdrawPct(50)">50%</button>
+          <button onclick="setWithdrawPct(75)">75%</button>
+          <button onclick="setWithdrawMax()">Max</button>
+        </div>
+      </div>
+
+      <div class="withdraw-warning">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Funds will be sent on the <strong>Base</strong> network. Make sure your destination supports Base.</span>
+      </div>
+
+      <button class="withdraw-review-btn" id="withdrawReviewBtn" onclick="reviewWithdrawal()">Review Withdrawal</button>
+      <div class="withdraw-error" id="withdrawError" style="display:none"></div>
+    </div>
+
+    <!-- Step 2: Confirm -->
+    <div id="withdrawStep2" style="display:none">
+      <div class="withdraw-confirm-summary">
+        <div class="withdraw-confirm-row"><span>Send</span><span class="withdraw-confirm-amount" id="confirmAmount">--</span></div>
+        <div class="withdraw-confirm-row"><span>To</span><span class="withdraw-confirm-addr" id="confirmAddr">--</span></div>
+        <div class="withdraw-confirm-row"><span>Network</span><span>Base</span></div>
+      </div>
+      <div style="display:flex;gap:var(--space-3)">
+        <button class="withdraw-back-btn" onclick="backToStep1()">Back</button>
+        <button class="withdraw-confirm-btn" id="withdrawConfirmBtn" onclick="confirmWithdrawal()">Confirm &amp; Send</button>
+      </div>
+      <div class="withdraw-error" id="withdrawConfirmError" style="display:none"></div>
+    </div>
+
+    <!-- Step 3: Loading -->
+    <div id="withdrawStep3" style="display:none">
+      <div class="withdraw-loading">
+        <div class="withdraw-spinner"></div>
+        <div>Processing withdrawal...</div>
+        <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:var(--space-2)">Trading is paused during this transaction</div>
+      </div>
+    </div>
+
+    <!-- Step 4: Success -->
+    <div id="withdrawStep4" style="display:none">
+      <div class="withdraw-success">
+        <div class="withdraw-success-icon">&#x2713;</div>
+        <div class="withdraw-success-title">Withdrawal Sent!</div>
+        <div class="withdraw-success-amount" id="successAmount">--</div>
+        <a class="withdraw-tx-link" id="successTxLink" href="#" target="_blank" rel="noopener">View on BaseScan</a>
+        <button class="withdraw-done-btn" onclick="closeWithdrawModal()">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- TAB NAV -->
 <nav class="tab-nav" id="tabNav">
@@ -2409,6 +2634,13 @@ const Toast = {
     }, dur);
   },
   trade(t) {
+    if (t.action === 'WITHDRAW') {
+      this.show(
+        '<strong style="color:var(--amber)">WITHDRAW</strong> ' + fmtUSD(t.amountUSD) + ' USDC',
+        'sell'
+      );
+      return;
+    }
     const cls = t.action === 'BUY' ? 'positive' : 'negative';
     const token = t.action === 'BUY' ? (t.toToken || '?') : (t.fromToken || '?');
     this.show(
@@ -2654,13 +2886,17 @@ function renderTradeFeed() {
   const trades = allTrades.slice(0, 8);
   $('tradeFeed').innerHTML = trades.length === 0 ? '<div class="loading">No trades yet</div>' :
     trades.map(t => {
+      const isWithdraw = t.action === 'WITHDRAW';
       const isBuy = t.action === 'BUY';
-      const cls = isBuy ? 'buy' : 'sell';
-      const token = isBuy ? (t.toToken || '?') : (t.fromToken || '?');
+      const cls = isWithdraw ? 'withdraw' : (isBuy ? 'buy' : 'sell');
+      const token = isWithdraw ? 'WITHDRAW' : (isBuy ? (t.toToken || '?') : (t.fromToken || '?'));
+      const icon = isWithdraw ? '&#x2193;' : (isBuy ? '&#x2191;' : '&#x2193;');
+      const amtCls = isWithdraw ? 'withdraw-color' : (isBuy ? 'positive' : 'negative');
+      const extra = isWithdraw && t.txHash ? '<a href="https://basescan.org/tx/' + t.txHash + '" target="_blank" rel="noopener" style="font-size:var(--fs-xs);color:var(--amber);text-decoration:none;margin-left:4px" title="View TX">&#x2197;</a>' : '';
       return '<div class="feed-item ' + cls + '">' +
-        '<div class="feed-icon ' + cls + '">' + (isBuy ? '&#x2191;' : '&#x2193;') + '</div>' +
+        '<div class="feed-icon ' + cls + '">' + icon + '</div>' +
         '<div class="feed-body"><span class="feed-token">' + token + '</span>' +
-        '<span class="feed-amt ' + (isBuy ? 'positive' : 'negative') + '">' + fmtUSD(t.amountUSD) + '</span></div>' +
+        '<span class="feed-amt ' + amtCls + '">' + fmtUSD(t.amountUSD) + extra + '</span></div>' +
         '<div class="feed-time">' + fmtAgo(t.timestamp) + '</div></div>';
     }).join('');
 }
@@ -2917,10 +3153,16 @@ function renderTrades() {
   const trades = Store.data.trades?.trades || [];
   $('tradeLogBody').innerHTML = trades.length === 0 ? '<tr><td colspan="9" class="loading">No trades</td></tr>' :
     trades.map(t => {
-      const cls = t.action === 'BUY' ? 'positive' : t.action === 'SELL' ? 'negative' : 'neutral';
+      const isWithdraw = t.action === 'WITHDRAW';
+      const cls = isWithdraw ? 'withdraw-color' : (t.action === 'BUY' ? 'positive' : t.action === 'SELL' ? 'negative' : 'neutral');
       const sc = t.signalContext || {};
-      return '<tr><td>' + fmtTime(t.timestamp) + '</td><td class="'+cls+'"><strong>' + t.action + '</strong></td><td>' +
-        (t.fromToken||'--') + '</td><td>' + (t.toToken||'--') + '</td><td>' + fmtUSD(t.amountUSD) +
+      const actionBadge = isWithdraw
+        ? '<span style="background:var(--amber-soft);color:var(--amber);padding:1px 7px;border-radius:var(--radius-full);font-size:var(--fs-xs);font-weight:700;border:1px solid rgba(217,119,6,0.2)">WITHDRAW</span>'
+        : '<strong>' + t.action + '</strong>';
+      const toCol = isWithdraw ? ('<span style="font-size:var(--fs-xs);font-family:var(--font-mono)">' + (t.reasoning||'').match(/to 0x[a-fA-F0-9]{4}\.{3}[a-fA-F0-9]{4}/)?.[0]?.replace('to ','') || 'External' + '</span>') : (t.toToken||'--');
+      const txLink = isWithdraw && t.txHash ? ' <a href="https://basescan.org/tx/' + t.txHash + '" target="_blank" rel="noopener" style="color:var(--amber);font-size:10px">TX&#x2197;</a>' : '';
+      return '<tr><td>' + fmtTime(t.timestamp) + '</td><td class="'+cls+'">' + actionBadge + '</td><td>' +
+        (t.fromToken||'--') + '</td><td>' + toCol + '</td><td>' + fmtUSD(t.amountUSD) + txLink +
         '</td><td>' + (t.success ? '<span class="positive">OK</span>' : '<span class="negative">FAIL</span>') +
         '</td><td>' + fmt(sc.rsi, 0) + '</td><td>' + fmt(sc.confluenceScore, 0) +
         '</td><td style="max-width:220px;white-space:normal;font-size:11px;color:var(--text-secondary)">' +
@@ -3192,6 +3434,164 @@ function renderTechnicals() {
     '<div style="display:flex;flex-wrap:wrap;gap:6px">' + sources.map(s => '<span class="pill pill-amber">' + s + '</span>').join('') + '</div>' :
     '<span style="color:var(--text-muted)">No data sources</span>';
 }
+
+// ============================================================================
+// WITHDRAW MODAL LOGIC
+// ============================================================================
+let withdrawAvailableBalance = 0;
+let withdrawConfirmationId = null;
+
+function getAuthHeaders() {
+  const token = localStorage.getItem('nvr_auth_token') || '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  return headers;
+}
+
+function openWithdrawModal() {
+  const overlay = $('withdrawOverlay');
+  overlay.classList.add('active');
+  // Reset to step 1
+  $('withdrawStep1').style.display = '';
+  $('withdrawStep2').style.display = 'none';
+  $('withdrawStep3').style.display = 'none';
+  $('withdrawStep4').style.display = 'none';
+  $('withdrawError').style.display = 'none';
+  $('withdrawConfirmError').style.display = 'none';
+  $('withdrawAddress').value = '';
+  $('withdrawAmount').value = '';
+  withdrawConfirmationId = null;
+
+  // Load current balance
+  const balances = Store.data.balances?.balances || [];
+  const usdc = balances.find(b => b.symbol === 'USDC');
+  const usdcBal = usdc ? usdc.usdValue || usdc.balance || 0 : 0;
+  const reserve = 10;
+  withdrawAvailableBalance = Math.max(0, usdcBal - reserve);
+  $('withdrawAvailable').textContent = '$' + fmtN(usdcBal, 2) + ' USDC';
+}
+
+function closeWithdrawModal() {
+  $('withdrawOverlay').classList.remove('active');
+  withdrawConfirmationId = null;
+}
+
+function setWithdrawPct(pct) {
+  $('withdrawAmount').value = (withdrawAvailableBalance * pct / 100).toFixed(2);
+}
+
+function setWithdrawMax() {
+  $('withdrawAmount').value = withdrawAvailableBalance.toFixed(2);
+}
+
+function showWithdrawError(id, msg) {
+  const el = $(id);
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+async function reviewWithdrawal() {
+  $('withdrawError').style.display = 'none';
+  const addr = $('withdrawAddress').value.trim();
+  const amt = parseFloat($('withdrawAmount').value);
+
+  if (!addr || !/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+    showWithdrawError('withdrawError', 'Enter a valid Ethereum address (0x... 42 characters)');
+    return;
+  }
+  if (!amt || amt <= 0) {
+    showWithdrawError('withdrawError', 'Enter a valid amount');
+    return;
+  }
+  if (amt > withdrawAvailableBalance) {
+    showWithdrawError('withdrawError', 'Amount exceeds available balance ($' + fmtN(withdrawAvailableBalance, 2) + ')');
+    return;
+  }
+
+  // Call API to get confirmation ID (validates server-side too)
+  $('withdrawReviewBtn').disabled = true;
+  $('withdrawReviewBtn').textContent = 'Checking...';
+  try {
+    const resp = await fetch('/api/withdraw', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ toAddress: addr, amountUSD: amt, token: 'USDC' }),
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+      showWithdrawError('withdrawError', data.error || 'Withdrawal validation failed');
+      return;
+    }
+    withdrawConfirmationId = data.confirmationId;
+
+    // Show step 2
+    $('confirmAmount').textContent = '$' + fmtN(amt, 2) + ' USDC';
+    $('confirmAddr').textContent = addr;
+    $('withdrawStep1').style.display = 'none';
+    $('withdrawStep2').style.display = '';
+  } catch (err) {
+    showWithdrawError('withdrawError', 'Network error: ' + (err.message || err));
+  } finally {
+    $('withdrawReviewBtn').disabled = false;
+    $('withdrawReviewBtn').textContent = 'Review Withdrawal';
+  }
+}
+
+function backToStep1() {
+  $('withdrawStep2').style.display = 'none';
+  $('withdrawStep1').style.display = '';
+  $('withdrawConfirmError').style.display = 'none';
+}
+
+async function confirmWithdrawal() {
+  if (!withdrawConfirmationId) {
+    showWithdrawError('withdrawConfirmError', 'No pending confirmation. Please go back and try again.');
+    return;
+  }
+
+  $('withdrawConfirmError').style.display = 'none';
+  $('withdrawConfirmBtn').disabled = true;
+
+  // Show loading
+  $('withdrawStep2').style.display = 'none';
+  $('withdrawStep3').style.display = '';
+
+  try {
+    const resp = await fetch('/api/withdraw', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ confirmationId: withdrawConfirmationId, confirm: true }),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok || !data.success) {
+      // Back to step 2 with error
+      $('withdrawStep3').style.display = 'none';
+      $('withdrawStep2').style.display = '';
+      $('withdrawConfirmBtn').disabled = false;
+      showWithdrawError('withdrawConfirmError', data.error || 'Withdrawal failed');
+      return;
+    }
+
+    // Success!
+    $('withdrawStep3').style.display = 'none';
+    $('withdrawStep4').style.display = '';
+    $('successAmount').textContent = '$' + fmtN(data.amountSent, 2) + ' USDC';
+    const txLink = $('successTxLink');
+    txLink.href = 'https://basescan.org/tx/' + data.txHash;
+    txLink.textContent = 'TX: ' + data.txHash.slice(0, 10) + '...' + data.txHash.slice(-6);
+
+    // Refresh data
+    setTimeout(fetchAll, 2000);
+  } catch (err) {
+    $('withdrawStep3').style.display = 'none';
+    $('withdrawStep2').style.display = '';
+    $('withdrawConfirmBtn').disabled = false;
+    showWithdrawError('withdrawConfirmError', 'Network error: ' + (err.message || err));
+  }
+}
+
+function fmtN(n, d) { return (n || 0).toFixed(d).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
 // ============================================================================
 // INIT
