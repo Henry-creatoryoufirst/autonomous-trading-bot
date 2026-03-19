@@ -496,6 +496,7 @@ body {
    ============================================================================ */
 .grid { display: grid; gap: var(--space-3); }
 .g-6 { grid-template-columns: repeat(6, 1fr); }
+.g-5 { grid-template-columns: repeat(5, 1fr); }
 .g-4 { grid-template-columns: repeat(4, 1fr); }
 .g-3 { grid-template-columns: repeat(3, 1fr); }
 .g-2 { grid-template-columns: repeat(2, 1fr); }
@@ -507,11 +508,12 @@ body {
 
 @media (max-width: 1199px) {
   .g-6 { grid-template-columns: repeat(3, 1fr); }
+  .g-5 { grid-template-columns: repeat(3, 1fr); }
   .g-4 { grid-template-columns: repeat(2, 1fr); }
   .g-8-4 { grid-template-columns: 1fr; }
 }
 @media (max-width: 767px) {
-  .g-6, .g-4 { grid-template-columns: repeat(2, 1fr); }
+  .g-6, .g-4, .g-5 { grid-template-columns: repeat(2, 1fr); }
   .g-3, .g-2 { grid-template-columns: 1fr; }
   .main-content { padding: var(--space-4) var(--space-4) var(--space-12); }
   .top-bar { padding: 0 var(--space-4); }
@@ -1110,6 +1112,10 @@ tr:hover td { background: var(--bg-subtle); }
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     Overview
   </button>
+  <button class="tab-btn" data-tab="signals">
+    <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+    Signals
+  </button>
   <button class="tab-btn" data-tab="simulate">
     <svg viewBox="0 0 24 24"><path d="M9 3L7 21M17 3l-2 18M6 8h14M4 16h14"/><circle cx="10" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r="1" fill="currentColor" stroke="none"/></svg>
     Simulate
@@ -1529,6 +1535,75 @@ tr:hover td { background: var(--bg-subtle); }
   </div><!-- details-panel -->
 </div><!-- tab-overview -->
 
+<!-- TAB: SIGNALS (NVR-SPEC-004) -->
+<div id="tab-signals" style="display:none">
+
+  <!-- Signal Status Card -->
+  <div class="card" style="margin-top:var(--space-4)">
+    <div style="display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap">
+      <div id="sigModeBadge" style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:var(--radius-full);font-size:var(--fs-sm);font-weight:600;letter-spacing:0.5px;background:var(--accent-dim);color:var(--accent)">
+        <span id="sigStatusDot" style="width:8px;height:8px;border-radius:50%;background:var(--green)"></span>
+        <span id="sigModeLabel">LOCAL</span>
+      </div>
+      <div style="flex:1;display:flex;gap:var(--space-10);flex-wrap:wrap;font-size:var(--fs-sm);color:var(--text-secondary)">
+        <span>Uptime: <strong id="sigUptime" style="color:var(--text-primary)">--</strong></span>
+        <span>Cycles: <strong id="sigCycles" style="color:var(--text-primary)">--</strong></span>
+        <span>Last Signal: <strong id="sigAge" style="color:var(--text-primary)">--</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Current Signal Summary - 5 stat cards -->
+  <div class="grid g-5" style="margin-top:var(--space-4)">
+    <div class="card" style="text-align:center">
+      <div class="card-label">Strong Buy</div>
+      <div class="card-value" id="sig-strongbuy" style="color:var(--green)">0</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="card-label">Buy</div>
+      <div class="card-value" id="sig-buy" style="color:var(--green)">0</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="card-label">Hold</div>
+      <div class="card-value" id="sig-hold" style="color:var(--text-muted)">0</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="card-label">Sell</div>
+      <div class="card-value" id="sig-sell" style="color:var(--red)">0</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="card-label">Strong Sell</div>
+      <div class="card-value" id="sig-strongsell" style="color:var(--red)">0</div>
+    </div>
+  </div>
+
+  <!-- Token Signal Table -->
+  <div class="card" style="margin-top:var(--space-4);overflow-x:auto">
+    <div class="card-label" style="margin-bottom:var(--space-3)">Token Signals</div>
+    <table class="data-table" style="width:100%;border-collapse:collapse;font-size:var(--fs-sm)">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border-default)">
+          <th style="text-align:left;padding:6px 8px;color:var(--text-muted);font-weight:500">Token</th>
+          <th style="text-align:left;padding:6px 8px;color:var(--text-muted);font-weight:500">Sector</th>
+          <th style="text-align:center;padding:6px 8px;color:var(--text-muted);font-weight:500">Action</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-muted);font-weight:500">Confluence</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-muted);font-weight:500">Buy Ratio</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-muted);font-weight:500">RSI</th>
+          <th style="text-align:right;padding:6px 8px;color:var(--text-muted);font-weight:500">24h %</th>
+        </tr>
+      </thead>
+      <tbody id="sigTokenTableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Signal History Chart -->
+  <div class="card" style="margin-top:var(--space-4)">
+    <div class="card-label" style="margin-bottom:var(--space-3)">Signal Distribution Over Time</div>
+    <canvas id="sigHistoryCanvas" width="800" height="220" style="width:100%;height:220px"></canvas>
+  </div>
+
+</div><!-- tab-signals -->
+
 <!-- TAB: SIMULATE -->
 <div id="tab-simulate" style="display:none">
 
@@ -1669,6 +1744,7 @@ tr:hover td { background: var(--bg-subtle); }
     <div class="lab-section-hdr">Version Comparison <span class="lab-badge">Strategy Lab</span></div>
     <div style="display:flex;gap:var(--space-3);align-items:center;margin-bottom:var(--space-3)">
       <button class="lab-btn" id="labBacktestBtn" onclick="runVersionBacktest()">Run Version Backtest</button>
+      <button class="lab-btn" id="labExportBtn" style="display:none;background:var(--accent);color:#fff" onclick="window.open('/api/export-results?type=backtest','_blank')">Export as Image</button>
       <span id="labBacktestStatus" style="font-size:var(--fs-xs);color:var(--text-muted)"></span>
     </div>
     <div id="labBacktestResults" style="display:none">
@@ -3195,6 +3271,7 @@ setInterval(fetchAll, 30000);
   const tabBtns = document.querySelectorAll('.tab-btn[data-tab]');
   const tabPanels = {
     overview: document.getElementById('tab-overview'),
+    signals: document.getElementById('tab-signals'),
     simulate: document.getElementById('tab-simulate')
   };
 
@@ -3455,6 +3532,7 @@ function runVersionBacktest() {
     .then(function(data) {
       labBacktestData = data;
       $('labBacktestResults').style.display = '';
+      $('labExportBtn').style.display = '';
       status.textContent = data.count + ' versions compared at ' + new Date(data.runAt).toLocaleTimeString();
       renderVersionTable(data.results);
       renderVersionEquityCurves(data.results);
@@ -3599,6 +3677,7 @@ function renderPaperPortfolios(portfolios, liveReturnPct) {
       '<div class="lab-paper-stat"><span>Max DD</span><span class="mono negative">' + fmt(-Math.abs(p.metrics.maxDrawdown), 1) + '%</span></div>' +
       '<div class="lab-paper-stat"><span>vs Live Bot</span><span class="mono ' + vsLiveClass + '">' + (vsLive >= 0 ? '+' : '') + fmt(vsLive, 1) + '%</span></div>' +
       '<canvas class="lab-sparkline" id="labSparkline' + idx + '"></canvas>' +
+      '<button class="lab-btn" style="margin-top:var(--space-3);width:100%;background:var(--accent);color:#fff;font-size:var(--fs-xs);padding:6px 0" onclick="window.open(\'/api/export-results?type=paper&id=' + p.id + '\',\'_blank\')">Export as Image</button>' +
       '</div>';
   }).join('');
 
@@ -3662,6 +3741,212 @@ function drawSparkline(canvas, values) {
       loadPaperPortfolios();
     }
   }, 60000);
+})();
+
+// ============================================================================
+// NVR-SPEC-004: SIGNALS TAB
+// ============================================================================
+(function() {
+  var sigLoaded = false;
+  var sigInterval = null;
+
+  // Lazy-load when signals tab is shown; auto-refresh every 30s
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (btn.dataset.tab === 'signals') {
+        if (!sigLoaded) { sigLoaded = true; fetchSignalDashboard(); }
+        if (!sigInterval) {
+          sigInterval = setInterval(function() {
+            var panel = document.getElementById('tab-signals');
+            if (panel && panel.style.display !== 'none') fetchSignalDashboard();
+          }, 30000);
+        }
+      }
+    });
+  });
+
+  function fetchSignalDashboard() {
+    fetch('/api/signal-dashboard')
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(d) { if (d) renderSignalDashboard(d); })
+      .catch(function() {});
+  }
+
+  function renderSignalDashboard(d) {
+    var svc = d.signalService || {};
+    var cs = d.currentSignals || {};
+
+    // Mode badge
+    var modeLabel = (svc.mode || 'local').toUpperCase();
+    var modeColors = { PRODUCER: 'var(--green)', CENTRAL: 'var(--blue)', LOCAL: 'var(--amber)' };
+    $('sigModeLabel').textContent = modeLabel;
+    $('sigStatusDot').style.background = svc.signalAgeSeconds !== null && svc.signalAgeSeconds < 60
+      ? 'var(--green)' : svc.signalAgeSeconds < 300 ? 'var(--amber)' : 'var(--red)';
+    $('sigModeBadge').style.color = modeColors[modeLabel] || 'var(--accent)';
+
+    // Stats
+    $('sigUptime').textContent = svc.uptime || '--';
+    $('sigCycles').textContent = svc.totalCyclesProduced != null ? svc.totalCyclesProduced : '--';
+    $('sigAge').textContent = svc.signalAgeSeconds != null ? svc.signalAgeSeconds + 's ago' : '--';
+
+    // Counts
+    $('sig-strongbuy').textContent = cs.strongBuy || 0;
+    $('sig-buy').textContent = cs.buy || 0;
+    $('sig-hold').textContent = cs.hold || 0;
+    $('sig-sell').textContent = cs.sell || 0;
+    $('sig-strongsell').textContent = cs.strongSell || 0;
+
+    // Token table
+    renderSignalTokenTable(d.tokenSignals || []);
+
+    // History chart
+    renderSignalHistoryChart(d.signalHistory || []);
+  }
+
+  function renderSignalTokenTable(tokens) {
+    var tbody = $('sigTokenTableBody');
+    if (!tbody) return;
+    if (tokens.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-muted)">No signals yet</td></tr>';
+      return;
+    }
+    var actionColors = { STRONG_BUY: 'var(--green)', BUY: 'var(--green)', HOLD: 'var(--text-muted)', SELL: 'var(--red)', STRONG_SELL: 'var(--red)' };
+    var actionBg = { STRONG_BUY: 'var(--green-dim)', BUY: 'var(--green-dim)', HOLD: 'var(--bg-subtle)', SELL: 'var(--red-dim)', STRONG_SELL: 'var(--red-dim)' };
+    tbody.innerHTML = tokens.map(function(t) {
+      var confColor = t.confluence > 0 ? 'var(--green)' : t.confluence < 0 ? 'var(--red)' : 'var(--text-muted)';
+      var chgColor = t.priceChange24h > 0 ? 'var(--green)' : t.priceChange24h < 0 ? 'var(--red)' : 'var(--text-muted)';
+      return '<tr style="border-bottom:1px solid var(--border-subtle)">' +
+        '<td style="padding:6px 8px;font-weight:600;color:var(--text-primary)">' + t.token + '</td>' +
+        '<td style="padding:6px 8px;color:var(--text-secondary);font-size:var(--fs-xs)">' + (t.sector || '-') + '</td>' +
+        '<td style="padding:6px 8px;text-align:center"><span style="display:inline-block;padding:2px 8px;border-radius:var(--radius-full);font-size:var(--fs-xs);font-weight:600;color:' + (actionColors[t.action] || 'var(--text-muted)') + ';background:' + (actionBg[t.action] || 'transparent') + '">' + t.action + '</span></td>' +
+        '<td style="padding:6px 8px;text-align:right;color:' + confColor + ';font-family:var(--font-mono);font-size:var(--fs-xs)">' + (t.confluence > 0 ? '+' : '') + t.confluence + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-secondary)">' + (t.buyRatio != null ? t.buyRatio.toFixed(0) + '%' : '-') + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-family:var(--font-mono);font-size:var(--fs-xs);color:var(--text-secondary)">' + (t.rsi != null ? t.rsi.toFixed(1) : '-') + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-family:var(--font-mono);font-size:var(--fs-xs);color:' + chgColor + '">' + (t.priceChange24h != null ? (t.priceChange24h >= 0 ? '+' : '') + t.priceChange24h.toFixed(1) + '%' : '-') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderSignalHistoryChart(history) {
+    var canvas = $('sigHistoryCanvas');
+    if (!canvas || history.length < 2) return;
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.offsetWidth;
+    var h = canvas.offsetHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    var padL = 36, padR = 12, padT = 12, padB = 28;
+    var cw = w - padL - padR;
+    var ch = h - padT - padB;
+    var n = history.length;
+
+    // Find max total per cycle
+    var maxCount = 0;
+    history.forEach(function(e) {
+      var total = (e.buys || 0) + (e.sells || 0) + (e.holds || 0) + (e.strongBuys || 0) + (e.strongSells || 0);
+      if (total > maxCount) maxCount = total;
+    });
+    if (maxCount === 0) maxCount = 1;
+
+    var styles = getComputedStyle(document.documentElement);
+    var greenColor = styles.getPropertyValue('--green').trim() || '#22C55E';
+    var redColor = styles.getPropertyValue('--red').trim() || '#EF4444';
+    var mutedColor = styles.getPropertyValue('--text-muted').trim() || '#556680';
+    var borderColor = styles.getPropertyValue('--border-subtle').trim() || 'rgba(200,210,230,0.08)';
+
+    // Draw gridlines
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 0.5;
+    for (var g = 0; g <= 4; g++) {
+      var gy = padT + ch - (g / 4) * ch;
+      ctx.beginPath();
+      ctx.moveTo(padL, gy);
+      ctx.lineTo(w - padR, gy);
+      ctx.stroke();
+      ctx.fillStyle = mutedColor;
+      ctx.font = '9px ' + (styles.getPropertyValue('--font-mono').trim() || 'monospace');
+      ctx.textAlign = 'right';
+      ctx.fillText(Math.round(maxCount * g / 4).toString(), padL - 4, gy + 3);
+    }
+
+    // Stacked area: sells (bottom, red), holds (middle, muted), buys (top, green)
+    function getX(i) { return padL + (i / (n - 1)) * cw; }
+    function getY(val) { return padT + ch - (val / maxCount) * ch; }
+
+    var layers = [
+      { key: function(e) { return (e.strongSells || 0) + (e.sells || 0); }, color: redColor, alpha: 0.35 },
+      { key: function(e) { return (e.strongSells || 0) + (e.sells || 0) + (e.holds || 0); }, color: mutedColor, alpha: 0.2 },
+      { key: function(e) { return (e.strongSells || 0) + (e.sells || 0) + (e.holds || 0) + (e.buys || 0) + (e.strongBuys || 0); }, color: greenColor, alpha: 0.35 },
+    ];
+
+    // Draw from top layer to bottom so the fills stack correctly
+    for (var li = layers.length - 1; li >= 0; li--) {
+      var layer = layers[li];
+      var prevLayer = li > 0 ? layers[li - 1] : null;
+      ctx.beginPath();
+      // Top edge
+      for (var i = 0; i < n; i++) {
+        var x = getX(i);
+        var y = getY(layer.key(history[i]));
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      // Bottom edge (previous layer top or baseline)
+      for (var j = n - 1; j >= 0; j--) {
+        var bx = getX(j);
+        var by = prevLayer ? getY(prevLayer.key(history[j])) : getY(0);
+        ctx.lineTo(bx, by);
+      }
+      ctx.closePath();
+      ctx.globalAlpha = layer.alpha;
+      ctx.fillStyle = layer.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Stroke top edge
+      ctx.beginPath();
+      for (var k = 0; k < n; k++) {
+        var sx = getX(k);
+        var sy = getY(layer.key(history[k]));
+        k === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+      }
+      ctx.strokeStyle = layer.color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    // X-axis labels (cycle numbers)
+    ctx.fillStyle = mutedColor;
+    ctx.font = '9px ' + (styles.getPropertyValue('--font-mono').trim() || 'monospace');
+    ctx.textAlign = 'center';
+    var step = Math.max(1, Math.floor(n / 8));
+    for (var xi = 0; xi < n; xi += step) {
+      ctx.fillText('#' + history[xi].cycle, getX(xi), h - 6);
+    }
+    // Always label last
+    if (n > 1) ctx.fillText('#' + history[n - 1].cycle, getX(n - 1), h - 6);
+
+    // Legend
+    ctx.font = '10px ' + (styles.getPropertyValue('--font-sans').trim() || 'sans-serif');
+    var legendX = padL + 4;
+    var legendY = padT + 12;
+    var legendItems = [
+      { label: 'Buys', color: greenColor },
+      { label: 'Holds', color: mutedColor },
+      { label: 'Sells', color: redColor },
+    ];
+    legendItems.forEach(function(item, idx) {
+      var lx = legendX + idx * 65;
+      ctx.fillStyle = item.color;
+      ctx.fillRect(lx, legendY - 6, 10, 10);
+      ctx.fillStyle = styles.getPropertyValue('--text-secondary').trim() || '#7A8BA5';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.label, lx + 14, legendY + 3);
+    });
+  }
 })();
 </script>
 </body>
