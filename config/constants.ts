@@ -618,6 +618,51 @@ export const MAX_TRADES_PER_CYCLE = 3; // v14.2: cap total trades per cycle — 
 export const MOMENTUM_MAX_POSITION_PERCENT = 15;
 
 // ============================================================================
+// v16.0: FEAR/REGIME MARKET BEHAVIOR TUNING — NVR Live Audit P1-1
+// ============================================================================
+
+/** F&G below this → EXTREME_FEAR_MODE (tighten everything when RANGING) */
+export const EXTREME_FEAR_FG_THRESHOLD = 20;
+
+/** Confluence minimum for buys in extreme fear + ranging (default 15 → 30) */
+export const EXTREME_FEAR_CONFLUENCE_MIN = 30;
+
+/** Max trades per cycle in extreme fear + ranging (default 3 → 1) */
+export const EXTREME_FEAR_MAX_TRADES = 1;
+
+/** F&G below this → FEAR_MODE (blue chips only when TRENDING_DOWN) */
+export const FEAR_FG_THRESHOLD = 30;
+
+/** Confluence minimum for buys in fear + trending down (default 15 → 25) */
+export const FEAR_CONFLUENCE_MIN = 25;
+
+// ============================================================================
+// v16.0: DUST/MICRO POSITION CLEANUP — NVR Live Audit P1-3
+// ============================================================================
+
+/** Positions under this USD value get cleaned up */
+export const DUST_CLEANUP_THRESHOLD_USD = 5;
+
+/** Must be held for at least this many hours before cleanup */
+export const DUST_CLEANUP_MIN_AGE_HOURS = 24;
+
+/** How often (in cycles) to run dust cleanup */
+export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
+
+// ============================================================================
+// v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely
+// ============================================================================
+
+/** Absolute max loss per position — STRONG_SELL immediately */
+export const POSITION_HARD_STOP_PCT = -15;
+
+/** Soft stop for positions worth > $20 */
+export const POSITION_SOFT_STOP_PCT = -10;
+
+/** Stop for concentrated positions (> 10% of portfolio) */
+export const POSITION_CONCENTRATED_STOP_PCT = -7;
+
+// ============================================================================
 // v14.1: SMART TRIM (Momentum Deceleration Exit)
 // ============================================================================
 

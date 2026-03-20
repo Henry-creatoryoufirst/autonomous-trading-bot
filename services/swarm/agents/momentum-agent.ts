@@ -15,9 +15,28 @@ export function momentumAgent(input: MicroAgentInput): MicroAgentVote {
   let confidence = 50;
   const reasons: string[] = [];
 
-  // RSI signals
+  // RSI signals — v16.0: MACD trend filter prevents buying falling knives
   if (rsi !== undefined) {
-    if (rsi < 25) { score += 3; confidence += 15; reasons.push(`RSI deeply oversold (${rsi.toFixed(0)})`); }
+    const macdIsBearish = macd === 'BEARISH';
+    if (rsi < 25) {
+      if (macdIsBearish) {
+        // P0-3: RSI deeply oversold but MACD bearish — falling knife, do NOT buy
+        score += 0; // neutral, no buy signal
+        confidence += 10;
+        reasons.push(`RSI deeply oversold (${rsi.toFixed(0)}) but MACD bearish — waiting for trend confirmation`);
+      } else {
+        score += 3; confidence += 15; reasons.push(`RSI deeply oversold (${rsi.toFixed(0)}) with MACD confirmation`);
+      }
+    }
+    else if (rsi < 30) {
+      if (macdIsBearish) {
+        score += 0;
+        confidence += 5;
+        reasons.push(`RSI oversold (${rsi.toFixed(0)}) but MACD bearish — waiting for trend confirmation`);
+      } else {
+        score += 2; confidence += 10; reasons.push(`RSI oversold (${rsi.toFixed(0)}) with MACD non-bearish`);
+      }
+    }
     else if (rsi < 35) { score += 1; confidence += 8; reasons.push(`RSI oversold (${rsi.toFixed(0)})`); }
     else if (rsi > 80) { score -= 3; confidence += 15; reasons.push(`RSI extremely overbought (${rsi.toFixed(0)})`); }
     else if (rsi > 70) { score -= 2; confidence += 10; reasons.push(`RSI overbought (${rsi.toFixed(0)})`); }

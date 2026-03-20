@@ -256,12 +256,26 @@ import {
   NORMAL_DEDUP_WINDOW_MINUTES,
   MAX_TRADES_PER_CYCLE,
   MOMENTUM_MAX_POSITION_PERCENT,
+  // v16.0: Per-Position Stop-Loss
+  POSITION_HARD_STOP_PCT,
+  POSITION_SOFT_STOP_PCT,
+  POSITION_CONCENTRATED_STOP_PCT,
   // v14.1: Smart Trim (Momentum Deceleration Exit)
   DECEL_TRIM_DEDUP_WINDOW_MINUTES,
   // v15.3: Yield Optimizer
   YIELD_CHECK_INTERVAL_CYCLES,
   YIELD_MIN_DIFFERENTIAL_PCT,
   YIELD_MIN_IDLE_USD,
+  // v16.0: Fear/Regime Tuning (NVR Audit P1-1)
+  EXTREME_FEAR_FG_THRESHOLD,
+  EXTREME_FEAR_CONFLUENCE_MIN,
+  EXTREME_FEAR_MAX_TRADES,
+  FEAR_FG_THRESHOLD,
+  FEAR_CONFLUENCE_MIN,
+  // v16.0: Dust Cleanup (NVR Audit P1-3)
+  DUST_CLEANUP_THRESHOLD_USD,
+  DUST_CLEANUP_MIN_AGE_HOURS,
+  DUST_CLEANUP_INTERVAL_CYCLES,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 
@@ -2119,19 +2133,27 @@ let crashBuyingOverrideCycles = 0;
 
 /**
  * v11.2: Crash-Buying Breaker Override
- * When Cash Deployment Mode is active AND the market is in extreme fear,
- * allow deployment buys to punch through the institutional circuit breaker.
+ * When the market is in extreme fear, allow deployment buys to punch through
+ * the institutional circuit breaker.
+ *
+ * v16.0 FIX (NVR Audit P1-2): Removed cash deployment mode requirement.
+ * Previously required cash deployment mode active + high cash %, which meant
+ * crash buying showed inactive even at F&G=11. Now activates on F&G alone.
  *
  * Conditions (ALL must be true):
- * 1. Cash Deployment Mode is active (>50% USDC)
- * 2. Cash % exceeds the override minimum (>60%)
- * 3. Fear & Greed index is at or below extreme fear threshold (<=25)
- * 4. NOT blocked by capital floor (portfolio above safety minimum)
+ * 1. Fear & Greed index is at or below extreme fear threshold (<=30)
+ * 2. NOT blocked by capital floor (portfolio above safety minimum)
+ * 3. Some USDC available (>$10)
+ *
+ * v16.0: In extreme fear (F&G < 20), crash buys are further restricted:
+ * - Only blue chips (cbBTC, WETH, ETH, cbETH, wstETH)
+ * - Max 2% of portfolio per position
+ * - Must have positive buy ratio (>50%) to confirm dip is being bought
  *
  * When active:
  * - BUY actions are allowed despite breaker being active
- * - Position sizes are reduced to 40% of normal (cautious accumulation)
- * - Max 2 entries per cycle (fewer than normal deployment's 4)
+ * - Position sizes are reduced to 60% of normal (cautious accumulation)
+ * - Max 4 entries per cycle
  * - "Be greedy when others are fearful" — encoded into the system
  */
 function checkCrashBuyingOverride(
@@ -2143,17 +2165,13 @@ function checkCrashBuyingOverride(
   reason: string;
   sizeMultiplier: number;
   maxEntries: number;
+  blueChipOnly: boolean;
+  maxPositionPct: number;
+  requirePositiveBuyRatio: boolean;
 } {
-  const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES };
+  const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES, blueChipOnly: false, maxPositionPct: 100, requirePositiveBuyRatio: false };
 
-  // Must be in cash deployment mode
-  if (!deploymentCheck.active) return { ...inactive, reason: 'Cash deployment not active' };
-
-  // Must have heavily overweight cash
-  if (deploymentCheck.cashPercent < DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT) {
-    return { ...inactive, reason: `Cash ${deploymentCheck.cashPercent.toFixed(1)}% below override threshold ${DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT}%` };
-  }
-
+  // v16.0 FIX: F&G check is now the PRIMARY gate — no longer requires cash deployment mode
   // Must be extreme fear
   if (fearGreedValue > DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX) {
     return { ...inactive, reason: `Fear & Greed ${fearGreedValue} above override threshold ${DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX}` };
@@ -2164,14 +2182,25 @@ function checkCrashBuyingOverride(
     return { ...inactive, reason: 'Capital floor active — override blocked' };
   }
 
+  // v16.0: Need at least some USDC to crash-buy (don't require full deployment mode)
+  if (deploymentCheck.cashPercent < 1) {
+    return { ...inactive, reason: `No USDC available for crash buying (${deploymentCheck.cashPercent.toFixed(1)}%)` };
+  }
+
   crashBuyingOverrideActive = true;
   crashBuyingOverrideCycles++;
 
+  // v16.0: Extra restrictions when F&G is extremely low (< EXTREME_FEAR threshold)
+  const extremelyFearful = fearGreedValue < EXTREME_FEAR_FG_THRESHOLD;
+
   return {
     active: true,
-    reason: `Extreme fear (F&G=${fearGreedValue}) + ${deploymentCheck.cashPercent.toFixed(1)}% cash → crash-buying override active`,
-    sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
-    maxEntries: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
+    reason: `Extreme fear (F&G=${fearGreedValue}) + ${deploymentCheck.cashPercent.toFixed(1)}% cash → crash-buying override active${extremelyFearful ? ' (EXTREME: blue chips only, 2% max)' : ''}`,
+    sizeMultiplier: extremelyFearful ? 0.3 : DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,  // v16.0: 30% in extreme, 60% in fear
+    maxEntries: extremelyFearful ? 2 : DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,       // v16.0: fewer entries in extreme fear
+    blueChipOnly: extremelyFearful,          // v16.0: only blue chips when F&G < 20
+    maxPositionPct: extremelyFearful ? 2 : 5, // v16.0: 2% of portfolio max in extreme fear
+    requirePositiveBuyRatio: extremelyFearful, // v16.0: must confirm dip is being bought
   };
 }
 
@@ -8097,6 +8126,7 @@ ENTRY RULES (when to BUY):
 7. DEX VOLUME SPIKES: Token with >2x normal volume AND buy-heavy pressure (>55% buys) = strong BUY signal
 8. TVL-PRICE DIVERGENCE: DeFi token with rising TVL but flat price = undervalued, prioritize buying
 9. QUALITY OVER QUANTITY: You are a TRADING bot but NOT a churning bot. Only enter when 2+ signals align with clear conviction. A missed trade costs nothing — a bad trade costs slippage, fees, and capital. Patience IS a position
+12. FALLING KNIFE FILTER: NEVER buy on oversold RSI alone if MACD is bearish. RSI < 30 with bearish MACD is a falling knife, not a buying opportunity. Wait for MACD to turn bullish or neutral before entering oversold positions. This prevents catching falling knives like RSR (-54.8%)
 10. SCALE INTO WINNERS: When an existing position is up ${SCALE_UP_MIN_GAIN_PCT}%+ from cost basis AND has strong momentum (buy ratio > ${SCALE_UP_BUY_RATIO_MIN}%, volume above average), INCREASE the position by 2-4x the original size. This is the most important rule. Small scout positions that prove themselves deserve real capital. A $2 position up 8% is a signal to deploy $50-100 more, not to sit and watch.
 11. RIDE THE WAVE: If a token is up ${RIDE_THE_WAVE_MIN_MOVE}%+ in the last 4 hours with increasing volume, this is a momentum trade opportunity. Deploy ${RIDE_THE_WAVE_SIZE_PCT}% of portfolio immediately. Don't wait for confluence of 3 indicators. Volume + price action IS the signal.
 
@@ -8370,7 +8400,7 @@ async function executeTrade(
     const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 0;
     if (cb && cb.averageCostBasis > 0 && tokenPrice > 0) {
       const lossPct = ((tokenPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
-      const isStopLoss = decision.reasoning?.includes('STOP_LOSS') || decision.reasoning?.includes('TRAILING_STOP');
+      const isStopLoss = decision.reasoning?.includes('STOP_LOSS') || decision.reasoning?.includes('TRAILING_STOP') || decision.reasoning?.includes('HARD_STOP') || decision.reasoning?.includes('SOFT_STOP') || decision.reasoning?.includes('CONCENTRATED_STOP') || decision.reasoning?.includes('DIRECTIVE_SELL');
       const marketIsGreen = (lastMomentumSignal?.btcChange24h || 0) > 0.5 && (lastMomentumSignal?.ethChange24h || 0) > 0.5;
       if (lossPct < -8 && marketIsGreen && !isStopLoss) {
         console.warn(`\n  🛡️ SELL LOSS GATE: Blocking ${decision.fromToken} sell at ${lossPct.toFixed(1)}% loss in green market (BTC +${(lastMomentumSignal?.btcChange24h || 0).toFixed(1)}%)`);
@@ -10143,6 +10173,60 @@ async function runTradingCycle() {
       console.log(`  ✅ Stop-loss executed — continuing to AI decision phase`);
     }
 
+    // === v16.0: DUST/MICRO POSITION CLEANUP (NVR Audit P1-3) ===
+    // Every DUST_CLEANUP_INTERVAL_CYCLES cycles, auto-sell positions under $5 held >24h
+    if (state.totalCycles % DUST_CLEANUP_INTERVAL_CYCLES === 0) {
+      const now = Date.now();
+      const dustPositions: { symbol: string; usdValue: number; ageHours: number }[] = [];
+
+      for (const holding of balances) {
+        if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
+        if (!holding.usdValue || holding.usdValue >= DUST_CLEANUP_THRESHOLD_USD) continue;
+        if (holding.usdValue < 0.01) continue; // skip zero-value
+
+        // Check position age
+        const cb = state.costBasis[holding.symbol];
+        if (!cb?.firstBuyDate) continue;
+        const ageHours = (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60);
+        if (ageHours < DUST_CLEANUP_MIN_AGE_HOURS) continue;
+
+        dustPositions.push({ symbol: holding.symbol, usdValue: holding.usdValue, ageHours });
+      }
+
+      if (dustPositions.length > 0) {
+        console.log(`\n🧹 DUST_CLEANUP: Found ${dustPositions.length} micro positions under $${DUST_CLEANUP_THRESHOLD_USD} (held >${DUST_CLEANUP_MIN_AGE_HOURS}h)`);
+        for (const dust of dustPositions) {
+          console.log(`   🧹 Cleaning: ${dust.symbol} $${dust.usdValue.toFixed(2)} (held ${dust.ageHours.toFixed(0)}h)`);
+          if (isTokenBlocked(dust.symbol)) {
+            console.log(`   🚫 ${dust.symbol} blocked by circuit breaker — skipping`);
+            continue;
+          }
+          const dustDecision: TradeDecision = {
+            action: 'SELL',
+            fromToken: dust.symbol,
+            toToken: 'USDC',
+            amountUSD: dust.usdValue,
+            reasoning: `DUST_CLEANUP: Position too small to impact portfolio ($${dust.usdValue.toFixed(2)} < $${DUST_CLEANUP_THRESHOLD_USD}, held ${dust.ageHours.toFixed(0)}h). Freeing capital and reducing clutter.`,
+            sector: TOKEN_REGISTRY[dust.symbol]?.sector,
+          };
+          const dustResult = await executeTrade(dustDecision, marketData);
+          if (dustResult.success) {
+            clearTradeFailures(dust.symbol);
+            console.log(`   ✅ Dust sold: ${dust.symbol} $${dust.usdValue.toFixed(2)}`);
+          } else {
+            recordTradeFailure(dust.symbol);
+            console.log(`   ❌ Dust sell failed: ${dust.symbol}`);
+          }
+        }
+        // Refresh balances after dust cleanup
+        const refreshedAfterDust = await getBalances();
+        if (refreshedAfterDust && refreshedAfterDust.length > 0) {
+          balances = refreshedAfterDust;
+        }
+        saveTradeHistory();
+      }
+    }
+
     // === PROFIT-TAKING CHECK ===
     // v10.4: Profit-take no longer returns early — after harvesting, the cycle
     // continues to the AI decision phase so the bot can also deploy capital.
@@ -10343,6 +10427,32 @@ async function runTradingCycle() {
       crashBuyingOverrideActive = false;
     }
 
+    // === v16.0: FEAR/REGIME MARKET BEHAVIOR TUNING (NVR Audit P1-1) ===
+    // When fear is extreme and market is ranging/trending down, tighten trading parameters
+    const fgValue = marketData.fearGreed.value;
+    const regime = marketData.marketRegime;
+    let fearRegimeMaxTrades = MAX_TRADES_PER_CYCLE;
+    let fearRegimeConfluenceMin: number | null = null; // null = use default
+    let fearRegimePositionSizeMultiplier = 1.0;
+    let fearRegimeBlueChipOnly = false;
+
+    if (fgValue < EXTREME_FEAR_FG_THRESHOLD && regime === 'RANGING') {
+      // EXTREME FEAR + RANGING: be very conservative
+      fearRegimeConfluenceMin = EXTREME_FEAR_CONFLUENCE_MIN;
+      fearRegimeMaxTrades = EXTREME_FEAR_MAX_TRADES;
+      fearRegimePositionSizeMultiplier = 0.5; // 50% position size
+      console.log(`\n🧊 EXTREME_FEAR_MODE: Tightened trading parameters`);
+      console.log(`   F&G=${fgValue} (<${EXTREME_FEAR_FG_THRESHOLD}) + regime=${regime}`);
+      console.log(`   Confluence min: ${fearRegimeConfluenceMin} | Max trades: ${fearRegimeMaxTrades} | Position size: 50% | Bias: HOLD`);
+    } else if (fgValue < FEAR_FG_THRESHOLD && regime === 'TRENDING_DOWN') {
+      // FEAR + TRENDING DOWN: blue chips only
+      fearRegimeConfluenceMin = FEAR_CONFLUENCE_MIN;
+      fearRegimeBlueChipOnly = true;
+      console.log(`\n🧊 FEAR_MODE: Blue chips only`);
+      console.log(`   F&G=${fgValue} (<${FEAR_FG_THRESHOLD}) + regime=${regime}`);
+      console.log(`   Confluence min: ${fearRegimeConfluenceMin} | Only BLUE_CHIP sector buys allowed`);
+    }
+
     // AI decision (or central signal fetch)
     let decisions: TradeDecision[];
 
@@ -10375,6 +10485,154 @@ async function runTradingCycle() {
       // Existing Claude AI call — unchanged
       console.log("\n🧠 AI analyzing portfolio & market...");
       decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
+    }
+
+    // === v16.0: PER-POSITION STOP-LOSS ENGINE ===
+    // Fires BEFORE AI/swarm decisions. Hard stops protect capital from indefinite bleed.
+    {
+      const stopLossDecisions: TradeDecision[] = [];
+      const portfolioVal = state.trading.totalPortfolioValue;
+
+      for (const holding of balances) {
+        if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
+        if (!holding.usdValue || holding.usdValue < 1) continue;
+
+        const cb = state.costBasis[holding.symbol];
+        if (!cb || !cb.avgCostBasis || cb.avgCostBasis <= 0) continue;
+
+        const currentPrice = marketData.tokens.find(t => t.symbol === holding.symbol)?.price || 0;
+        if (currentPrice <= 0) continue;
+
+        const gainPct = ((currentPrice - cb.avgCostBasis) / cb.avgCostBasis) * 100;
+        const positionPct = portfolioVal > 0 ? (holding.usdValue / portfolioVal) * 100 : 0;
+
+        // P0-1a: HARD STOP — position down more than 15% from cost basis
+        if (gainPct < POSITION_HARD_STOP_PCT) {
+          console.log(`\n🛑 HARD_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% from cost basis — max loss exceeded (threshold: ${POSITION_HARD_STOP_PCT}%)`);
+          stopLossDecisions.push({
+            action: 'SELL',
+            fromToken: holding.symbol,
+            toToken: 'USDC',
+            amountUSD: holding.usdValue,
+            reasoning: `HARD_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% from cost basis — max loss exceeded (threshold: ${POSITION_HARD_STOP_PCT}%)`,
+            sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+          });
+          continue; // Don't double-trigger softer stops
+        }
+
+        // P0-1b: SOFT STOP — position down more than 10% AND worth > $20
+        if (gainPct < POSITION_SOFT_STOP_PCT && holding.usdValue > 20) {
+          console.log(`\n⚠️ SOFT_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% from cost basis, position $${holding.usdValue.toFixed(2)} (threshold: ${POSITION_SOFT_STOP_PCT}% for >$20)`);
+          stopLossDecisions.push({
+            action: 'SELL',
+            fromToken: holding.symbol,
+            toToken: 'USDC',
+            amountUSD: holding.usdValue,
+            reasoning: `SOFT_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% from cost basis, position $${holding.usdValue.toFixed(2)} — approaching max loss`,
+            sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+          });
+          continue;
+        }
+
+        // P0-1c: CONCENTRATED STOP — position down more than 7% AND > 10% of portfolio
+        if (gainPct < POSITION_CONCENTRATED_STOP_PCT && positionPct > 10) {
+          console.log(`\n⚠️ CONCENTRATED_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% and ${positionPct.toFixed(1)}% of portfolio (threshold: ${POSITION_CONCENTRATED_STOP_PCT}% for >10% concentration)`);
+          stopLossDecisions.push({
+            action: 'SELL',
+            fromToken: holding.symbol,
+            toToken: 'USDC',
+            amountUSD: holding.usdValue,
+            reasoning: `CONCENTRATED_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% and ${positionPct.toFixed(1)}% of portfolio — concentrated loser exit`,
+            sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+          });
+        }
+      }
+
+      if (stopLossDecisions.length > 0) {
+        console.log(`\n🛑 PER-POSITION STOP-LOSS: ${stopLossDecisions.length} stop-loss sells triggered`);
+        // Prepend stop-losses — they have highest priority
+        decisions = [...stopLossDecisions, ...decisions];
+      }
+    }
+
+    // === v16.0: DIRECTIVE SELL ENFORCEMENT ===
+    // Parse active directives for explicit sell/exit instructions and generate SELL decisions
+    // every cycle until the position is gone. Fixes P0-2 (directives not executing).
+    {
+      const directiveSellDecisions: TradeDecision[] = [];
+      const activeDirectives = getActiveDirectives();
+      const activeConfigDirectives = getActiveConfigDirectives();
+
+      // Combine user directives and config directives
+      const allInstructions: { instruction: string; token?: string }[] = [];
+      for (const d of activeDirectives) {
+        allInstructions.push({ instruction: d.instruction, token: d.token });
+      }
+      for (const cd of activeConfigDirectives) {
+        allInstructions.push({ instruction: cd.instruction });
+      }
+
+      // Parse for sell/exit action keywords
+      const sellActionPatterns = [
+        /\b(?:sell|exit|dump|liquidate|close|get rid of|offload)\s+(?:all\s+)?(\b[A-Z]{2,10}\b)/i,
+        /\b(?:prioritize selling|prioritize exiting)\s+(\b[A-Z]{2,10}\b)/i,
+        /\b(\b[A-Z]{2,10}\b)\s+(?:should be sold|needs to be sold|must be sold)/i,
+      ];
+
+      for (const item of allInstructions) {
+        const text = item.instruction;
+        let targetToken: string | null = item.token || null;
+
+        if (!targetToken) {
+          for (const pattern of sellActionPatterns) {
+            const match = text.match(pattern);
+            if (match) {
+              targetToken = match[1].toUpperCase();
+              break;
+            }
+          }
+        }
+
+        // Also check for direct token mention with sell-like keywords in same directive
+        if (!targetToken) {
+          const hasSellKeyword = /\b(?:sell|exit|dump|liquidate|close|offload|get rid of|prioritize selling)\b/i.test(text);
+          if (hasSellKeyword) {
+            const tokenMatches = text.match(/\b([A-Z]{2,10})\b/g);
+            if (tokenMatches) {
+              for (const t of tokenMatches) {
+                if (['USDC', 'USD', 'ETH', 'WETH', 'THE', 'AND', 'FOR', 'NOT', 'ALL', 'BUY', 'RSI', 'MACD'].includes(t)) continue;
+                const holding = balances.find(b => b.symbol === t && b.usdValue && b.usdValue > 1);
+                if (holding) { targetToken = t; break; }
+              }
+            }
+          }
+        }
+
+        if (!targetToken) continue;
+
+        // Check if we still hold this token
+        const holding = balances.find(b => b.symbol === targetToken && b.usdValue && b.usdValue > 1);
+        if (!holding) continue;
+
+        // Don't duplicate if stop-loss already covers this token
+        if (decisions.some(d => d.action === 'SELL' && d.fromToken === targetToken)) continue;
+
+        console.log(`\n📋 DIRECTIVE_SELL: Executing directive to sell ${targetToken} — "${text.substring(0, 80)}"`);
+        directiveSellDecisions.push({
+          action: 'SELL',
+          fromToken: targetToken,
+          toToken: 'USDC',
+          amountUSD: holding.usdValue,
+          reasoning: `DIRECTIVE_SELL: User directive instructs selling ${targetToken} — "${text.substring(0, 60)}"`,
+          sector: TOKEN_REGISTRY[targetToken]?.sector,
+        });
+      }
+
+      if (directiveSellDecisions.length > 0) {
+        console.log(`\n📋 DIRECTIVE ENFORCEMENT: ${directiveSellDecisions.length} directive-driven sells`);
+        // Insert after stop-losses but before AI decisions
+        decisions = [...directiveSellDecisions, ...decisions];
+      }
     }
 
     // === v13.0: SCALE-INTO-WINNERS ENGINE ===
@@ -10588,7 +10846,11 @@ async function runTradingCycle() {
       const priorityOrder = (d: TradeDecision): number => {
         const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
         switch (tier) {
+          case 'HARD_STOP': return -1;   // v16.0: highest priority — absolute loss limit
+          case 'SOFT_STOP': return -0.5;  // v16.0: approaching loss limit
+          case 'CONCENTRATED_STOP': return -0.5; // v16.0: concentrated loser
           case 'STOP_LOSS': return 0;
+          case 'DIRECTIVE_SELL': return 0.5; // v16.0: user directive enforcement
           case 'MOMENTUM_EXIT': return 1;
           case 'DECEL_TRIM': return 1.5; // v14.1: after momentum exit, before profit take
           case 'PROFIT_TAKE': return 2;
@@ -10610,6 +10872,64 @@ async function runTradingCycle() {
         console.log(`   Dropped: ${tier} ${d.action} ${d.fromToken}→${d.toToken} $${d.amountUSD.toFixed(0)}`);
       }
       decisions = [...kept, ...holdDecisions];
+    }
+
+    // === v16.0: FEAR/REGIME BUY FILTERING (NVR Audit P1-1) ===
+    // Apply fear-mode constraints: confluence floor, blue-chip-only, position size reduction, trade cap
+    if (fearRegimeConfluenceMin !== null || fearRegimeBlueChipOnly) {
+      let fearFiltered = 0;
+      for (const d of decisions) {
+        if (d.action !== 'BUY') continue;
+
+        // Blue chip only filter: block non-BLUE_CHIP buys in fear + trending down
+        if (fearRegimeBlueChipOnly) {
+          const tokenSector = d.sector || TOKEN_REGISTRY[d.toToken]?.sector;
+          if (tokenSector && tokenSector !== 'BLUE_CHIP') {
+            console.log(`   🧊 FEAR_MODE: Blocking ${d.action} ${d.toToken} — sector ${tokenSector} not allowed (blue chips only)`);
+            d.action = 'HOLD';
+            d.reasoning = `FEAR_MODE: F&G=${fgValue} + ${regime} — only BLUE_CHIP buys allowed. ${d.toToken} is ${tokenSector}.`;
+            fearFiltered++;
+            continue;
+          }
+        }
+
+        // Confluence floor: convert weak buys to HOLDs
+        if (fearRegimeConfluenceMin !== null) {
+          const tokenInd = marketData.indicators[d.toToken];
+          const confScore = tokenInd?.confluenceScore ?? 0;
+          if (confScore < fearRegimeConfluenceMin) {
+            console.log(`   🧊 FEAR_REGIME: Blocking BUY ${d.toToken} — confluence ${confScore} < fear minimum ${fearRegimeConfluenceMin}`);
+            d.action = 'HOLD';
+            d.reasoning = `FEAR_REGIME: Confluence ${confScore} below fear-adjusted minimum ${fearRegimeConfluenceMin}. F&G=${fgValue}, regime=${regime}.`;
+            fearFiltered++;
+            continue;
+          }
+        }
+
+        // Position size reduction in extreme fear
+        if (fearRegimePositionSizeMultiplier < 1.0) {
+          const original = d.amountUSD;
+          d.amountUSD = Math.round(d.amountUSD * fearRegimePositionSizeMultiplier * 100) / 100;
+          console.log(`   🧊 EXTREME_FEAR: Reduced ${d.toToken} position $${original.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${(fearRegimePositionSizeMultiplier * 100).toFixed(0)}%)`);
+        }
+      }
+
+      // Fear-mode trade cap override (stricter than normal MAX_TRADES_PER_CYCLE)
+      if (fearRegimeMaxTrades < MAX_TRADES_PER_CYCLE) {
+        const activeBuys = decisions.filter(d => d.action === 'BUY');
+        if (activeBuys.length > fearRegimeMaxTrades) {
+          const toBlock = activeBuys.slice(fearRegimeMaxTrades);
+          for (const d of toBlock) {
+            console.log(`   🧊 EXTREME_FEAR: Capping trades — blocking BUY ${d.toToken} (max ${fearRegimeMaxTrades} buys in fear mode)`);
+            d.action = 'HOLD';
+            d.reasoning = `EXTREME_FEAR_MODE: Max ${fearRegimeMaxTrades} buys per cycle in extreme fear. Biasing toward HOLD.`;
+          }
+        }
+      }
+
+      if (fearFiltered > 0) {
+        console.log(`   🧊 Fear/regime filter: blocked ${fearFiltered} buys this cycle`);
+      }
     }
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
@@ -10637,13 +10957,46 @@ async function runTradingCycle() {
 
       // === v8.0: INSTITUTIONAL BREAKER — BLOCK NEW BUYS ===
       // v11.2: Crash-buying override — allow deployment buys through breaker during extreme fear
+      // v16.0: Enhanced with blue-chip-only, position cap, and buy-ratio check for extreme fear
       if (institutionalBreakerActive && decision.action === "BUY") {
         if (crashBuyOverride.active && crashBuyEntriesThisCycle < crashBuyOverride.maxEntries) {
-          // Override: allow the BUY but reduce size for cautious accumulation
-          const originalAmount = decision.amountUSD;
-          decision.amountUSD = decision.amountUSD * crashBuyOverride.sizeMultiplier;
-          crashBuyEntriesThisCycle++;
-          console.log(`   🦈 CRASH-BUY OVERRIDE: Allowing BUY through breaker — $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)} (${(crashBuyOverride.sizeMultiplier * 100).toFixed(0)}% size) [${crashBuyEntriesThisCycle}/${crashBuyOverride.maxEntries} entries]`);
+          // v16.0: Blue chip gate — in extreme fear, only allow BLUE_CHIP crash buys
+          const crashBuyTokenSector = decision.sector || TOKEN_REGISTRY[decision.toToken]?.sector;
+          if (crashBuyOverride.blueChipOnly && crashBuyTokenSector !== 'BLUE_CHIP') {
+            console.log(`   🦈 CRASH-BUY: Blocking ${decision.toToken} — extreme fear, blue chips only (sector: ${crashBuyTokenSector})`);
+            decision.action = "HOLD";
+            decision.reasoning = `Crash-buy override: extreme fear (F&G<${EXTREME_FEAR_FG_THRESHOLD}) — only BLUE_CHIP allowed. ${decision.toToken} is ${crashBuyTokenSector}.`;
+          } else if (crashBuyOverride.requirePositiveBuyRatio) {
+            // v16.0: Buy ratio gate — confirm the dip is being bought
+            let tokenBuyRatio = 50;
+            if (lastDexIntelligence) {
+              const dexP = lastDexIntelligence.buySellPressure.find((p: any) => p.symbol === decision.toToken);
+              if (dexP) tokenBuyRatio = dexP.buyRatioH1 * 100;
+            }
+            const tokenInd = marketData.indicators[decision.toToken];
+            if (tokenInd?.orderFlow) {
+              const totalFlow = tokenInd.orderFlow.buyVolumeUSD + tokenInd.orderFlow.sellVolumeUSD;
+              if (totalFlow > 0) tokenBuyRatio = (tokenInd.orderFlow.buyVolumeUSD / totalFlow) * 100;
+            }
+            if (tokenBuyRatio <= 50) {
+              console.log(`   🦈 CRASH-BUY: Blocking ${decision.toToken} — buy ratio ${tokenBuyRatio.toFixed(0)}% <= 50%, dip not being bought`);
+              decision.action = "HOLD";
+              decision.reasoning = `Crash-buy override: buy ratio ${tokenBuyRatio.toFixed(0)}% too low — dip not confirmed as being bought.`;
+            } else {
+              // Override: allow the BUY with extreme-fear sizing
+              const originalAmount = decision.amountUSD;
+              const maxCrashBuyUSD = state.trading.totalPortfolioValue * (crashBuyOverride.maxPositionPct / 100);
+              decision.amountUSD = Math.min(decision.amountUSD * crashBuyOverride.sizeMultiplier, maxCrashBuyUSD);
+              crashBuyEntriesThisCycle++;
+              console.log(`   🦈 CRASH-BUY OVERRIDE: Allowing BUY through breaker — $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)} (${(crashBuyOverride.sizeMultiplier * 100).toFixed(0)}% size, max ${crashBuyOverride.maxPositionPct}% portfolio) [${crashBuyEntriesThisCycle}/${crashBuyOverride.maxEntries} entries]`);
+            }
+          } else {
+            // Normal crash-buy (F&G 20-30): allow with standard reduction
+            const originalAmount = decision.amountUSD;
+            decision.amountUSD = decision.amountUSD * crashBuyOverride.sizeMultiplier;
+            crashBuyEntriesThisCycle++;
+            console.log(`   🦈 CRASH-BUY OVERRIDE: Allowing BUY through breaker — $${originalAmount.toFixed(2)} → $${decision.amountUSD.toFixed(2)} (${(crashBuyOverride.sizeMultiplier * 100).toFixed(0)}% size) [${crashBuyEntriesThisCycle}/${crashBuyOverride.maxEntries} entries]`);
+          }
         } else if (crashBuyOverride.active && crashBuyEntriesThisCycle >= crashBuyOverride.maxEntries) {
           console.log(`   🦈 CRASH-BUY: Max entries reached (${crashBuyOverride.maxEntries}) — blocking additional BUY`);
           decision.action = "HOLD";
@@ -12303,14 +12656,14 @@ function apiPortfolio() {
       confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
       minReserveUSD: CASH_DEPLOYMENT_MIN_RESERVE_USD,
     },
-    // v11.2: Crash-buying breaker override status
+    // v11.2/v16.0: Crash-buying breaker override status
     crashBuyingOverride: {
       active: crashBuyingOverrideActive,
       cyclesActive: crashBuyingOverrideCycles,
       fearGreedThreshold: DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX,
-      minCashPct: DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
       sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
       maxEntriesPerCycle: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
+      note: 'v16.0: Now activates on F&G alone (removed cash deployment mode requirement)',
     },
     // v11.4.22: On-chain recovery diagnostic
     _recovery: (state as any)._recoveryStatus || 'not run',
