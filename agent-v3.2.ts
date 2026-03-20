@@ -194,6 +194,10 @@ import {
   GAS_REFUEL_AMOUNT_USDC,
   GAS_REFUEL_MIN_USDC,
   GAS_REFUEL_COOLDOWN_MS,
+  // v9.2.1: Gas Bootstrap
+  GAS_BOOTSTRAP_MIN_ETH_USD,
+  GAS_BOOTSTRAP_SWAP_USD,
+  GAS_BOOTSTRAP_MIN_USDC,
   // v9.3: Daily Payout
   DAILY_PAYOUT_CRON,
   DAILY_PAYOUT_MIN_TRANSFER_USD,
@@ -7595,6 +7599,62 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
   }
 }
 
+// ============================================================================
+// v9.2.1: GAS BOOTSTRAP — Auto-buy ETH on first startup when wallet has USDC but no ETH
+// ============================================================================
+
+let gasBootstrapAttempted = false;
+
+async function bootstrapGas(): Promise<void> {
+  try {
+    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+    const walletAddr = CONFIG.walletAddress;
+    const ethBalance = await getETHBalance(walletAddr);
+    lastKnownETHBalance = ethBalance;
+
+    // Estimate ETH value in USD (~$2700 rough estimate, good enough for threshold check)
+    const ethPriceEstimate = 2700;
+    const ethValueUSD = ethBalance * ethPriceEstimate;
+
+    if (ethValueUSD >= GAS_BOOTSTRAP_MIN_ETH_USD) {
+      console.log(`  [GAS BOOTSTRAP] Gas OK — ETH balance ${ethBalance.toFixed(6)} (~$${ethValueUSD.toFixed(2)})`);
+      gasBootstrapAttempted = true;
+      return;
+    }
+
+    const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6);
+
+    if (usdcBalance < GAS_BOOTSTRAP_MIN_USDC) {
+      console.log(`  [GAS BOOTSTRAP] Insufficient USDC for gas bootstrap ($${usdcBalance.toFixed(2)} < $${GAS_BOOTSTRAP_MIN_USDC} minimum)`);
+      return;
+    }
+
+    console.log(`\n  ⛽ [GAS BOOTSTRAP] ETH balance ${ethBalance.toFixed(6)} (~$${ethValueUSD.toFixed(2)}) below $${GAS_BOOTSTRAP_MIN_ETH_USD} threshold`);
+    console.log(`     Swapping $${GAS_BOOTSTRAP_SWAP_USD} USDC → WETH for gas fees...`);
+
+    const fromAmount = parseUnits(GAS_BOOTSTRAP_SWAP_USD.toFixed(6), 6);
+    await account.swap({
+      network: "base",
+      fromToken: TOKEN_REGISTRY.USDC.address,
+      toToken: "0x4200000000000000000000000000000000000006", // WETH on Base
+      fromAmount,
+      slippageBps: 100, // 1% slippage
+    });
+
+    const newEthBalance = await getETHBalance(walletAddr);
+    lastKnownETHBalance = newEthBalance;
+    gasBootstrapAttempted = true;
+    lastGasRefuelTime = Date.now(); // Prevent immediate refuel after bootstrap
+
+    console.log(`     ✅ [GAS BOOTSTRAP] Swapped $${GAS_BOOTSTRAP_SWAP_USD} USDC → ETH for gas fees`);
+    console.log(`     ETH: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
+  } catch (err: any) {
+    const msg = err?.message?.substring(0, 200) || 'Unknown error';
+    console.warn(`  ⛽ [GAS BOOTSTRAP] Failed: ${msg} — will retry next cycle`);
+    // Don't set gasBootstrapAttempted so it retries next cycle
+  }
+}
+
 async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
   // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet at 0x55509...)
   const walletAddress = CONFIG.walletAddress;
@@ -9680,6 +9740,15 @@ async function runTradingCycle() {
   console.log("═".repeat(70));
 
   try {
+    // v9.2.1: Gas bootstrap retry — if startup bootstrap failed, retry each heavy cycle
+    if (cdpClient && CONFIG.trading.enabled && !gasBootstrapAttempted) {
+      try {
+        await bootstrapGas();
+      } catch (bErr: any) {
+        console.warn(`  ⛽ [GAS BOOTSTRAP] Cycle retry failed: ${bErr?.message?.substring(0, 150)}`);
+      }
+    }
+
     // v9.2: Auto gas refuel check — ensure ETH for tx fees before any trades
     if (cdpClient && CONFIG.trading.enabled) {
       const gasResult = await checkAndRefuelGas();
@@ -11192,12 +11261,20 @@ async function main() {
       console.log(`     ETH (for gas): ${ethBalance.toFixed(6)} ETH (~$${(ethBalance * 2700).toFixed(2)})`);
       if (ethBalance < 0.0001 && usdcBalance > 1) {
         console.log(`\n  ⚠️ WARNING: Account has USDC but almost no ETH for gas!`);
-        console.log(`     Token approvals require a small ETH gas fee (~$0.01 on Base).`);
-        console.log(`     Send at least 0.0005 ETH (~$1.35) to: ${account.address}`);
-        console.log(`     Once ETH is available, Permit2 approvals and swaps will work.`);
+        console.log(`     Attempting gas bootstrap...`);
       }
     } catch (balError: any) {
       console.log(`  ⚠️ Balance check failed: ${balError.message?.substring(0, 150)}`);
+    }
+
+    // v9.2.1: GAS BOOTSTRAP — Auto-buy ETH if wallet has USDC but no ETH
+    // Runs once at startup before the first trading cycle
+    if (CONFIG.trading.enabled) {
+      try {
+        await bootstrapGas();
+      } catch (bootstrapErr: any) {
+        console.warn(`  ⛽ [GAS BOOTSTRAP] Startup error: ${bootstrapErr?.message?.substring(0, 150)} — will retry on first cycle`);
+      }
     }
 
     // v10.3: Warm up portfolio value on startup — prevents capital floor false trigger after redeploy.

@@ -435,6 +435,14 @@ export const GAS_REFUEL_MIN_USDC = 5.00;
 /** Cooldown between gas refuels to prevent rapid-fire refueling on errors */
 export const GAS_REFUEL_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
+// v9.2.1: GAS BOOTSTRAP — First-startup auto-buy ETH for gas
+/** Trigger gas bootstrap if ETH balance is worth less than this (USD) */
+export const GAS_BOOTSTRAP_MIN_ETH_USD = 2;
+/** Amount of USDC to swap into ETH during bootstrap */
+export const GAS_BOOTSTRAP_SWAP_USD = 5;
+/** Minimum USDC balance required before bootstrap is allowed */
+export const GAS_BOOTSTRAP_MIN_USDC = 20;
+
 // ============================================================================
 // v9.3: DAILY PAYOUT — Scheduled profit distribution replacing opportunistic harvest
 // ============================================================================
