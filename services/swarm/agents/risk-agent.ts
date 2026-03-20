@@ -16,17 +16,17 @@ export function riskAgent(input: MicroAgentInput): MicroAgentVote {
   let confidence = 60;
   const reasons: string[] = [];
 
-  // 1. Position loss check — stop-loss signal
+  // 1. Position loss check — cut losers fast, buy back on momentum
   if (portfolio.positionGainPct !== undefined) {
-    if (portfolio.positionGainPct < -10) {
+    if (portfolio.positionGainPct < -7) {
       action = 'STRONG_SELL';
-      confidence = 85;
-      reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% from cost basis — stop-loss`);
+      confidence = 90;
+      reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% from cost basis — cut the loss`);
       return { agent: 'risk', action, confidence, reasoning: reasons.join('; '), weight: SWARM_AGENT_WEIGHTS.risk };
     }
-    if (portfolio.positionGainPct < -7) {
+    if (portfolio.positionGainPct < -4) {
       action = 'SELL';
-      confidence = 70;
+      confidence = 75;
       reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% — approaching stop-loss`);
     }
   }
@@ -34,12 +34,23 @@ export function riskAgent(input: MicroAgentInput): MicroAgentVote {
   // 2. Concentration check — too much in one token
   if (portfolio.positionSize !== undefined && portfolio.totalValue > 0) {
     const positionPct = (portfolio.positionSize / portfolio.totalValue) * 100;
+    const isUnderwater = (portfolio.positionGainPct ?? 0) < 0;
+
+    // Over 15% AND losing money = aggressive sell
+    if (positionPct > 15 && isUnderwater) {
+      action = 'STRONG_SELL';
+      confidence = 85;
+      reasons.push(`Position is ${positionPct.toFixed(0)}% of portfolio AND underwater — must trim`);
+      return { agent: 'risk', action, confidence, reasoning: reasons.join('; '), weight: SWARM_AGENT_WEIGHTS.risk };
+    }
     if (positionPct > 20) {
       action = 'SELL';
-      confidence = 70;
+      confidence = 75;
       reasons.push(`Position is ${positionPct.toFixed(0)}% of portfolio — too concentrated`);
     } else if (positionPct > 15) {
-      reasons.push(`Position ${positionPct.toFixed(0)}% of portfolio — watching concentration`);
+      action = 'SELL';
+      confidence = 65;
+      reasons.push(`Position ${positionPct.toFixed(0)}% of portfolio — trimming concentration`);
     }
   }
 
