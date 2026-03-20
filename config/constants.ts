@@ -216,11 +216,14 @@ export const BTC_DOMINANCE_SECTOR_BOOST = {
 // PROFIT HARVESTING DEFAULTS
 // ============================================================================
 
+/** v18.0: Widened profit tiers — let winners run longer before first harvest.
+ *  Old tiers (8/15/25/40%) harvested too early, creating small wins and big losses.
+ *  New tiers start at 25% to give trades room to develop. */
 export const DEFAULT_PROFIT_TIERS = [
-  { gainPercent: 8,  sellPercent: 15, label: "EARLY_HARVEST" },
-  { gainPercent: 15, sellPercent: 20, label: "MID_HARVEST" },
-  { gainPercent: 25, sellPercent: 30, label: "STRONG_HARVEST" },
-  { gainPercent: 40, sellPercent: 40, label: "MAJOR_HARVEST" },
+  { gainPercent: 25,  sellPercent: 15, label: "EARLY_HARVEST" },
+  { gainPercent: 50,  sellPercent: 20, label: "MID_HARVEST" },
+  { gainPercent: 100, sellPercent: 25, label: "STRONG_HARVEST" },
+  { gainPercent: 200, sellPercent: 35, label: "MAJOR_HARVEST" },
 ] as const;
 
 // ============================================================================
@@ -296,11 +299,13 @@ export const CAPITAL_FLOOR_ABSOLUTE_USD = 50; // $50 absolute minimum
  * Tighter stop-loss bounds for high-risk sectors.
  * These override the adaptive stop-loss when the sector is riskier.
  */
+/** v18.0: Tightened non-blue-chip stops to ~4% effective, blue chips keep 6%
+ *  Core fix: losses were 2x wins because stops were too wide for $20-30 trades */
 export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTrailing: number; maxPositionPercent: number }> = {
-  MEME_COINS:  { maxLoss: -10, maxTrailing: -8,  maxPositionPercent: 15 },
-  AI_TOKENS:   { maxLoss: -12, maxTrailing: -10, maxPositionPercent: 20 },
-  DEFI:        { maxLoss: -15, maxTrailing: -12, maxPositionPercent: 25 },
-  BLUE_CHIP:   { maxLoss: -20, maxTrailing: -15, maxPositionPercent: 30 },
+  MEME_COINS:  { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 15 },
+  AI_TOKENS:   { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 20 },
+  DEFI:        { maxLoss: -5,  maxTrailing: -4,  maxPositionPercent: 25 },
+  BLUE_CHIP:   { maxLoss: -6,  maxTrailing: -5,  maxPositionPercent: 30 },
 } as const;
 
 // ============================================================================
@@ -332,12 +337,13 @@ export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
 };
 
 /** ATR-relative profit harvest tiers: [atrMultiple, sellPercent]
- *  v11.4.5: Raised multiples — 3x ATR was triggering on normal daily swings */
+ *  v18.0: Raised further — 5x ATR was still triggering too early on volatile tokens.
+ *  Combined with let-winners-run filter, these only fire when momentum decelerates. */
 export const ATR_PROFIT_TIERS = [
-  { atrMultiple: 5,  sellPercent: 15, label: "ATR_EARLY" },
-  { atrMultiple: 8,  sellPercent: 20, label: "ATR_MID" },
-  { atrMultiple: 12, sellPercent: 25, label: "ATR_STRONG" },
-  { atrMultiple: 18, sellPercent: 35, label: "ATR_MAJOR" },
+  { atrMultiple: 8,  sellPercent: 15, label: "ATR_EARLY" },
+  { atrMultiple: 12, sellPercent: 20, label: "ATR_MID" },
+  { atrMultiple: 18, sellPercent: 25, label: "ATR_STRONG" },
+  { atrMultiple: 25, sellPercent: 35, label: "ATR_MAJOR" },
 ] as const;
 
 /** How many ATR comparison log entries to emit (for debugging first N cycles) */
@@ -599,20 +605,28 @@ export const RIDE_THE_WAVE_MIN_MOVE = 5;
 /** Deploy this % of portfolio on a wave ride entry */
 export const RIDE_THE_WAVE_SIZE_PCT = 4;
 
-/** Dedup window in minutes for scale-up buys (shorter than normal 15min) */
-export const SCALE_UP_DEDUP_WINDOW_MINUTES = 5; // v14.2: 1→5 min — reduce churn on scale-up/wave trades
+/** Dedup window in minutes for scale-up buys
+ *  v18.0: Widened from 5 to 15 min — reduce churn */
+export const SCALE_UP_DEDUP_WINDOW_MINUTES = 15;
 
-/** Dedup window in minutes for forced deploy buys */
-export const FORCED_DEPLOY_DEDUP_WINDOW_MINUTES = 10; // v14.2: was hardcoded 2min → 10min constant
+/** Dedup window in minutes for forced deploy buys
+ *  v18.0: Widened from 10 to 20 min — be more patient with deployment */
+export const FORCED_DEPLOY_DEDUP_WINDOW_MINUTES = 20;
 
-/** Dedup window in minutes for momentum exit sells */
-export const MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES = 5; // v14.2: was hardcoded 1min → 5min constant
+/** Dedup window in minutes for momentum exit sells
+ *  v18.0: Widened from 5 to 15 min — avoid panic selling on minor dips */
+export const MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES = 15;
 
-/** Dedup window in minutes for normal AI trades */
-export const NORMAL_DEDUP_WINDOW_MINUTES = 15; // v14.2: was hardcoded 5min → 15min constant
+/** Dedup window in minutes for normal AI trades
+ *  v18.0: Widened from 15 to 30 min — minimum time between trades on the same token */
+export const NORMAL_DEDUP_WINDOW_MINUTES = 30;
 
-/** Maximum trades to execute per cycle (prevents churn) */
-export const MAX_TRADES_PER_CYCLE = 3; // v14.2: cap total trades per cycle — stop-loss > momentum-exit > profit-take > AI > scale-up > forced-deploy > ride-the-wave
+/** Maximum trades to execute per cycle (prevents churn)
+ *  v18.0: Kept at 3 for trending markets, but RANGING regime caps to 2 (see RANGING_MAX_TRADES_PER_CYCLE) */
+export const MAX_TRADES_PER_CYCLE = 3;
+
+/** v18.0: Max trades per cycle in RANGING regime — fewer, higher-conviction trades */
+export const RANGING_MAX_TRADES_PER_CYCLE = 2;
 
 /** Max position percent override for tokens showing strong momentum */
 export const MOMENTUM_MAX_POSITION_PERCENT = 15;
@@ -657,11 +671,13 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely
 // ============================================================================
 
-/** Absolute max loss per position — STRONG_SELL immediately */
-export const POSITION_HARD_STOP_PCT = -15;
+/** Absolute max loss per position — STRONG_SELL immediately
+ *  v18.0: Tightened from -15% to -10% — cut losses faster, stop letting losers bleed */
+export const POSITION_HARD_STOP_PCT = -10;
 
-/** Soft stop for positions worth > $20 */
-export const POSITION_SOFT_STOP_PCT = -10;
+/** Soft stop for positions worth > $20
+ *  v18.0: Tightened from -10% to -7% — smaller losses compound less damage */
+export const POSITION_SOFT_STOP_PCT = -7;
 
 /** Stop for concentrated positions (> 10% of portfolio) */
 export const POSITION_CONCENTRATED_STOP_PCT = -7;

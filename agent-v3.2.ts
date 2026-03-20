@@ -254,6 +254,7 @@ import {
   MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES,
   NORMAL_DEDUP_WINDOW_MINUTES,
   MAX_TRADES_PER_CYCLE,
+  RANGING_MAX_TRADES_PER_CYCLE,
   MOMENTUM_MAX_POSITION_PERCENT,
   // v16.0: Per-Position Stop-Loss
   POSITION_HARD_STOP_PCT,
@@ -299,6 +300,16 @@ import type { SwarmDecision } from './services/swarm/agent-framework.js';
 import { SIGNAL_ENGINE } from './config/constants.js';
 
 dotenv.config();
+
+// ============================================================================
+// v14.2: EXPLORATION TRADE GUARDRAILS — prevent exploration from fighting the trend
+// Bug: LINK was bought at confluence -26 with BEARISH MACD. Even data-gathering
+// trades should respect basic trend filters.
+// ============================================================================
+const EXPLORATION_MIN_CONFLUENCE = 0;           // No exploration buys with negative confluence
+const EXPLORATION_MIN_BUY_RATIO = 45;           // No exploration when sellers dominate (buy ratio < 45%)
+const EXPLORATION_RANGING_SIZE_MULTIPLIER = 0.5; // Cut exploration size 50% in RANGING markets
+const EXPLORATION_RANGING_MAX_PER_CYCLE = 1;    // Max 1 exploration trade per cycle in RANGING markets
 
 // ============================================================================
 // GLOBAL ERROR HANDLERS — prevent TLS/Axios object dumps from crashing Railway
@@ -1770,6 +1781,13 @@ interface HarvestRecipient {
 }
 
 function parseHarvestRecipients(): HarvestRecipient[] {
+  // TODO: Ambassador Program Integration — read feeRate from referral config
+  // instead of using a hardcoded 2% platform fee. The 6-tier ambassador program
+  // (standard=2.0%, connector=1.75%, builder=1.5%, ambassador=1.25%, partner=1.0%,
+  // founding=0.5%) is defined in stc-website/src/lib/referrals.ts. When the
+  // referral data pipeline flows to the bot, replace the fixed payout percentage
+  // with the user's tier-based feeRate from the referral system.
+  //
   // New format: HARVEST_RECIPIENTS='Henry:0xabc...123:15,Brother:0xdef...456:15'
   const recipientStr = process.env.HARVEST_RECIPIENTS || '';
   if (recipientStr) {
@@ -3115,8 +3133,19 @@ function calculatePatternConfidence(patternId: string, regime: MarketRegime): nu
 /**
  * Check for stagnation and generate exploration trade if needed
  * Returns a trade-like object or null
+ *
+ * v14.2: Added guardrails — exploration trades must not fight the trend.
+ *   - Minimum confluence >= 0 (neutral)
+ *   - MACD must not be bearish
+ *   - Buy ratio must be >= 45% (sellers not dominating)
+ *   - In RANGING markets: 50% size reduction, max 1 per cycle
  */
-function checkStagnation(availableUSDC: number, tokenData: any[]): { toToken: string; amountUSD: number; reasoning: string } | null {
+function checkStagnation(
+  availableUSDC: number,
+  tokenData: any[],
+  indicators: Record<string, TechnicalIndicators>,
+  marketRegime: MarketRegime
+): { toToken: string; amountUSD: number; reasoning: string } | null {
   const exploration = state.explorationState;
   const hoursSinceLastTrade = state.trading.lastTrade
     ? (Date.now() - state.trading.lastTrade.getTime()) / (1000 * 60 * 60)
@@ -3144,10 +3173,56 @@ function checkStagnation(availableUSDC: number, tokenData: any[]): { toToken: st
 
   if (candidates.length === 0) return null;
 
-  const target = candidates[0];
+  // v14.2: Apply guardrails — iterate candidates until one passes all filters
+  let target: any = null;
+  for (const candidate of candidates) {
+    const ind = indicators[candidate.symbol];
+    const confluenceScore = ind?.confluenceScore ?? 0;
+    const macdSignal = ind?.macd?.signal ?? "NEUTRAL";
+
+    // v14.2: Compute buy ratio from order flow data
+    const buyVolume = ind?.orderFlow?.buyVolumeUSD ?? 0;
+    const sellVolume = ind?.orderFlow?.sellVolumeUSD ?? 0;
+    const totalVolume = buyVolume + sellVolume;
+    const buyRatioPct = totalVolume > 0 ? (buyVolume / totalVolume) * 100 : 50; // default neutral if no data
+
+    // v14.2: GUARDRAIL 1 — Minimum confluence floor (neutral or positive)
+    if (confluenceScore < EXPLORATION_MIN_CONFLUENCE) {
+      console.log(`  🚫 EXPLORATION_BLOCKED: ${candidate.symbol} has negative confluence (${confluenceScore})`);
+      continue;
+    }
+
+    // v14.2: GUARDRAIL 2 — MACD filter (no buying into bearish MACD)
+    if (macdSignal === "BEARISH") {
+      console.log(`  🚫 EXPLORATION_BLOCKED: ${candidate.symbol} has bearish MACD`);
+      continue;
+    }
+
+    // v14.2: GUARDRAIL 3 — Volume/flow filter (sellers must not dominate)
+    if (totalVolume > 0 && buyRatioPct < EXPLORATION_MIN_BUY_RATIO) {
+      console.log(`  🚫 EXPLORATION_BLOCKED: ${candidate.symbol} has weak flow (buy ratio ${buyRatioPct.toFixed(1)}% < ${EXPLORATION_MIN_BUY_RATIO}%)`);
+      continue;
+    }
+
+    // Candidate passed all guardrails
+    target = candidate;
+    break;
+  }
+
+  if (!target) {
+    console.log(`  🔬 No exploration candidates passed guardrails (confluence >= ${EXPLORATION_MIN_CONFLUENCE}, non-bearish MACD, buy ratio >= ${EXPLORATION_MIN_BUY_RATIO}%)`);
+    return null;
+  }
+
   // v11.4.22: Increased from $15 to $50 (or 3% of available USDC).
   // $15 exploration trades don't build meaningful positions or generate useful P&L data.
-  const explorationAmount = Math.min(50, availableUSDC * 0.03);
+  let explorationAmount = Math.min(50, availableUSDC * 0.03);
+
+  // v14.2: GUARDRAIL 4 — In RANGING markets, cut exploration size by 50%
+  if (marketRegime === "RANGING") {
+    explorationAmount *= EXPLORATION_RANGING_SIZE_MULTIPLIER;
+    console.log(`  🔬 RANGING market: exploration size reduced to $${explorationAmount.toFixed(2)} (${EXPLORATION_RANGING_SIZE_MULTIPLIER * 100}% of normal)`);
+  }
 
   return {
     toToken: target.symbol,
@@ -4402,6 +4477,25 @@ function checkProfitTaking(
   }
 
   if (!bestCandidate) return null;
+
+  // v18.0: LET WINNERS RUN — Do not harvest if momentum is still strong
+  // If buy ratio > 55% AND MACD is bullish, the winner is still running.
+  // Only trim on deceleration, not on arbitrary percentage thresholds.
+  // Exception: MAJOR_HARVEST tier (40%+ gain) always harvests — protect the bag.
+  {
+    const ind = indicators[bestCandidate.symbol];
+    const orderFlow = ind?.orderFlow;
+    const macd = ind?.macd;
+    const buyRatio = orderFlow ? orderFlow.buyVolumeUSD / (orderFlow.buyVolumeUSD + orderFlow.sellVolumeUSD) : null;
+    const macdBullish = macd?.signal === 'BULLISH';
+
+    if (bestCandidate.tier.label !== 'MAJOR_HARVEST' && bestCandidate.tier.label !== 'ATR_MAJOR') {
+      if (buyRatio !== null && buyRatio > 0.55 && macdBullish) {
+        console.log(`\n  🏃 LET_IT_RUN: ${bestCandidate.symbol} +${bestCandidate.gainPercent.toFixed(1)}% but momentum still strong (buyRatio: ${(buyRatio * 100).toFixed(0)}%, MACD: BULLISH) — holding`);
+        return null;
+      }
+    }
+  }
 
   const { symbol, balance, usdValue, gainPercent, tier, costBasis, currentPrice, sector } = bestCandidate;
   const sellPct = tier.sellPercent;
@@ -8145,9 +8239,9 @@ ENTRY RULES (when to BUY):
 11. RIDE THE WAVE: If a token is up ${RIDE_THE_WAVE_MIN_MOVE}%+ in the last 4 hours with increasing volume, this is a momentum trade opportunity. Deploy ${RIDE_THE_WAVE_SIZE_PCT}% of portfolio immediately. Don't wait for confluence of 3 indicators. Volume + price action IS the signal.
 
 EXIT RULES (when to SELL):
-1. PROFIT HARVESTING: Auto-harvests at +30%, +50%, +100%, +200% gain tiers. Let winners run to 30% before first harvest
+1. PROFIT HARVESTING: Auto-harvests at +25%, +50%, +100%, +200% gain tiers BUT ONLY when momentum is decelerating (buy ratio dropping or MACD turning). If buy ratio >55% and MACD bullish, let winners run
 2. OVERBOUGHT EXIT: Sell if RSI > 75 AND MACD turning bearish
-3. STOP LOSS: Sell if token is down >20% in 7d and trend is STRONG_DOWN
+3. STOP LOSS: Tightened to -4% for non-blue-chip, -6% for blue chips. Cut losses FAST
 4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
 5. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim
 6. CAPITAL RECYCLING: If USDC < $10, SELL 20-30% of your highest-gain position to free capital. A bot with $0 USDC cannot compound
@@ -8155,13 +8249,25 @@ EXIT RULES (when to SELL):
 8. MOMENTUM EXIT: When a held position shows buy ratio dropping below ${MOMENTUM_EXIT_BUY_RATIO}% OR MACD crosses bearish AFTER a profitable run of ${MOMENTUM_EXIT_MIN_PROFIT}%+, SELL the position. Don't wait for stop-loss. The momentum wave is over. Take the profit and redeploy.
 9. DAILY PAYOUT AWARENESS: Every day at 8 AM UTC, REALIZED profits are distributed to stakeholders. Unrealized gains don't count. Today's realized P&L: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.${payoutUrgency ? ` ⚠️ <4h to settlement — sell a portion of winners NOW to lock in realized profit for distribution.` : ''} Always be banking wins, not just holding them
 
-CORE PHILOSOPHY (v17.0):
+CORE PHILOSOPHY (v18.0):
 Trade based on DEX order flow, not market sentiment. Buy when buy ratio confirms accumulation with volume. Sell when flow reverses. Fear and Greed is noise. Capital flow is signal. Be willing to buy in extreme fear IF on-chain flow confirms real buying is happening.
+
+RISK/REWARD (v18.0 — CRITICAL): Only enter trades where potential reward is at least 2x the risk. If a token is near its 30-day high (within 5%), the upside is limited — prefer tokens with more room to run. Tokens 20%+ below their 30-day high with bullish MACD have the best risk/reward.
+
+LET WINNERS RUN (v18.0 — CRITICAL): Do NOT sell a profitable position if buy ratio is still above 55% and MACD is bullish. Trim ONLY on deceleration — when momentum is SLOWING. The old approach of harvesting small wins while letting losses compound created negative expectancy. Cut losses FAST (4-6% stops), let winners RUN (hold through momentum).
+
+PATIENCE IN RANGING (v18.0): In ranging markets, make FEWER trades with HIGHER conviction. Each trade has fees that compound. Target 2 high-conviction trades max per cycle in ranging markets. A missed trade costs nothing — a bad trade costs slippage, fees, and capital.
+
+EXPLORATION TRADE RULES (data-gathering positions):
+- Exploration trades must have neutral or positive confluence (>= 0) — never explore into negative confluence
+- Never explore against the trend — MACD must not be bearish for the target token
+- Exploration requires buy ratio above 45% — do not explore when sellers dominate
+- In RANGING markets: exploration size is cut 50%, max 1 exploration per cycle
 
 REGIME STRATEGY:
 - TRENDING_UP: Maximum aggression. Buy dips, deploy idle USDC
 - TRENDING_DOWN: Hunt oversold bounces. Sell clear losers, recycle capital
-- RANGING: Mean-reversion. Buy oversold, sell overbought
+- RANGING: PATIENCE. Fewer trades, higher conviction. Max 2 trades per cycle. Only enter with 2+ confirming signals and R:R >= 2:1
 - VOLATILE: More trades, smaller sizes. Buy at dislocated prices
 ${cashDeployment?.active ? `
 ═══ 💵 CASH DEPLOYMENT AWARENESS ═══
@@ -9807,6 +9913,9 @@ async function runTradingCycle() {
   console.log(`   Light/Heavy ratio: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H | Cache hit rate: ${cacheManager.getStats().hitRate}`);
   console.log("═".repeat(70));
 
+  // v14.2: Track exploration trades per cycle for RANGING market cap
+  let explorationsThisCycle = 0;
+
   try {
     // v9.2.1: Gas bootstrap retry — if startup bootstrap failed, retry each heavy cycle
     if (cdpClient && CONFIG.trading.enabled && !gasBootstrapAttempted) {
@@ -10297,22 +10406,30 @@ async function runTradingCycle() {
 
     // === PHASE 3: STAGNATION CHECK ===
     // v10.4: Exploration trade no longer returns early — continues to AI phase
+    // v14.2: Pass indicators + regime for guardrail filtering
     const usdcBal = balances.find(b => b.symbol === "USDC");
     const availableUSDCForExplore = usdcBal?.balance || 0;
-    const explorationTrade = checkStagnation(availableUSDCForExplore, marketData.tokens);
+    const explorationTrade = checkStagnation(availableUSDCForExplore, marketData.tokens, marketData.indicators, marketData.marketRegime);
     if (explorationTrade) {
-      console.log(`\n🔬 EXPLORATION TRADE: ${explorationTrade.reasoning}`);
-      const exploreDecision: TradeDecision = {
-        action: "BUY",
-        fromToken: "USDC",
-        toToken: explorationTrade.toToken,
-        amountUSD: explorationTrade.amountUSD,
-        reasoning: explorationTrade.reasoning,
-        isExploration: true,
-      };
-      await executeTrade(exploreDecision, marketData);
-      analyzeStrategyPatterns();
-      saveTradeHistory();
+      // v14.2: In RANGING markets, enforce max 1 exploration trade per cycle
+      // (explorationsThisCycle is tracked at the top of the cycle loop)
+      if (marketData.marketRegime === "RANGING" && explorationsThisCycle >= EXPLORATION_RANGING_MAX_PER_CYCLE) {
+        console.log(`\n🔬 EXPLORATION CAPPED: RANGING market — already ${explorationsThisCycle} exploration(s) this cycle (max ${EXPLORATION_RANGING_MAX_PER_CYCLE})`);
+      } else {
+        console.log(`\n🔬 EXPLORATION TRADE: ${explorationTrade.reasoning}`);
+        const exploreDecision: TradeDecision = {
+          action: "BUY",
+          fromToken: "USDC",
+          toToken: explorationTrade.toToken,
+          amountUSD: explorationTrade.amountUSD,
+          reasoning: explorationTrade.reasoning,
+          isExploration: true,
+        };
+        await executeTrade(exploreDecision, marketData);
+        explorationsThisCycle++;
+        analyzeStrategyPatterns();
+        saveTradeHistory();
+      }
     }
 
     // === v11.4.8: PRE-AI FORCED DEPLOYMENT ===
@@ -10858,8 +10975,10 @@ async function runTradingCycle() {
     }
 
     // v14.2: MAX_TRADES_PER_CYCLE GUARD — cap total trades to prevent churn
+    // v18.0: RANGING regime gets tighter cap (2 trades) — fewer, higher-conviction trades
     // Priority order: stop-loss > momentum-exit > profit-take > AI > scale-up > forced-deploy > ride-the-wave
-    if (decisions.filter(d => d.action !== 'HOLD').length > MAX_TRADES_PER_CYCLE) {
+    const effectiveMaxTrades = regime === 'RANGING' ? RANGING_MAX_TRADES_PER_CYCLE : MAX_TRADES_PER_CYCLE;
+    if (decisions.filter(d => d.action !== 'HOLD').length > effectiveMaxTrades) {
       const priorityOrder = (d: TradeDecision): number => {
         const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
         switch (tier) {
@@ -10881,10 +11000,10 @@ async function runTradingCycle() {
       const actionDecisions = decisions.filter(d => d.action !== 'HOLD');
       const holdDecisions = decisions.filter(d => d.action === 'HOLD');
       actionDecisions.sort((a, b) => priorityOrder(a) - priorityOrder(b));
-      const kept = actionDecisions.slice(0, MAX_TRADES_PER_CYCLE);
-      const dropped = actionDecisions.length - MAX_TRADES_PER_CYCLE;
-      console.log(`\n⚠️ TRADE_CAP: Dropping ${dropped} lower-priority trades this cycle (max ${MAX_TRADES_PER_CYCLE} per cycle)`);
-      for (const d of actionDecisions.slice(MAX_TRADES_PER_CYCLE)) {
+      const kept = actionDecisions.slice(0, effectiveMaxTrades);
+      const dropped = actionDecisions.length - effectiveMaxTrades;
+      console.log(`\n⚠️ TRADE_CAP: Dropping ${dropped} lower-priority trades this cycle (max ${effectiveMaxTrades} per cycle${regime === 'RANGING' ? ' — RANGING regime' : ''})`);
+      for (const d of actionDecisions.slice(effectiveMaxTrades)) {
         const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
         console.log(`   Dropped: ${tier} ${d.action} ${d.fromToken}→${d.toToken} $${d.amountUSD.toFixed(0)}`);
       }
@@ -10893,6 +11012,60 @@ async function runTradingCycle() {
 
     // v17.0: FEAR/REGIME BUY FILTERING REMOVED — the swarm handles all buy/sell decisions
     // based on capital flow, momentum, risk metrics, and trend. No F&G-based overrides.
+
+    // v18.0: RISK/REWARD FILTER — Only enter trades where potential reward >= 2x risk
+    // Risk = stop-loss distance (sector-based). Reward = distance below 30-day high.
+    // Tokens near their 30-day high have limited upside — skip them.
+    {
+      const rrFiltered: TradeDecision[] = [];
+      for (const d of decisions) {
+        if (d.action !== 'BUY') {
+          rrFiltered.push(d);
+          continue;
+        }
+
+        const tokenInfo = TOKEN_REGISTRY[d.toToken];
+        const sectorKey = tokenInfo?.sector || 'DEFI';
+        const sectorStop = SECTOR_STOP_LOSS_OVERRIDES[sectorKey];
+        const riskPercent = Math.abs(sectorStop?.maxLoss || 5);
+
+        // Calculate potential upside using price history (distance from 30-day high)
+        const tokenHistory = priceHistoryStore.tokens[d.toToken];
+        const currentTokenPrice = marketData.tokens.find(t => t.symbol === d.toToken)?.price || 0;
+        let rewardPercent = riskPercent * 3; // Default: assume 3x risk if no history
+
+        if (tokenHistory && tokenHistory.prices.length > 10 && currentTokenPrice > 0) {
+          // Look at last 720 hourly entries (30 days) or whatever is available
+          const recentPrices = tokenHistory.prices.slice(-720);
+          const high30d = Math.max(...recentPrices);
+          if (high30d > 0) {
+            const distFromHigh = ((high30d - currentTokenPrice) / currentTokenPrice) * 100;
+            rewardPercent = distFromHigh;
+
+            // Token within 5% of 30-day high — limited upside, skip
+            if (distFromHigh < 5) {
+              console.log(`\n  📏 R:R_FILTER: Skipping ${d.toToken} BUY — only ${distFromHigh.toFixed(1)}% below 30d high ($${high30d.toFixed(4)}), limited upside`);
+              d.action = 'HOLD' as any;
+              d.reasoning = `R:R_FILTER: ${d.toToken} within ${distFromHigh.toFixed(1)}% of 30-day high — upside limited`;
+              rrFiltered.push(d);
+              continue;
+            }
+          }
+        }
+
+        const rrRatio = rewardPercent / riskPercent;
+        if (rrRatio < 2.0) {
+          console.log(`\n  📏 R:R_FILTER: Skipping ${d.toToken} BUY — R:R ratio ${rrRatio.toFixed(1)}:1 (risk: ${riskPercent}%, reward: ${rewardPercent.toFixed(1)}%) below 2:1 minimum`);
+          d.action = 'HOLD' as any;
+          d.reasoning = `R:R_FILTER: Reward/risk ratio ${rrRatio.toFixed(1)}:1 too low (need 2:1+)`;
+          rrFiltered.push(d);
+          continue;
+        }
+
+        rrFiltered.push(d);
+      }
+      decisions = rrFiltered;
+    }
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
