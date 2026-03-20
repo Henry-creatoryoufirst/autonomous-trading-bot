@@ -46,3 +46,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Redeploy all bots via webhook
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Triggering fleet redeploy..."
+          curl -s -X POST "https://schertzingertrading.com/api/webhooks/docker-updated" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: ${{ secrets.WEBHOOK_SECRET }}" \
+            -d '{"image": "${{ steps.meta.outputs.tags }}", "sha": "${{ github.sha }}"}' \
+            --max-time 30 || echo "Webhook call failed (non-fatal)"
