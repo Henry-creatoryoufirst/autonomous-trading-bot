@@ -2168,6 +2168,100 @@ tr:hover td { background: var(--bg-subtle); }
   .chat-panel { right: 8px; left: 8px; width: auto; bottom: 80px; max-height: 70vh; }
   .chat-fab { bottom: 16px; right: 16px; }
 }
+
+/* ============================================================================
+   NVR SHARE / INSIGHT / MILESTONE MODALS
+   ============================================================================ */
+.nvr-modal-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.nvr-modal-overlay.visible { opacity: 1; pointer-events: auto; }
+
+.nvr-modal {
+  background: var(--bg-card); border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl); padding: var(--space-8);
+  max-width: 420px; width: 90%; box-shadow: var(--shadow-lg);
+  transform: scale(0.95); transition: transform 0.3s var(--ease-spring);
+}
+.nvr-modal-overlay.visible .nvr-modal { transform: scale(1); }
+
+.nvr-modal-title {
+  font-size: var(--fs-lg); font-weight: 700; color: var(--text-primary);
+  text-align: center; margin-bottom: var(--space-4);
+}
+.nvr-modal-sub {
+  font-size: var(--fs-sm); color: var(--text-secondary); text-align: center;
+  margin-bottom: var(--space-6); line-height: 1.5;
+}
+.nvr-modal-actions {
+  display: flex; gap: var(--space-3); justify-content: center;
+}
+.nvr-modal-btn {
+  padding: var(--space-3) var(--space-6); border-radius: var(--radius-md);
+  font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border-default); background: var(--bg-card);
+  color: var(--text-primary); transition: all var(--dur-fast);
+}
+.nvr-modal-btn:hover { background: var(--bg-card-hover); }
+.nvr-modal-btn.primary {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+.nvr-modal-btn.primary:hover { opacity: 0.9; }
+
+/* Share card preview */
+.nvr-share-card {
+  width: 100%; aspect-ratio: 1; border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, #0F1729 0%, #1E3A5F 50%, #0F1729 100%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: var(--space-8); margin-bottom: var(--space-4); position: relative;
+  overflow: hidden;
+}
+.nvr-share-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 30% 20%, rgba(212,165,48,0.08) 0%, transparent 60%);
+}
+.nvr-share-card .brand {
+  font-size: 11px; font-weight: 800; letter-spacing: 3px; color: rgba(255,255,255,0.5);
+  text-transform: uppercase; margin-bottom: var(--space-4); position: relative;
+}
+.nvr-share-card .insight-text {
+  font-size: 16px; font-weight: 600; color: #FFFFFF; text-align: center;
+  line-height: 1.5; position: relative; max-width: 280px;
+}
+.nvr-share-card .handle {
+  font-size: 10px; color: rgba(255,255,255,0.4); margin-top: auto;
+  padding-top: var(--space-4); position: relative;
+}
+
+/* Payout share button */
+.payout-share-btn {
+  background: none; border: 1px solid var(--border-default);
+  color: var(--text-secondary); cursor: pointer;
+  padding: 2px 8px; border-radius: var(--radius-full);
+  font-size: 9px; font-weight: 600; letter-spacing: 0.5px;
+  transition: all var(--dur-fast);
+}
+.payout-share-btn:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+
+/* Confetti animation */
+@keyframes confetti-fall {
+  0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+}
+.confetti-container {
+  position: fixed; inset: 0; z-index: 10000; pointer-events: none;
+  overflow: hidden;
+}
+.confetti-piece {
+  position: absolute; width: 8px; height: 8px;
+  animation: confetti-fall linear forwards;
+}
 </style>
 
 <button class="chat-fab" id="chatFab" title="Chat with your bot">
@@ -2191,6 +2285,57 @@ tr:hover td { background: var(--bg-subtle); }
     </button>
   </div>
 </div>
+
+<!-- Daily Insight Modal -->
+<div class="nvr-modal-overlay" id="insightOverlay">
+  <div class="nvr-modal" style="max-width:380px">
+    <div class="nvr-modal-title">Today's NVR Insight</div>
+    <div class="nvr-share-card" id="insightCard">
+      <div class="brand">NVR Capital</div>
+      <div class="insight-text" id="insightText"></div>
+      <div class="handle">@nvr.capital.ai</div>
+    </div>
+    <div class="nvr-modal-actions">
+      <button class="nvr-modal-btn primary" id="insightShareBtn">Share to Instagram</button>
+      <button class="nvr-modal-btn" id="insightDismissBtn">Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<!-- Payout Share Modal -->
+<div class="nvr-modal-overlay" id="payoutShareOverlay">
+  <div class="nvr-modal" style="max-width:380px">
+    <div class="nvr-modal-title">Share Your Payout</div>
+    <div class="nvr-share-card" id="payoutShareCard">
+      <div class="brand">NVR Capital</div>
+      <div class="insight-text" id="payoutShareText"></div>
+      <div class="handle">@nvr.capital.ai</div>
+    </div>
+    <div class="nvr-modal-actions">
+      <button class="nvr-modal-btn primary" id="payoutShareDownloadBtn">Download Image</button>
+      <button class="nvr-modal-btn" id="payoutShareDismissBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Milestone Celebration Modal -->
+<div class="nvr-modal-overlay" id="milestoneOverlay">
+  <div class="nvr-modal" style="max-width:380px">
+    <div class="nvr-modal-title" id="milestoneTitle">Milestone Achieved!</div>
+    <div class="nvr-share-card" id="milestoneCard">
+      <div class="brand">NVR Capital</div>
+      <div class="insight-text" id="milestoneText"></div>
+      <div class="handle">@nvr.capital.ai</div>
+    </div>
+    <div class="nvr-modal-actions">
+      <button class="nvr-modal-btn primary" id="milestoneShareBtn">Share Achievement</button>
+      <button class="nvr-modal-btn" id="milestoneDismissBtn">Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<!-- Canvas for share image generation (hidden) -->
+<canvas id="shareCanvas" width="1080" height="1080" style="display:none"></canvas>
 
 <script>
 // ============================================================================
@@ -4580,6 +4725,395 @@ function drawSparkline(canvas, values) {
   fetchSignalDashboard = function() {
     origFetchSig();
     fetchSwarmStatus();
+  };
+})();
+
+// ============================================================================
+// NVR SHARE IMAGE GENERATOR
+// ============================================================================
+function generateShareImage(text, callback) {
+  var canvas = $('shareCanvas');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
+  var w = 1080, h = 1080;
+  canvas.width = w; canvas.height = h;
+
+  // Navy gradient background
+  var grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#0F1729');
+  grad.addColorStop(0.5, '#1E3A5F');
+  grad.addColorStop(1, '#0F1729');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Subtle radial glow
+  var radGrad = ctx.createRadialGradient(w * 0.3, h * 0.2, 0, w * 0.3, h * 0.2, w * 0.6);
+  radGrad.addColorStop(0, 'rgba(212, 165, 48, 0.06)');
+  radGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = radGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Brand text
+  ctx.font = '600 24px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.textAlign = 'center';
+  ctx.letterSpacing = '4px';
+  ctx.fillText('NVR CAPITAL', w / 2, 200);
+
+  // Main insight text with word wrap
+  ctx.font = '600 42px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  var lines = wrapText(ctx, text, w - 200);
+  var lineHeight = 56;
+  var startY = (h / 2) - ((lines.length - 1) * lineHeight / 2);
+  lines.forEach(function(line, i) {
+    ctx.fillText(line, w / 2, startY + i * lineHeight);
+  });
+
+  // Handle
+  ctx.font = '400 18px -apple-system, BlinkMacSystemFont, sans-serif';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fillText('@nvr.capital.ai', w / 2, h - 120);
+
+  // Download
+  canvas.toBlob(function(blob) {
+    if (!blob) return;
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'nvr-share.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (callback) callback();
+  }, 'image/png');
+}
+
+function wrapText(ctx, text, maxWidth) {
+  var words = text.split(' ');
+  var lines = [];
+  var currentLine = '';
+  words.forEach(function(word) {
+    var testLine = currentLine ? currentLine + ' ' + word : word;
+    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  });
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+// ============================================================================
+// CONFETTI ANIMATION
+// ============================================================================
+function showConfetti() {
+  var container = document.createElement('div');
+  container.className = 'confetti-container';
+  document.body.appendChild(container);
+
+  var colors = ['#D4A530', '#22C55E', '#60A5FA', '#EF4444', '#F59E0B', '#8B5CF6'];
+  for (var i = 0; i < 60; i++) {
+    var piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = Math.random() * 100 + '%';
+    piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = (2 + Math.random() * 2) + 's';
+    piece.style.animationDelay = Math.random() * 1.5 + 's';
+    piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+    piece.style.width = (6 + Math.random() * 6) + 'px';
+    piece.style.height = (6 + Math.random() * 6) + 'px';
+    container.appendChild(piece);
+  }
+
+  setTimeout(function() {
+    if (container.parentNode) container.parentNode.removeChild(container);
+  }, 5000);
+}
+
+// ============================================================================
+// MODAL HELPERS
+// ============================================================================
+function showModal(id) {
+  var el = $(id);
+  if (el) { el.classList.add('visible'); }
+}
+function hideModal(id) {
+  var el = $(id);
+  if (el) { el.classList.remove('visible'); }
+}
+
+// ============================================================================
+// DAILY INSIGHT POPUP
+// ============================================================================
+(function() {
+  var INSIGHTS = [
+    'Your bot made {trades} trades while you slept. That is the power of never resting.',
+    'Fear and Greed Index: {fearGreed}. Your bot does not feel fear.',
+    'Your portfolio is up {pnlPct}% this week. Compounding works when you never stop.',
+    '{deployedPct}% of your portfolio is actively deployed. Idle money is dying money.',
+    'Your bot has executed {totalTrades} total trades. Each one a step forward.',
+    'Markets shifted today. Your bot adapted in real time.',
+    'Your win rate is {winRate}%. Getting better every cycle.',
+    'Savings accounts pay 0.5%. Your bot works harder than that.',
+    'Your bot runs on Base, the same network Coinbase built for the future.',
+    '{uptimeDays} days of 24/7 trading. No sick days. No vacations. Never resting.',
+    'The national debt is $36 trillion. Your money should be working, not waiting.',
+    'Your bot analyzed tokens across 11 signal dimensions today.',
+    'The dollar has lost 86% of its value since 1971. Fight back.',
+    'While you scrolled, your bot made another decision.',
+    'Your referral code: share it, earn reduced fees.'
+  ];
+
+  function getInsightText(p) {
+    var today = new Date().toISOString().slice(0, 10);
+    var dayIndex = parseInt(today.replace(/-/g, ''), 10) % INSIGHTS.length;
+    var template = INSIGHTS[dayIndex];
+
+    var trades = (p.totalTrades || 0);
+    var fg = (p.marketConditions || {}).fearGreed || 50;
+    var pnl = p.pnlPercent || 0;
+    var wr = p.totalTrades > 0 ? ((p.successfulTrades || 0) / p.totalTrades * 100) : 0;
+    var totalVal = p.totalValue || 0;
+    var idle = totalVal > 0 ? Math.round(((totalVal - (p.initialValue || 0)) / totalVal) * 100) : 0;
+    var deployedPct = Math.max(0, 100 - idle);
+    var uptimeMs = p.uptime ? parseUptimeMs(p.uptime) : 0;
+    var uptimeDays = Math.floor(uptimeMs / 86400000);
+
+    return template
+      .replace('{trades}', String(trades))
+      .replace('{fearGreed}', String(fg))
+      .replace('{pnlPct}', fmt(pnl, 1))
+      .replace('{deployedPct}', String(deployedPct))
+      .replace('{totalTrades}', String(trades))
+      .replace('{winRate}', fmt(wr, 1))
+      .replace('{uptimeDays}', String(uptimeDays));
+  }
+
+  function parseUptimeMs(s) {
+    if (!s) return 0;
+    var m = s.match(/(\d+)d/); var days = m ? parseInt(m[1]) : 0;
+    m = s.match(/(\d+)h/); var hrs = m ? parseInt(m[1]) : 0;
+    return (days * 86400 + hrs * 3600) * 1000;
+  }
+
+  // Check and show once per day
+  function checkInsight() {
+    var today = new Date().toISOString().slice(0, 10);
+    var lastShown = localStorage.getItem('nvr_last_insight_date');
+    if (lastShown === today) return;
+
+    var p = Store.data.portfolio || Store.data.health || {};
+    if (!p.totalValue) return; // data not loaded yet
+
+    var text = getInsightText(p);
+    $('insightText').textContent = text;
+    showModal('insightOverlay');
+    localStorage.setItem('nvr_last_insight_date', today);
+  }
+
+  // Bind buttons
+  document.addEventListener('DOMContentLoaded', function() {
+    $('insightDismissBtn').addEventListener('click', function() {
+      hideModal('insightOverlay');
+    });
+    $('insightShareBtn').addEventListener('click', function() {
+      var text = $('insightText').textContent;
+      generateShareImage(text, function() {
+        hideModal('insightOverlay');
+      });
+    });
+  });
+
+  // Check after first data load
+  var insightCheckInterval = setInterval(function() {
+    if (Store.data.portfolio || Store.data.health) {
+      clearInterval(insightCheckInterval);
+      setTimeout(checkInsight, 1500); // small delay for smooth UX
+    }
+  }, 1000);
+})();
+
+// ============================================================================
+// PAYOUT SHARE FEATURE
+// ============================================================================
+(function() {
+  // Monkey-patch the recent payouts render to add share buttons
+  var origRenderHoldings = window.renderHoldings;
+  if (!origRenderHoldings) return;
+
+  // We'll add share buttons after the payout table renders
+  var payoutShareObserver = new MutationObserver(function() {
+    var payoutsEl = $('ah-recent-payouts');
+    if (!payoutsEl) return;
+    var rows = payoutsEl.querySelectorAll('tbody tr');
+    rows.forEach(function(row) {
+      if (row.querySelector('.payout-share-btn')) return;
+      var cells = row.querySelectorAll('td');
+      if (cells.length < 3) return;
+      var amountText = cells[2] ? cells[2].textContent.trim() : '';
+      var btn = document.createElement('button');
+      btn.className = 'payout-share-btn';
+      btn.textContent = 'SHARE';
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openPayoutShare(amountText);
+      });
+      var td = document.createElement('td');
+      td.style.padding = '5px 8px';
+      td.appendChild(btn);
+      row.appendChild(td);
+    });
+    // Add header cell too
+    var thead = payoutsEl.querySelector('thead tr');
+    if (thead && !thead.querySelector('.payout-share-hdr')) {
+      var th = document.createElement('th');
+      th.className = 'payout-share-hdr';
+      th.textContent = '';
+      thead.appendChild(th);
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var payoutsEl = $('ah-recent-payouts');
+    if (payoutsEl) {
+      payoutShareObserver.observe(payoutsEl, { childList: true, subtree: true });
+    }
+  });
+
+  window.openPayoutShare = function(amount) {
+    var text = 'Just received ' + amount + ' from my NVR bot. Passive income, 24/7.';
+    $('payoutShareText').textContent = text;
+    showModal('payoutShareOverlay');
+  };
+
+  document.addEventListener('DOMContentLoaded', function() {
+    $('payoutShareDismissBtn').addEventListener('click', function() {
+      hideModal('payoutShareOverlay');
+    });
+    $('payoutShareDownloadBtn').addEventListener('click', function() {
+      var text = $('payoutShareText').textContent;
+      generateShareImage(text, function() {
+        hideModal('payoutShareOverlay');
+      });
+    });
+  });
+})();
+
+// ============================================================================
+// PERFORMANCE MILESTONE NOTIFICATIONS
+// ============================================================================
+(function() {
+  var MILESTONE_DEFS = [
+    { type: 'first_trade', label: 'First Trade Executed', check: function(p) { return (p.totalTrades || 0) >= 1; } },
+    { type: 'trades_100', label: '100th Trade', check: function(p) { return (p.totalTrades || 0) >= 100; } },
+    { type: 'trades_500', label: '500th Trade', check: function(p) { return (p.totalTrades || 0) >= 500; } },
+    { type: 'trades_1000', label: '1,000th Trade', check: function(p) { return (p.totalTrades || 0) >= 1000; } },
+    { type: 'first_payout', label: 'First Payout Received', check: function(p, ah) { return (ah.transferCount || 0) >= 1; } },
+    { type: 'winrate_50', label: 'Win Rate Crosses 50%', check: function(p) { return p.totalTrades > 0 && ((p.successfulTrades || 0) / p.totalTrades * 100) >= 50; } },
+    { type: 'winrate_60', label: 'Win Rate Crosses 60%', check: function(p) { return p.totalTrades > 0 && ((p.successfulTrades || 0) / p.totalTrades * 100) >= 60; } },
+    { type: 'portfolio_up_5', label: 'Portfolio Up 5%', check: function(p) { return (p.pnlPercent || 0) >= 5; } },
+    { type: 'portfolio_up_10', label: 'Portfolio Up 10%', check: function(p) { return (p.pnlPercent || 0) >= 10; } },
+    { type: 'first_profit_day', label: 'First Profitable Day', check: function(p) { return (p.pnl || 0) > 0; } }
+  ];
+
+  function getAchievedMilestones() {
+    try {
+      return JSON.parse(localStorage.getItem('nvr_milestones') || '[]');
+    } catch(e) { return []; }
+  }
+
+  function saveMilestone(type) {
+    var milestones = getAchievedMilestones();
+    milestones.push({ type: type, achievedAt: new Date().toISOString(), shared: false });
+    localStorage.setItem('nvr_milestones', JSON.stringify(milestones));
+  }
+
+  function markShared(type) {
+    var milestones = getAchievedMilestones();
+    milestones.forEach(function(m) {
+      if (m.type === type) m.shared = true;
+    });
+    localStorage.setItem('nvr_milestones', JSON.stringify(milestones));
+  }
+
+  var pendingMilestone = null;
+
+  function checkMilestones() {
+    var p = Store.data.portfolio || Store.data.health || {};
+    var ah = Store.data.autoHarvest || p.autoHarvest || {};
+    if (!p.totalValue) return;
+
+    var achieved = getAchievedMilestones();
+    var achievedTypes = achieved.map(function(m) { return m.type; });
+
+    for (var i = 0; i < MILESTONE_DEFS.length; i++) {
+      var def = MILESTONE_DEFS[i];
+      if (achievedTypes.indexOf(def.type) !== -1) continue;
+      if (def.check(p, ah)) {
+        saveMilestone(def.type);
+        showMilestoneCelebration(def);
+        return; // show one at a time
+      }
+    }
+  }
+
+  function showMilestoneCelebration(def) {
+    pendingMilestone = def.type;
+    var p = Store.data.portfolio || {};
+    var stat = '';
+    if (def.type.indexOf('trades_') === 0 || def.type === 'first_trade') {
+      stat = (p.totalTrades || 0) + ' total trades executed';
+    } else if (def.type.indexOf('winrate_') === 0) {
+      var wr = p.totalTrades > 0 ? ((p.successfulTrades || 0) / p.totalTrades * 100) : 0;
+      stat = fmt(wr, 1) + '% win rate';
+    } else if (def.type.indexOf('portfolio_up') === 0) {
+      stat = fmtPct(p.pnlPercent || 0) + ' portfolio growth';
+    } else if (def.type === 'first_payout') {
+      var ah = Store.data.autoHarvest || p.autoHarvest || {};
+      stat = fmtUSD(ah.totalTransferredUSD || 0) + ' total distributed';
+    } else if (def.type === 'first_profit_day') {
+      stat = fmtUSD(p.pnl || 0) + ' total profit';
+    }
+
+    $('milestoneTitle').textContent = 'Milestone: ' + def.label;
+    $('milestoneText').textContent = def.label + '. ' + stat;
+    showModal('milestoneOverlay');
+    showConfetti();
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    $('milestoneDismissBtn').addEventListener('click', function() {
+      hideModal('milestoneOverlay');
+      if (pendingMilestone) markShared(pendingMilestone);
+      pendingMilestone = null;
+    });
+    $('milestoneShareBtn').addEventListener('click', function() {
+      var text = $('milestoneText').textContent;
+      generateShareImage(text, function() {
+        hideModal('milestoneOverlay');
+        if (pendingMilestone) markShared(pendingMilestone);
+        pendingMilestone = null;
+      });
+    });
+  });
+
+  // Check milestones after data loads
+  var milestoneCheckInterval = setInterval(function() {
+    if (Store.data.portfolio || Store.data.health) {
+      clearInterval(milestoneCheckInterval);
+      setTimeout(checkMilestones, 3000);
+    }
+  }, 1000);
+
+  // Also check on every data refresh
+  var origRender = window.render;
+  window.render = function() {
+    origRender();
+    checkMilestones();
   };
 })();
 </script>
