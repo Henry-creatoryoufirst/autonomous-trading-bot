@@ -25,6 +25,8 @@ export interface SwarmTokenData {
   priceChange24h: number;
   volume24h: number;
   sector: string;
+  priceDistanceFromHigh?: number;  // v17.0: % below 30-day high (e.g. -15 = 15% below)
+  previousBuyRatio?: number;       // v17.0: buy ratio from previous cycle
   indicators?: {
     rsi14?: number | null;
     macd?: { signal: string } | null;
@@ -35,6 +37,7 @@ export interface SwarmTokenData {
     orderFlow?: {
       buyVolumeUSD: number;
       sellVolumeUSD: number;
+      tradeCount?: number;         // v17.0: number of swaps in flow window
     } | null;
   };
 }
@@ -93,11 +96,13 @@ export function runSwarm(
 
     // Calculate buy ratio from order flow
     let buyRatio: number | undefined;
+    let tradeCount: number | undefined;
     if (ind?.orderFlow) {
       const total = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
       if (total > 0) {
         buyRatio = (ind.orderFlow.buyVolumeUSD / total) * 100;
       }
+      tradeCount = ind.orderFlow.tradeCount;  // v17.0: pass trade count for volume context
     }
 
     // Calculate volume spike
@@ -117,12 +122,15 @@ export function runSwarm(
         macd: ind?.macd?.signal ?? undefined,
         bollingerSignal: ind?.bollingerBands?.signal ?? undefined,
         buyRatio,
+        previousBuyRatio: token.previousBuyRatio,  // v17.0: flow direction tracking
         volume24h: token.volume24h,
         volumeSpike,
+        tradeCount,                                  // v17.0: volume context for flow agent
         adx: ind?.adx14?.adx ?? undefined,
         atr: ind?.atrPercent !== null && ind?.atrPercent !== undefined
           ? (ind.atrPercent / 100) * token.price : undefined,
         price24hChange: token.priceChange24h,
+        priceDistanceFromHigh: token.priceDistanceFromHigh,  // v17.0: distance from 30d high
       },
       portfolio: {
         totalValue: portfolio.totalValue,

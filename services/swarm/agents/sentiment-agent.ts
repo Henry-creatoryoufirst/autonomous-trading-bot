@@ -1,7 +1,8 @@
 /**
- * Sentiment Micro-Agent
+ * Sentiment Micro-Agent v17.0
  *
- * Focuses ONLY on: Fear & Greed index, BTC/ETH 24h change, market regime.
+ * Focuses on: BTC/ETH broad market momentum, market regime.
+ * Fear & Greed is a MINOR modifier (context, not trigger).
  * Pure math — no Claude API calls.
  * Weight: 10%
  */
@@ -15,35 +16,34 @@ export function sentimentAgent(input: MicroAgentInput): MicroAgentVote {
   let confidence = 50;
   const reasons: string[] = [];
 
-  // Fear & Greed — contrarian signals
-  if (fearGreedIndex < 15) {
-    // Extreme fear = opportunity, but only if BTC isn't in complete freefall
-    if (btc24hChange > -8) {
-      score += 3;
-      confidence += 15;
-      reasons.push(`Extreme fear (F&G ${fearGreedIndex}) — contrarian buy opportunity`);
-    } else {
-      score += 1;
-      confidence += 5;
-      reasons.push(`Extreme fear (F&G ${fearGreedIndex}) but BTC in freefall (${btc24hChange.toFixed(1)}%)`);
-    }
-  } else if (fearGreedIndex < 30) {
-    if (btc24hChange > -5) {
-      score += 1;
-      confidence += 8;
-      reasons.push(`Fear zone (F&G ${fearGreedIndex}) — buy opportunity`);
-    }
-  } else if (fearGreedIndex > 85) {
-    score -= 3;
+  // === PRIMARY: BTC + ETH broad market momentum ===
+  // This is the actual signal — where is capital flowing?
+  if (btc24hChange > 5 && eth24hChange > 3) {
+    // Broad market momentum — both majors moving up strongly
+    score += 2;
     confidence += 15;
-    reasons.push(`Extreme greed (F&G ${fearGreedIndex}) — exit signal`);
-  } else if (fearGreedIndex > 75) {
+    reasons.push(`Broad market momentum (BTC +${btc24hChange.toFixed(1)}%, ETH +${eth24hChange.toFixed(1)}%) — capital flowing in`);
+  } else if (btc24hChange < -8 && eth24hChange < -6) {
+    // Market crash — don't catch a falling knife
+    score -= 2;
+    confidence += 15;
+    reasons.push(`Market crash (BTC ${btc24hChange.toFixed(1)}%, ETH ${eth24hChange.toFixed(1)}%) — don't catch falling knife`);
+  } else if (btc24hChange > 3 || eth24hChange > 3) {
+    // One major moving up — mild bullish signal
+    score += 1;
+    confidence += 8;
+    reasons.push(`Major moving up (BTC ${btc24hChange >= 0 ? '+' : ''}${btc24hChange.toFixed(1)}%, ETH ${eth24hChange >= 0 ? '+' : ''}${eth24hChange.toFixed(1)}%)`);
+  } else if (btc24hChange < -5 || eth24hChange < -5) {
+    // One major dropping hard — mild bearish
     score -= 1;
     confidence += 8;
-    reasons.push(`Greed zone (F&G ${fearGreedIndex}) — take profits`);
+    reasons.push(`Major dropping (BTC ${btc24hChange.toFixed(1)}%, ETH ${eth24hChange.toFixed(1)}%)`);
+  } else if (btc24hChange > -3 && btc24hChange < 3) {
+    // Ranging — no macro signal
+    reasons.push(`Majors ranging (BTC ${btc24hChange >= 0 ? '+' : ''}${btc24hChange.toFixed(1)}%, ETH ${eth24hChange >= 0 ? '+' : ''}${eth24hChange.toFixed(1)}%) — no macro signal`);
   }
 
-  // Market regime context
+  // === Market regime context ===
   if (regime === 'TRENDING_DOWN' || regime === 'VOLATILE') {
     score -= 1;
     reasons.push(`Market regime: ${regime}`);
@@ -52,14 +52,14 @@ export function sentimentAgent(input: MicroAgentInput): MicroAgentVote {
     reasons.push('Market regime: uptrend');
   }
 
-  // BTC + ETH as market barometers
-  const avgMajorChange = (btc24hChange + eth24hChange) / 2;
-  if (avgMajorChange > 5) {
-    confidence += 5;
-    reasons.push(`Majors rallying (avg +${avgMajorChange.toFixed(1)}%)`);
-  } else if (avgMajorChange < -5) {
-    confidence += 5;
-    reasons.push(`Majors dropping (avg ${avgMajorChange.toFixed(1)}%)`);
+  // === MINOR MODIFIER: Fear & Greed as context ===
+  // F&G is information, not instruction. Extreme values reduce confidence slightly.
+  if (fearGreedIndex < 20) {
+    confidence -= 10;
+    reasons.push(`F&G=${fearGreedIndex} (extreme fear) — reduced confidence 10%`);
+  } else if (fearGreedIndex > 80) {
+    confidence -= 10;
+    reasons.push(`F&G=${fearGreedIndex} (extreme greed) — reduced confidence 10%`);
   }
 
   // Map score to action

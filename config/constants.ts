@@ -495,9 +495,9 @@ export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
  *  SCALE_UP and RIDE_THE_WAVE are unaffected — those are opportunity-based. */
 export const CASH_DEPLOY_REQUIRES_MOMENTUM = true;
 
-// v11.2: CRASH-BUYING OVERRIDE — Let Cash Deployment punch through breaker during extreme fear
-/** Fear & Greed threshold: at or below this, deployment mode can override the institutional breaker */
-export const DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX = 30; // v11.4.13: 25 → 30 — wider fear window
+// v11.2: CRASH-BUYING OVERRIDE — v17.0: Now flow-based, not F&G-based
+/** @deprecated v17.0: F&G no longer gates breaker override. Cash level is the trigger. */
+export const DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX = 30; // v17.0: kept for backward compat but not used as gate
 /** Minimum cash % to qualify for breaker override (must be heavily overweight cash)
  *  v11.4.13: 60 → 40 — don't need to be 60% cash to override, 40% is already too much */
 export const DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT = 40;
@@ -619,21 +619,25 @@ export const MOMENTUM_MAX_POSITION_PERCENT = 15;
 
 // ============================================================================
 // v16.0: FEAR/REGIME MARKET BEHAVIOR TUNING — NVR Live Audit P1-1
+// v17.0: DEPRECATED — F&G is no longer used as a trading gate.
+//        These constants are kept for backward compatibility but are NOT used
+//        in buy/sell decisions. The swarm agents make all trading decisions
+//        based on capital flow, momentum, risk metrics, and trend.
 // ============================================================================
 
-/** F&G below this → EXTREME_FEAR_MODE (tighten everything when RANGING) */
+/** @deprecated v17.0: F&G no longer gates trading decisions */
 export const EXTREME_FEAR_FG_THRESHOLD = 20;
 
-/** Confluence minimum for buys in extreme fear + ranging (default 15 → 30) */
+/** @deprecated v17.0: Swarm handles confluence, no F&G override */
 export const EXTREME_FEAR_CONFLUENCE_MIN = 30;
 
-/** Max trades per cycle in extreme fear + ranging (default 3 → 1) */
+/** @deprecated v17.0: Swarm handles trade limits, no F&G override */
 export const EXTREME_FEAR_MAX_TRADES = 1;
 
-/** F&G below this → FEAR_MODE (blue chips only when TRENDING_DOWN) */
+/** @deprecated v17.0: F&G no longer gates trading decisions */
 export const FEAR_FG_THRESHOLD = 30;
 
-/** Confluence minimum for buys in fear + trending down (default 15 → 25) */
+/** @deprecated v17.0: Swarm handles confluence, no F&G override */
 export const FEAR_CONFLUENCE_MIN = 25;
 
 // ============================================================================

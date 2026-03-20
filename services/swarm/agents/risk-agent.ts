@@ -1,8 +1,9 @@
 /**
- * Risk Micro-Agent
+ * Risk Micro-Agent v17.0
  *
- * Focuses ONLY on: position size, portfolio exposure, drawdown, ATR, cost basis.
- * Override: blocks all buys when Fear & Greed < 20 (extreme fear override).
+ * Focuses ONLY on: position size, portfolio exposure, drawdown, ATR, cost basis,
+ * cash levels, and capital flow confirmation.
+ * NO Fear & Greed overrides — decisions based on actual portfolio risk metrics.
  * Pure math — no Claude API calls.
  * Weight: 25%
  */
@@ -16,15 +17,24 @@ export function riskAgent(input: MicroAgentInput): MicroAgentVote {
   let confidence = 60;
   const reasons: string[] = [];
 
-  // 1. Position loss check — cut losers fast, buy back on momentum
+  // 1. Position loss check — cut losers fast when flow confirms the loss
   if (portfolio.positionGainPct !== undefined) {
     if (portfolio.positionGainPct < -7) {
-      action = 'STRONG_SELL';
-      confidence = 90;
-      reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% from cost basis — cut the loss`);
-      return { agent: 'risk', action, confidence, reasoning: reasons.join('; '), weight: SWARM_AGENT_WEIGHTS.risk };
+      // v17.0: Check if flow confirms the loss (buy ratio < 45% = sellers dominating)
+      const buyRatio = indicators.buyRatio;
+      if (buyRatio !== undefined && buyRatio < 45) {
+        action = 'STRONG_SELL';
+        confidence = 95;
+        reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% AND buy ratio ${buyRatio.toFixed(0)}% confirms selling pressure — cut the loss`);
+        return { agent: 'risk', action, confidence, reasoning: reasons.join('; '), weight: SWARM_AGENT_WEIGHTS.risk };
+      } else {
+        // Down 7%+ but flow is neutral/positive — still sell but less urgent
+        action = 'SELL';
+        confidence = 80;
+        reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% from cost basis — approaching max loss${buyRatio !== undefined ? ` (buy ratio ${buyRatio.toFixed(0)}% not confirming reversal yet)` : ''}`);
+      }
     }
-    if (portfolio.positionGainPct < -4) {
+    if (portfolio.positionGainPct < -4 && action !== 'SELL' && action !== 'STRONG_SELL') {
       action = 'SELL';
       confidence = 75;
       reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% — approaching stop-loss`);
@@ -54,13 +64,25 @@ export function riskAgent(input: MicroAgentInput): MicroAgentVote {
     }
   }
 
-  // 3. Cash deployment — too much idle capital
-  if (portfolio.cashPercent > 60 && market.fearGreedIndex >= 20) {
+  // 3. v17.0: Capital flow-based cash deployment — no F&G gating
+  // Deploy idle capital when flow confirms real buying is happening
+  if (portfolio.cashPercent > 70 && indicators.buyRatio !== undefined && indicators.buyRatio > 55) {
+    // Heavy cash + confirmed buying flow → deploy into confirmed flow
     action = 'BUY';
-    confidence = 55;
-    reasons.push(`Cash at ${portfolio.cashPercent.toFixed(0)}% — deploy idle capital`);
-  } else if (portfolio.cashPercent > 40 && market.fearGreedIndex >= 30) {
-    reasons.push(`Cash at ${portfolio.cashPercent.toFixed(0)}% — slightly overweight`);
+    confidence = 65;
+    reasons.push(`Cash at ${portfolio.cashPercent.toFixed(0)}% + buy ratio ${indicators.buyRatio.toFixed(0)}% confirms accumulation — deploy into flow`);
+  } else if (portfolio.cashPercent > 70 && (indicators.buyRatio === undefined || indicators.buyRatio <= 50)) {
+    // Heavy cash but no confirmed flow — stay patient
+    reasons.push(`Cash at ${portfolio.cashPercent.toFixed(0)}% but buy ratio ${indicators.buyRatio !== undefined ? indicators.buyRatio.toFixed(0) + '%' : 'unknown'} — no confirmed flow, stay patient`);
+  } else if (portfolio.cashPercent > 60) {
+    // Moderately overweight cash — deploy if flow is positive
+    if (indicators.buyRatio !== undefined && indicators.buyRatio > 50) {
+      action = 'BUY';
+      confidence = 55;
+      reasons.push(`Cash at ${portfolio.cashPercent.toFixed(0)}% with positive flow (${indicators.buyRatio.toFixed(0)}% buy) — deploy idle capital`);
+    } else {
+      reasons.push(`Cash at ${portfolio.cashPercent.toFixed(0)}% — slightly overweight, watching flow`);
+    }
   }
 
   // 4. ATR-based volatility awareness
@@ -72,14 +94,8 @@ export function riskAgent(input: MicroAgentInput): MicroAgentVote {
     }
   }
 
-  // OVERRIDE: Extreme fear blocks ALL buys
-  if (market.fearGreedIndex < 20) {
-    if (action === 'BUY' || action === 'STRONG_BUY') {
-      action = 'HOLD';
-      confidence = 75;
-      reasons.push(`Fear & Greed at ${market.fearGreedIndex} — extreme fear override, blocking buys`);
-    }
-  }
+  // v17.0: NO F&G override — the risk agent judges risk based on portfolio metrics
+  // (concentration, drawdown, cash levels, flow confirmation), not crowd sentiment
 
   if (reasons.length === 0) {
     reasons.push('Position within normal risk parameters');

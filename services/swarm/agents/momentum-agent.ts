@@ -1,7 +1,8 @@
 /**
- * Momentum Micro-Agent
+ * Momentum Micro-Agent v17.0
  *
- * Focuses ONLY on: RSI, MACD, Bollinger, price momentum, volume spikes.
+ * Focuses on: RSI, MACD, Bollinger, price momentum, volume spikes,
+ * price distance from 30-day high, capitulation buy detection.
  * Pure math — no Claude API calls.
  * Weight: 30%
  */
@@ -10,7 +11,7 @@ import type { MicroAgentInput, MicroAgentVote, SwarmAction } from '../agent-fram
 import { SWARM_AGENT_WEIGHTS } from '../../../config/constants.js';
 
 export function momentumAgent(input: MicroAgentInput): MicroAgentVote {
-  const { rsi, macd, bollingerSignal, volumeSpike, price24hChange } = input.indicators;
+  const { rsi, macd, bollingerSignal, volumeSpike, price24hChange, priceDistanceFromHigh } = input.indicators;
   let score = 0;
   let confidence = 50;
   const reasons: string[] = [];
@@ -62,10 +63,38 @@ export function momentumAgent(input: MicroAgentInput): MicroAgentVote {
     else if (volumeSpike < 0.5) { confidence -= 5; reasons.push('Low volume'); }
   }
 
-  // Price momentum context
+  // === v17.0: Price distance from 30-day high ===
+  if (priceDistanceFromHigh !== undefined) {
+    if (priceDistanceFromHigh > -5) {
+      // Within 5% of 30-day high — already expensive, less aggressive
+      score -= 1;
+      confidence += 5;
+      reasons.push(`Near 30d high (${priceDistanceFromHigh.toFixed(1)}% from peak) — already expensive`);
+    } else if (priceDistanceFromHigh < -20 && macd !== 'BEARISH') {
+      // > 20% below 30-day high AND MACD not bearish → deep value + trend reversal
+      score += 2;
+      confidence += 12;
+      reasons.push(`Deep value: ${priceDistanceFromHigh.toFixed(1)}% below 30d high with MACD ${macd || 'neutral'} — potential trend reversal`);
+    } else if (priceDistanceFromHigh < -15) {
+      // Significant discount from high
+      reasons.push(`${priceDistanceFromHigh.toFixed(1)}% below 30d high`);
+    }
+  }
+
+  // === v17.0: Capitulation buy detection ===
+  // Down > 5% in 24h with volume spike = potential capitulation buy IF MACD is neutral/bullish
   if (price24hChange !== undefined) {
-    if (price24hChange > 5) { score += 1; reasons.push(`Strong momentum +${price24hChange.toFixed(1)}%`); }
-    else if (price24hChange < -5) { score -= 1; reasons.push(`Negative momentum ${price24hChange.toFixed(1)}%`); }
+    if (price24hChange < -5 && volumeSpike !== undefined && volumeSpike > 2.0 && macd !== 'BEARISH') {
+      score += 2;
+      confidence += 10;
+      reasons.push(`Capitulation setup: ${price24hChange.toFixed(1)}% 24h drop + ${volumeSpike.toFixed(1)}x volume + MACD ${macd || 'neutral'}`);
+    } else if (price24hChange > 5) {
+      score += 1;
+      reasons.push(`Strong momentum +${price24hChange.toFixed(1)}%`);
+    } else if (price24hChange < -5) {
+      score -= 1;
+      reasons.push(`Negative momentum ${price24hChange.toFixed(1)}%`);
+    }
   }
 
   // Map score to action

@@ -20,11 +20,14 @@ export interface MicroAgentInput {
     macd?: string;
     bollingerSignal?: string;
     buyRatio?: number;
+    previousBuyRatio?: number;   // v17.0: buy ratio from previous cycle for flow direction
     volume24h?: number;
     volumeSpike?: number;
+    tradeCount?: number;         // v17.0: number of swaps in flow window
     adx?: number;
     atr?: number;
     price24hChange?: number;
+    priceDistanceFromHigh?: number;  // v17.0: % below 30-day high (negative number, e.g. -15 = 15% below high)
   };
   portfolio: {
     totalValue: number;
