@@ -304,6 +304,10 @@ import type { DecelState } from './services/deceleration-detector.js';
 // === v19.0: MULTI-TIMEFRAME FLOW AGGREGATION ===
 import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from './services/flow-timeframes.js';
 import type { FlowTimeframeState } from './services/flow-timeframes.js';
+
+// === v19.0: SIGNAL QUALITY TRACKER ===
+import { recordExecuted, recordFiltered, getSignalStats } from './services/signal-tracker.js';
+import { generateWeeklyReport, shouldGenerateReport, getLatestReport } from './services/weekly-report.js';
 import type { YieldState } from './services/aave-yield.js';
 
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
@@ -8530,6 +8534,7 @@ async function executeTrade(
   // v11.4.17: In-flight lock — prevent parallel cycles from both passing dedup check
   if (tradeInFlight.has(dedupKey)) {
     console.warn(`\n  🔁 DEDUP GUARD: Blocking ${dedupKey} — trade already in flight`);
+    recordFiltered(dedupToken, decision.action, dedupTier, 'DEDUP_INFLIGHT', decision.amountUSD);
     return { success: false, error: `Dedup guard: ${dedupKey} already in flight` };
   }
   tradeInFlight.add(dedupKey);
@@ -8551,6 +8556,7 @@ async function executeTrade(
       });
       if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
       tradeInFlight.delete(dedupKey);
+      recordFiltered(dedupToken, decision.action, dedupTier, 'DEDUP_WINDOW', decision.amountUSD);
       return { success: false, error: `Dedup guard: ${dedupKey} already executed ${minutesSince.toFixed(0)}min ago` };
     }
   }
@@ -8567,6 +8573,7 @@ async function executeTrade(
       if (allowedUSD < KELLY_POSITION_FLOOR_USD) {
         console.log(`  🛑 SURGE CAP: ${decision.toToken} would reach ${projectedPct.toFixed(1)}% of portfolio (max ${SURGE_MAX_CAPITAL_PER_TOKEN_PCT}%) — blocking`);
         tradeInFlight.delete(dedupKey);
+        recordFiltered(decision.toToken!, decision.action, dedupTier, 'SURGE_CAP', decision.amountUSD);
         return { success: false, error: `Surge cap: ${decision.toToken} at ${projectedPct.toFixed(1)}% would exceed ${SURGE_MAX_CAPITAL_PER_TOKEN_PCT}% max` };
       }
       console.log(`  ⚠️ SURGE CAP: Reducing ${decision.toToken} buy from $${decision.amountUSD.toFixed(2)} to $${allowedUSD.toFixed(2)} (${SURGE_MAX_CAPITAL_PER_TOKEN_PCT}% cap)`);
@@ -8581,6 +8588,7 @@ async function executeTrade(
     if (recentBuys >= SURGE_MAX_BUYS_PER_HOUR) {
       console.log(`  🛑 SURGE HOURLY CAP: ${decision.toToken} already has ${recentBuys} buys this hour (max ${SURGE_MAX_BUYS_PER_HOUR})`);
       tradeInFlight.delete(dedupKey);
+      recordFiltered(decision.toToken!, decision.action, dedupTier, 'SURGE_HOURLY_CAP', decision.amountUSD);
       return { success: false, error: `Surge hourly cap: ${recentBuys}/${SURGE_MAX_BUYS_PER_HOUR} buys this hour` };
     }
   }
@@ -8649,6 +8657,7 @@ async function executeTrade(
           console.log(`  💧 VWS would block, but FORCED_DEPLOY bypass active ($${decision.amountUSD.toFixed(0)} trade)`);
         } else {
           console.log(`  💧 VWS BLOCKED: ${liqCheck.reason}`);
+          recordFiltered(tradeToken, decision.action, dedupTier, 'VWS_LIQUIDITY', decision.amountUSD);
           return { success: false, error: `Liquidity too thin: ${liqCheck.reason}` };
         }
       }
@@ -9040,6 +9049,7 @@ async function executeDirectDexSwap(
     state.tradeHistory.push(record);
     if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
     saveTradeHistory();
+    recordExecuted(decision.action === 'BUY' ? (decision.toToken || '') : (decision.fromToken || ''), decision.action, dedupTier, decision.amountUSD);
 
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
 
@@ -10713,7 +10723,14 @@ async function runTradingCycle() {
     // === v11.1: CASH DEPLOYMENT ENGINE ===
     // Check if portfolio is over-concentrated in USDC and needs active deployment
     const currentUSDCForDeploy = balances.find(b => b.symbol === 'USDC')?.balance || 0;
-    const deploymentCheck = checkCashDeploymentMode(currentUSDCForDeploy, state.trading.totalPortfolioValue);
+    // v19.0: Scout positions are data probes, not deployed capital.
+    // Add scout value back to "available cash" so scouts don't suppress deployment mode
+    // when the bot actually has most capital sitting idle in tiny positions.
+    const scoutValue = balances
+      .filter(b => b.symbol !== 'USDC' && b.symbol !== 'ETH' && b.symbol !== 'WETH' && b.usdValue < SCOUT_STOP_EXEMPT_THRESHOLD_USD)
+      .reduce((sum, b) => sum + (b.usdValue || 0), 0);
+    const effectiveCashForDeployment = currentUSDCForDeploy + scoutValue;
+    const deploymentCheck = checkCashDeploymentMode(effectiveCashForDeployment, state.trading.totalPortfolioValue);
     if (deploymentCheck.active) {
       console.log(`\n💵 CASH DEPLOYMENT MODE ACTIVE`);
       console.log(`   USDC: $${currentUSDCForDeploy.toFixed(2)} (${deploymentCheck.cashPercent.toFixed(1)}% of portfolio) — exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
@@ -11517,6 +11534,7 @@ async function runTradingCycle() {
         // v14.0: Enforce minimum $15 position — no dust trades
         if (decision.amountUSD < KELLY_POSITION_FLOOR_USD) {
           console.log(`   🚫 DUST GUARD: $${decision.amountUSD.toFixed(2)} < $${KELLY_POSITION_FLOOR_USD} minimum — skipping trade`);
+          recordFiltered(decision.toToken || decision.fromToken || '?', decision.action, dedupTier || 'AI', 'DUST_GUARD', decision.amountUSD);
           decision.action = "HOLD";
           decision.reasoning = `Position size $${decision.amountUSD.toFixed(2)} below $${KELLY_POSITION_FLOOR_USD} minimum — not worth the fees`;
         }
@@ -11889,6 +11907,31 @@ async function runTradingCycle() {
     }
   } catch (paperErr: any) {
     // Paper trading errors must never affect live bot operation
+  }
+
+  // === v19.0: WEEKLY REPORT TRIGGER ===
+  if (shouldGenerateReport()) {
+    try {
+      const tradeRecordsForReport = state.tradeHistory.map(t => ({
+        timestamp: t.timestamp,
+        action: t.action,
+        fromToken: t.fromToken,
+        toToken: t.toToken,
+        amountUSD: t.amountUSD,
+        success: t.success,
+        reasoning: t.reasoning,
+        pnlUSD: t.realizedPnL,
+      }));
+      const report = generateWeeklyReport(
+        tradeRecordsForReport,
+        state.trading.totalPortfolioValue,
+        BOT_VERSION,
+      );
+      console.log(`\n📋 WEEKLY REPORT GENERATED — ${report.totalTrades} trades, ${report.winRate.toFixed(1)}% win rate`);
+      console.log(`   Period: ${report.periodStart} to ${report.periodEnd}`);
+    } catch (err) {
+      console.error(`⚠️ Weekly report generation failed:`, err);
+    }
   }
 
   // Summary
@@ -13830,6 +13873,30 @@ const healthServer = http.createServer(async (req, res) => {
           })),
           errorLog: (state.errorLog || []).slice(-50).reverse(),
         });
+        break;
+      }
+
+      case '/api/signals': {
+        if (!isAuthorized(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+        const signalStats = getSignalStats();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          version: BOT_VERSION,
+          ...signalStats,
+        }, null, 2));
+        break;
+      }
+
+      case '/api/weekly-report': {
+        if (!isAuthorized(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
+        const report = getLatestReport();
+        if (!report) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ version: BOT_VERSION, message: 'No weekly report generated yet. Reports are generated every Sunday at UTC midnight.' }));
+        } else {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ version: BOT_VERSION, ...report }, null, 2));
+        }
         break;
       }
 
