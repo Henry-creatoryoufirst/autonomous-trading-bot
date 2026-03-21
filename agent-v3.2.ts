@@ -1943,6 +1943,19 @@ function createCdpClient(): CdpClient {
     apiKeySecret = apiKeySecret.replace(/\\n/g, '\n');
   }
 
+  // v19.0: Auto-detect raw EC keys and wrap in PEM format
+  // CDP SDK expects PEM-wrapped EC key or base64 Ed25519. Some users paste the raw
+  // base64 DER bytes from the CDP console without PEM headers — auto-fix this.
+  if (apiKeySecret && !apiKeySecret.startsWith('-----') && apiKeySecret.length > 60 && apiKeySecret.length <= 120) {
+    // Looks like raw base64 EC key (not Ed25519 which is exactly 44 chars base64)
+    // Try wrapping as PKCS#8 PEM for EC key
+    const trimmed = apiKeySecret.trim();
+    if (/^[A-Za-z0-9+/=]+$/.test(trimmed)) {
+      console.log(`  🔧 CDP Auth: Detected raw base64 EC key (${trimmed.length} chars) — wrapping in PEM format`);
+      apiKeySecret = `-----BEGIN EC PRIVATE KEY-----\n${trimmed}\n-----END EC PRIVATE KEY-----`;
+    }
+  }
+
   if (!apiKeyId || !apiKeySecret) {
     console.error("❌ CDP API credentials not found. Need CDP_API_KEY_ID + CDP_API_KEY_SECRET (or CDP_API_KEY_NAME + CDP_API_KEY_PRIVATE_KEY)");
     throw new Error("Missing CDP credentials");
