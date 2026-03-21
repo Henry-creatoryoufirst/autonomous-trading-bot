@@ -320,24 +320,33 @@ export class GeckoTerminalService {
 
     // --- 5. Per-token pool fetch for tokens missing from trending/top volume ---
     // Without this, most held tokens get zero flow data and flow physics is blind.
+    // Rotates through 4 uncovered tokens per cycle to stay within 30/min rate limit.
     const allPoolsSoFar = [...trendingPools, ...topVolumePools];
     const coveredTokens = new Set<string>();
     for (const pool of allPoolsSoFar) {
-      const sym = ADDRESS_TO_SYMBOL[pool.baseToken.address.toLowerCase()];
-      if (sym) coveredTokens.add(sym);
+      const baseSym = ADDRESS_TO_SYMBOL[pool.baseToken.address.toLowerCase()];
+      const quoteSym = ADDRESS_TO_SYMBOL[pool.quoteToken.address.toLowerCase()];
+      if (baseSym) coveredTokens.add(baseSym);
+      if (quoteSym) coveredTokens.add(quoteSym);
     }
 
-    // Fetch top pool for each uncovered tracked token (max 8 per cycle to stay in rate limit)
     const uncoveredTokens = Object.entries(TRACKED_TOKENS)
-      .filter(([sym]) => !coveredTokens.has(sym) && sym !== 'ETH' && sym !== 'WETH' && sym !== 'USDC')
-      .slice(0, 8);
+      .filter(([sym]) => !coveredTokens.has(sym) && sym !== 'ETH' && sym !== 'WETH' && sym !== 'USDC');
 
-    for (const [sym, addr] of uncoveredTokens) {
+    // Rotate: pick 4 tokens per cycle based on fetch count
+    const rotationOffset = (this.fetchCount * 4) % Math.max(uncoveredTokens.length, 1);
+    const batchTokens = uncoveredTokens.slice(rotationOffset, rotationOffset + 4);
+    // Wrap around if needed
+    if (batchTokens.length < 4 && uncoveredTokens.length > 4) {
+      batchTokens.push(...uncoveredTokens.slice(0, 4 - batchTokens.length));
+    }
+
+    for (const [sym, addr] of batchTokens) {
       try {
         const data = await rateLimitedGet(
           `${API_BASE}/networks/${NETWORK}/tokens/${addr}/pools?sort=h24_volume_usd_desc&page=1`
         );
-        const tokenPools = (data.data || []).slice(0, 2).map(parsePool);
+        const tokenPools = (data.data || []).slice(0, 1).map(parsePool);
         allPoolsSoFar.push(...tokenPools);
       } catch (err: any) {
         errors.push(`token_pools_${sym}: ${err.message?.substring(0, 80)}`);
@@ -433,7 +442,9 @@ export class GeckoTerminalService {
     }> = {};
 
     for (const pool of pools) {
-      const sym = ADDRESS_TO_SYMBOL[pool.baseToken.address.toLowerCase()];
+      let sym = ADDRESS_TO_SYMBOL[pool.baseToken.address.toLowerCase()];
+      // Also check quote token — some pools list our tracked token as quote
+      if (!sym) sym = ADDRESS_TO_SYMBOL[pool.quoteToken.address.toLowerCase()];
       if (!sym) continue;
 
       if (!agg[sym]) {
