@@ -152,8 +152,27 @@ export const REVIEW_TIME_INTERVAL_HOURS = 24;
 /** Stagnation threshold — trigger exploration trade if no trade in this many hours */
 export const STAGNATION_THRESHOLD_HOURS = 4; // v12.2.7: 1h → 4h — 1h was too aggressive, contributed to overtrading. Let AI breathe
 
-/** Max exploration trade amount (USD) */
+/** Max exploration trade amount (USD) — used for full positions */
 export const EXPLORATION_TRADE_USD = 50; // v11.4.22: $3 → $50 — build real positions
+
+// ============================================================================
+// v19.0: SCOUT MODE — Seed cheap data-gathering probes across all tracked tokens
+// ============================================================================
+
+/** Scout position size in USD — cheap probes, not commitments */
+export const SCOUT_POSITION_USD = 8;
+
+/** Minimum floor for any position (replaces old $15 floor for scouts) */
+export const SCOUT_POSITION_FLOOR_USD = 3;
+
+/** Max number of concurrent scout positions */
+export const SCOUT_MAX_POSITIONS = 18;
+
+/** Scout-to-full upgrade threshold: buy ratio must exceed this across 2+ timeframes */
+export const SCOUT_UPGRADE_BUY_RATIO = 55;
+
+/** Scout positions below this USD value are exempt from percentage-based stops */
+export const SCOUT_STOP_EXEMPT_THRESHOLD_USD = 15;
 
 // ============================================================================
 // THRESHOLD BOUNDS — limits for adaptive threshold changes
@@ -361,7 +380,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
 export const KELLY_FRACTION = 0.5;            // Half Kelly — aggressive capital deployment
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
-export const KELLY_POSITION_FLOOR_USD = 15;   // Minimum $15 trade — no dust positions
+export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
 export const KELLY_POSITION_CEILING_PCT = 18;  // 18% of portfolio per trade — bigger positions, less fragmentation
 export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
@@ -608,6 +627,15 @@ export const RIDE_THE_WAVE_SIZE_PCT = 4;
  *  v18.0: Widened from 5 to 15 min — reduce churn */
 export const SCALE_UP_DEDUP_WINDOW_MINUTES = 15;
 
+/** v19.0: Surge mode dedup — rapid scale-ups when multi-timeframe flow confirms */
+export const SURGE_DEDUP_WINDOW_MINUTES = 3;
+
+/** v19.0: Max portfolio % to deploy into a single token via surge (prevents over-concentration) */
+export const SURGE_MAX_CAPITAL_PER_TOKEN_PCT = 25;
+
+/** v19.0: Max surge buys per token per hour (prevents runaway buying on noisy flow) */
+export const SURGE_MAX_BUYS_PER_HOUR = 5;
+
 /** Dedup window in minutes for forced deploy buys
  *  v18.0: Widened from 10 to 20 min — be more patient with deployment */
 export const FORCED_DEPLOY_DEDUP_WINDOW_MINUTES = 20;
@@ -671,12 +699,17 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // ============================================================================
 
 /** Absolute max loss per position — STRONG_SELL immediately
- *  v18.0: Tightened from -15% to -10% — cut losses faster, stop letting losers bleed */
-export const POSITION_HARD_STOP_PCT = -10;
+ *  v19.0: Widened to -15% — emergency backstop only. Flow-reversal exits should fire first. */
+export const POSITION_HARD_STOP_PCT = -15;
 
 /** Soft stop for positions worth > $20
- *  v18.0: Tightened from -10% to -7% — smaller losses compound less damage */
-export const POSITION_SOFT_STOP_PCT = -7;
+ *  v19.0: Widened to -12% — secondary backstop. Flow-reversal exits are the primary exit mechanism. */
+export const POSITION_SOFT_STOP_PCT = -12;
+
+/** Flow-reversal exit: buy ratio below this AND decelerating for 2+ readings = exit regardless of P&L
+ *  v19.0: Flow physics — when capital leaves, we leave with it. */
+export const FLOW_REVERSAL_EXIT_BUY_RATIO = 40;
+export const FLOW_REVERSAL_EXIT_MIN_DECEL_READINGS = 2;
 
 /** Stop for concentrated positions (> 10% of portfolio) */
 export const POSITION_CONCENTRATED_STOP_PCT = -7;
@@ -725,13 +758,16 @@ export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
 /** Signal engine mode: 'swarm' uses multi-agent voting, 'classic' uses single confluence */
 export const SIGNAL_ENGINE: 'swarm' | 'classic' = (process.env.SIGNAL_ENGINE as any) || 'swarm';
 
-/** Agent weights — how much each micro-agent's vote counts (must sum to 1.0) */
+/** Agent weights — how much each micro-agent's vote counts (must sum to 1.0)
+ *  v19.0: Reweighted to reflect capital flow physics thesis.
+ *  Flow is the dominant signal — where money moves, price follows.
+ *  Momentum confirms flow, doesn't lead. Sentiment near-zero. */
 export const SWARM_AGENT_WEIGHTS = {
-  momentum:  0.30,  // RSI, MACD, Bollinger, volume spikes
-  flow:      0.25,  // DEX buy/sell ratio, volume
+  momentum:  0.20,  // RSI, MACD, Bollinger — confirms flow direction
+  flow:      0.35,  // DEX buy/sell ratio, volume — THE core signal
   risk:      0.25,  // Position sizing, portfolio exposure, drawdown
-  sentiment: 0.10,  // Fear & Greed, BTC/ETH trend, market regime
-  trend:     0.10,  // ADX, price direction, trend strength
+  sentiment: 0.05,  // BTC/ETH trend, market regime — minor context only
+  trend:     0.15,  // ADX, price direction — structural trend confirmation
 } as const;
 
 /** Numeric score for each action (used in weighted voting) */

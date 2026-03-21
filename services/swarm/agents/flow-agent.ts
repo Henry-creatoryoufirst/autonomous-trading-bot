@@ -1,10 +1,10 @@
 /**
- * Flow Micro-Agent v17.0
+ * Flow Micro-Agent v19.0
  *
  * Focuses on: DEX buy/sell ratio, volume context, trade count, flow direction.
  * The most important agent — capital flow is the ground truth.
+ * v19.0: Now the dominant agent (weight: 35%). Multi-timeframe flow confirmation.
  * Pure math — no Claude API calls.
- * Weight: 25%
  */
 
 import type { MicroAgentInput, MicroAgentVote, SwarmAction } from '../agent-framework.js';
@@ -106,6 +106,20 @@ export function flowAgent(input: MicroAgentInput): MicroAgentVote {
     } else if (volumeSpike > 1.5) {
       confidence += 8;
     }
+  }
+
+  // === v19.0: Multi-timeframe flow confirmation ===
+  // Flow positive across multiple timeframes = higher conviction
+  const { flowAvg5m, flowAvg1h, flowAvg4h, flowPositiveTimeframes } = input.indicators;
+  if (flowPositiveTimeframes !== undefined && flowPositiveTimeframes >= 2) {
+    if (score > 0) {
+      confidence += 12;
+      reasons.push(`Flow confirmed across ${flowPositiveTimeframes} timeframes (5m=${flowAvg5m?.toFixed(0) ?? '?'}%, 1h=${flowAvg1h?.toFixed(0) ?? '?'}%, 4h=${flowAvg4h?.toFixed(0) ?? '?'}%)`);
+    }
+  } else if (flowPositiveTimeframes !== undefined && flowPositiveTimeframes === 0 && score > 0) {
+    // Bullish score but no timeframe confirms — reduce conviction
+    confidence -= 10;
+    reasons.push(`No multi-timeframe flow confirmation — reduced conviction`);
   }
 
   // Map score to action

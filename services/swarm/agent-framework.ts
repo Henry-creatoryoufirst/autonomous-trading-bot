@@ -28,6 +28,11 @@ export interface MicroAgentInput {
     atr?: number;
     price24hChange?: number;
     priceDistanceFromHigh?: number;  // v17.0: % below 30-day high (negative number, e.g. -15 = 15% below high)
+    // v19.0: Multi-timeframe flow
+    flowAvg5m?: number;   // Average buy ratio over 5 minutes
+    flowAvg1h?: number;   // Average buy ratio over 1 hour
+    flowAvg4h?: number;   // Average buy ratio over 4 hours
+    flowPositiveTimeframes?: number; // How many timeframes show positive flow (0-3)
   };
   portfolio: {
     totalValue: number;

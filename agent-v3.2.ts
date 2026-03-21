@@ -260,6 +260,18 @@ import {
   POSITION_HARD_STOP_PCT,
   POSITION_SOFT_STOP_PCT,
   POSITION_CONCENTRATED_STOP_PCT,
+  // v19.0: Flow-reversal exits
+  FLOW_REVERSAL_EXIT_BUY_RATIO,
+  FLOW_REVERSAL_EXIT_MIN_DECEL_READINGS,
+  // v19.0: Scout mode
+  SCOUT_POSITION_USD,
+  SCOUT_MAX_POSITIONS,
+  SCOUT_UPGRADE_BUY_RATIO,
+  SCOUT_STOP_EXEMPT_THRESHOLD_USD,
+  // v19.0: Surge mode
+  SURGE_DEDUP_WINDOW_MINUTES,
+  SURGE_MAX_CAPITAL_PER_TOKEN_PCT,
+  SURGE_MAX_BUYS_PER_HOUR,
   // v14.1: Smart Trim (Momentum Deceleration Exit)
   DECEL_TRIM_DEDUP_WINDOW_MINUTES,
   // v15.3: Yield Optimizer
@@ -288,6 +300,10 @@ import type { ProtocolYield } from './services/yield-optimizer.js';
 // === v14.1: MOMENTUM DECELERATION DETECTOR (Smart Trim) ===
 import { createDecelState, updateBuyRatioHistory, detectDeceleration } from './services/deceleration-detector.js';
 import type { DecelState } from './services/deceleration-detector.js';
+
+// === v19.0: MULTI-TIMEFRAME FLOW AGGREGATION ===
+import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from './services/flow-timeframes.js';
+import type { FlowTimeframeState } from './services/flow-timeframes.js';
 import type { YieldState } from './services/aave-yield.js';
 
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
@@ -2047,6 +2063,7 @@ let dexIntelFetchCount = 0;
 
 // === v14.1: MOMENTUM DECELERATION STATE (per-token) ===
 const decelStates: Record<string, DecelState> = {};
+const flowTimeframeState: FlowTimeframeState = createFlowTimeframeState();
 
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
@@ -8099,10 +8116,13 @@ async function makeTradeDecision(
           const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
           if (totalFlow > 0) previousBuyRatios.set(t.symbol, (ind.orderFlow.buyVolumeUSD / totalFlow) * 100);
         }
+        // v19.0: Attach multi-timeframe flow data
+        const _ftf = getFlowTimeframes(flowTimeframeState, t.symbol);
         return {
           symbol: t.symbol, price: t.price, priceChange24h: t.priceChange24h, volume24h: t.volume24h, sector: t.sector,
           priceDistanceFromHigh,
           previousBuyRatio: prevBR,
+          flowAvg5m: _ftf.avg5m ?? undefined, flowAvg1h: _ftf.avg1h ?? undefined, flowAvg4h: _ftf.avg4h ?? undefined, flowPositiveTimeframes: _ftf.positiveTimeframes,
           indicators: marketData.indicators[t.symbol] || undefined,
         };
       });
@@ -8483,8 +8503,13 @@ async function executeTrade(
   const dedupKey = `${dedupToken}:${decision.action}:${dedupTier}`;
   // v14.2: Dedup windows increased across the board to reduce churn (was 308 trades/day)
   const isScaleUpTier = dedupTier === 'SCALE_UP' || dedupTier === 'RIDE_THE_WAVE';
-  const dedupWindowMinutes = isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES        // 5 min (was 1)
+  // v19.0: Surge mode — scale-ups with multi-timeframe flow confirmation get shorter dedup
+  const isSurgeEligible = isScaleUpTier && decision.reasoning?.includes('confirmed across');
+  const dedupWindowMinutes = isSurgeEligible ? SURGE_DEDUP_WINDOW_MINUTES          // 3 min — surge mode
+    : isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES        // 15 min (normal scale-up)
+    : dedupTier === 'FLOW_REVERSAL' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES           // Same urgency as momentum exit
     : dedupTier === 'MOMENTUM_EXIT' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES          // 5 min (was 1)
+    : dedupTier === 'SCOUT' ? NORMAL_DEDUP_WINDOW_MINUTES                         // v19.0: scouts use normal window — don't re-scout same token
     : dedupTier === 'DECEL_TRIM' ? DECEL_TRIM_DEDUP_WINDOW_MINUTES                // 3 min — v14.1 smart trim
     : dedupTier === 'FORCED_DEPLOY' ? FORCED_DEPLOY_DEDUP_WINDOW_MINUTES          // 10 min (was 2)
     : NORMAL_DEDUP_WINDOW_MINUTES; // 15 min (was 5) — stop rapid re-trading of same tokens
@@ -8514,6 +8539,36 @@ async function executeTrade(
       if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
       tradeInFlight.delete(dedupKey);
       return { success: false, error: `Dedup guard: ${dedupKey} already executed ${minutesSince.toFixed(0)}min ago` };
+    }
+  }
+
+  // v19.0: SURGE CAPITAL CAP — prevent over-concentration via rapid scale-ups
+  if (isScaleUpTier && decision.action === 'BUY' && decision.toToken) {
+    const existingPosition = state.trading.balances.find(b => b.symbol === decision.toToken);
+    const existingValue = existingPosition?.usdValue || 0;
+    const portfolioVal = state.trading.totalPortfolioValue || 1;
+    const projectedPct = ((existingValue + decision.amountUSD) / portfolioVal) * 100;
+
+    if (projectedPct > SURGE_MAX_CAPITAL_PER_TOKEN_PCT) {
+      const allowedUSD = Math.max(0, (portfolioVal * SURGE_MAX_CAPITAL_PER_TOKEN_PCT / 100) - existingValue);
+      if (allowedUSD < KELLY_POSITION_FLOOR_USD) {
+        console.log(`  🛑 SURGE CAP: ${decision.toToken} would reach ${projectedPct.toFixed(1)}% of portfolio (max ${SURGE_MAX_CAPITAL_PER_TOKEN_PCT}%) — blocking`);
+        tradeInFlight.delete(dedupKey);
+        return { success: false, error: `Surge cap: ${decision.toToken} at ${projectedPct.toFixed(1)}% would exceed ${SURGE_MAX_CAPITAL_PER_TOKEN_PCT}% max` };
+      }
+      console.log(`  ⚠️ SURGE CAP: Reducing ${decision.toToken} buy from $${decision.amountUSD.toFixed(2)} to $${allowedUSD.toFixed(2)} (${SURGE_MAX_CAPITAL_PER_TOKEN_PCT}% cap)`);
+      decision.amountUSD = allowedUSD;
+    }
+
+    // Hourly buy limit for surge trades
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const recentBuys = state.tradeHistory.filter(t =>
+      t.action === 'BUY' && t.toToken === decision.toToken && t.timestamp > oneHourAgo
+    ).length;
+    if (recentBuys >= SURGE_MAX_BUYS_PER_HOUR) {
+      console.log(`  🛑 SURGE HOURLY CAP: ${decision.toToken} already has ${recentBuys} buys this hour (max ${SURGE_MAX_BUYS_PER_HOUR})`);
+      tradeInFlight.delete(dedupKey);
+      return { success: false, error: `Surge hourly cap: ${recentBuys}/${SURGE_MAX_BUYS_PER_HOUR} buys this hour` };
     }
   }
 
@@ -9762,7 +9817,9 @@ async function produceSignals(): Promise<void> {
             const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
             if (totalFlow > 0) previousBuyRatios.set(symbol, (ind.orderFlow.buyVolumeUSD / totalFlow) * 100);
           }
-          return { symbol, price: td.price, priceChange24h: td.priceChange24h, volume24h: td.volume24h, sector: td.sector || tokenInfo.sector, priceDistanceFromHigh, previousBuyRatio: prevBR, indicators: marketData.indicators[symbol] || undefined };
+          // v19.0: Attach multi-timeframe flow data
+          const _ftf = getFlowTimeframes(flowTimeframeState, symbol);
+          return { symbol, price: td.price, priceChange24h: td.priceChange24h, volume24h: td.volume24h, sector: td.sector || tokenInfo.sector, priceDistanceFromHigh, previousBuyRatio: prevBR, flowAvg5m: _ftf.avg5m ?? undefined, flowAvg1h: _ftf.avg1h ?? undefined, flowAvg4h: _ftf.avg4h ?? undefined, flowPositiveTimeframes: _ftf.positiveTimeframes, indicators: marketData.indicators[symbol] || undefined };
         })
         .filter(Boolean) as any[];
       const _usdcBal = state.trading.balances.find(b => b.symbol === 'USDC');
@@ -10033,6 +10090,25 @@ async function runTradingCycle() {
       console.log(`  ✅ DEX intel: ${lastDexIntelligence.tokenMetrics.length} tokens | ${spikes} volume spikes | ${pressure} pressure signals | ${lastDexIntelligence.errors.length} errors`);
     } catch (dexErr: any) {
       console.warn(`  ⚠️ DEX intelligence fetch failed: ${dexErr.message?.substring(0, 150)} — continuing without`);
+    }
+
+    // === v19.0: RECORD FLOW READINGS FOR MULTI-TIMEFRAME AGGREGATION ===
+    // Store buy ratio from DEX intelligence and on-chain flow for all tracked tokens
+    if (lastDexIntelligence) {
+      for (const pressure of lastDexIntelligence.buySellPressure) {
+        if (pressure.buyRatioH1 !== undefined) {
+          recordFlowReading(flowTimeframeState, pressure.symbol, pressure.buyRatioH1 * 100);
+        }
+      }
+    }
+    // Also record from on-chain order flow (higher fidelity when available)
+    for (const [symbol, ind] of Object.entries(marketData.indicators)) {
+      if (ind?.orderFlow) {
+        const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
+        if (totalFlow > 0) {
+          recordFlowReading(flowTimeframeState, symbol, (ind.orderFlow.buyVolumeUSD / totalFlow) * 100);
+        }
+      }
     }
 
     // === PHASE 3: PERFORMANCE REVIEW TRIGGER ===
@@ -10718,8 +10794,11 @@ async function runTradingCycle() {
           continue; // Don't double-trigger softer stops
         }
 
-        // P0-1b: SOFT STOP — position down more than 10% AND worth > $20
-        if (gainPct < POSITION_SOFT_STOP_PCT && holding.usdValue > 20) {
+        // v19.0: Scout positions (< $15) are exempt from soft/concentrated stops — they're data probes, not investments
+        const isScoutPosition = holding.usdValue < SCOUT_STOP_EXEMPT_THRESHOLD_USD;
+
+        // P0-1b: SOFT STOP — position down more than 12% AND worth > $20 (scouts exempt)
+        if (!isScoutPosition && gainPct < POSITION_SOFT_STOP_PCT && holding.usdValue > 20) {
           console.log(`\n⚠️ SOFT_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% from cost basis, position $${holding.usdValue.toFixed(2)} (threshold: ${POSITION_SOFT_STOP_PCT}% for >$20)`);
           stopLossDecisions.push({
             action: 'SELL',
@@ -10732,8 +10811,8 @@ async function runTradingCycle() {
           continue;
         }
 
-        // P0-1c: CONCENTRATED STOP — position down more than 7% AND > 10% of portfolio
-        if (gainPct < POSITION_CONCENTRATED_STOP_PCT && positionPct > 10) {
+        // P0-1c: CONCENTRATED STOP — position down more than 7% AND > 10% of portfolio (scouts exempt)
+        if (!isScoutPosition && gainPct < POSITION_CONCENTRATED_STOP_PCT && positionPct > 10) {
           console.log(`\n⚠️ CONCENTRATED_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% and ${positionPct.toFixed(1)}% of portfolio (threshold: ${POSITION_CONCENTRATED_STOP_PCT}% for >10% concentration)`);
           stopLossDecisions.push({
             action: 'SELL',
@@ -10750,6 +10829,76 @@ async function runTradingCycle() {
         console.log(`\n🛑 PER-POSITION STOP-LOSS: ${stopLossDecisions.length} stop-loss sells triggered`);
         // Prepend stop-losses — they have highest priority
         decisions = [...stopLossDecisions, ...decisions];
+      }
+    }
+
+    // === v19.0: FLOW-REVERSAL EXIT ENGINE ===
+    // The PRIMARY exit mechanism. When capital is leaving a token (buy ratio < 40%
+    // AND decelerating for 2+ consecutive readings), exit regardless of P&L.
+    // This is the physics: money is leaving → we leave with it.
+    {
+      const flowReversalDecisions: TradeDecision[] = [];
+
+      for (const holding of balances) {
+        if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
+        if (!holding.usdValue || holding.usdValue < 3) continue;
+
+        // Skip if stop-loss already triggered for this token
+        if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('HARD_STOP'))) continue;
+        if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('SOFT_STOP'))) continue;
+        if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('CONCENTRATED_STOP'))) continue;
+
+        // Get current buy ratio
+        let buyRatioPct = 50;
+        if (lastDexIntelligence) {
+          const dexPressure = lastDexIntelligence.buySellPressure.find(p => p.symbol === holding.symbol);
+          if (dexPressure) buyRatioPct = dexPressure.buyRatioH1 * 100;
+        }
+        const ind = marketData.indicators[holding.symbol];
+        if (ind?.orderFlow) {
+          const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
+          if (totalFlow > 0) buyRatioPct = (ind.orderFlow.buyVolumeUSD / totalFlow) * 100;
+        }
+
+        // Flow reversal check: buy ratio below threshold?
+        if (buyRatioPct >= FLOW_REVERSAL_EXIT_BUY_RATIO) continue;
+
+        // Check deceleration history for consecutive negative readings
+        const decelState = decelStates[holding.symbol];
+        if (!decelState || decelState.buyRatioHistory.length < 3) continue;
+
+        const h = decelState.buyRatioHistory;
+        let consecutiveDecel = 0;
+        for (let i = h.length - 1; i >= 1; i--) {
+          if (h[i] < h[i - 1]) {
+            consecutiveDecel++;
+          } else {
+            break;
+          }
+        }
+
+        if (consecutiveDecel < FLOW_REVERSAL_EXIT_MIN_DECEL_READINGS) continue;
+
+        const cb = state.costBasis[holding.symbol];
+        const currentPrice = marketData.tokens.find(t => t.symbol === holding.symbol)?.price || 0;
+        const gainPct = (cb && cb.avgCostBasis > 0 && currentPrice > 0)
+          ? ((currentPrice - cb.avgCostBasis) / cb.avgCostBasis) * 100
+          : 0;
+
+        console.log(`\n🌊 FLOW_REVERSAL_EXIT: ${holding.symbol} — buy ratio ${buyRatioPct.toFixed(0)}% (< ${FLOW_REVERSAL_EXIT_BUY_RATIO}%), decelerating for ${consecutiveDecel} readings. P&L: ${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}%. Capital is leaving — we leave with it.`);
+        flowReversalDecisions.push({
+          action: 'SELL',
+          fromToken: holding.symbol,
+          toToken: 'USDC',
+          amountUSD: holding.usdValue,
+          reasoning: `FLOW_REVERSAL: ${holding.symbol} buy ratio ${buyRatioPct.toFixed(0)}% with ${consecutiveDecel} consecutive decelerating readings. Capital outflow confirmed — exiting with the flow.`,
+          sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+        });
+      }
+
+      if (flowReversalDecisions.length > 0) {
+        console.log(`\n🌊 FLOW-REVERSAL: ${flowReversalDecisions.length} flow-reversal exits triggered`);
+        decisions = [...flowReversalDecisions, ...decisions];
       }
     }
 
@@ -10875,6 +11024,30 @@ async function runTradingCycle() {
         const volumeSpike = (ind?.volumeChange24h ?? 0) > 50; // volume 1.5x+ average
         const macdBearish = ind?.macd ? ind.macd.histogram < 0 && ind.macd.signal === 'BEARISH' : false;
 
+        // --- v19.0: SCOUT UPGRADE ---
+        // Scout position with confirmed multi-timeframe flow → upgrade to full position
+        const isScout = holding.usdValue < SCOUT_STOP_EXEMPT_THRESHOLD_USD;
+        if (isScout && buyRatioPct > SCOUT_UPGRADE_BUY_RATIO) {
+          const ftf = getFlowTimeframes(flowTimeframeState, holding.symbol);
+          if (ftf.confirmed) {
+            const upgradeSize = Math.min(
+              portfolioVal * (SCALE_UP_SIZE_PCT / 100),
+              availableUSDCForScale * 0.3
+            );
+            if (upgradeSize >= 10 && availableUSDCForScale >= 20) {
+              console.log(`\n🎯 SCOUT→SURGE: ${holding.symbol} scout confirmed — buy ratio ${buyRatioPct.toFixed(0)}%, flow positive across ${ftf.positiveTimeframes} timeframes. Upgrading to full position.`);
+              scaleUpDecisions.push({
+                action: 'BUY',
+                fromToken: 'USDC',
+                toToken: holding.symbol,
+                amountUSD: Math.round(upgradeSize * 100) / 100,
+                reasoning: `SCALE_UP: Scout ${holding.symbol} upgraded — buy ratio ${buyRatioPct.toFixed(0)}% confirmed across ${ftf.positiveTimeframes} timeframes. Deploying real capital.`,
+                sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+              });
+            }
+          }
+        }
+
         // --- SCALE-UP CANDIDATE ---
         // Position up 3%+ with strong momentum → deploy real capital
         if (gainPct >= SCALE_UP_MIN_GAIN_PCT && (buyRatioPct > SCALE_UP_BUY_RATIO_MIN || volumeSpike)) {
@@ -10969,11 +11142,62 @@ async function runTradingCycle() {
         }
       }
 
-      // Inject scale-up, decel trim, and momentum exit decisions alongside AI decisions
-      if (scaleUpDecisions.length > 0 || momentumExitDecisions.length > 0 || decelTrimDecisions.length > 0) {
-        console.log(`\n📊 SCALE-INTO-WINNERS: ${scaleUpDecisions.length} scale-ups, ${momentumExitDecisions.length} momentum exits, ${decelTrimDecisions.length} decel trims`);
-        // Priority: momentum exits first, then decel trims, then AI decisions, then scale-ups
-        decisions = [...momentumExitDecisions, ...decelTrimDecisions, ...decisions, ...scaleUpDecisions];
+      // --- v19.0: SCOUT SEEDING ---
+      // Seed small $8 positions across tokens we don't hold yet.
+      // Scouts are data-gathering probes, not investments. They provide real-time flow data.
+      const scoutDecisions: TradeDecision[] = [];
+      {
+        const heldSymbols = new Set(balances.filter(b => b.usdValue >= 1).map(b => b.symbol));
+        const scoutCandidates = marketData.tokens.filter(t =>
+          t.symbol !== 'USDC' && t.symbol !== 'ETH' && t.symbol !== 'WETH' &&
+          !heldSymbols.has(t.symbol) &&
+          TOKEN_REGISTRY[t.symbol] // Only scout tokens in our registry
+        );
+
+        // Count existing scout-sized positions
+        const existingScouts = balances.filter(b =>
+          b.symbol !== 'USDC' && b.symbol !== 'ETH' && b.symbol !== 'WETH' &&
+          b.usdValue >= 1 && b.usdValue < SCOUT_STOP_EXEMPT_THRESHOLD_USD
+        ).length;
+
+        const spotsAvailable = Math.max(0, SCOUT_MAX_POSITIONS - existingScouts);
+        const cashForScouts = availableUSDCForScale - 50; // Keep $50 reserve for surges
+
+        if (spotsAvailable > 0 && cashForScouts > SCOUT_POSITION_USD * 2) {
+          // Prioritize scouts by: tokens with flow data available, then by sector diversification
+          const maxNewScouts = Math.min(
+            spotsAvailable,
+            Math.floor(cashForScouts / SCOUT_POSITION_USD),
+            3 // Max 3 new scouts per cycle to avoid churn
+          );
+
+          for (let i = 0; i < Math.min(maxNewScouts, scoutCandidates.length); i++) {
+            const token = scoutCandidates[i];
+            // Don't scout if AI or scale-up already targets this token
+            if (decisions.some(d => d.toToken === token.symbol)) continue;
+            if (scaleUpDecisions.some(d => d.toToken === token.symbol)) continue;
+
+            scoutDecisions.push({
+              action: 'BUY',
+              fromToken: 'USDC',
+              toToken: token.symbol,
+              amountUSD: SCOUT_POSITION_USD,
+              reasoning: `SCOUT: Seeding $${SCOUT_POSITION_USD} probe in ${token.symbol} — data-gathering position, not an investment.`,
+              sector: TOKEN_REGISTRY[token.symbol]?.sector,
+            });
+          }
+
+          if (scoutDecisions.length > 0) {
+            console.log(`\n🔭 SCOUT SEEDING: ${scoutDecisions.length} new scouts (${existingScouts} existing, ${spotsAvailable} spots available)`);
+          }
+        }
+      }
+
+      // Inject scale-up, decel trim, momentum exit, and scout decisions alongside AI decisions
+      if (scaleUpDecisions.length > 0 || momentumExitDecisions.length > 0 || decelTrimDecisions.length > 0 || scoutDecisions.length > 0) {
+        console.log(`\n📊 SCALE-INTO-WINNERS: ${scaleUpDecisions.length} scale-ups, ${momentumExitDecisions.length} momentum exits, ${decelTrimDecisions.length} decel trims, ${scoutDecisions.length} scouts`);
+        // Priority: momentum exits first, then decel trims, then AI decisions, then scale-ups, then scouts
+        decisions = [...momentumExitDecisions, ...decelTrimDecisions, ...decisions, ...scaleUpDecisions, ...scoutDecisions];
       }
     }
 
@@ -11051,6 +11275,7 @@ async function runTradingCycle() {
           case 'CONCENTRATED_STOP': return -0.5; // v16.0: concentrated loser
           case 'STOP_LOSS': return 0;
           case 'DIRECTIVE_SELL': return 0.5; // v16.0: user directive enforcement
+          case 'FLOW_REVERSAL': return 0.7; // v19.0: flow physics exit — fires before momentum exit
           case 'MOMENTUM_EXIT': return 1;
           case 'DECEL_TRIM': return 1.5; // v14.1: after momentum exit, before profit take
           case 'PROFIT_TAKE': return 2;
@@ -11059,6 +11284,7 @@ async function runTradingCycle() {
           case 'FORCED_DEPLOY': return 5;
           case 'DEPLOYMENT_FALLBACK': return 5;
           case 'RIDE_THE_WAVE': return 6;
+          case 'SCOUT': return 7; // v19.0: lowest priority — scouts seed last
         }
       };
       const actionDecisions = decisions.filter(d => d.action !== 'HOLD');

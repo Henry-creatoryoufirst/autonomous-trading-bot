@@ -27,6 +27,11 @@ export interface SwarmTokenData {
   sector: string;
   priceDistanceFromHigh?: number;  // v17.0: % below 30-day high (e.g. -15 = 15% below)
   previousBuyRatio?: number;       // v17.0: buy ratio from previous cycle
+  // v19.0: Multi-timeframe flow
+  flowAvg5m?: number;
+  flowAvg1h?: number;
+  flowAvg4h?: number;
+  flowPositiveTimeframes?: number;
   indicators?: {
     rsi14?: number | null;
     macd?: { signal: string } | null;
@@ -131,6 +136,11 @@ export function runSwarm(
           ? (ind.atrPercent / 100) * token.price : undefined,
         price24hChange: token.priceChange24h,
         priceDistanceFromHigh: token.priceDistanceFromHigh,  // v17.0: distance from 30d high
+        // v19.0: Multi-timeframe flow
+        flowAvg5m: token.flowAvg5m,
+        flowAvg1h: token.flowAvg1h,
+        flowAvg4h: token.flowAvg4h,
+        flowPositiveTimeframes: token.flowPositiveTimeframes,
       },
       portfolio: {
         totalValue: portfolio.totalValue,
