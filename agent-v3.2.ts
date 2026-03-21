@@ -3468,6 +3468,8 @@ let state: AgentState = {
   profitTakeCooldowns: {},
   stopLossCooldowns: {},
   tradeFailures: {},
+  // v18.1: Error log ring buffer for remote diagnostics
+  errorLog: [] as Array<{ timestamp: string; type: string; message: string; details?: any }>,
   harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
   // v9.1: Auto-harvest transfer state (multi-wallet)
   autoHarvestTransfers: [] as Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string; label: string }>,
@@ -4048,6 +4050,24 @@ async function recoverOnChainTradeHistory(walletAddress?: string): Promise<{ rec
   }
 
   return { recovered: onChainTrades.length, merged: newTrades.length };
+}
+
+// ============================================================================
+// v18.1: ERROR LOG — Ring buffer for remote diagnostics via /api/errors
+// ============================================================================
+const MAX_ERROR_LOG_SIZE = 100;
+
+function logError(type: string, message: string, details?: any): void {
+  state.errorLog.push({
+    timestamp: new Date().toISOString(),
+    type,
+    message: message.substring(0, 500),
+    details: details ? JSON.parse(JSON.stringify(details, (_, v) => typeof v === 'string' ? v.substring(0, 300) : v)) : undefined,
+  });
+  // Ring buffer — keep last N entries
+  if (state.errorLog.length > MAX_ERROR_LOG_SIZE) {
+    state.errorLog = state.errorLog.slice(-MAX_ERROR_LOG_SIZE);
+  }
 }
 
 // ============================================================================
@@ -9113,9 +9133,11 @@ async function executeSingleSwap(
           // v14.3: CDP SDK can't route this token — fall back to direct DEX swap
           console.log(`     ⚠️ CDP SDK rejected swap — will fall back to direct DEX swap`);
           console.log(`     Reason: ${swapMsg.substring(0, 120)}`);
+          logError('SWAP_REJECTED', swapMsg, { from: decision.fromToken, to: decision.toToken, amountUSD: decision.amountUSD });
           cdpSwapFailed = true;
           break;
         } else {
+          logError('SWAP_ERROR', swapMsg, { from: decision.fromToken, to: decision.toToken, attempt, code: swapError?.code });
           throw swapError; // Re-throw for outer catch to handle
         }
       }
@@ -9248,6 +9270,17 @@ async function executeSingleSwap(
     } else if (errorMsg.includes("401") || errorMsg.includes("Unauthorized")) {
       console.error(`     → Authentication failed. Check CDP_API_KEY_ID, CDP_API_KEY_SECRET, CDP_WALLET_SECRET.`);
     }
+
+    // v18.1: Log to error ring buffer for /api/errors
+    logError('TRADE_FAILED', errorMsg, {
+      action: decision.action,
+      from: decision.fromToken,
+      to: decision.toToken,
+      amountUSD: decision.amountUSD,
+      code: error.code || null,
+      status: error.status || null,
+      apiResponse: error.response?.data ? JSON.stringify(error.response.data).substring(0, 300) : null,
+    });
 
     // Record failed trade with signal context (V4.0)
     const failedToken = decision.action === "BUY" ? decision.toToken : decision.fromToken;
@@ -11528,6 +11561,7 @@ async function runTradingCycle() {
 
   } catch (error: any) {
     console.error("Cycle error:", error.message);
+    logError('CYCLE_ERROR', error.message, { stack: error.stack?.split('\n').slice(0, 3).join(' | ') });
   }
 
   // === STRATEGY LAB: Paper Trading Update ===
@@ -13483,6 +13517,113 @@ const healthServer = http.createServer(async (req, res) => {
           url.searchParams.get('include_failures') === 'true'
         ));
         break;
+
+      // === v18.1: ERROR LOG + DEBUG ENDPOINTS ===
+      case '/api/errors': {
+        const failedTrades = state.tradeHistory.filter(t => t.success === false);
+        const recentFailures = failedTrades.slice(-20).reverse();
+        const errorsByType: Record<string, number> = {};
+        for (const t of failedTrades) {
+          const errType = t.error?.includes('Unauthorized') || t.error?.includes('401') ? 'AUTH'
+            : t.error?.includes('insufficient') ? 'INSUFFICIENT_FUNDS'
+            : t.error?.includes('liquidity') ? 'LIQUIDITY'
+            : t.error?.includes('timeout') || t.error?.includes('ETIMEDOUT') ? 'TIMEOUT'
+            : t.error?.includes('payment method') ? 'PAYMENT_METHOD'
+            : t.error?.includes('slippage') ? 'SLIPPAGE'
+            : t.error?.includes('allowance') ? 'ALLOWANCE'
+            : t.error?.includes('not supported') || t.error?.includes('Invalid request') ? 'UNSUPPORTED_TOKEN'
+            : 'OTHER';
+          errorsByType[errType] = (errorsByType[errType] || 0) + 1;
+        }
+        sendJSON(res, 200, {
+          version: '18.1.0',
+          summary: {
+            totalAttempted: state.trading.totalTrades + failedTrades.length,
+            totalSuccessful: state.trading.totalTrades,
+            totalFailed: failedTrades.length,
+            failureRate: failedTrades.length > 0 ? `${((failedTrades.length / (state.trading.totalTrades + failedTrades.length)) * 100).toFixed(1)}%` : '0%',
+            errorsByType,
+          },
+          circuitBreakers: Object.entries(state.tradeFailures).map(([symbol, data]) => ({
+            symbol,
+            consecutiveFailures: (data as any).count,
+            lastFailure: (data as any).lastFailure,
+            blocked: (data as any).count >= 3,
+          })),
+          recentFailedTrades: recentFailures.map(t => ({
+            timestamp: t.timestamp,
+            action: t.action,
+            from: t.fromToken,
+            to: t.toToken,
+            amountUSD: t.amountUSD,
+            error: t.error,
+          })),
+          errorLog: (state.errorLog || []).slice(-50).reverse(),
+        });
+        break;
+      }
+
+      case '/api/debug': {
+        const apiKeyId = process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME || '';
+        const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.CDP_API_KEY_PRIVATE_KEY || '';
+        const walletSecret = process.env.CDP_WALLET_SECRET || '';
+        const signalUrl = process.env.SIGNAL_URL || process.env.NVR_SIGNAL_URL || '';
+
+        // Test CDP connection
+        let cdpStatus = 'unknown';
+        let cdpError = '';
+        let walletAddress = '';
+        try {
+          if (cdpClient) {
+            const accts = await cdpClient.listAccounts({ pageSize: 1 });
+            cdpStatus = 'connected';
+            if (accts?.accounts?.length > 0) {
+              walletAddress = (accts.accounts[0] as any).address || 'found but no address';
+            }
+          } else {
+            cdpStatus = 'not_initialized';
+          }
+        } catch (e: any) {
+          cdpStatus = 'error';
+          cdpError = e.message || String(e);
+          logError('CDP_CONNECTION_TEST', cdpError);
+        }
+
+        sendJSON(res, 200, {
+          version: '18.1.0',
+          cdp: {
+            status: cdpStatus,
+            error: cdpError || undefined,
+            walletAddress: walletAddress || undefined,
+            apiKeyId: apiKeyId ? `${apiKeyId.substring(0, 8)}...${apiKeyId.substring(apiKeyId.length - 4)}` : 'NOT SET',
+            apiKeySecretType: !apiKeySecret ? 'NOT SET'
+              : apiKeySecret.startsWith('-----') ? 'PEM/ECDSA'
+              : apiKeySecret.startsWith('MIGHAgEA') ? 'DER/EC_RAW_BASE64'
+              : apiKeySecret.length === 88 ? 'Ed25519'
+              : `unknown (${apiKeySecret.length} chars, starts: ${apiKeySecret.substring(0, 6)})`,
+            walletSecretPresent: !!walletSecret,
+            walletSecretLength: walletSecret.length || 0,
+          },
+          signalMode,
+          signalUrl: signalUrl || 'not configured',
+          env: {
+            NODE_ENV: process.env.NODE_ENV || 'not set',
+            SIGNAL_MODE: process.env.SIGNAL_MODE || 'not set',
+            ANTHROPIC_KEY_SET: !!process.env.ANTHROPIC_API_KEY,
+            hasPayoutRecipients: !!(CONFIG.autoHarvest?.recipients?.length),
+          },
+          uptime: process.uptime(),
+          totalCycles: state.totalCycles,
+          lastCycleTime: state.lastCycleTime || null,
+          tradingEnabled: CONFIG.trading.enabled,
+          memory: {
+            heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+            rssMB: Math.round(process.memoryUsage().rss / 1048576),
+          },
+        });
+        break;
+      }
+
       case '/api/daily-pnl':
         sendJSON(res, 200, apiDailyPnL());
         break;
