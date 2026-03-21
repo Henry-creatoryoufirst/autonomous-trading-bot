@@ -2180,6 +2180,11 @@ function checkCrashBuyingOverride(
 } {
   const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES, blueChipOnly: false, maxPositionPct: 100, requirePositiveBuyRatio: false };
 
+  // v18.2: Block crash buying override in extreme fear — capital preservation first
+  if (fearGreedValue < 25) {
+    return { ...inactive, reason: `Extreme fear (F&G=${fearGreedValue}) — crash buying override disabled, preserving capital` };
+  }
+
   // v17.0: Gate on cash level, not F&G. Need significant idle capital to override breaker.
   if (deploymentCheck.cashPercent < DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT) {
     return { ...inactive, reason: `Cash ${deploymentCheck.cashPercent.toFixed(1)}% below override threshold ${DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT}%` };
@@ -10474,10 +10479,16 @@ async function runTradingCycle() {
     // v11.4.19: threshold — if deployment mode is on, forced deploy fires too
     // v14.1: Now gated behind market momentum check to avoid buying into falling knives
     if (preAiCashPct > CASH_DEPLOYMENT_THRESHOLD_PCT && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
-      // v14.1: MOMENTUM GATE — Don't force-buy into falling markets
+      // v18.2: FEAR GATE — NEVER force-deploy cash in extreme fear. Capital preservation is non-negotiable.
       // SCALE_UP and RIDE_THE_WAVE are unaffected (they run independently below, are opportunity-based)
       let shouldForceDeploy = true;
-      if (CASH_DEPLOY_REQUIRES_MOMENTUM) {
+      const currentFearGreed = marketData?.fearGreed?.value ?? 50;
+      if (currentFearGreed < 25) {
+        console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
+        console.log(`   🛑 BLOCKED — Fear & Greed is ${currentFearGreed} (Extreme Fear). Capital preservation mode.`);
+        console.log(`   Cash is KING in extreme fear. SCALE_UP and RIDE_THE_WAVE still active for real opportunities.`);
+        shouldForceDeploy = false;
+      } else if (CASH_DEPLOY_REQUIRES_MOMENTUM) {
         const deployMomentum = calculateMarketMomentum();
         const btcEthAvgChange = (deployMomentum.btcChange24h + deployMomentum.ethChange24h) / 2;
         if (btcEthAvgChange < 0) {
@@ -10529,6 +10540,25 @@ async function runTradingCycle() {
           if (CDP_UNSUPPORTED_TOKENS.has(token)) continue;
           // Skip tokens blocked by circuit breaker (consecutive failures)
           if (isTokenBlocked(token)) continue;
+
+          // v18.2: SIGNAL QUALITY GATE — Don't force-buy into falling knives
+          const tokenIndicators = marketData?.indicators?.[token];
+          if (tokenIndicators) {
+            const confluence = tokenIndicators.confluenceScore ?? 0;
+            const macdSignal = tokenIndicators.macd?.signal;
+            const rsi = tokenIndicators.rsi14 ?? 50;
+            // Block: negative confluence + bearish MACD = falling knife
+            if (confluence < -10 && macdSignal === 'BEARISH') {
+              console.log(`   ⛔ FORCED_DEPLOY: Skipping ${token} — falling knife (confluence: ${confluence}, MACD: BEARISH)`);
+              continue;
+            }
+            // Block: deeply oversold RSI with bearish MACD = capitulation, don't catch
+            if (rsi < 30 && macdSignal === 'BEARISH') {
+              console.log(`   ⛔ FORCED_DEPLOY: Skipping ${token} — oversold capitulation (RSI: ${rsi.toFixed(1)}, MACD: BEARISH)`);
+              continue;
+            }
+          }
+
           const dedupKey = `${token}:BUY:FORCED_DEPLOY`;
           const lastExec = state.tradeDedupLog?.[dedupKey];
           const minutesSince = lastExec ? (Date.now() - new Date(lastExec).getTime()) / (1000 * 60) : Infinity;
