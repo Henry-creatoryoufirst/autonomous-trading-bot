@@ -104,7 +104,7 @@ export function runAgents(agents: MicroAgentFn[], input: MicroAgentInput): Swarm
   for (const vote of votes) {
     const voteDir = vote.action === 'HOLD' ? 'HOLD'
       : (vote.action === 'BUY' || vote.action === 'STRONG_BUY') ? 'BULLISH' : 'BEARISH';
-    if (voteDir === finalDirection || finalDirection === 'HOLD') agreeCount++;
+    if (voteDir === finalDirection) agreeCount++;
   }
   const consensus = votes.length > 0 ? Math.round((agreeCount / votes.length) * 100) : 0;
 

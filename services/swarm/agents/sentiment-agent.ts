@@ -64,10 +64,10 @@ export function sentimentAgent(input: MicroAgentInput): MicroAgentVote {
 
   // Map score to action
   let action: SwarmAction;
-  if (score >= 3) action = 'STRONG_BUY';
-  else if (score >= 1) action = 'BUY';
-  else if (score <= -3) action = 'STRONG_SELL';
-  else if (score <= -1) action = 'SELL';
+  if (score >= 4) action = 'STRONG_BUY';
+  else if (score >= 2) action = 'BUY';
+  else if (score <= -4) action = 'STRONG_SELL';
+  else if (score <= -2) action = 'SELL';
   else action = 'HOLD';
 
   confidence = Math.max(10, Math.min(100, confidence));

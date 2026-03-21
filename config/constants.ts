@@ -491,8 +491,7 @@ export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 80;
 /** Minimum USDC to always keep as reserve (gas + emergency buffer) */
 export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 150;
 
-/** Number of tokens to target per deployment cycle (spread across sectors)
- *  v11.4.13: Raised from 6 → 8 — more entries per cycle for maximum deployment speed */
+/** Number of tokens to target per deployment cycle (spread across sectors) */
 export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
 
 /** v14.1: Gate forced cash deployment behind market momentum check.
