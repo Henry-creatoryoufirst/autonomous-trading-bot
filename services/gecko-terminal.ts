@@ -46,6 +46,10 @@ const TRACKED_TOKENS: Record<string, string> = {
   'MORPHO':  '0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842',
   'PENDLE':  '0xa99F6E6785da0F5d6FB42495Fe424BCE029Eeb3E',
   'RSR':     '0xaB36452DbAC151bE02b16Ca17d8919826072f64a',
+  'cbLTC':   '0xcb17C9Db87B595717C857a08468793f5bAb6445F',
+  'cbXRP':   '0xcb585250f852C6c6bf90434AB21A00f02833a4af',
+  'CLANKER': '0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb',
+  'KEYCAT':  '0x9a26F5433671751C3276a065f57e5a02D2817973',
 };
 
 // Reverse lookup: address (lowercase) → symbol
@@ -314,8 +318,34 @@ export class GeckoTerminalService {
       errors.push(`new_pools: ${err.message?.substring(0, 100)}`);
     }
 
+    // --- 5. Per-token pool fetch for tokens missing from trending/top volume ---
+    // Without this, most held tokens get zero flow data and flow physics is blind.
+    const allPoolsSoFar = [...trendingPools, ...topVolumePools];
+    const coveredTokens = new Set<string>();
+    for (const pool of allPoolsSoFar) {
+      const sym = ADDRESS_TO_SYMBOL[pool.baseToken.address.toLowerCase()];
+      if (sym) coveredTokens.add(sym);
+    }
+
+    // Fetch top pool for each uncovered tracked token (max 8 per cycle to stay in rate limit)
+    const uncoveredTokens = Object.entries(TRACKED_TOKENS)
+      .filter(([sym]) => !coveredTokens.has(sym) && sym !== 'ETH' && sym !== 'WETH' && sym !== 'USDC')
+      .slice(0, 8);
+
+    for (const [sym, addr] of uncoveredTokens) {
+      try {
+        const data = await rateLimitedGet(
+          `${API_BASE}/networks/${NETWORK}/tokens/${addr}/pools?sort=h24_volume_usd_desc&page=1`
+        );
+        const tokenPools = (data.data || []).slice(0, 2).map(parsePool);
+        allPoolsSoFar.push(...tokenPools);
+      } catch (err: any) {
+        errors.push(`token_pools_${sym}: ${err.message?.substring(0, 80)}`);
+      }
+    }
+
     // --- Derive signals from raw data ---
-    const allPools = [...trendingPools, ...topVolumePools];
+    const allPools = allPoolsSoFar;
     const volumeSpikes = this.detectVolumeSpikes(allPools);
     const buySellPressure = this.analyzeBuySellPressure(allPools);
     const aiSummary = this.buildAISummary(trendingPools, tokenMetrics, volumeSpikes, buySellPressure, newPools);

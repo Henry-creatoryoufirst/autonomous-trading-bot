@@ -10791,6 +10791,63 @@ async function runTradingCycle() {
       decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
     }
 
+    // === v19.1: EXTREME FEAR BUY BLOCK ===
+    // In extreme fear (F&G < 20), block ALL new buy decisions. Only allow sells.
+    // Oversold indicators fail in sustained downtrends — stop buying falling knives.
+    const EXTREME_FEAR_THRESHOLD = 20;
+    if (fgValue < EXTREME_FEAR_THRESHOLD) {
+      const buyCount = decisions.filter(d => d.action === 'BUY').length;
+      if (buyCount > 0) {
+        console.log(`\n🚫 EXTREME FEAR BLOCK: Fear/Greed ${fgValue} < ${EXTREME_FEAR_THRESHOLD} — blocking ${buyCount} buy decisions. Sells only.`);
+        decisions = decisions.filter(d => d.action !== 'BUY');
+      }
+    }
+
+    // === v19.1: POSITION SPRAWL REDUCER ===
+    // Auto-sell small losing positions that lack flow data coverage.
+    // These are dead weight — can't make flow-based decisions without data.
+    {
+      const sprawlSells: TradeDecision[] = [];
+      const tokensWithFlowData = new Set<string>();
+      if (lastDexIntelligence) {
+        for (const p of lastDexIntelligence.buySellPressure) {
+          tokensWithFlowData.add(p.symbol);
+        }
+      }
+
+      for (const holding of balances) {
+        if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
+        if (!holding.usdValue || holding.usdValue < 1) continue;
+        if (holding.usdValue > 50) continue; // Only consolidate small positions
+
+        // Skip if we have flow data for this token
+        if (tokensWithFlowData.has(holding.symbol)) continue;
+
+        // Skip if position is profitable
+        const cb = state.costBasis[holding.symbol];
+        if (cb && cb.avgCostBasis > 0) {
+          const currentPrice = marketData.tokens.find(t => t.symbol === holding.symbol)?.price || 0;
+          if (currentPrice > 0 && currentPrice >= cb.avgCostBasis) continue; // In profit, keep it
+        }
+
+        // No flow data + small + losing = dead weight
+        console.log(`\n🧹 SPRAWL_REDUCE: ${holding.symbol} — $${holding.usdValue.toFixed(2)}, no flow data, losing position. Consolidating to USDC.`);
+        sprawlSells.push({
+          action: 'SELL',
+          fromToken: holding.symbol,
+          toToken: 'USDC',
+          amountUSD: holding.usdValue,
+          reasoning: `SPRAWL_REDUCE: ${holding.symbol} $${holding.usdValue.toFixed(2)} — no DEX flow data available, small losing position. Consolidating to free capital for positions with data coverage.`,
+          sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+        });
+      }
+
+      if (sprawlSells.length > 0) {
+        console.log(`\n🧹 SPRAWL REDUCER: ${sprawlSells.length} small blind positions being consolidated`);
+        decisions = [...sprawlSells, ...decisions];
+      }
+    }
+
     // === v16.0: PER-POSITION STOP-LOSS ENGINE ===
     // Fires BEFORE AI/swarm decisions. Hard stops protect capital from indefinite bleed.
     {
