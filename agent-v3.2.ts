@@ -1937,7 +1937,7 @@ function createCdpClient(): CdpClient {
   const secretSource = process.env.CDP_API_KEY_SECRET ? 'CDP_API_KEY_SECRET' : 'CDP_API_KEY_PRIVATE_KEY';
   console.log(`  🔑 CDP Auth: apiKeyId from ${envSource} (${apiKeyId.length} chars, starts with "${apiKeyId.substring(0, 8)}...")`);
   console.log(`  🔑 CDP Auth: apiKeySecret from ${secretSource} (${apiKeySecret.length} chars, type: ${apiKeySecret.length === 88 ? 'Ed25519' : apiKeySecret.startsWith('-----') ? 'PEM/ECDSA' : 'unknown'})`);
-  console.log(`  🔑 CDP Auth: walletSecret ${walletSecret ? `present (${walletSecret.length} chars, starts with "${walletSecret.substring(0, 8)}...")` : 'NOT SET - trades may fail'}`);
+  console.log(`  🔑 CDP Auth: walletSecret ${walletSecret ? `present (${walletSecret.length} chars)` : 'NOT SET - trades may fail'}`);
   console.log(`  🔑 Node.js: ${process.version} | NODE_OPTIONS: ${process.env.NODE_OPTIONS || 'not set'}`);
 
   return new CdpClient({
@@ -9320,6 +9320,7 @@ async function executeSingleSwap(
       },
     };
     state.tradeHistory.push(record);
+    if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
     // v11.4.20: Don't increment totalTrades for failed trades — was inflating the counter
     // totalTrades should only count successful executions (line 6967)
     saveTradeHistory();
@@ -9881,7 +9882,7 @@ async function produceSignals(): Promise<void> {
       fearGreedClassification: marketData.fearGreed.classification,
       signals,
       meta: {
-        version: '1.0.0',
+        version: BOT_VERSION,
         generatedAt: now.toISOString(),
         nextExpectedAt: nextExpected.toISOString(),
         ttlSeconds: Math.round(intervalMs / 1000) * 2,
@@ -12704,11 +12705,10 @@ function downsample(arr: number[], n: number): number[] {
   return result;
 }
 
-// v10.2: Auth token for sensitive endpoints (set API_AUTH_TOKEN env var, or defaults to random)
-const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN || '';
-if (!API_AUTH_TOKEN) console.warn('⚠️  API_AUTH_TOKEN not set — admin endpoints are unprotected');
+// v10.2: Auth token for sensitive endpoints. Auto-generates a random token if not set — never leave admin endpoints open.
+const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN || `auto-${Date.now()}-${Math.random().toString(36).substring(2, 14)}`;
+if (!process.env.API_AUTH_TOKEN) console.warn(`⚠️  API_AUTH_TOKEN not set — auto-generated token: ${API_AUTH_TOKEN} (set API_AUTH_TOKEN env var for stable access)`);
 function isAuthorized(req: http.IncomingMessage): boolean {
-  if (!API_AUTH_TOKEN) return true; // No token configured = open (backward-compat)
   const authHeader = req.headers['authorization'] || '';
   return authHeader === `Bearer ${API_AUTH_TOKEN}`;
 }
@@ -13501,6 +13501,7 @@ const healthServer = http.createServer(async (req, res) => {
         const isHealthy = inStartupGrace || (lastCycleAge < 600);
         sendJSON(res, isHealthy ? 200 : 503, {
           status: isHealthy ? "ok" : "degraded",
+          version: BOT_VERSION,
           uptimeSec: Math.round(uptimeSec),
           lastCycleAgeSec: Math.round(lastCycleAge),
           inStartupGrace,
@@ -13528,7 +13529,7 @@ const healthServer = http.createServer(async (req, res) => {
           tradeHistoryCount: state.tradeHistory.length,
           costBasisCount: Object.keys(state.costBasis).length,
           breakerStateLoaded: breakerState.dailyBaseline.value > 0,
-          version: '11.4.21',
+          version: BOT_VERSION,
         });
         break;
       }
@@ -13566,7 +13567,7 @@ const healthServer = http.createServer(async (req, res) => {
           errorsByType[errType] = (errorsByType[errType] || 0) + 1;
         }
         sendJSON(res, 200, {
-          version: '18.1.0',
+          version: BOT_VERSION,
           summary: {
             totalAttempted: state.trading.totalTrades + failedTrades.length,
             totalSuccessful: state.trading.totalTrades,
@@ -13599,17 +13600,15 @@ const healthServer = http.createServer(async (req, res) => {
         const walletSecret = process.env.CDP_WALLET_SECRET || '';
         const signalUrl = process.env.SIGNAL_URL || process.env.NVR_SIGNAL_URL || '';
 
-        // Test CDP connection
+        // Test CDP connection using the same method the bot uses for trading
         let cdpStatus = 'unknown';
         let cdpError = '';
         let walletAddress = '';
         try {
           if (cdpClient) {
-            const accts = await cdpClient.listAccounts({ pageSize: 1 });
+            const account = await cdpClient.evm.getOrCreateAccount({ name: process.env.CDP_ACCOUNT_NAME || 'nvr-trading' });
             cdpStatus = 'connected';
-            if (accts?.accounts?.length > 0) {
-              walletAddress = (accts.accounts[0] as any).address || 'found but no address';
-            }
+            walletAddress = (account as any).address || 'account found but no address field';
           } else {
             cdpStatus = 'not_initialized';
           }
@@ -13620,7 +13619,7 @@ const healthServer = http.createServer(async (req, res) => {
         }
 
         sendJSON(res, 200, {
-          version: '18.1.0',
+          version: BOT_VERSION,
           cdp: {
             status: cdpStatus,
             error: cdpError || undefined,
@@ -13724,7 +13723,7 @@ const healthServer = http.createServer(async (req, res) => {
       // === v6.2: ADAPTIVE CYCLE API ENDPOINT ===
       case '/api/adaptive':
         sendJSON(res, 200, {
-          version: '6.2',
+          version: BOT_VERSION,
           currentIntervalSec: adaptiveCycle.currentIntervalSec,
           volatilityLevel: adaptiveCycle.volatilityLevel,
           portfolioTier: adaptiveCycle.portfolioTier,
@@ -14619,6 +14618,7 @@ const healthServer = http.createServer(async (req, res) => {
                   reasoning: `Manual withdrawal: $${pending.amountUSD.toFixed(2)} ${pending.token} to ${pending.toAddress.slice(0, 6)}...${pending.toAddress.slice(-4)}`,
                   marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
                 } as TradeRecord);
+                if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
 
                 // Adjust peak value like payouts do (prevent false drawdown triggers)
                 if (state.trading.peakValue > pending.amountUSD) {
