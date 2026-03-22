@@ -285,6 +285,8 @@ import {
   DUST_CLEANUP_INTERVAL_CYCLES,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
+// v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
+import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger } from './services/trailing-stops.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
@@ -2049,6 +2051,75 @@ let lastHeavyCycleAt = 0;
 let lastPriceSnapshot: Map<string, number> = new Map();
 let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
+
+// === v19.3: CAPITAL PRESERVATION MODE ===
+// When F&G < 15 for >6 consecutive hours, throttle cycle frequency and only allow high-conviction trades.
+const PRESERVATION_FG_ACTIVATE = 15;   // Activate when F&G stays below this for 6h
+const PRESERVATION_FG_DEACTIVATE = 25; // Deactivate when F&G rises above this
+const PRESERVATION_RING_BUFFER_SIZE = 36; // 6 hours at 10-min cycles
+const PRESERVATION_CYCLE_MULTIPLIER = 10; // 10x slower cycles in preservation mode
+const PRESERVATION_MIN_CONFLUENCE = 80;   // Only trades with confluence > 80/100
+const PRESERVATION_MIN_SWARM_CONSENSUS = 80; // Or swarm consensus > 80%
+const PRESERVATION_TARGET_CASH_PCT = 50;  // Target 50%+ cash allocation
+
+const capitalPreservationMode: {
+  isActive: boolean;
+  activatedAt: number | null;
+  fearReadings: number[];          // ring buffer of last 36 readings
+  tradesBlocked: number;
+  tradesPassed: number;
+  deactivationCount: number;
+  lastUpdated: number;
+} = {
+  isActive: false,
+  activatedAt: null,
+  fearReadings: [],
+  tradesBlocked: 0,
+  tradesPassed: 0,
+  deactivationCount: 0,
+  lastUpdated: 0,
+};
+
+/**
+ * v19.3: Update capital preservation mode state based on current Fear & Greed reading.
+ * Call after every F&G fetch. Activates when F&G < 15 sustained for 6h, deactivates when F&G > 25.
+ */
+function updateCapitalPreservationMode(fgValue: number): void {
+  // Push to ring buffer
+  capitalPreservationMode.fearReadings.push(fgValue);
+  if (capitalPreservationMode.fearReadings.length > PRESERVATION_RING_BUFFER_SIZE) {
+    capitalPreservationMode.fearReadings.shift();
+  }
+  capitalPreservationMode.lastUpdated = Date.now();
+
+  if (capitalPreservationMode.isActive) {
+    // Deactivation check: F&G must rise above threshold
+    if (fgValue > PRESERVATION_FG_DEACTIVATE) {
+      console.log(`\n🟢 CAPITAL PRESERVATION MODE DEACTIVATED — F&G ${fgValue} > ${PRESERVATION_FG_DEACTIVATE}`);
+      console.log(`   Duration: ${capitalPreservationMode.activatedAt ? ((Date.now() - capitalPreservationMode.activatedAt) / 3600000).toFixed(1) : '?'}h | Blocked: ${capitalPreservationMode.tradesBlocked} | Passed: ${capitalPreservationMode.tradesPassed}`);
+      capitalPreservationMode.isActive = false;
+      capitalPreservationMode.activatedAt = null;
+      capitalPreservationMode.tradesBlocked = 0;
+      capitalPreservationMode.tradesPassed = 0;
+      capitalPreservationMode.deactivationCount++;
+    }
+  } else {
+    // Activation check: all readings in buffer must be < threshold AND buffer must be full
+    if (capitalPreservationMode.fearReadings.length >= PRESERVATION_RING_BUFFER_SIZE) {
+      const allBelowThreshold = capitalPreservationMode.fearReadings.every(r => r < PRESERVATION_FG_ACTIVATE);
+      if (allBelowThreshold) {
+        capitalPreservationMode.isActive = true;
+        capitalPreservationMode.activatedAt = Date.now();
+        capitalPreservationMode.tradesBlocked = 0;
+        capitalPreservationMode.tradesPassed = 0;
+        console.log(`\n🔴 CAPITAL PRESERVATION MODE ACTIVATED — F&G < ${PRESERVATION_FG_ACTIVATE} sustained for 6+ hours`);
+        console.log(`   Cycle frequency: ${PRESERVATION_CYCLE_MULTIPLIER}x slower | Min confluence: ${PRESERVATION_MIN_CONFLUENCE} | Target cash: ${PRESERVATION_TARGET_CASH_PCT}%`);
+        console.log(`   Scout seeding: DISABLED | Only high-conviction trades allowed`);
+      }
+    }
+  }
+}
+
 // v17.0: Store previous buy ratios for flow direction tracking
 let previousBuyRatios: Map<string, number> = new Map();
 let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
@@ -2374,9 +2445,16 @@ function computeNextInterval(currentPrices: Map<string, number>): {
     finalInterval = Math.min(finalInterval * 1.5, ADAPTIVE_MAX_INTERVAL_SEC);
   }
 
+  // v19.3: Capital preservation mode — 10x slower cycles to reduce trade frequency
+  let preservationNote = '';
+  if (capitalPreservationMode.isActive) {
+    finalInterval = finalInterval * PRESERVATION_CYCLE_MULTIPLIER;
+    preservationNote = ' | PRESERVATION MODE (10x)';
+  }
+
   const reason = vol.maxChange > 0
-    ? `${vol.level} volatility (${vol.fastestMover} ±${(vol.maxChange * 100).toFixed(1)}%) | ${tier} tier`
-    : `${vol.level} volatility | ${tier} tier`;
+    ? `${vol.level} volatility (${vol.fastestMover} ±${(vol.maxChange * 100).toFixed(1)}%) | ${tier} tier${preservationNote}`
+    : `${vol.level} volatility | ${tier} tier${preservationNote}`;
 
   return { intervalSec: Math.round(finalInterval), reason, volatilityLevel: vol.level };
 }
@@ -2641,6 +2719,160 @@ function calculateTradePerformance(): TradePerformanceStats {
     avgHoldingPeriod: "tracked per token via costBasis",
     profitFactor,
     winsByRegime: winsByRegime as any,
+  };
+}
+
+// ============================================================================
+// WIN RATE TRUTH DASHBOARD — Honest profitability metrics
+// ============================================================================
+
+interface RoundTripTrade {
+  token: string;
+  buyTimestamp: string;
+  sellTimestamp: string;
+  buyAmountUSD: number;
+  sellAmountUSD: number;
+  pnlUSD: number;
+  returnPercent: number;
+  holdDurationHours: number;
+}
+
+interface WinRateTruthData {
+  executionWinRate: number;
+  realizedWinRate: number;
+  profitFactor: number;
+  dailyWinRates: Array<{ date: string; winRate: number; trades: number; wins: number }>;
+  avgWinUSD: number;
+  avgLossUSD: number;
+  winLossRatio: number;
+  totalRoundTrips: number;
+  profitableRoundTrips: number;
+  grossProfitUSD: number;
+  grossLossUSD: number;
+  roundTrips: RoundTripTrade[];
+}
+
+/**
+ * Calculate honest win rate metrics by matching BUY -> SELL round-trips.
+ * Unlike the existing calculateTradePerformance() which uses current cost basis
+ * snapshots, this matches each SELL to its preceding BUY for the same token
+ * to compute actual realized profitability per round-trip.
+ */
+function calculateWinRateTruth(): WinRateTruthData {
+  // 1. Execution win rate: the existing "success" metric
+  const allActionableTrades = state.tradeHistory.filter(t => t.action !== "HOLD");
+  const successfulTrades = allActionableTrades.filter(t => t.success);
+  const executionWinRate = allActionableTrades.length > 0
+    ? (successfulTrades.length / allActionableTrades.length) * 100
+    : 0;
+
+  // 2. Build round-trip trades by matching BUYs to SELLs for the same token.
+  // For each SELL, find the most recent unmatched BUY for that token.
+  const roundTrips: RoundTripTrade[] = [];
+  const unmatchedBuys: Map<string, TradeRecord[]> = new Map(); // token -> stack of buys
+
+  // Process trades chronologically
+  const sortedTrades = [...state.tradeHistory]
+    .filter(t => t.success && (t.action === "BUY" || t.action === "SELL"))
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  for (const trade of sortedTrades) {
+    if (trade.action === "BUY") {
+      const token = trade.toToken;
+      if (!unmatchedBuys.has(token)) unmatchedBuys.set(token, []);
+      unmatchedBuys.get(token)!.push(trade);
+    } else if (trade.action === "SELL") {
+      const token = trade.fromToken;
+      const buyStack = unmatchedBuys.get(token);
+      if (buyStack && buyStack.length > 0) {
+        // Match with the earliest unmatched buy (FIFO)
+        const matchedBuy = buyStack.shift()!;
+        const pnlUSD = trade.amountUSD - matchedBuy.amountUSD;
+        const returnPercent = matchedBuy.amountUSD > 0
+          ? (pnlUSD / matchedBuy.amountUSD) * 100
+          : 0;
+        const holdMs = new Date(trade.timestamp).getTime() - new Date(matchedBuy.timestamp).getTime();
+        const holdDurationHours = Math.round((holdMs / (1000 * 60 * 60)) * 10) / 10;
+
+        roundTrips.push({
+          token,
+          buyTimestamp: matchedBuy.timestamp,
+          sellTimestamp: trade.timestamp,
+          buyAmountUSD: matchedBuy.amountUSD,
+          sellAmountUSD: trade.amountUSD,
+          pnlUSD: Math.round(pnlUSD * 100) / 100,
+          returnPercent: Math.round(returnPercent * 100) / 100,
+          holdDurationHours,
+        });
+      }
+      // If no matching buy found, this sell is from a pre-existing position — skip it
+    }
+  }
+
+  // 3. Compute realized win rate from round-trips
+  const profitableRoundTrips = roundTrips.filter(rt => rt.pnlUSD > 0).length;
+  const realizedWinRate = roundTrips.length > 0
+    ? (profitableRoundTrips / roundTrips.length) * 100
+    : 0;
+
+  // 4. Gross profits and losses
+  let grossProfitUSD = 0;
+  let grossLossUSD = 0;
+  const winPnLs: number[] = [];
+  const lossPnLs: number[] = [];
+
+  for (const rt of roundTrips) {
+    if (rt.pnlUSD > 0) {
+      grossProfitUSD += rt.pnlUSD;
+      winPnLs.push(rt.pnlUSD);
+    } else {
+      grossLossUSD += Math.abs(rt.pnlUSD);
+      lossPnLs.push(Math.abs(rt.pnlUSD));
+    }
+  }
+
+  const profitFactor = grossLossUSD > 0 ? grossProfitUSD / grossLossUSD : (grossProfitUSD > 0 ? Infinity : 0);
+
+  // 5. Average win / average loss
+  const avgWinUSD = winPnLs.length > 0
+    ? Math.round((winPnLs.reduce((s, v) => s + v, 0) / winPnLs.length) * 100) / 100
+    : 0;
+  const avgLossUSD = lossPnLs.length > 0
+    ? Math.round((lossPnLs.reduce((s, v) => s + v, 0) / lossPnLs.length) * 100) / 100
+    : 0;
+  const winLossRatio = avgLossUSD > 0 ? Math.round((avgWinUSD / avgLossUSD) * 100) / 100 : (avgWinUSD > 0 ? Infinity : 0);
+
+  // 6. Daily win rates for the last 7 days
+  const now = new Date();
+  const dailyWinRates: Array<{ date: string; winRate: number; trades: number; wins: number }> = [];
+  for (let d = 6; d >= 0; d--) {
+    const day = new Date(now);
+    day.setDate(day.getDate() - d);
+    const dateStr = day.toISOString().slice(0, 10);
+
+    const dayTrips = roundTrips.filter(rt => rt.sellTimestamp.slice(0, 10) === dateStr);
+    const dayWins = dayTrips.filter(rt => rt.pnlUSD > 0).length;
+    dailyWinRates.push({
+      date: dateStr,
+      winRate: dayTrips.length > 0 ? Math.round((dayWins / dayTrips.length) * 1000) / 10 : 0,
+      trades: dayTrips.length,
+      wins: dayWins,
+    });
+  }
+
+  return {
+    executionWinRate: Math.round(executionWinRate * 100) / 100,
+    realizedWinRate: Math.round(realizedWinRate * 100) / 100,
+    profitFactor: profitFactor === Infinity ? 999 : Math.round(profitFactor * 100) / 100,
+    dailyWinRates,
+    avgWinUSD,
+    avgLossUSD,
+    winLossRatio: winLossRatio === Infinity ? 999 : winLossRatio,
+    totalRoundTrips: roundTrips.length,
+    profitableRoundTrips,
+    grossProfitUSD: Math.round(grossProfitUSD * 100) / 100,
+    grossLossUSD: Math.round(grossLossUSD * 100) / 100,
+    roundTrips: roundTrips.slice(-50), // Last 50 round-trips for detail
   };
 }
 
@@ -9031,6 +9263,8 @@ async function executeDirectDexSwap(
       const tPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
       const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tPrice));
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
+      // v20.0: Clean up trailing stop after sell
+      removeTrailingStop(decision.fromToken);
     }
 
     // Record trade
@@ -10094,6 +10328,9 @@ async function runTradingCycle() {
     lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
     lastFearGreedValue = marketData.fearGreed.value;
 
+    // v19.3: Update capital preservation mode state
+    updateCapitalPreservationMode(marketData.fearGreed.value);
+
     // v11.4: Volume spike detection — flag tokens with volume ≥ VOLUME_SPIKE_THRESHOLD × 7d avg
     const volumeSpikes: { symbol: string; volumeChange: number }[] = [];
     for (const token of marketData.tokens) {
@@ -10905,6 +11142,68 @@ async function runTradingCycle() {
       }
     }
 
+    // === v19.3: CAPITAL PRESERVATION MODE — HIGH-CONVICTION FILTER ===
+    // When preservation mode is active, only allow trades with high confluence or high swarm consensus.
+    // Also prioritize sells over buys if cash is below 50% target.
+    if (capitalPreservationMode.isActive) {
+      const latestSwarm = getLatestSwarmDecisions();
+      const swarmConsensusMap = new Map<string, number>();
+      for (const sd of latestSwarm) {
+        swarmConsensusMap.set(sd.token, sd.consensus);
+      }
+
+      const _usdcBalPres = balances.find(b => b.symbol === 'USDC');
+      const cashPctPres = _usdcBalPres ? (_usdcBalPres.usdValue / (state.trading.totalPortfolioValue || 1)) * 100 : 0;
+      const belowCashTarget = cashPctPres < PRESERVATION_TARGET_CASH_PCT;
+
+      const preservationFiltered: TradeDecision[] = [];
+      let blockedCount = 0;
+
+      for (const d of decisions) {
+        if (d.action === 'HOLD') {
+          preservationFiltered.push(d);
+          continue;
+        }
+
+        // Always allow sells — capital preservation prioritizes raising cash
+        if (d.action === 'SELL') {
+          capitalPreservationMode.tradesPassed++;
+          preservationFiltered.push(d);
+          continue;
+        }
+
+        // For buys: require high confluence OR high swarm consensus
+        if (d.action === 'BUY') {
+          // If cash is below target, block all buys to raise cash allocation
+          if (belowCashTarget) {
+            console.log(`   🛡️ PRESERVATION: Blocking BUY ${d.toToken} — cash ${cashPctPres.toFixed(1)}% below ${PRESERVATION_TARGET_CASH_PCT}% target`);
+            capitalPreservationMode.tradesBlocked++;
+            blockedCount++;
+            continue;
+          }
+
+          const tokenInd = marketData.indicators[d.toToken];
+          const confluenceScore = tokenInd?.confluenceScore ?? 0;
+          const swarmConsensus = swarmConsensusMap.get(d.toToken) ?? 0;
+
+          if (confluenceScore >= PRESERVATION_MIN_CONFLUENCE || swarmConsensus >= PRESERVATION_MIN_SWARM_CONSENSUS) {
+            capitalPreservationMode.tradesPassed++;
+            preservationFiltered.push(d);
+            console.log(`   🛡️ PRESERVATION: Passing high-conviction BUY ${d.toToken} (confluence=${confluenceScore}, swarm=${swarmConsensus}%)`);
+          } else {
+            capitalPreservationMode.tradesBlocked++;
+            blockedCount++;
+            console.log(`   🛡️ PRESERVATION: Blocking low-conviction BUY ${d.toToken} (confluence=${confluenceScore} < ${PRESERVATION_MIN_CONFLUENCE}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
+          }
+        }
+      }
+
+      if (blockedCount > 0) {
+        console.log(`\n🛡️ CAPITAL PRESERVATION: Blocked ${blockedCount} low-conviction trades | Passed: ${preservationFiltered.filter(d => d.action !== 'HOLD').length} | Cash: ${cashPctPres.toFixed(1)}%`);
+      }
+      decisions = preservationFiltered;
+    }
+
     // === v19.1: POSITION SPRAWL REDUCER ===
     // Auto-sell small losing positions that lack flow data coverage.
     // These are dead weight — can't make flow-based decisions without data.
@@ -10950,8 +11249,59 @@ async function runTradingCycle() {
       }
     }
 
+    // === v20.0: ADAPTIVE EXIT TIMING ENGINE — ATR-based trailing stops ===
+    // PRIMARY exit mechanism. Updates trailing stops for every position every cycle.
+    // Asymmetric: wide trails for winners (let profits run), tight trails for losers (cut losses fast).
+    // Fires BEFORE fixed percentage stops — if trailing stop fires first, it takes priority.
+    {
+      const trailingStopDecisions: TradeDecision[] = [];
+
+      for (const holding of balances) {
+        if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
+        if (!holding.usdValue || holding.usdValue < 1) continue;
+
+        const cb = state.costBasis[holding.symbol];
+        if (!cb || !cb.averageCostBasis || cb.averageCostBasis <= 0) continue;
+
+        const currentPrice = marketData.tokens.find(t => t.symbol === holding.symbol)?.price || 0;
+        if (currentPrice <= 0) continue;
+
+        const gainPct = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+        const ind = marketData.indicators[holding.symbol];
+        const atrPct = ind?.atrPercent ?? null;
+
+        // Update trailing stop with latest price and ATR data
+        if (atrPct !== null && atrPct > 0) {
+          updateTrailingStop(holding.symbol, currentPrice, atrPct, gainPct, cb.averageCostBasis);
+
+          // Check if trailing stop has been hit
+          if (checkTrailingStopHit(holding.symbol, currentPrice)) {
+            const tsEntry = getTrailingStop(holding.symbol);
+            const zone = tsEntry?.zone || 'NEUTRAL';
+            const stopPrice = tsEntry?.currentStopPrice?.toFixed(6) || '?';
+            const hwm = tsEntry?.highWaterMark?.toFixed(6) || '?';
+            console.log(`\n📉 TRAILING_STOP: ${holding.symbol} hit trailing stop at $${stopPrice} (HWM: $${hwm}, zone: ${zone}, gain: ${gainPct.toFixed(1)}%, ATR: ${atrPct.toFixed(1)}%)`);
+            trailingStopDecisions.push({
+              action: 'SELL',
+              fromToken: holding.symbol,
+              toToken: 'USDC',
+              amountUSD: holding.usdValue,
+              reasoning: `TRAILING_STOP: ${holding.symbol} hit adaptive trailing stop at $${stopPrice} (HWM: $${hwm}, zone: ${zone}, P&L: ${gainPct.toFixed(1)}%, ATR: ${atrPct.toFixed(1)}%) — ${zone === 'LOSING' ? 'cutting losses fast' : 'protecting profits'}`,
+              sector: TOKEN_REGISTRY[holding.symbol]?.sector,
+            });
+          }
+        }
+      }
+
+      if (trailingStopDecisions.length > 0) {
+        console.log(`\n📉 TRAILING STOPS: ${trailingStopDecisions.length} adaptive trailing stop exits triggered`);
+        decisions = [...trailingStopDecisions, ...decisions];
+      }
+    }
+
     // === v16.0: PER-POSITION STOP-LOSS ENGINE ===
     // Fires BEFORE AI/swarm decisions. Hard stops protect capital from indefinite bleed.
+    // v20.0: These are now BACKSTOPS — trailing stops are the primary exit mechanism.
     {
       const stopLossDecisions: TradeDecision[] = [];
       const portfolioVal = state.trading.totalPortfolioValue;
@@ -10959,6 +11309,9 @@ async function runTradingCycle() {
       for (const holding of balances) {
         if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
         if (!holding.usdValue || holding.usdValue < 1) continue;
+
+        // v20.0: Skip if trailing stop already triggered for this token
+        if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('TRAILING_STOP'))) continue;
 
         const cb = state.costBasis[holding.symbol];
         if (!cb || !cb.avgCostBasis || cb.avgCostBasis <= 0) continue;
@@ -10969,7 +11322,7 @@ async function runTradingCycle() {
         const gainPct = ((currentPrice - cb.avgCostBasis) / cb.avgCostBasis) * 100;
         const positionPct = portfolioVal > 0 ? (holding.usdValue / portfolioVal) * 100 : 0;
 
-        // P0-1a: HARD STOP — position down more than 15% from cost basis
+        // P0-1a: HARD STOP — position down more than 15% from cost basis (backstop)
         if (gainPct < POSITION_HARD_STOP_PCT) {
           console.log(`\n🛑 HARD_STOP: ${holding.symbol} down ${gainPct.toFixed(1)}% from cost basis — max loss exceeded (threshold: ${POSITION_HARD_STOP_PCT}%)`);
           stopLossDecisions.push({
@@ -11032,7 +11385,8 @@ async function runTradingCycle() {
         if (holding.symbol === 'USDC' || holding.symbol === 'ETH' || holding.symbol === 'WETH') continue;
         if (!holding.usdValue || holding.usdValue < 3) continue;
 
-        // Skip if stop-loss already triggered for this token
+        // Skip if stop-loss or trailing stop already triggered for this token
+        if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('TRAILING_STOP'))) continue;
         if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('HARD_STOP'))) continue;
         if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('SOFT_STOP'))) continue;
         if (decisions.some(d => d.fromToken === holding.symbol && d.reasoning?.startsWith('CONCENTRATED_STOP'))) continue;
@@ -11100,12 +11454,13 @@ async function runTradingCycle() {
       const activeConfigDirectives = getActiveConfigDirectives();
 
       // Combine user directives and config directives
-      const allInstructions: { instruction: string; token?: string }[] = [];
+      // v20.0: Include createdAt for directive escalation — directives signaling sell for >24h on losing positions get priority 0.5
+      const allInstructions: { instruction: string; token?: string; createdAt?: string }[] = [];
       for (const d of activeDirectives) {
-        allInstructions.push({ instruction: d.instruction, token: d.token });
+        allInstructions.push({ instruction: d.instruction, token: d.token, createdAt: d.createdAt });
       }
       for (const cd of activeConfigDirectives) {
-        allInstructions.push({ instruction: cd.instruction });
+        allInstructions.push({ instruction: cd.instruction, createdAt: (cd as any).appliedAt });
       }
 
       // Parse for sell/exit action keywords
@@ -11150,18 +11505,41 @@ async function runTradingCycle() {
         const holding = balances.find(b => b.symbol === targetToken && b.usdValue && b.usdValue > 1);
         if (!holding) continue;
 
-        // Don't duplicate if stop-loss already covers this token
+        // Don't duplicate if stop-loss or trailing stop already covers this token
         if (decisions.some(d => d.action === 'SELL' && d.fromToken === targetToken)) continue;
 
-        console.log(`\n📋 DIRECTIVE_SELL: Executing directive to sell ${targetToken} — "${text.substring(0, 80)}"`);
-        directiveSellDecisions.push({
-          action: 'SELL',
-          fromToken: targetToken,
-          toToken: 'USDC',
-          amountUSD: holding.usdValue,
-          reasoning: `DIRECTIVE_SELL: User directive instructs selling ${targetToken} — "${text.substring(0, 60)}"`,
-          sector: TOKEN_REGISTRY[targetToken]?.sector,
-        });
+        // v20.0: DIRECTIVE ESCALATION — if directive has been signaling sell for >24h AND position is losing,
+        // escalate to immediate market sell with high priority. Fixes the PENDLE problem: directive signaling
+        // exit for 3 days with -$35.87 daily loss but position wasn't sold.
+        const directiveAgeMs = item.createdAt ? (Date.now() - new Date(item.createdAt).getTime()) : 0;
+        const directiveAgeHours = directiveAgeMs / (1000 * 60 * 60);
+        const dirCb = state.costBasis[targetToken];
+        const dirCurrentPrice = marketData.tokens.find(t => t.symbol === targetToken)?.price || 0;
+        const dirIsLosing = dirCb && dirCb.averageCostBasis > 0 && dirCurrentPrice > 0 && dirCurrentPrice < dirCb.averageCostBasis;
+        const isEscalated = directiveAgeHours > 24 && dirIsLosing;
+
+        if (isEscalated) {
+          const dirLossPct = dirCb && dirCb.averageCostBasis > 0 ? ((dirCurrentPrice - dirCb.averageCostBasis) / dirCb.averageCostBasis) * 100 : 0;
+          console.log(`\n🚨 DIRECTIVE_ESCALATED: ${targetToken} — directive active ${directiveAgeHours.toFixed(0)}h, position losing ${dirLossPct.toFixed(1)}%. IMMEDIATE SELL escalation.`);
+          directiveSellDecisions.push({
+            action: 'SELL',
+            fromToken: targetToken,
+            toToken: 'USDC',
+            amountUSD: holding.usdValue,
+            reasoning: `DIRECTIVE_SELL_ESCALATED: ${targetToken} — directive active ${directiveAgeHours.toFixed(0)}h with ${dirLossPct.toFixed(1)}% loss. Immediate exit — "${text.substring(0, 50)}"`,
+            sector: TOKEN_REGISTRY[targetToken]?.sector,
+          });
+        } else {
+          console.log(`\n📋 DIRECTIVE_SELL: Executing directive to sell ${targetToken} — "${text.substring(0, 80)}"`);
+          directiveSellDecisions.push({
+            action: 'SELL',
+            fromToken: targetToken,
+            toToken: 'USDC',
+            amountUSD: holding.usdValue,
+            reasoning: `DIRECTIVE_SELL: User directive instructs selling ${targetToken} — "${text.substring(0, 60)}"`,
+            sector: TOKEN_REGISTRY[targetToken]?.sector,
+          });
+        }
       }
 
       if (directiveSellDecisions.length > 0) {
@@ -11334,8 +11712,11 @@ async function runTradingCycle() {
       // --- v19.0: SCOUT SEEDING ---
       // Seed small $8 positions across tokens we don't hold yet.
       // Scouts are data-gathering probes, not investments. They provide real-time flow data.
+      // v19.3: Skip entirely in capital preservation mode — conserve every dollar.
       const scoutDecisions: TradeDecision[] = [];
-      {
+      if (capitalPreservationMode.isActive) {
+        console.log(`\n🛡️ PRESERVATION: Scout seeding SKIPPED — capital preservation mode active`);
+      } else {
         const heldSymbols = new Set(balances.filter(b => b.usdValue >= 1).map(b => b.symbol));
         const scoutCandidates = marketData.tokens.filter(t =>
           t.symbol !== 'USDC' && t.symbol !== 'ETH' && t.symbol !== 'WETH' &&
@@ -11460,9 +11841,11 @@ async function runTradingCycle() {
         const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
         switch (tier) {
           case 'HARD_STOP': return -1;   // v16.0: highest priority — absolute loss limit
+          case 'TRAILING_STOP': return -0.8; // v20.0: adaptive trailing stop — primary exit mechanism
           case 'SOFT_STOP': return -0.5;  // v16.0: approaching loss limit
           case 'CONCENTRATED_STOP': return -0.5; // v16.0: concentrated loser
           case 'STOP_LOSS': return 0;
+          case 'DIRECTIVE_SELL_ESCALATED': return 0.3; // v20.0: escalated directive — >24h sell signal on losing position
           case 'DIRECTIVE_SELL': return 0.5; // v16.0: user directive enforcement
           case 'FLOW_REVERSAL': return 0.7; // v19.0: flow physics exit — fires before momentum exit
           case 'MOMENTUM_EXIT': return 1;
@@ -13974,6 +14357,48 @@ const healthServer = http.createServer(async (req, res) => {
         });
         break;
       }
+      // === v19.3: CAPITAL PRESERVATION MODE API ===
+      case '/api/preservation': {
+        const _fgReadings = capitalPreservationMode.fearReadings;
+        const _fgAvg6h = _fgReadings.length > 0
+          ? _fgReadings.reduce((sum, v) => sum + v, 0) / _fgReadings.length
+          : null;
+        const _usdcBalPres = state.trading.balances.find(b => b.symbol === 'USDC');
+        const _portfolioTotal = state.trading.totalPortfolioValue || 0;
+        const _cashAllocationPct = _portfolioTotal > 0 && _usdcBalPres
+          ? (_usdcBalPres.usdValue / _portfolioTotal) * 100
+          : 0;
+        sendJSON(res, 200, {
+          isActive: capitalPreservationMode.isActive,
+          activatedAt: capitalPreservationMode.activatedAt
+            ? new Date(capitalPreservationMode.activatedAt).toISOString()
+            : null,
+          durationHours: capitalPreservationMode.activatedAt
+            ? ((Date.now() - capitalPreservationMode.activatedAt) / 3600000).toFixed(1)
+            : null,
+          currentFearGreed: lastFearGreedValue,
+          fearGreedAvg6h: _fgAvg6h !== null ? Math.round(_fgAvg6h * 10) / 10 : null,
+          fearGreedReadings: _fgReadings.length,
+          fearGreedBufferFull: _fgReadings.length >= PRESERVATION_RING_BUFFER_SIZE,
+          tradesBlocked: capitalPreservationMode.tradesBlocked,
+          tradesPassed: capitalPreservationMode.tradesPassed,
+          cashAllocationPct: Math.round(_cashAllocationPct * 10) / 10,
+          cashTargetPct: PRESERVATION_TARGET_CASH_PCT,
+          belowCashTarget: _cashAllocationPct < PRESERVATION_TARGET_CASH_PCT,
+          thresholds: {
+            activateBelow: PRESERVATION_FG_ACTIVATE,
+            deactivateAbove: PRESERVATION_FG_DEACTIVATE,
+            sustainedHours: 6,
+            cycleMultiplier: PRESERVATION_CYCLE_MULTIPLIER,
+            minConfluence: PRESERVATION_MIN_CONFLUENCE,
+            minSwarmConsensus: PRESERVATION_MIN_SWARM_CONSENSUS,
+          },
+          totalDeactivations: capitalPreservationMode.deactivationCount,
+          version: BOT_VERSION,
+        }, req);
+        break;
+      }
+
       case '/api/portfolio':
         sendJSON(res, 200, apiPortfolio());
         break;
@@ -14124,6 +14549,41 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/indicators':
         sendJSON(res, 200, apiIndicators());
         break;
+
+      // === v20.0: ADAPTIVE EXIT TIMING ENGINE — Trailing Stops API ===
+      case '/api/trailing-stops': {
+        const tsState = getTrailingStopState();
+        const balancesForTS = state.trading.balances || [];
+        sendJSON(res, 200, {
+          version: BOT_VERSION,
+          count: tsState.length,
+          stops: tsState.map(ts => {
+            const holding = balancesForTS.find(b => b.symbol === ts.symbol);
+            const currentPrice = holding?.price || 0;
+            const distanceToStop = currentPrice > 0 && ts.currentStopPrice > 0
+              ? ((currentPrice - ts.currentStopPrice) / currentPrice) * 100
+              : null;
+            return {
+              symbol: ts.symbol,
+              entryPrice: ts.entryPrice,
+              highWaterMark: ts.highWaterMark,
+              highWaterMarkDate: ts.highWaterMarkDate,
+              currentStopPrice: ts.currentStopPrice,
+              currentPrice,
+              distanceToStopPct: distanceToStop !== null ? Math.round(distanceToStop * 100) / 100 : null,
+              atrPercentUsed: ts.atrPercentUsed,
+              atrMultiplierUsed: ts.atrMultiplierUsed,
+              zone: ts.zone,
+              stopTriggered: ts.stopTriggered,
+              triggerPrice: ts.triggerPrice,
+              triggerDate: ts.triggerDate,
+              lastUpdated: ts.lastUpdated,
+            };
+          }),
+        });
+        break;
+      }
+
       case '/api/intelligence':
         sendJSON(res, 200, apiIntelligence());
         break;
@@ -14515,6 +14975,17 @@ const healthServer = http.createServer(async (req, res) => {
             lastTrigger: ts,
             hoursAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60) * 10) / 10,
           })),
+        });
+        break;
+      }
+
+      // Win Rate Truth Dashboard — honest profitability metrics
+      case '/api/win-rate-truth': {
+        const truth = calculateWinRateTruth();
+        sendJSON(res, 200, {
+          timestamp: new Date().toISOString(),
+          disclaimer: "executionWinRate counts successful API calls. realizedWinRate counts trades where sellPrice > buyPrice. The gap between these two numbers is the honesty gap.",
+          ...truth,
         });
         break;
       }
