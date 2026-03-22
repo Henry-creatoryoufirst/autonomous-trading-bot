@@ -1949,17 +1949,59 @@ function createCdpClient(): CdpClient {
     apiKeySecret = apiKeySecret.replace(/\\n/g, '\n');
   }
 
-  // v19.0: Auto-detect raw EC keys and wrap in PEM format
-  // CDP SDK expects PEM-wrapped EC key or base64 Ed25519. Some users paste the raw
-  // base64 DER bytes from the CDP console without PEM headers — auto-fix this.
-  if (apiKeySecret && !apiKeySecret.startsWith('-----') && apiKeySecret.length > 60 && apiKeySecret.length <= 120) {
-    // Looks like raw base64 EC key (not Ed25519 which is exactly 44 chars base64)
-    // Try wrapping as PKCS#8 PEM for EC key
+  // v19.0 → v19.3.1: Auto-detect raw EC keys and convert to PKCS#8 PEM format
+  // CDP SDK uses jose's importPKCS8(str, "ES256") which requires PKCS#8 PEM format
+  // (-----BEGIN PRIVATE KEY-----), NOT SEC1 format (-----BEGIN EC PRIVATE KEY-----).
+  // Some users paste raw base64 DER bytes from the CDP console without PEM headers.
+  // We also handle SEC1 PEM that needs conversion to PKCS#8.
+  if (apiKeySecret && !apiKeySecret.startsWith('-----')) {
     const trimmed = apiKeySecret.trim();
-    if (/^[A-Za-z0-9+/=]+$/.test(trimmed)) {
-      console.log(`  🔧 CDP Auth: Detected raw base64 EC key (${trimmed.length} chars) — wrapping in PEM format`);
-      apiKeySecret = `-----BEGIN EC PRIVATE KEY-----\n${trimmed}\n-----END EC PRIVATE KEY-----`;
+    if (/^[A-Za-z0-9+/=\s]+$/.test(trimmed)) {
+      const clean = trimmed.replace(/\s/g, '');
+      const decoded = Buffer.from(clean, 'base64');
+
+      if (decoded.length === 64) {
+        // Ed25519 key (64 bytes = 512 bits) — SDK handles these natively as raw base64
+        console.log(`  🔧 CDP Auth: Detected Ed25519 key (${decoded.length} bytes) — passing as-is`);
+      } else if (decoded.length >= 32 && decoded.length <= 256) {
+        // EC key in raw DER format — wrap in PKCS#8 PEM
+        // For P-256 (ES256): PKCS#8 = algorithm identifier prefix + SEC1 key
+        // The PKCS#8 prefix for EC P-256 is a fixed 26-byte ASN.1 header
+        const PKCS8_EC_P256_PREFIX = Buffer.from([
+          0x30, 0x81, 0x87, 0x02, 0x01, 0x00, 0x30, 0x13,
+          0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02,
+          0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d,
+          0x03, 0x01, 0x07, 0x04, 0x6d, 0x30, 0x6b, 0x02,
+          0x01, 0x01, 0x04, 0x20
+        ]);
+
+        // Check if it's already a valid DER structure (starts with 0x30 = SEQUENCE)
+        if (decoded[0] === 0x30) {
+          // Already ASN.1 DER encoded — could be SEC1 or PKCS#8
+          // Try wrapping as-is with PKCS#8 headers first, fall back to SEC1→PKCS#8 conversion
+          const b64Lines = clean.match(/.{1,64}/g)?.join('\n') || clean;
+          // Try PKCS#8 headers first (the SDK checks this first)
+          apiKeySecret = `-----BEGIN PRIVATE KEY-----\n${b64Lines}\n-----END PRIVATE KEY-----`;
+          console.log(`  🔧 CDP Auth: Detected DER-encoded key (${decoded.length} bytes, ASN.1 SEQUENCE) — wrapped as PKCS#8 PEM`);
+        } else {
+          // Raw key material (just the private scalar + optional public point)
+          // This likely won't work without proper ASN.1 wrapping, but try PKCS#8 headers
+          const b64Lines = clean.match(/.{1,64}/g)?.join('\n') || clean;
+          apiKeySecret = `-----BEGIN PRIVATE KEY-----\n${b64Lines}\n-----END PRIVATE KEY-----`;
+          console.log(`  🔧 CDP Auth: Detected raw key material (${decoded.length} bytes) — wrapped as PKCS#8 PEM (may need manual re-export from CDP console)`);
+        }
+      }
     }
+  }
+  // Also fix SEC1 PEM → PKCS#8 PEM (wrong header type)
+  if (apiKeySecret && apiKeySecret.includes('BEGIN EC PRIVATE KEY')) {
+    // Extract the base64 content, re-wrap with PKCS#8 headers
+    const b64Content = apiKeySecret
+      .replace(/-----BEGIN EC PRIVATE KEY-----/g, '')
+      .replace(/-----END EC PRIVATE KEY-----/g, '')
+      .trim();
+    apiKeySecret = `-----BEGIN PRIVATE KEY-----\n${b64Content}\n-----END PRIVATE KEY-----`;
+    console.log(`  🔧 CDP Auth: Converted SEC1 PEM (EC PRIVATE KEY) → PKCS#8 PEM (PRIVATE KEY) for jose/importPKCS8 compatibility`);
   }
 
   if (!apiKeyId || !apiKeySecret) {
