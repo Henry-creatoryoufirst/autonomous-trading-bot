@@ -580,6 +580,7 @@ const CHAINLINK_FEEDS_BASE: Record<string, { feed: string; decimals: number }> =
   WETH:  { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Same as ETH
   cbBTC: { feed: "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", decimals: 8 },  // BTC/USD
   cbETH: { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Uses ETH feed as proxy
+  LINK:  { feed: "0x17CAb8FE31cA45e4684a1C8a7d0Ee4eE51790b84", decimals: 8 },  // LINK/USD
 };
 
 const CHAINLINK_ABI_FRAGMENT = "0x50d25bcd"; // latestAnswer() → int256
@@ -997,17 +998,34 @@ async function fetchChainlinkBTCPrice(): Promise<number> {
 }
 
 /**
+ * Fetch LINK/USD price from Chainlink oracle (single RPC call).
+ */
+async function fetchChainlinkLINKPrice(): Promise<number> {
+  try {
+    const result = await rpcCall('eth_call', [
+      { to: CHAINLINK_FEEDS_BASE.LINK.feed, data: CHAINLINK_ABI_FRAGMENT }, 'latest'
+    ]);
+    if (result && result !== '0x') {
+      const price = parseInt(result, 16) / Math.pow(10, CHAINLINK_FEEDS_BASE.LINK.decimals);
+      if (price > 0) return price;
+    }
+  } catch { /* fall through */ }
+  return lastKnownPrices['LINK']?.price || 0;
+}
+
+/**
  * Fetch all token prices on-chain in parallel.
- * Primary: DEX pool reads. Chainlink for ETH/BTC.
+ * Primary: DEX pool reads. Chainlink for ETH/BTC/LINK.
  */
 async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
   const prices = new Map<string, number>();
   prices.set('USDC', 1.0);
 
-  // Step 1: Get ETH and BTC prices from Chainlink (most reliable)
-  const [ethPrice, btcPrice] = await Promise.all([
+  // Step 1: Get ETH, BTC, and LINK prices from Chainlink (most reliable)
+  const [ethPrice, btcPrice, linkPrice] = await Promise.all([
     fetchChainlinkETHPrice(),
     fetchChainlinkBTCPrice(),
+    fetchChainlinkLINKPrice(),
   ]);
 
   if (ethPrice > 0) {
@@ -1016,6 +1034,9 @@ async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
   }
   if (btcPrice > 0) {
     prices.set('cbBTC', btcPrice);
+  }
+  if (linkPrice > 0) {
+    prices.set('LINK', linkPrice);
   }
 
   // Step 2: Fetch tokens paired with WETH/USDC (no dependency on other token prices)
@@ -2125,8 +2146,19 @@ const capitalPreservationMode: {
 /**
  * v19.3: Update capital preservation mode state based on current Fear & Greed reading.
  * Call after every F&G fetch. Activates when F&G < 15 sustained for 6h, deactivates when F&G > 25.
+ * v19.3.1: On first call (startup), if F&G is in extreme fear, pre-fill the ring buffer
+ * so preservation mode activates immediately instead of waiting 6 hours after every restart.
  */
 function updateCapitalPreservationMode(fgValue: number): void {
+  // v19.3.1: Startup pre-fill — if this is the first reading and F&G is already in extreme territory,
+  // assume it's been this way (market doesn't jump from 50 to 10 instantly). Fill buffer to activate immediately.
+  if (capitalPreservationMode.fearReadings.length === 0 && fgValue < PRESERVATION_FG_ACTIVATE) {
+    console.log(`\n🛡️ PRESERVATION STARTUP: F&G=${fgValue} already below ${PRESERVATION_FG_ACTIVATE} — pre-filling buffer for immediate activation`);
+    for (let i = 0; i < PRESERVATION_RING_BUFFER_SIZE - 1; i++) {
+      capitalPreservationMode.fearReadings.push(fgValue);
+    }
+  }
+
   // Push to ring buffer
   capitalPreservationMode.fearReadings.push(fgValue);
   if (capitalPreservationMode.fearReadings.length > PRESERVATION_RING_BUFFER_SIZE) {
@@ -8826,6 +8858,8 @@ async function executeTrade(
   const isSurgeEligible = isScaleUpTier && decision.reasoning?.includes('confirmed across');
   const dedupWindowMinutes = isSurgeEligible ? SURGE_DEDUP_WINDOW_MINUTES          // 3 min — surge mode
     : isScaleUpTier ? SCALE_UP_DEDUP_WINDOW_MINUTES        // 15 min (normal scale-up)
+    : dedupTier === 'TRAILING_STOP' ? DECEL_TRIM_DEDUP_WINDOW_MINUTES              // 3 min — trailing stop exits are urgent
+    : dedupTier === 'DIRECTIVE_SELL_ESCALATED' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES // 5 min — escalated directive sell
     : dedupTier === 'FLOW_REVERSAL' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES           // Same urgency as momentum exit
     : dedupTier === 'MOMENTUM_EXIT' ? MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES          // 5 min (was 1)
     : dedupTier === 'SCOUT' ? NORMAL_DEDUP_WINDOW_MINUTES                         // v19.0: scouts use normal window — don't re-scout same token
@@ -11323,11 +11357,13 @@ async function runTradingCycle() {
             const stopPrice = tsEntry?.currentStopPrice?.toFixed(6) || '?';
             const hwm = tsEntry?.highWaterMark?.toFixed(6) || '?';
             console.log(`\n📉 TRAILING_STOP: ${holding.symbol} hit trailing stop at $${stopPrice} (HWM: $${hwm}, zone: ${zone}, gain: ${gainPct.toFixed(1)}%, ATR: ${atrPct.toFixed(1)}%)`);
+            // Sell 95% of position to avoid "insufficient balance" from rounding/dust
+            const sellAmountUSD = Math.max(1, holding.usdValue * 0.95);
             trailingStopDecisions.push({
               action: 'SELL',
               fromToken: holding.symbol,
               toToken: 'USDC',
-              amountUSD: holding.usdValue,
+              amountUSD: sellAmountUSD,
               reasoning: `TRAILING_STOP: ${holding.symbol} hit adaptive trailing stop at $${stopPrice} (HWM: $${hwm}, zone: ${zone}, P&L: ${gainPct.toFixed(1)}%, ATR: ${atrPct.toFixed(1)}%) — ${zone === 'LOSING' ? 'cutting losses fast' : 'protecting profits'}`,
               sector: TOKEN_REGISTRY[holding.symbol]?.sector,
             });
