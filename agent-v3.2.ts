@@ -1875,7 +1875,7 @@ function parseHarvestRecipients(): HarvestRecipient[] {
 
 const CONFIG = {
   // Wallet
-  walletAddress: process.env.WALLET_ADDRESS || "0x55509AA76E2769eCCa5B4293359e3001dA16dd0F",
+  walletAddress: process.env.WALLET_ADDRESS || "0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1",
 
   // Trading Parameters
   trading: {
@@ -12772,11 +12772,11 @@ async function main() {
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
-      console.log(`\n  ⚠️ Note: CDP account address differs from WALLET_ADDRESS`);
-      console.log(`     CDP Account: ${account.address}`);
-      console.log(`     WALLET_ADDRESS: ${CONFIG.walletAddress}`);
-      console.log(`     Balance reads use WALLET_ADDRESS. Trades execute from CDP Account.`);
-      console.log(`     To align: update WALLET_ADDRESS=${account.address} in Railway vars.`);
+      console.log(`\n  🔧 AUTO-FIX: WALLET_ADDRESS mismatch detected — updating to CDP account address`);
+      console.log(`     Old WALLET_ADDRESS: ${CONFIG.walletAddress}`);
+      console.log(`     CDP Account (real): ${account.address}`);
+      console.log(`     All balance reads will now use the correct address.`);
+      CONFIG.walletAddress = account.address;
     }
 
     // Check fund status
