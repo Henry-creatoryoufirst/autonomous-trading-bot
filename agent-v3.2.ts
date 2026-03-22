@@ -2116,11 +2116,14 @@ let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
 
 // === v19.3: CAPITAL PRESERVATION MODE ===
-// When F&G < 15 for >6 consecutive hours, throttle cycle frequency and only allow high-conviction trades.
+// When F&G < 15 for >6 consecutive hours, only allow high-conviction trades.
+// v19.3.2: Removed cycle multiplier — bot ALWAYS cycles at normal speed.
+// Preservation mode filters WHAT trades happen, not HOW OFTEN the bot runs.
+// The bot needs to cycle fast to execute trailing stop sells and cut losses.
 const PRESERVATION_FG_ACTIVATE = 15;   // Activate when F&G stays below this for 6h
 const PRESERVATION_FG_DEACTIVATE = 25; // Deactivate when F&G rises above this
 const PRESERVATION_RING_BUFFER_SIZE = 36; // 6 hours at 10-min cycles
-const PRESERVATION_CYCLE_MULTIPLIER = 10; // 10x slower cycles in preservation mode
+const PRESERVATION_CYCLE_MULTIPLIER = 1; // v19.3.2: NO slowdown — always cycle at normal speed
 const PRESERVATION_MIN_CONFLUENCE = 80;   // Only trades with confluence > 80/100
 const PRESERVATION_MIN_SWARM_CONSENSUS = 80; // Or swarm consensus > 80%
 const PRESERVATION_TARGET_CASH_PCT = 50;  // Target 50%+ cash allocation
@@ -2187,7 +2190,7 @@ function updateCapitalPreservationMode(fgValue: number): void {
         capitalPreservationMode.tradesBlocked = 0;
         capitalPreservationMode.tradesPassed = 0;
         console.log(`\n🔴 CAPITAL PRESERVATION MODE ACTIVATED — F&G < ${PRESERVATION_FG_ACTIVATE} sustained for 6+ hours`);
-        console.log(`   Cycle frequency: ${PRESERVATION_CYCLE_MULTIPLIER}x slower | Min confluence: ${PRESERVATION_MIN_CONFLUENCE} | Target cash: ${PRESERVATION_TARGET_CASH_PCT}%`);
+        console.log(`   Cycle speed: NORMAL (sells always allowed) | Min buy confluence: ${PRESERVATION_MIN_CONFLUENCE} | Target cash: ${PRESERVATION_TARGET_CASH_PCT}%`);
         console.log(`   Scout seeding: DISABLED | Only high-conviction trades allowed`);
       }
     }
