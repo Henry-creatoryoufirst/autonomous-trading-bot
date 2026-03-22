@@ -580,7 +580,7 @@ const CHAINLINK_FEEDS_BASE: Record<string, { feed: string; decimals: number }> =
   WETH:  { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Same as ETH
   cbBTC: { feed: "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", decimals: 8 },  // BTC/USD
   cbETH: { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Uses ETH feed as proxy
-  LINK:  { feed: "0x17CAb8FE31cA45e4684a1C8a7d0Ee4eE51790b84", decimals: 8 },  // LINK/USD
+  LINK:  { feed: "0x17CAb8FE31E32f08326e5E27412894e49B0f9D65", decimals: 8 },  // LINK/USD (verified: data.chain.link/feeds/base/mainnet/link-usd)
 };
 
 const CHAINLINK_ABI_FRAGMENT = "0x50d25bcd"; // latestAnswer() → int256
@@ -8970,6 +8970,32 @@ async function executeTrade(
     }
   }
 
+  // v19.3.1: SELL BALANCE CAP — read actual on-chain balance before selling to prevent
+  // "Insufficient balance" errors that trigger circuit breakers and block tokens for 6 hours.
+  // The cached holding.usdValue can drift from on-chain reality after swaps, gas, or price changes.
+  if (decision.action === 'SELL' && decision.fromToken !== 'USDC') {
+    try {
+      const actualBalance = await getTokenBalance(decision.fromToken);
+      if (actualBalance > 0) {
+        const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 0;
+        if (tokenPrice > 0) {
+          const actualValueUSD = actualBalance * tokenPrice;
+          const cappedUSD = actualValueUSD * 0.95; // 5% buffer for rounding/dust
+          if (decision.amountUSD > cappedUSD && cappedUSD >= 1) {
+            console.log(`  📊 BALANCE CAP: ${decision.fromToken} sell capped $${decision.amountUSD.toFixed(2)} → $${cappedUSD.toFixed(2)} (on-chain: ${actualBalance.toFixed(8)} @ $${tokenPrice.toFixed(4)} = $${actualValueUSD.toFixed(2)})`);
+            decision.amountUSD = cappedUSD;
+          } else if (cappedUSD < 1) {
+            console.log(`  📊 BALANCE CAP: ${decision.fromToken} on-chain balance too small ($${actualValueUSD.toFixed(2)}) — skipping sell`);
+            tradeInFlight.delete(dedupKey);
+            return { success: false, error: `Balance too small: ${decision.fromToken} only $${actualValueUSD.toFixed(2)} on-chain` };
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn(`  ⚠️ BALANCE CAP: Failed to read ${decision.fromToken} balance — proceeding with cached amount ($${decision.amountUSD.toFixed(2)})`);
+    }
+  }
+
   // v11.4.17: try/finally ensures in-flight lock is always released
   try {
     // v8.1: Dynamic gas price check (replaces hardcoded $0.15)
@@ -9150,6 +9176,22 @@ async function executeDirectDexSwap(
       tokenIn = DEX_USDC;
       tokenOut = tokenAddress;
       fromDecimals = 6; // USDC decimals
+    }
+
+    // v19.3.1: Cap sell amount at actual on-chain balance to prevent "Insufficient balance"
+    if (isSell) {
+      try {
+        const actualBal = await getTokenBalance(tokenSymbol);
+        if (actualBal > 0) {
+          const tPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 1;
+          const actualValUSD = actualBal * tPrice;
+          const cappedUSD = actualValUSD * 0.95;
+          if (decision.amountUSD > cappedUSD && cappedUSD >= 1) {
+            console.log(`  📊 DEX BALANCE CAP: ${tokenSymbol} sell capped $${decision.amountUSD.toFixed(2)} → $${cappedUSD.toFixed(2)}`);
+            decision.amountUSD = cappedUSD;
+          }
+        }
+      } catch { /* proceed with original amount */ }
     }
 
     // Calculate the amount to swap
@@ -12213,9 +12255,14 @@ async function runTradingCycle() {
         const tradeResult = await executeTrade(decision, marketData);
 
         // v5.3.3: Track consecutive failures / clear on success
+        // v19.3.1: Skip circuit breaker for "Insufficient balance" — these are transient sync issues,
+        // not permanent routing failures. Blocking tokens for 6h over a balance mismatch is too aggressive.
         const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
-        if (!tradeResult.success) {
+        const isBalanceError = tradeResult.error?.includes('Insufficient balance') || tradeResult.error?.includes('Balance too small');
+        if (!tradeResult.success && !isBalanceError) {
           recordTradeFailure(tradeToken);
+        } else if (!tradeResult.success && isBalanceError) {
+          console.log(`  ℹ️ Balance error for ${tradeToken} — NOT triggering circuit breaker (transient issue)`);
         } else {
           clearTradeFailures(tradeToken);
           // v9.2 + v10.2: Deduct spent USDC + buffer for gas/slippage from remaining pool
