@@ -139,14 +139,25 @@ export function updateTrailingStop(
  */
 export function checkTrailingStopHit(symbol: string, currentPrice: number): boolean {
   const entry = trailingStops.get(symbol);
-  if (!entry || entry.stopTriggered) return false;
+  if (!entry) return false;
   if (entry.currentStopPrice <= 0) return false;
 
   if (currentPrice <= entry.currentStopPrice) {
-    entry.stopTriggered = true;
-    entry.triggerPrice = currentPrice;
-    entry.triggerDate = new Date().toISOString();
+    // Keep firing every cycle until the sell actually executes
+    // (removeTrailingStop is called after successful sell)
+    if (!entry.stopTriggered) {
+      entry.stopTriggered = true;
+      entry.triggerPrice = currentPrice;
+      entry.triggerDate = new Date().toISOString();
+    }
     return true;
+  }
+
+  // Price recovered above stop — reset trigger
+  if (entry.stopTriggered) {
+    entry.stopTriggered = false;
+    entry.triggerPrice = undefined;
+    entry.triggerDate = undefined;
   }
 
   return false;
