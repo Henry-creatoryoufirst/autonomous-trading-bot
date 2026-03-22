@@ -1875,7 +1875,7 @@ function parseHarvestRecipients(): HarvestRecipient[] {
 
 const CONFIG = {
   // Wallet
-  walletAddress: process.env.WALLET_ADDRESS || "0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1",
+  walletAddress: process.env.WALLET_ADDRESS || "0x55509AA76E2769eCCa5B4293359e3001dA16dd0F",
 
   // Trading Parameters
   trading: {
@@ -12772,11 +12772,13 @@ async function main() {
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
-      console.log(`\n  🔧 AUTO-FIX: WALLET_ADDRESS mismatch detected — updating to CDP account address`);
-      console.log(`     Old WALLET_ADDRESS: ${CONFIG.walletAddress}`);
-      console.log(`     CDP Account (real): ${account.address}`);
-      console.log(`     All balance reads will now use the correct address.`);
-      CONFIG.walletAddress = account.address;
+      console.log(`\n  ⚠️ WALLET MISMATCH: CDP account address differs from WALLET_ADDRESS`);
+      console.log(`     CDP Account: ${account.address}`);
+      console.log(`     WALLET_ADDRESS (where tokens live): ${CONFIG.walletAddress}`);
+      console.log(`     ❌ Trades will fail — CDP SDK is trying to swap from the wrong address.`);
+      console.log(`     The CDP API key may have changed, creating a new account.`);
+      console.log(`     Tokens need to be transferred from WALLET_ADDRESS to the CDP account,`);
+      console.log(`     or the CDP API key needs to be restored to the one that controls WALLET_ADDRESS.`);
     }
 
     // Check fund status
