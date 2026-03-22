@@ -9200,6 +9200,19 @@ async function executeDirectDexSwap(
       const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 1;
       const tokenAmount = decision.amountUSD / tokenPrice;
       fromAmount = parseUnits(tokenAmount.toFixed(Math.min(fromDecimals, 8)), fromDecimals);
+
+      // v19.3.2: TOKEN-LEVEL BALANCE CAP for DEX sells
+      try {
+        const onChainBal = await getTokenBalance(tokenSymbol);
+        if (onChainBal > 0) {
+          const maxFrom = parseUnits((onChainBal * 0.95).toFixed(Math.min(fromDecimals, 8)), fromDecimals);
+          if (fromAmount > maxFrom) {
+            console.log(`  📊 DEX TOKEN CAP: ${tokenSymbol} sell capped ${formatUnits(fromAmount, fromDecimals)} → ${formatUnits(maxFrom, fromDecimals)} tokens`);
+            fromAmount = maxFrom;
+            decision.amountUSD = onChainBal * 0.95 * tokenPrice;
+          }
+        }
+      } catch { /* proceed */ }
     } else {
       fromAmount = parseUnits(decision.amountUSD.toFixed(6), 6);
     }
@@ -9479,6 +9492,20 @@ async function executeSingleSwap(
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
       const tokenAmount = decision.amountUSD / tokenPrice;
       fromAmount = parseUnits(tokenAmount.toFixed(Math.min(fromDecimals, 8)), fromDecimals);
+
+      // v19.3.2: TOKEN-LEVEL BALANCE CAP — read actual on-chain balance and cap fromAmount
+      // This prevents "Insufficient balance" errors when cached balance drifts from on-chain reality
+      try {
+        const onChainBalance = await getTokenBalance(decision.fromToken);
+        if (onChainBalance > 0) {
+          const maxFromAmount = parseUnits((onChainBalance * 0.95).toFixed(Math.min(fromDecimals, 8)), fromDecimals);
+          if (fromAmount > maxFromAmount) {
+            console.log(`  📊 TOKEN CAP: ${decision.fromToken} sell capped ${formatUnits(fromAmount, fromDecimals)} → ${formatUnits(maxFromAmount, fromDecimals)} tokens (on-chain: ${onChainBalance.toFixed(8)})`);
+            fromAmount = maxFromAmount;
+            decision.amountUSD = onChainBalance * 0.95 * tokenPrice;
+          }
+        }
+      } catch { /* proceed with calculated amount */ }
     }
 
     console.log(`\n  🔄 EXECUTING TRADE via CDP SDK (CoinbaseSmartWallet):`);
@@ -10900,7 +10927,8 @@ async function runTradingCycle() {
         slCb.peakPriceDate = new Date().toISOString();
       }
       if (!slResult.success) {
-        recordTradeFailure(stopLossDecision.fromToken);
+        const slBalErr = slResult.error?.includes('Insufficient balance') || slResult.error?.includes('Balance too small');
+        if (!slBalErr) recordTradeFailure(stopLossDecision.fromToken);
       } else {
         clearTradeFailures(stopLossDecision.fromToken);
       }
@@ -10983,7 +11011,8 @@ async function runTradingCycle() {
         console.log(`\n  🎯 PROFIT-TAKE GUARD executing sell...`);
         const ptResult = await executeTrade(profitTakeDecision, marketData);
         if (!ptResult.success) {
-          recordTradeFailure(profitTakeDecision.fromToken);
+          const ptBalErr = ptResult.error?.includes('Insufficient balance') || ptResult.error?.includes('Balance too small');
+          if (!ptBalErr) recordTradeFailure(profitTakeDecision.fromToken);
         } else {
           clearTradeFailures(profitTakeDecision.fromToken);
         }
