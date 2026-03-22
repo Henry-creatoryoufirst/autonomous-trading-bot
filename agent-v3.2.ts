@@ -2082,6 +2082,14 @@ let dexIntelFetchCount = 0;
 const decelStates: Record<string, DecelState> = {};
 const flowTimeframeState: FlowTimeframeState = createFlowTimeframeState();
 
+// === v19.2: DexScreener txn data cache — populated by price stream, covers ALL tokens ===
+// Stores latest h1 buy/sell counts from DexScreener for every tracked token.
+// Merged into buySellPressure after GeckoTerminal fetch to fill coverage gaps.
+const dexScreenerTxnCache: Record<string, {
+  h1Buys: number; h1Sells: number; h24Buys: number; h24Sells: number;
+  h1Buyers: number; h1Sellers: number; updatedAt: number;
+}> = {};
+
 // === v6.2: ADAPTIVE CYCLE ENGINE ===
 // Replaces fixed cron with dynamic setTimeout that adjusts to market conditions
 
@@ -2476,6 +2484,26 @@ function initPriceStream() {
                   scheduleNextCycle();
                 }
               }
+            }
+
+            // v19.2: Extract DexScreener transaction data for flow coverage on ALL tokens
+            // DexScreener returns txns.h1.buys/sells for every token — use it!
+            const txns = pair.txns;
+            if (txns?.h1) {
+              const h1Buys = txns.h1.buys || 0;
+              const h1Sells = txns.h1.sells || 0;
+              const totalH1 = h1Buys + h1Sells;
+              if (totalH1 >= 5) { // minimum activity threshold
+                const buyRatioPct = (h1Buys / totalH1) * 100;
+                recordFlowReading(flowTimeframeState, entry[0], buyRatioPct);
+              }
+              // Cache full txn data for buySellPressure merge
+              dexScreenerTxnCache[entry[0]] = {
+                h1Buys, h1Sells,
+                h24Buys: txns.h24?.buys || 0, h24Sells: txns.h24?.sells || 0,
+                h1Buyers: txns.h1.buys || 0, h1Sellers: txns.h1.sells || 0, // DexScreener doesn't separate unique buyers; use tx count
+                updatedAt: now,
+              };
             }
           }
         }
@@ -10113,6 +10141,80 @@ async function runTradingCycle() {
       console.log(`  ✅ DEX intel: ${lastDexIntelligence.tokenMetrics.length} tokens | ${spikes} volume spikes | ${pressure} pressure signals | ${lastDexIntelligence.errors.length} errors`);
     } catch (dexErr: any) {
       console.warn(`  ⚠️ DEX intelligence fetch failed: ${dexErr.message?.substring(0, 150)} — continuing without`);
+    }
+
+    // === v19.2: MERGE DEXSCREENER TXN DATA INTO BUYSELLPRESSURE ===
+    // GeckoTerminal only covers ~7 tokens via rotation. DexScreener price stream
+    // already fetches txn data for ALL 24 tokens every 10s. Merge to fill gaps.
+    if (lastDexIntelligence) {
+      const geckoSymbols = new Set(lastDexIntelligence.buySellPressure.map(p => p.symbol));
+      let mergedCount = 0;
+      for (const [sym, txn] of Object.entries(dexScreenerTxnCache)) {
+        if (geckoSymbols.has(sym)) continue; // GeckoTerminal already has this token
+        if (Date.now() - txn.updatedAt > 120_000) continue; // stale (>2min old)
+        const totalH1 = txn.h1Buys + txn.h1Sells;
+        const totalH24 = txn.h24Buys + txn.h24Sells;
+        if (totalH1 < 5 && totalH24 < 20) continue; // too low activity
+
+        const buyRatioH1 = totalH1 > 0 ? txn.h1Buys / totalH1 : 0.5;
+        const buyRatioH24 = totalH24 > 0 ? txn.h24Buys / totalH24 : 0.5;
+
+        let signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL' = 'NEUTRAL';
+        if (buyRatioH1 > 0.65 && buyRatioH24 > 0.55) signal = 'STRONG_BUY';
+        else if (buyRatioH1 > 0.55) signal = 'BUY_PRESSURE';
+        else if (buyRatioH1 < 0.35 && buyRatioH24 < 0.45) signal = 'STRONG_SELL';
+        else if (buyRatioH1 < 0.45) signal = 'SELL_PRESSURE';
+
+        lastDexIntelligence.buySellPressure.push({
+          symbol: sym,
+          h1Buys: txn.h1Buys, h1Sells: txn.h1Sells,
+          h1Buyers: txn.h1Buyers, h1Sellers: txn.h1Sellers,
+          h24Buys: txn.h24Buys, h24Sells: txn.h24Sells,
+          buyRatioH1: Math.round(buyRatioH1 * 100) / 100,
+          buyRatioH24: Math.round(buyRatioH24 * 100) / 100,
+          signal,
+        });
+        mergedCount++;
+      }
+      if (mergedCount > 0) {
+        console.log(`  📡 Flow coverage: ${geckoSymbols.size} GeckoTerminal + ${mergedCount} DexScreener = ${lastDexIntelligence.buySellPressure.length} total tokens with flow data`);
+      }
+    } else {
+      // GeckoTerminal completely failed — build buySellPressure entirely from DexScreener cache
+      const buySellPressure: any[] = [];
+      for (const [sym, txn] of Object.entries(dexScreenerTxnCache)) {
+        if (Date.now() - txn.updatedAt > 120_000) continue;
+        const totalH1 = txn.h1Buys + txn.h1Sells;
+        const totalH24 = txn.h24Buys + txn.h24Sells;
+        if (totalH1 < 5 && totalH24 < 20) continue;
+
+        const buyRatioH1 = totalH1 > 0 ? txn.h1Buys / totalH1 : 0.5;
+        const buyRatioH24 = totalH24 > 0 ? txn.h24Buys / totalH24 : 0.5;
+
+        let signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL' = 'NEUTRAL';
+        if (buyRatioH1 > 0.65 && buyRatioH24 > 0.55) signal = 'STRONG_BUY';
+        else if (buyRatioH1 > 0.55) signal = 'BUY_PRESSURE';
+        else if (buyRatioH1 < 0.35 && buyRatioH24 < 0.45) signal = 'STRONG_SELL';
+        else if (buyRatioH1 < 0.45) signal = 'SELL_PRESSURE';
+
+        buySellPressure.push({
+          symbol: sym,
+          h1Buys: txn.h1Buys, h1Sells: txn.h1Sells,
+          h1Buyers: txn.h1Buyers, h1Sellers: txn.h1Sellers,
+          h24Buys: txn.h24Buys, h24Sells: txn.h24Sells,
+          buyRatioH1: Math.round(buyRatioH1 * 100) / 100,
+          buyRatioH24: Math.round(buyRatioH24 * 100) / 100,
+          signal,
+        });
+      }
+      if (buySellPressure.length > 0) {
+        lastDexIntelligence = {
+          trendingPools: [], tokenMetrics: [], volumeSpikes: [],
+          buySellPressure, newPools: [], aiSummary: '',
+          timestamp: new Date().toISOString(), errors: ['GeckoTerminal failed — using DexScreener txn cache'],
+        };
+        console.log(`  📡 Flow coverage: 0 GeckoTerminal (failed) + ${buySellPressure.length} DexScreener = ${buySellPressure.length} total tokens with flow data`);
+      }
     }
 
     // === v19.0: RECORD FLOW READINGS FOR MULTI-TIMEFRAME AGGREGATION ===
