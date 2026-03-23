@@ -3873,6 +3873,13 @@ function loadTradeHistory() {
         state.trading.peakValue = parsed.peakValue || 0;
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
+        // v11.4.24: Restore lifetime trade counters (persisted separately from capped trade array)
+        if (parsed.lifetimeTotalTrades && parsed.lifetimeTotalTrades > state.trading.totalTrades) {
+          state.trading.totalTrades = parsed.lifetimeTotalTrades;
+        }
+        if (parsed.lifetimeSuccessfulTrades && parsed.lifetimeSuccessfulTrades > state.trading.successfulTrades) {
+          state.trading.successfulTrades = parsed.lifetimeSuccessfulTrades;
+        }
         // v11.4.12: Restore fields that were saved but never loaded back
         if (parsed.currentValue && parsed.currentValue > 0) state.trading.totalPortfolioValue = parsed.currentValue;
         if (parsed.sectorAllocations) state.trading.sectorAllocations = parsed.sectorAllocations;
@@ -4042,7 +4049,9 @@ function saveTradeHistory() {
       totalTrades: state.trading.totalTrades,
       successfulTrades: state.trading.successfulTrades,
       sectorAllocations: state.trading.sectorAllocations,
-      trades: state.tradeHistory.slice(-1000), // v11.4.12: Raised from 200 to 1000 — Kelly needs full rolling window
+      trades: state.tradeHistory.slice(-2500), // v11.4.24: Raised from 1000 to 2500 — Kelly needs full rolling window
+      lifetimeTotalTrades: state.trading.totalTrades,
+      lifetimeSuccessfulTrades: state.trading.successfulTrades,
       costBasis: state.costBasis,
       profitTakeCooldowns: state.profitTakeCooldowns,
       stopLossCooldowns: state.stopLossCooldowns,
@@ -4291,7 +4300,11 @@ function pairTransfersIntoTrades(
  * Resets all cost basis entries and replays trades chronologically.
  */
 function rebuildCostBasisFromTrades(trades: TradeRecord[]): void {
-  // Reset all cost basis
+  // Preserve accumulated realizedPnL before rebuilding
+  const preservedPnL: Record<string, number> = {};
+  for (const [sym, cb] of Object.entries(state.costBasis)) {
+    preservedPnL[sym] = cb.realizedPnL;
+  }
   state.costBasis = {};
 
   // Replay trades in chronological order
@@ -4321,11 +4334,24 @@ function rebuildCostBasisFromTrades(trades: TradeRecord[]): void {
         cb.totalInvestedUSD = Math.max(0, cb.totalInvestedUSD * (1 - proportionSold));
         cb.totalTokensAcquired = Math.max(0, cb.totalTokensAcquired - tokens);
         cb.lastTradeDate = trade.timestamp;
+      } else if (tokens > 0) {
+        // No matching buy in history — cannot compute P&L, skip silently
+        cb.currentHolding = Math.max(0, cb.currentHolding - tokens);
       }
     }
     if (trade.action === 'BUY' || trade.action === 'SELL') {
       totalTrades++;
       if (trade.success) successfulTrades++;
+    }
+  }
+
+  // Restore preserved P&L for tokens that had it
+  for (const [sym, pnl] of Object.entries(preservedPnL)) {
+    if (state.costBasis[sym] && pnl !== 0) {
+      // Only add back if the rebuild didn't already compute a value
+      if (state.costBasis[sym].realizedPnL === 0) {
+        state.costBasis[sym].realizedPnL = pnl;
+      }
     }
   }
 
@@ -4489,12 +4515,13 @@ function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceiv
   cb.totalTokensAcquired += tokensReceived;
   cb.averageCostBasis = cb.totalTokensAcquired > 0 ? cb.totalInvestedUSD / cb.totalTokensAcquired : 0;
 
-  // v11.4.15: Sanity check — if avgCostBasis is >10x market price, it's corrupted. Reset.
+  // v11.4.15: Sanity check — if avgCostBasis is >20x market price, it's corrupted. Reset.
   const currentPrice = lastKnownPrices[symbol]?.price || lastKnownPrices[symbol === 'ETH' ? 'WETH' : symbol]?.price || 0;
-  if (currentPrice > 0 && cb.averageCostBasis > currentPrice * 10) {
-    console.warn(`     🔧 SANITY RESET: ${symbol} avgCost $${cb.averageCostBasis.toFixed(2)} is ${(cb.averageCostBasis / currentPrice).toFixed(0)}x market $${currentPrice.toFixed(4)} — resetting`);
+  if (currentPrice > 0 && cb.averageCostBasis > currentPrice * 20) {
+    const oldCost = cb.averageCostBasis;
     cb.averageCostBasis = currentPrice;
     cb.totalInvestedUSD = currentPrice * cb.totalTokensAcquired;
+    console.warn(`🔧 SANITY RESET: ${symbol} avgCost $${oldCost.toFixed(4)} -> $${currentPrice.toFixed(4)} (was ${(oldCost/currentPrice).toFixed(0)}x market). realizedPnL preserved: $${cb.realizedPnL.toFixed(2)}`);
   }
 
   cb.lastTradeDate = new Date().toISOString();
@@ -4503,6 +4530,14 @@ function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceiv
 
 function updateCostBasisAfterSell(symbol: string, amountUSD: number, tokensSold: number): number {
   const cb = getOrCreateCostBasis(symbol);
+
+  // If we have no cost basis for this token (lost on restart), treat as pure profit
+  if (cb.averageCostBasis <= 0 || cb.totalTokensAcquired <= 0) {
+    console.log(`  📊 P&L: No cost basis for ${symbol} — recording sell as $${amountUSD.toFixed(2)} pure revenue (P&L neutral)`);
+    cb.currentHolding = Math.max(0, cb.currentHolding - tokensSold);
+    return 0; // Don't record false P&L when cost basis is unknown
+  }
+
   // Realized P&L = (sell price per token - avg cost) * tokens sold
   const sellPricePerToken = tokensSold > 0 ? amountUSD / tokensSold : 0;
   const realizedPnL = (sellPricePerToken - cb.averageCostBasis) * tokensSold;
@@ -4525,14 +4560,15 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     (cb as any).currentPrice = currentPrice;
 
-    // v11.4.15: Sanity check — if avgCostBasis is absurdly high (>10x market), reset it.
+    // v11.4.15: Sanity check — if avgCostBasis is absurdly high (>20x market), reset it.
     // This catches corrupted cost basis from ETH/WETH balance mismatch or stale state.
-    if (currentPrice > 0 && cb.averageCostBasis > currentPrice * 10 && b.usdValue > 1) {
-      console.warn(`  🔧 COST BASIS RESET: ${b.symbol} avg $${cb.averageCostBasis.toFixed(2)} is ${(cb.averageCostBasis / currentPrice).toFixed(0)}x market $${currentPrice.toFixed(4)} — resetting to market price`);
+    if (currentPrice > 0 && cb.averageCostBasis > currentPrice * 20 && b.usdValue > 1) {
+      const oldCost = cb.averageCostBasis;
       cb.averageCostBasis = currentPrice;
       cb.totalInvestedUSD = currentPrice * cb.currentHolding;
       cb.totalTokensAcquired = cb.currentHolding;
       cb.unrealizedPnL = 0;
+      console.warn(`🔧 SANITY RESET: ${b.symbol} avgCost $${oldCost.toFixed(4)} -> $${currentPrice.toFixed(4)} (was ${(oldCost/currentPrice).toFixed(0)}x market). realizedPnL preserved: $${cb.realizedPnL.toFixed(2)}`);
     } else {
       cb.unrealizedPnL = cb.averageCostBasis > 0 ? (currentPrice - cb.averageCostBasis) * b.balance : 0;
     }
@@ -13040,15 +13076,13 @@ async function main() {
   (state as any)._recoveryStatus = 'disabled';
   console.log(`  ⏭️ On-chain recovery disabled — will re-enable after debug`);
 
-  // v11.4.20: Reconcile trade counter with actual trade history
-  // If totalTrades drifted from tradeHistory (failed-trade counting bug, crash during save, etc.), fix it
+  // v11.4.24: Log discrepancy between lifetime counters and capped trade history array, but do NOT
+  // overwrite lifetime counters — the trade array is capped at 2500 so it will always be smaller.
   const successfulInHistory = state.tradeHistory.filter(t => t.success).length;
   const totalInHistory = state.tradeHistory.length;
   if (state.trading.totalTrades !== totalInHistory || state.trading.successfulTrades !== successfulInHistory) {
-    console.log(`  🔧 Trade counter reconciliation: totalTrades ${state.trading.totalTrades} → ${totalInHistory}, successful ${state.trading.successfulTrades} → ${successfulInHistory}`);
-    state.trading.totalTrades = totalInHistory;
-    state.trading.successfulTrades = successfulInHistory;
-    saveTradeHistory();
+    console.log(`  ℹ️ Trade counter vs history: lifetime totalTrades=${state.trading.totalTrades} (history has ${totalInHistory}), lifetime successful=${state.trading.successfulTrades} (history has ${successfulInHistory})`);
+    console.log(`  ℹ️ This is expected — trade history array is capped at 2500, lifetime counters preserved separately`);
   }
 
   // v11.4.5: One-time cost basis migration — fix ETH cost basis from $55 → current market price.
