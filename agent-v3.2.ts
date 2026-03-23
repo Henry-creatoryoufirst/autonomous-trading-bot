@@ -8060,6 +8060,49 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
 // v9.2.1: GAS BOOTSTRAP — Auto-buy ETH on first startup when wallet has USDC but no ETH
 // ============================================================================
 
+// v19.3.3: One-time rescue — transfer ETH from nvr-trading (0xf129) to henry-trading-bot (0xB7c51b)
+let gasRescueAttempted = false;
+async function rescueGasFromNvrTrading(): Promise<void> {
+  if (gasRescueAttempted) return;
+  gasRescueAttempted = true;
+  try {
+    const mainAccount = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+    const mainETH = await getETHBalance(mainAccount.address);
+
+    if (mainETH >= 0.001) {
+      console.log(`  [GAS RESCUE] Main wallet has ${mainETH.toFixed(6)} ETH — no rescue needed`);
+      return;
+    }
+
+    // Check if nvr-trading account has ETH we can rescue
+    const nvrAccount = await cdpClient.evm.getOrCreateAccount({ name: "nvr-trading" });
+    const nvrETH = await getETHBalance(nvrAccount.address);
+
+    if (nvrETH < 0.001) {
+      console.log(`  [GAS RESCUE] nvr-trading (${nvrAccount.address}) has ${nvrETH.toFixed(6)} ETH — nothing to rescue`);
+      return;
+    }
+
+    // Transfer 90% of nvr-trading ETH to main account (keep some for the tx fee)
+    const transferAmount = Math.floor((nvrETH * 0.9) * 1e18);
+    console.log(`\n  🚨 [GAS RESCUE] Transferring ${(transferAmount/1e18).toFixed(6)} ETH from nvr-trading → ${mainAccount.address}`);
+
+    const tx = await nvrAccount.sendTransaction({
+      network: "base",
+      transaction: {
+        to: mainAccount.address as `0x${string}`,
+        value: BigInt(transferAmount),
+      },
+    });
+
+    console.log(`  ✅ [GAS RESCUE] ETH transferred! TX: ${(tx as any).transactionHash || 'sent'}`);
+    const newBalance = await getETHBalance(mainAccount.address);
+    console.log(`  ✅ [GAS RESCUE] Main wallet ETH: ${newBalance.toFixed(6)}`);
+  } catch (err: any) {
+    console.warn(`  ⚠️ [GAS RESCUE] Failed: ${err?.message?.substring(0, 200) || 'Unknown'}`);
+  }
+}
+
 let gasBootstrapAttempted = false;
 
 async function bootstrapGas(): Promise<void> {
@@ -12752,6 +12795,7 @@ async function main() {
     // Runs once at startup before the first trading cycle
     if (CONFIG.trading.enabled) {
       try {
+        await rescueGasFromNvrTrading(); // v19.3.3: Rescue ETH from wrong account first
         await bootstrapGas();
       } catch (bootstrapErr: any) {
         console.warn(`  ⛽ [GAS BOOTSTRAP] Startup error: ${bootstrapErr?.message?.substring(0, 150)} — will retry on first cycle`);
@@ -14606,7 +14650,7 @@ const healthServer = http.createServer(async (req, res) => {
         let walletAddress = '';
         try {
           if (cdpClient) {
-            const account = await cdpClient.evm.getOrCreateAccount({ name: process.env.CDP_ACCOUNT_NAME || 'nvr-trading' });
+            const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
             cdpStatus = 'connected';
             walletAddress = (account as any).address || 'account found but no address field';
           } else {
