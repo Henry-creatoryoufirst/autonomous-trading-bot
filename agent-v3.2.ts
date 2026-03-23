@@ -14653,6 +14653,30 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       }
 
+      case '/api/accounts': {
+        // Temporary endpoint: list ALL CDP accounts to find wallet 0xB7c51b
+        try {
+          if (!cdpClient) { sendJSON(res, 500, { error: 'CDP not initialized' }); break; }
+          const allAccounts: any[] = [];
+          let listResp = await cdpClient.evm.listAccounts();
+          allAccounts.push(...listResp.accounts);
+          while (listResp.nextPageToken) {
+            listResp = await cdpClient.evm.listAccounts({ pageToken: listResp.nextPageToken });
+            allAccounts.push(...listResp.accounts);
+          }
+          sendJSON(res, 200, {
+            total: allAccounts.length,
+            accounts: allAccounts.map((a: any) => ({
+              name: a.name,
+              address: a.address,
+            })),
+          });
+        } catch (e: any) {
+          sendJSON(res, 500, { error: e.message });
+        }
+        break;
+      }
+
       case '/api/daily-pnl':
         sendJSON(res, 200, apiDailyPnL());
         break;
