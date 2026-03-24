@@ -2079,8 +2079,13 @@ const PRESERVATION_FG_ACTIVATE = 15;   // Activate when F&G stays below this for
 const PRESERVATION_FG_DEACTIVATE = 25; // Deactivate when F&G rises above this
 const PRESERVATION_RING_BUFFER_SIZE = 36; // 6 hours at 10-min cycles
 const PRESERVATION_CYCLE_MULTIPLIER = 1; // v19.3.2: NO slowdown — always cycle at normal speed
-const PRESERVATION_MIN_CONFLUENCE = 80;   // Only trades with confluence > 80/100
-const PRESERVATION_MIN_SWARM_CONSENSUS = 80; // Or swarm consensus > 80%
+// v19.6.1: REMOVED hard buy-block. The AI sees F&G data and should make its own decisions.
+// Old behavior: confluence >= 80 required (impossible bar = zero trades for days).
+// New behavior: reduce position sizes by 50% during extreme fear, but let the AI trade.
+// The circuit breaker is the real safety net, not a blunt F&G gate.
+const PRESERVATION_MIN_CONFLUENCE = 25;   // v19.6.1: Same as normal — let AI decide (was 80)
+const PRESERVATION_MIN_SWARM_CONSENSUS = 50; // v19.6.1: Reasonable bar, not impossible (was 80)
+const PRESERVATION_SIZE_MULTIPLIER = 0.5;  // v19.6.1: Half-size positions during extreme fear
 const PRESERVATION_TARGET_CASH_PCT = 50;  // Target 50%+ cash allocation
 
 const capitalPreservationMode: {
@@ -11494,29 +11499,30 @@ async function runTradingCycle() {
           continue;
         }
 
-        // For buys: require high confluence OR high swarm consensus
+        // v19.6.1: For buys during preservation — reduce size, don't block.
+        // The AI already sees F&G=11 in its prompt. Let it make decisions.
+        // Circuit breaker handles real risk. Preservation just sizes down.
         if (d.action === 'BUY') {
-          // If cash is below target, block all buys to raise cash allocation
-          if (belowCashTarget) {
-            console.log(`   🛡️ PRESERVATION: Blocking BUY ${d.toToken} — cash ${cashPctPres.toFixed(1)}% below ${PRESERVATION_TARGET_CASH_PCT}% target`);
-            capitalPreservationMode.tradesBlocked++;
-            blockedCount++;
-            continue;
-          }
-
           const tokenInd = marketData.indicators[d.toToken];
           const confluenceScore = tokenInd?.confluenceScore ?? 0;
           const swarmConsensus = swarmConsensusMap.get(d.toToken) ?? 0;
 
-          if (confluenceScore >= PRESERVATION_MIN_CONFLUENCE || swarmConsensus >= PRESERVATION_MIN_SWARM_CONSENSUS) {
-            capitalPreservationMode.tradesPassed++;
-            preservationFiltered.push(d);
-            console.log(`   🛡️ PRESERVATION: Passing high-conviction BUY ${d.toToken} (confluence=${confluenceScore}, swarm=${swarmConsensus}%)`);
-          } else {
+          // Only block if confluence is truly garbage AND swarm disagrees
+          if (confluenceScore < PRESERVATION_MIN_CONFLUENCE && swarmConsensus < PRESERVATION_MIN_SWARM_CONSENSUS) {
             capitalPreservationMode.tradesBlocked++;
             blockedCount++;
-            console.log(`   🛡️ PRESERVATION: Blocking low-conviction BUY ${d.toToken} (confluence=${confluenceScore} < ${PRESERVATION_MIN_CONFLUENCE}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
+            console.log(`   🛡️ PRESERVATION: Blocking weak BUY ${d.toToken} (confluence=${confluenceScore} < ${PRESERVATION_MIN_CONFLUENCE}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
+            continue;
           }
+
+          // Size reduction: half-size during extreme fear
+          if (d.amountUSD) {
+            const originalSize = d.amountUSD;
+            d.amountUSD = d.amountUSD * PRESERVATION_SIZE_MULTIPLIER;
+            console.log(`   🛡️ PRESERVATION: Sizing down BUY ${d.toToken} $${originalSize.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${PRESERVATION_SIZE_MULTIPLIER}x extreme fear)`);
+          }
+          capitalPreservationMode.tradesPassed++;
+          preservationFiltered.push(d);
         }
       }
 
