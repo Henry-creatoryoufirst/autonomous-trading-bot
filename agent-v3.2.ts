@@ -3752,6 +3752,7 @@ interface AgentState {
   lastReviewTimestamp: string | null;
   // v8.2: Deposit tracking — separate injected capital from trading gains
   totalDeposited: number;
+  onChainWithdrawn: number; // v19.5.0: On-chain verified total withdrawals
   lastKnownUSDCBalance: number;
   depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
   // v11.4.7: Safety guards
@@ -3822,10 +3823,11 @@ let state: AgentState = {
   explorationState: { ...DEFAULT_EXPLORATION_STATE },
   lastReviewTradeIndex: 0,
   lastReviewTimestamp: null,
-  // v13.0: Deposit tracking — starts at $0, deposits detected automatically from on-chain activity
+  // v19.5.0: Deposit tracking — detected from on-chain Blockscout data (source of truth)
   totalDeposited: 0,
+  onChainWithdrawn: 0,
   lastKnownUSDCBalance: 0,
-  depositHistory: [], // v13.0: No hardcoded deposit history — detected at runtime
+  depositHistory: [],
   // v10.0: Market Intelligence Engine — persisted historical data
   fundingRateHistory: { btc: [] as number[], eth: [] as number[] },
   btcDominanceHistory: { values: [] as { timestamp: string; dominance: number }[] },
@@ -3980,6 +3982,9 @@ function loadTradeHistory() {
         if (parsed._migrationCostBasisV1146) {
           (state as any)._migrationCostBasisV1146 = true;
         }
+        if (parsed._migrationPnLResetV1950) {
+          (state as any)._migrationPnLResetV1950 = true;
+        }
         // v11.4.7: Restore safety guard state (v11.4.17: bound to last 100)
         state.sanityAlerts = (parsed.sanityAlerts || []).slice(-100);
         state.tradeDedupLog = parsed.tradeDedupLog || {};
@@ -3992,12 +3997,13 @@ function loadTradeHistory() {
             }
           }
         }
-        // v13.0: Restore deposit tracking from state file. Fresh bots start at $0 with no deposit history.
+        // v19.5.0: Restore deposit tracking from state file (will be overwritten by on-chain truth on first cycle)
         state.totalDeposited = parsed.totalDeposited || 0;
+        state.onChainWithdrawn = parsed.onChainWithdrawn || 0;
         state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
         state.depositHistory = parsed.depositHistory || [];
         if (state.totalDeposited > 0) {
-          console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} total deposited (${state.depositHistory.length} deposits)`);
+          console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} deposited, $${state.onChainWithdrawn.toFixed(2)} withdrawn (${state.depositHistory.length} deposits)`);
         }
         // NVR-NL: Restore user directives and config directives
         state.userDirectives = parsed.userDirectives || [];
@@ -4083,8 +4089,9 @@ function saveTradeHistory() {
       tokenDiscovery: tokenDiscoveryEngine?.getState() || null,
       // v8.0: Persist institutional breaker state
       breakerState,
-      // v8.2: Deposit tracking
+      // v19.5.0: On-chain deposit/withdrawal tracking
       totalDeposited: state.totalDeposited,
+      onChainWithdrawn: state.onChainWithdrawn,
       lastKnownUSDCBalance: state.lastKnownUSDCBalance,
       depositHistory: state.depositHistory.slice(-50),
       // v10.0: Market Intelligence Engine historical data
@@ -4096,6 +4103,7 @@ function saveTradeHistory() {
       // v11.4.5-6: Migration flags
       _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
       _migrationCostBasisV1146: (state as any)._migrationCostBasisV1146 || false,
+      _migrationPnLResetV1950: (state as any)._migrationPnLResetV1950 || false,
       // v11.4.7: Safety guards
       sanityAlerts: (state.sanityAlerts || []).slice(-50),
       tradeDedupLog: state.tradeDedupLog || {},
@@ -4127,6 +4135,117 @@ function saveTradeHistory() {
 // v11.4.22: Blockscout (free, no API key) replaces deprecated Basescan V1 API
 const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
 // USDC_ADDRESS declared in v12.0 on-chain pricing block (line ~536)
+
+// ============================================================================
+// v19.5.0: ON-CHAIN DEPOSIT & WITHDRAWAL DETECTION
+// The blockchain is the source of truth for capital flows. This replaces the
+// flaky heuristic that tried to detect deposits from portfolio value jumps.
+// Queries Blockscout for all USDC transfers, identifies which are real deposits
+// (from external wallets, not DEX swaps) and real withdrawals (harvests/payouts
+// to external wallets, not trade executions).
+// ============================================================================
+
+interface OnChainCapitalFlows {
+  totalDeposited: number;
+  totalWithdrawn: number;
+  netCapitalIn: number;
+  deposits: Array<{ timestamp: string; amountUSD: number; from: string; txHash: string }>;
+  withdrawals: Array<{ timestamp: string; amountUSD: number; to: string; txHash: string }>;
+  lastUpdated: string;
+}
+
+// Cache to avoid hitting Blockscout every cycle — refresh every 10 minutes
+let cachedCapitalFlows: OnChainCapitalFlows | null = null;
+let capitalFlowsLastFetched = 0;
+const CAPITAL_FLOWS_CACHE_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * v19.5.0: Query Blockscout for all USDC transfers and separate real deposits/withdrawals
+ * from DEX swap legs. A deposit = USDC arriving from an external wallet in a transaction
+ * that has NO outgoing leg (not a swap). A withdrawal = USDC leaving to an external wallet
+ * in a transaction that has NO incoming non-USDC leg (not a swap).
+ */
+async function detectOnChainCapitalFlows(walletAddress: string, forceRefresh = false): Promise<OnChainCapitalFlows> {
+  // Return cache if fresh
+  if (!forceRefresh && cachedCapitalFlows && (Date.now() - capitalFlowsLastFetched) < CAPITAL_FLOWS_CACHE_MS) {
+    return cachedCapitalFlows;
+  }
+
+  const wallet = walletAddress.toLowerCase();
+  const transfers = await fetchBlockscoutTransfers(walletAddress);
+
+  // Group all transfers by transaction hash
+  const txGroups = new Map<string, BasescanTransfer[]>();
+  for (const t of transfers) {
+    const group = txGroups.get(t.hash) || [];
+    group.push(t);
+    txGroups.set(t.hash, group);
+  }
+
+  // Identify DEX/router addresses: any address that appears in a paired (swap) transaction
+  const dexRouters = new Set<string>();
+  for (const [, group] of txGroups) {
+    const hasIn = group.some(t => t.to.toLowerCase() === wallet);
+    const hasOut = group.some(t => t.from.toLowerCase() === wallet);
+    if (hasIn && hasOut) {
+      // This is a swap — mark all counterparty addresses as routers
+      for (const t of group) {
+        if (t.to.toLowerCase() !== wallet) dexRouters.add(t.to.toLowerCase());
+        if (t.from.toLowerCase() !== wallet) dexRouters.add(t.from.toLowerCase());
+      }
+    }
+  }
+
+  const deposits: OnChainCapitalFlows['deposits'] = [];
+  const withdrawals: OnChainCapitalFlows['withdrawals'] = [];
+
+  for (const t of transfers) {
+    if (t.contractAddress.toLowerCase() !== USDC_ADDRESS) continue;
+    const value = parseFloat(t.value) / Math.pow(10, parseInt(t.tokenDecimal));
+    if (value < 1) continue; // Skip dust
+
+    const txGroup = txGroups.get(t.hash) || [];
+    const timestamp = new Date(parseInt(t.timeStamp) * 1000).toISOString();
+
+    if (t.to.toLowerCase() === wallet) {
+      // Incoming USDC — is this a deposit or a swap return?
+      const hasOutgoing = txGroup.some(g => g.from.toLowerCase() === wallet);
+      const fromAddr = t.from.toLowerCase();
+      if (!hasOutgoing && !dexRouters.has(fromAddr)) {
+        // No outgoing leg + not from a known router = real deposit
+        deposits.push({ timestamp, amountUSD: value, from: fromAddr, txHash: t.hash });
+      }
+    } else if (t.from.toLowerCase() === wallet) {
+      // Outgoing USDC — is this a withdrawal/harvest or a swap buy?
+      const hasIncomingNonUSDC = txGroup.some(g =>
+        g.to.toLowerCase() === wallet && g.contractAddress.toLowerCase() !== USDC_ADDRESS
+      );
+      const toAddr = t.to.toLowerCase();
+      if (!hasIncomingNonUSDC && !dexRouters.has(toAddr)) {
+        // No incoming non-USDC leg + not to a known router = real withdrawal
+        withdrawals.push({ timestamp, amountUSD: value, to: toAddr, txHash: t.hash });
+      }
+    }
+  }
+
+  const totalDeposited = deposits.reduce((s, d) => s + d.amountUSD, 0);
+  const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amountUSD, 0);
+
+  const result: OnChainCapitalFlows = {
+    totalDeposited: Math.round(totalDeposited * 100) / 100,
+    totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
+    netCapitalIn: Math.round((totalDeposited - totalWithdrawn) * 100) / 100,
+    deposits,
+    withdrawals,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  cachedCapitalFlows = result;
+  capitalFlowsLastFetched = Date.now();
+  console.log(`  💰 [ON-CHAIN] Deposits: $${result.totalDeposited.toFixed(2)} (${deposits.length} txs) | Withdrawals: $${result.totalWithdrawn.toFixed(2)} (${withdrawals.length} txs) | Net: $${result.netCapitalIn.toFixed(2)}`);
+
+  return result;
+}
 
 // Reverse lookup: contract address → symbol
 const ADDRESS_TO_SYMBOL: Record<string, string> = {};
@@ -10760,27 +10879,39 @@ async function runTradingCycle() {
     // v12.2: Always update to actual value so dashboard matches sum of balances
     state.trading.totalPortfolioValue = newPortfolioValue;
 
-    // v11.4.21: DEPOSIT DETECTION — reliable approach using portfolio value jumps.
-    // Compare newPortfolioValue (this cycle's fully-priced total) vs prevValue (last cycle's total).
-    // If portfolio jumped by >$200 in a single cycle AND USDC increased, it's a deposit.
-    // Trading can't produce $200+ gains in one 3-minute cycle.
+    // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
+    // The blockchain is the source of truth. We query Blockscout for real USDC transfers
+    // and identify deposits vs swaps. Runs on a 10-minute cache to avoid API spam.
     const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
-    const portfolioJump = newPortfolioValue - prevValue; // v11.4.21: use correctly-scoped variables
-    const usdcJump = currentUSDCBalance - state.lastKnownUSDCBalance;
-    const DEPOSIT_THRESHOLD = 200; // Minimum jump to consider as deposit (trading does $80-$150 per position)
-    if (portfolioJump > DEPOSIT_THRESHOLD && usdcJump > DEPOSIT_THRESHOLD * 0.5 && prevValue > 0) {
-      // Likely a deposit — the portfolio and USDC both jumped significantly
-      const depositAmount = Math.round(portfolioJump);
-      console.log(`\n💰 DEPOSIT DETECTED: Portfolio jumped +$${portfolioJump.toFixed(2)} (USDC +$${usdcJump.toFixed(2)})`);
-      console.log(`   Registering deposit: $${depositAmount}`);
-      state.totalDeposited += depositAmount;
-      state.trading.peakValue += depositAmount;
-      state.depositHistory.push({
-        timestamp: new Date().toISOString(),
-        amountUSD: depositAmount,
-        newTotal: Math.round(state.totalDeposited * 100) / 100,
-      });
-      saveTradeHistory();
+    try {
+      const flows = await detectOnChainCapitalFlows(CONFIG.walletAddress);
+      // Update state with on-chain truth — overwrites any stale/wrong values
+      if (flows.totalDeposited > 0) {
+        const prevDeposited = state.totalDeposited;
+        state.totalDeposited = flows.totalDeposited;
+        state.onChainWithdrawn = flows.totalWithdrawn;
+        state.depositHistory = flows.deposits.map(d => ({
+          timestamp: d.timestamp,
+          amountUSD: Math.round(d.amountUSD * 100) / 100,
+          newTotal: 0, // Recalculated below
+        }));
+        // Recalculate running totals
+        let running = 0;
+        for (const d of state.depositHistory) {
+          running += d.amountUSD;
+          d.newTotal = Math.round(running * 100) / 100;
+        }
+        // If deposit total changed significantly, adjust peak to prevent false drawdown
+        if (Math.abs(state.totalDeposited - prevDeposited) > 50) {
+          state.trading.peakValue += (state.totalDeposited - prevDeposited);
+          if (state.trading.peakValue < state.trading.totalPortfolioValue) {
+            state.trading.peakValue = state.trading.totalPortfolioValue;
+          }
+        }
+      }
+    } catch (err: any) {
+      // Non-fatal — fall back to existing state values if Blockscout is down
+      console.warn(`  ⚠️ On-chain deposit detection failed: ${err.message?.substring(0, 100)}`);
     }
     state.lastKnownUSDCBalance = currentUSDCBalance;
 
@@ -13150,6 +13281,30 @@ async function main() {
     console.log(`✅ MIGRATION v11.4.6 complete\n`);
   }
 
+  // v19.5.0: One-time P&L reset — zero out corrupted realized P&L from months of cost basis bugs.
+  // The old data had inflated SANITY RESETs, truncated trade history losing buys, and zero-cost-basis
+  // sells producing hundreds of dollars in false losses. Start fresh with accurate tracking.
+  if (!(state as any)._migrationPnLResetV1950) {
+    console.log(`\n🔧 MIGRATION v19.5.0: Resetting corrupted realized P&L data...`);
+    let resetCount = 0;
+    for (const [symbol, cb] of Object.entries(state.costBasis)) {
+      if (cb.realizedPnL !== 0) {
+        console.log(`   ${symbol}: realizedPnL $${cb.realizedPnL.toFixed(2)} → $0.00`);
+        cb.realizedPnL = 0;
+        resetCount++;
+      }
+      // Also reset cost basis to current market price for dust positions
+      // to prevent false unrealized P&L on near-zero holdings
+      if (cb.currentHolding > 0 && cb.averageCostBasis > 0) {
+        const currentPrice = cb.averageCostBasis; // Will be corrected by next updateUnrealizedPnL cycle
+        cb.unrealizedPnL = 0;
+      }
+    }
+    (state as any)._migrationPnLResetV1950 = true;
+    saveTradeHistory();
+    console.log(`✅ MIGRATION v19.5.0: Reset realized P&L on ${resetCount} tokens. Clean slate.\n`);
+  }
+
   // Restore discovery state if available
   if (tokenDiscoveryEngine) {
     try {
@@ -13812,10 +13967,17 @@ function apiPortfolio() {
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
     version: BOT_VERSION,
-    // v8.2: Deposit tracking — separate injected capital from trading gains
+    // v19.5.0: On-chain verified capital flows (blockchain = source of truth)
     totalDeposited: state.totalDeposited,
+    totalWithdrawn: state.onChainWithdrawn,
+    netCapitalIn: Math.round((state.totalDeposited - state.onChainWithdrawn) * 100) / 100,
     depositCount: state.depositHistory.length,
     recentDeposits: state.depositHistory.slice(-5),
+    // v19.5.0: True P&L = current portfolio + withdrawn - deposited
+    truePnL: Math.round((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) * 100) / 100,
+    truePnLPercent: state.totalDeposited > 0
+      ? Math.round(((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) / state.totalDeposited) * 10000) / 100
+      : 0,
     // v6.2: Risk-reward metrics
     riskReward: {
       avgWinUSD: riskReward.avgWinUSD,
@@ -14590,6 +14752,26 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/portfolio':
         sendJSON(res, 200, apiPortfolio());
         break;
+      // v19.5.0: On-chain capital flows — blockchain source of truth
+      case '/api/capital-flows': {
+        try {
+          const flows = await detectOnChainCapitalFlows(CONFIG.walletAddress);
+          const currentPortfolio = state.trading.totalPortfolioValue;
+          sendJSON(res, 200, {
+            version: BOT_VERSION,
+            wallet: CONFIG.walletAddress,
+            ...flows,
+            currentPortfolio,
+            truePnL: Math.round((currentPortfolio + flows.totalWithdrawn - flows.totalDeposited) * 100) / 100,
+            truePnLPercent: flows.totalDeposited > 0
+              ? Math.round(((currentPortfolio + flows.totalWithdrawn - flows.totalDeposited) / flows.totalDeposited) * 10000) / 100
+              : 0,
+          });
+        } catch (e: any) {
+          sendJSON(res, 500, { error: e.message });
+        }
+        break;
+      }
       case '/api/balances':
         sendJSON(res, 200, apiBalances());
         break;
