@@ -121,6 +121,10 @@ import {
 } from './services/paper-trader.js';
 import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from './services/version-backtester.js';
 
+// === v19.6: STARTUP VALIDATION + TELEGRAM ALERTS ===
+import { runPreFlightChecks } from "./services/startup-checks.js";
+import { telegramService } from "./services/telegram.js";
+
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./services/cache-manager.js";
 import { CACHE_TTL } from "./config/constants.js";
@@ -6031,12 +6035,14 @@ function triggerCircuitBreaker(reason: string) {
   console.log(`   Reason: ${reason}`);
   console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
   console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
+  // v19.6: Telegram alert on circuit breaker
+  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(() => {});
 }
 
 /**
  * Record a trade result for consecutive loss tracking.
  */
-function recordTradeResultForBreaker(success: boolean, pnlUSD?: number) {
+function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDetails?: { token?: string; error?: string; action?: string }) {
   const isWin = success && (pnlUSD === undefined || pnlUSD >= 0);
   if (isWin) {
     breakerState.consecutiveLosses = 0; // Reset on win
@@ -6044,6 +6050,8 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number) {
     breakerState.consecutiveLosses++;
     console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
   }
+  // v19.6: Telegram trade failure tracking
+  telegramService.onTradeResult(success, tradeDetails).catch(() => {});
 
   // v10.4: Rolling window — track last N trade results regardless of outcome
   breakerState.rollingTradeResults.push(isWin);
@@ -10879,6 +10887,9 @@ async function runTradingCycle() {
     // v12.2: Always update to actual value so dashboard matches sum of balances
     state.trading.totalPortfolioValue = newPortfolioValue;
 
+    // v19.6: Telegram balance drop tracking (fire-and-forget)
+    telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
+
     // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
     // The blockchain is the source of truth. We query Blockscout for real USDC transfers
     // and identify deposits vs swaps. Runs on a 10-minute cache to avoid API spam.
@@ -12905,6 +12916,23 @@ async function main() {
     console.log("[SIGNAL MODE] Producer mode — skipping CDP wallet initialization");
   }
 
+  // === v19.6: PRE-FLIGHT CHECKS — Fail fast, not 14 hours later ===
+  const preFlightResults = await runPreFlightChecks(signalMode);
+  if (!preFlightResults.allPassed) {
+    const criticalNames = preFlightResults.criticalFailures.map(f => f.name).join(', ');
+    console.error(`\n🚫 CRITICAL pre-flight failures: ${criticalNames}`);
+    console.error(`   Bot will start in ANALYSIS-ONLY mode — no trades will execute.`);
+    console.error(`   Fix the above issues and redeploy.\n`);
+    // Notify via Telegram if available
+    await telegramService.sendAlert({
+      severity: "CRITICAL",
+      title: "Pre-Flight Check FAILED",
+      message: `Bot started but trading is DISABLED due to:\n${preFlightResults.criticalFailures.map(f => `- ${f.name}: ${f.message}`).join('\n')}`,
+    });
+    // Don't exit — allow analysis-only mode, but disable trading
+    CONFIG.trading.enabled = false;
+  }
+
   // Initialize CDP client with EOA account
   if (signalMode !== 'producer') try {
     console.log("\n🔧 Initializing CDP SDK...");
@@ -12933,13 +12961,19 @@ async function main() {
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
-      console.log(`\n  ⚠️ WALLET MISMATCH: CDP account address differs from WALLET_ADDRESS`);
-      console.log(`     CDP Account: ${account.address}`);
-      console.log(`     WALLET_ADDRESS (where tokens live): ${CONFIG.walletAddress}`);
-      console.log(`     ❌ Trades will fail — CDP SDK is trying to swap from the wrong address.`);
-      console.log(`     The CDP API key may have changed, creating a new account.`);
-      console.log(`     Tokens need to be transferred from WALLET_ADDRESS to the CDP account,`);
-      console.log(`     or the CDP API key needs to be restored to the one that controls WALLET_ADDRESS.`);
+      console.error(`\n  🚫 WALLET MISMATCH — TRADING DISABLED`);
+      console.error(`     CDP Account: ${account.address}`);
+      console.error(`     WALLET_ADDRESS (where tokens live): ${CONFIG.walletAddress}`);
+      console.error(`     ❌ Trades WILL fail — CDP SDK would swap from the wrong address.`);
+      console.error(`     The CDP API key may have changed, creating a new account.`);
+      console.error(`     Fix: Restore the correct CDP API key, or transfer tokens to ${account.address}`);
+      // v19.6: Hard stop — disable trading instead of silently failing for hours
+      CONFIG.trading.enabled = false;
+      await telegramService.sendAlert({
+        severity: "CRITICAL",
+        title: "WALLET MISMATCH — Trading Disabled",
+        message: `CDP account ${account.address.substring(0, 10)}... does not match WALLET_ADDRESS ${CONFIG.walletAddress.substring(0, 10)}...\n\nAll trades would fail. Trading has been disabled. Fix the CDP API key and redeploy.`,
+      });
     }
 
     // Check fund status
@@ -13421,6 +13455,38 @@ async function main() {
     }
   }
 
+  // v19.6: Daily P&L digest via Telegram — 11:00 AM UTC (7 AM EDT)
+  if (telegramService.isEnabled()) {
+    cron.schedule('0 11 * * *', async () => {
+      try {
+        const pv = state.trading.totalPortfolioValue || 0;
+        const dailyBase = breakerState.dailyBaseline.value || pv;
+        const dailyPnL = pv - dailyBase;
+        const dailyPnLPct = dailyBase > 0 ? (dailyPnL / dailyBase) * 100 : 0;
+
+        // Find today's trades
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayTrades = state.tradeHistory.filter(t =>
+          t.timestamp && t.timestamp.startsWith(todayStr)
+        );
+        const todayWins = todayTrades.filter(t => t.success).length;
+        const winRate = todayTrades.length > 0 ? (todayWins / todayTrades.length) * 100 : 0;
+
+        await telegramService.sendDailyDigest({
+          portfolioValue: pv,
+          dailyPnL,
+          dailyPnLPct,
+          totalTrades: todayTrades.length,
+          winRate,
+          fearGreedIndex: lastFearGreedValue || undefined,
+        });
+      } catch (err: any) {
+        console.warn(`[Telegram Digest] Error: ${err?.message?.substring(0, 200)}`);
+      }
+    }, { timezone: 'UTC' });
+    console.log(`  📊 Daily P&L digest: Telegram at 11:00 UTC (7 AM EDT)`);
+  }
+
   // Heartbeat every 5 minutes to confirm process is alive
   setInterval(() => {
     const lastTrade = state.tradeHistory.length > 0 ? state.tradeHistory[state.tradeHistory.length - 1] : null;
@@ -13468,11 +13534,17 @@ async function gracefulShutdown(signal: string): Promise<void> {
   console.log(`\n🛑 Received ${signal} — saving state before shutdown...`);
   try {
     saveTradeHistory();
-    console.log("   ✅ State saved successfully. Goodbye.");
+    console.log("   ✅ State saved successfully.");
   } catch (e: any) {
     console.error(`   ❌ Error saving state on shutdown: ${e.message}`);
   }
-  process.exit(0);
+  // v19.6: Telegram shutdown notification (best-effort, 3s timeout)
+  telegramService.onShutdown(`Received ${signal}`).catch(() => {}).finally(() => {
+    console.log("   Goodbye.");
+    process.exit(0);
+  });
+  // Fallback exit if Telegram takes too long
+  setTimeout(() => process.exit(0), 3000);
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
@@ -14937,6 +15009,49 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       }
 
+      // === v19.6: KILL SWITCH — Immediately halt all trading ===
+      case '/api/kill': {
+        if (req.method !== 'POST') {
+          sendJSON(res, 405, { error: 'POST required' });
+          break;
+        }
+        CONFIG.trading.enabled = false;
+        triggerCircuitBreaker('KILL SWITCH activated via /api/kill');
+        telegramService.onKillSwitch('API endpoint /api/kill').catch(() => {});
+        console.error('\n🛑 KILL SWITCH ACTIVATED — All trading halted');
+        sendJSON(res, 200, {
+          status: 'killed',
+          message: 'All trading halted immediately. Redeploy to resume.',
+          timestamp: new Date().toISOString(),
+        });
+        break;
+      }
+
+      // === v19.6: RESUME — Re-enable trading after kill switch ===
+      case '/api/resume': {
+        if (req.method !== 'POST') {
+          sendJSON(res, 405, { error: 'POST required' });
+          break;
+        }
+        CONFIG.trading.enabled = true;
+        breakerState.lastBreakerTriggered = null;
+        breakerState.lastBreakerReason = null;
+        breakerState.consecutiveLosses = 0;
+        breakerState.rollingTradeResults = [];
+        console.log('\n✅ TRADING RESUMED via /api/resume');
+        telegramService.sendAlert({
+          severity: "INFO",
+          title: "Trading Resumed",
+          message: "Kill switch deactivated via /api/resume. Trading is active again.",
+        }).catch(() => {});
+        sendJSON(res, 200, {
+          status: 'resumed',
+          message: 'Trading re-enabled. Circuit breaker reset.',
+          timestamp: new Date().toISOString(),
+        });
+        break;
+      }
+
       case '/api/daily-pnl':
         sendJSON(res, 200, apiDailyPnL());
         break;
@@ -16083,6 +16198,12 @@ const healthServer = http.createServer(async (req, res) => {
 });
 healthServer.listen(process.env.PORT || 3000, () => {
   console.log('Dashboard + API server running on port', process.env.PORT || 3000);
+  // v19.6: Telegram startup notification (fire-and-forget)
+  telegramService.onStartup(
+    BOT_VERSION,
+    state.trading.totalPortfolioValue,
+    CONFIG.walletAddress
+  ).catch(() => {});
 });
 
 // ============================================================================
