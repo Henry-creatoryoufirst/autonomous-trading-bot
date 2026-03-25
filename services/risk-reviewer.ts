@@ -70,14 +70,30 @@ export interface RiskReviewResult {
 // CONFIGURATION
 // ============================================================================
 
-/** Total severity threshold to BLOCK a trade */
+// Severity thresholds
 const BLOCK_THRESHOLD = 20;
-
-/** Total severity threshold to REDUCE trade size */
 const REDUCE_THRESHOLD = 10;
-
-/** Size reduction when severity is between REDUCE and BLOCK */
 const REDUCE_SIZE_MULTIPLIER = 0.5;
+
+// Buy check thresholds
+const PUMP_PRICE_CHANGE_PCT = 15;
+const PUMP_RSI_THRESHOLD = 70;
+const FALLING_KNIFE_CONFLUENCE = -15;
+const SELLER_DOMINATED_BUY_RATIO = 0.40;
+const EXTREME_GREED_FG = 80;
+const OVER_CONCENTRATED_PCT = 20;
+const ADDING_TO_LOSER_PCT = -10;
+const OVERSIZED_TRADE_PCT = 0.15;
+const HIGH_VOL_ATR_PCT = 8;
+const HIGH_VOL_MIN_CONFLUENCE = 30;
+const SUSTAINED_DOWNTREND_7D_PCT = -20;
+const LOW_CASH_PCT = 15;
+
+// Portfolio check thresholds
+const PORTFOLIO_DD_SEVERITY_PCT = 12;
+const CORRELATION_CRISIS_PCT = 70;
+const LOSING_STREAK_THRESHOLD = 4;
+const LOW_WIN_RATE_THRESHOLD = 0.35;
 
 // ============================================================================
 // RISK REVIEW ENGINE
@@ -134,7 +150,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   } = input;
 
   // 1. Chasing a pump — price already up big with overbought RSI
-  if ((priceChange24h ?? 0) > 15 && (rsi ?? 50) > 70) {
+  if ((priceChange24h ?? 0) > PUMP_PRICE_CHANGE_PCT && (rsi ?? 50) > PUMP_RSI_THRESHOLD) {
     objections.push({
       check: 'CHASING_PUMP',
       severity: 8,
@@ -143,7 +159,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 2. Bearish MACD with negative confluence — falling knife
-  if (macdSignal === 'BEARISH' && (confluenceScore ?? 0) < -15) {
+  if (macdSignal === 'BEARISH' && (confluenceScore ?? 0) < FALLING_KNIFE_CONFLUENCE) {
     objections.push({
       check: 'FALLING_KNIFE',
       severity: 7,
@@ -152,7 +168,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 3. Sellers dominating order flow
-  if (buyRatio !== undefined && buyRatio < 0.40) {
+  if (buyRatio !== undefined && buyRatio < SELLER_DOMINATED_BUY_RATIO) {
     objections.push({
       check: 'SELLER_DOMINATED',
       severity: 6,
@@ -161,7 +177,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 4. Extreme greed + buying — everyone else is already in
-  if ((fearGreedIndex ?? 50) > 80) {
+  if ((fearGreedIndex ?? 50) > EXTREME_GREED_FG) {
     objections.push({
       check: 'EXTREME_GREED',
       severity: 4,
@@ -172,7 +188,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   // 5. Position concentration — already have a big position in this token
   if (existingPositionUSD && portfolioValue > 0) {
     const positionPct = (existingPositionUSD / portfolioValue) * 100;
-    if (positionPct > 20) {
+    if (positionPct > OVER_CONCENTRATED_PCT) {
       objections.push({
         check: 'OVER_CONCENTRATED',
         severity: 6,
@@ -182,7 +198,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 6. Adding to a loser — existing position is underwater
-  if ((existingGainPct ?? 0) < -10 && (existingPositionUSD ?? 0) > 0) {
+  if ((existingGainPct ?? 0) < ADDING_TO_LOSER_PCT && (existingPositionUSD ?? 0) > 0) {
     objections.push({
       check: 'ADDING_TO_LOSER',
       severity: 5,
@@ -191,7 +207,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 7. Trade size too large relative to portfolio
-  if (portfolioValue > 0 && amountUSD > portfolioValue * 0.15) {
+  if (portfolioValue > 0 && amountUSD > portfolioValue * OVERSIZED_TRADE_PCT) {
     objections.push({
       check: 'OVERSIZED_TRADE',
       severity: 5,
@@ -200,7 +216,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 8. High volatility token without proportional confluence
-  if ((atrPercent ?? 0) > 8 && Math.abs(confluenceScore ?? 0) < 30) {
+  if ((atrPercent ?? 0) > HIGH_VOL_ATR_PCT && Math.abs(confluenceScore ?? 0) < HIGH_VOL_MIN_CONFLUENCE) {
     objections.push({
       check: 'HIGH_VOL_WEAK_SIGNAL',
       severity: 4,
@@ -209,7 +225,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 9. Sustained downtrend — 7d price significantly negative
-  if ((priceChange7d ?? 0) < -20) {
+  if ((priceChange7d ?? 0) < SUSTAINED_DOWNTREND_7D_PCT) {
     objections.push({
       check: 'SUSTAINED_DOWNTREND',
       severity: 5,
@@ -218,7 +234,7 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
   }
 
   // 10. Low cash reserves — keep powder dry
-  if ((input.cashPercent ?? 100) < 15) {
+  if ((input.cashPercent ?? 100) < LOW_CASH_PCT) {
     objections.push({
       check: 'LOW_CASH',
       severity: 3,
@@ -261,7 +277,7 @@ function reviewPortfolioHealth(input: RiskReviewInput, objections: RiskObjection
   const { drawdownPct, numLosingPositions, numTotalPositions, recentConsecutiveLosses, winRateLast20 } = input;
 
   // 1. Portfolio in significant drawdown
-  if ((drawdownPct ?? 0) > 12) {
+  if ((drawdownPct ?? 0) > PORTFOLIO_DD_SEVERITY_PCT) {
     objections.push({
       check: 'PORTFOLIO_DRAWDOWN',
       severity: 6,
@@ -272,7 +288,7 @@ function reviewPortfolioHealth(input: RiskReviewInput, objections: RiskObjection
   // 2. Correlation crisis — majority of positions losing
   if (numLosingPositions && numTotalPositions && numTotalPositions > 3) {
     const losingPct = (numLosingPositions / numTotalPositions) * 100;
-    if (losingPct >= 70) {
+    if (losingPct >= CORRELATION_CRISIS_PCT) {
       objections.push({
         check: 'CORRELATION_CRISIS',
         severity: 8,
@@ -282,7 +298,7 @@ function reviewPortfolioHealth(input: RiskReviewInput, objections: RiskObjection
   }
 
   // 3. Losing streak
-  if ((recentConsecutiveLosses ?? 0) >= 4) {
+  if ((recentConsecutiveLosses ?? 0) >= LOSING_STREAK_THRESHOLD) {
     objections.push({
       check: 'LOSING_STREAK',
       severity: 5,
@@ -291,7 +307,7 @@ function reviewPortfolioHealth(input: RiskReviewInput, objections: RiskObjection
   }
 
   // 4. Low win rate
-  if (winRateLast20 !== undefined && winRateLast20 < 0.35) {
+  if (winRateLast20 !== undefined && winRateLast20 < LOW_WIN_RATE_THRESHOLD) {
     objections.push({
       check: 'LOW_WIN_RATE',
       severity: 4,
@@ -331,67 +347,64 @@ let drawdownState: DrawdownState = {
   weeklyDefensiveUntil: null,
 };
 
+const MS_PER_HOUR = 60 * 60 * 1000;
+
+function updateHighWaterMark(
+  currentValue: number, highValue: number, highTimestamp: string, maxAgeMs: number, nowMs: number
+): { value: number; timestamp: string } {
+  const age = nowMs - new Date(highTimestamp).getTime();
+  if (age > maxAgeMs || currentValue > highValue) {
+    return { value: currentValue, timestamp: new Date(nowMs).toISOString() };
+  }
+  return { value: highValue, timestamp: highTimestamp };
+}
+
 /**
- * Update drawdown tracking with current portfolio value.
- * Called every cycle.
+ * Update drawdown tracking with current portfolio value. Called every cycle.
  */
 export function updateDrawdownTracking(currentValue: number): DrawdownState {
-  const now = new Date();
+  const nowMs = Date.now();
+  const nowISO = new Date(nowMs).toISOString();
 
-  // Reset daily high at midnight or if higher
-  const dailyHighAge = now.getTime() - new Date(drawdownState.dailyHighTimestamp).getTime();
-  if (dailyHighAge > 24 * 60 * 60 * 1000) {
-    drawdownState.dailyHighValue = currentValue;
-    drawdownState.dailyHighTimestamp = now.toISOString();
-  } else if (currentValue > drawdownState.dailyHighValue) {
-    drawdownState.dailyHighValue = currentValue;
-    drawdownState.dailyHighTimestamp = now.toISOString();
-  }
+  // Update high-water marks
+  const daily = updateHighWaterMark(currentValue, drawdownState.dailyHighValue, drawdownState.dailyHighTimestamp, 24 * MS_PER_HOUR, nowMs);
+  drawdownState.dailyHighValue = daily.value;
+  drawdownState.dailyHighTimestamp = daily.timestamp;
 
-  // Reset weekly high after 7 days or if higher
-  const weeklyHighAge = now.getTime() - new Date(drawdownState.weeklyHighTimestamp).getTime();
-  if (weeklyHighAge > 7 * 24 * 60 * 60 * 1000) {
-    drawdownState.weeklyHighValue = currentValue;
-    drawdownState.weeklyHighTimestamp = now.toISOString();
-  } else if (currentValue > drawdownState.weeklyHighValue) {
-    drawdownState.weeklyHighValue = currentValue;
-    drawdownState.weeklyHighTimestamp = now.toISOString();
-  }
+  const weekly = updateHighWaterMark(currentValue, drawdownState.weeklyHighValue, drawdownState.weeklyHighTimestamp, 7 * 24 * MS_PER_HOUR, nowMs);
+  drawdownState.weeklyHighValue = weekly.value;
+  drawdownState.weeklyHighTimestamp = weekly.timestamp;
 
-  // Check daily drawdown
-  if (drawdownState.dailyHighValue > 0) {
+  // Check daily drawdown → halt
+  if (drawdownState.dailyHighValue > 0 && !drawdownState.dailyHaltActive) {
     const dailyDD = ((drawdownState.dailyHighValue - currentValue) / drawdownState.dailyHighValue) * 100;
-    if (dailyDD >= DAILY_HALT_DRAWDOWN_PCT && !drawdownState.dailyHaltActive) {
+    if (dailyDD >= DAILY_HALT_DRAWDOWN_PCT) {
       drawdownState.dailyHaltActive = true;
-      drawdownState.dailyHaltUntil = new Date(now.getTime() + DAILY_HALT_DURATION_HOURS * 60 * 60 * 1000).toISOString();
-      console.log(`\n  🚨 DAILY DRAWDOWN HALT: Portfolio dropped ${dailyDD.toFixed(1)}% today (threshold: ${DAILY_HALT_DRAWDOWN_PCT}%). Halting new buys until ${drawdownState.dailyHaltUntil}`);
+      drawdownState.dailyHaltUntil = new Date(nowMs + DAILY_HALT_DURATION_HOURS * MS_PER_HOUR).toISOString();
+      console.log(`\n  🚨 DAILY DRAWDOWN HALT: Portfolio dropped ${dailyDD.toFixed(1)}% today. Halting buys until ${drawdownState.dailyHaltUntil}`);
     }
   }
 
-  // Check weekly drawdown
-  if (drawdownState.weeklyHighValue > 0) {
+  // Check weekly drawdown → defensive mode
+  if (drawdownState.weeklyHighValue > 0 && !drawdownState.weeklyDefensiveMode) {
     const weeklyDD = ((drawdownState.weeklyHighValue - currentValue) / drawdownState.weeklyHighValue) * 100;
-    if (weeklyDD >= WEEKLY_DEFENSIVE_DD_PCT && !drawdownState.weeklyDefensiveMode) {
+    if (weeklyDD >= WEEKLY_DEFENSIVE_DD_PCT) {
       drawdownState.weeklyDefensiveMode = true;
-      drawdownState.weeklyDefensiveUntil = new Date(now.getTime() + WEEKLY_DEFENSIVE_DURATION_HOURS * 60 * 60 * 1000).toISOString();
-      console.log(`\n  🚨 WEEKLY DEFENSIVE MODE: Portfolio dropped ${weeklyDD.toFixed(1)}% this week (threshold: ${WEEKLY_DEFENSIVE_DD_PCT}%). Defensive mode until ${drawdownState.weeklyDefensiveUntil}`);
+      drawdownState.weeklyDefensiveUntil = new Date(nowMs + WEEKLY_DEFENSIVE_DURATION_HOURS * MS_PER_HOUR).toISOString();
+      console.log(`\n  🚨 WEEKLY DEFENSIVE MODE: Portfolio dropped ${weeklyDD.toFixed(1)}% this week. Defensive until ${drawdownState.weeklyDefensiveUntil}`);
     }
   }
 
   // Clear expired halts
-  if (drawdownState.dailyHaltActive && drawdownState.dailyHaltUntil) {
-    if (now.getTime() >= new Date(drawdownState.dailyHaltUntil).getTime()) {
-      drawdownState.dailyHaltActive = false;
-      drawdownState.dailyHaltUntil = null;
-      console.log(`  ✅ Daily drawdown halt expired — resuming normal trading`);
-    }
+  if (drawdownState.dailyHaltActive && drawdownState.dailyHaltUntil && nowMs >= new Date(drawdownState.dailyHaltUntil).getTime()) {
+    drawdownState.dailyHaltActive = false;
+    drawdownState.dailyHaltUntil = null;
+    console.log(`  ✅ Daily drawdown halt expired — resuming normal trading`);
   }
-  if (drawdownState.weeklyDefensiveMode && drawdownState.weeklyDefensiveUntil) {
-    if (now.getTime() >= new Date(drawdownState.weeklyDefensiveUntil).getTime()) {
-      drawdownState.weeklyDefensiveMode = false;
-      drawdownState.weeklyDefensiveUntil = null;
-      console.log(`  ✅ Weekly defensive mode expired — resuming normal trading`);
-    }
+  if (drawdownState.weeklyDefensiveMode && drawdownState.weeklyDefensiveUntil && nowMs >= new Date(drawdownState.weeklyDefensiveUntil).getTime()) {
+    drawdownState.weeklyDefensiveMode = false;
+    drawdownState.weeklyDefensiveUntil = null;
+    console.log(`  ✅ Weekly defensive mode expired — resuming normal trading`);
   }
 
   return drawdownState;
