@@ -295,11 +295,11 @@ import type { CooldownDecision } from "./types/index.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
 import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
 // v20.0: MEV Protection
-import { calculateAdaptiveSlippage, getSwapDeadline, needsMevProtection, logMevDecision, MEV_TX_DEADLINE_SECONDS } from './services/mev-protection.js';
+import { calculateAdaptiveSlippage, needsMevProtection } from './services/mev-protection.js';
 // v20.0: DEX Aggregator for better execution prices
 import { getBestAggregatorQuote, shouldUseAggregator } from './services/dex-aggregator.js';
 // v20.0: Adversarial Risk Reviewer + Enhanced Drawdown Controls
-import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, getDrawdownState, restoreDrawdownState, type RiskReviewInput } from './services/risk-reviewer.js';
+import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, type RiskReviewInput } from './services/risk-reviewer.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
@@ -15286,6 +15286,22 @@ const healthServer = http.createServer(async (req, res) => {
               lastUpdated: ts.lastUpdated,
             };
           }),
+        });
+        break;
+      }
+
+      // === v20.0: RISK REVIEWER + DRAWDOWN STATE API ===
+      case '/api/risk-review': {
+        const ddState = (await import('./services/risk-reviewer.js')).getDrawdownState();
+        sendJSON(res, 200, {
+          version: BOT_VERSION,
+          drawdown: ddState,
+          thresholds: {
+            blockSeverity: 20,
+            reduceSeverity: 10,
+            dailyHaltPct: 5,
+            weeklyDefensivePct: 10,
+          },
         });
         break;
       }

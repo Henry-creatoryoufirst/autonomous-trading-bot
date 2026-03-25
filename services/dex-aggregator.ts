@@ -211,7 +211,7 @@ export async function getBestAggregatorQuote(
   quotes.sort((a, b) => {
     const aBuy = BigInt(a.buyAmount || '0');
     const bBuy = BigInt(b.buyAmount || '0');
-    return bBuy > aBuy ? 1 : bBuy < aBuy ? -1 : 0;
+    return aBuy > bBuy ? -1 : aBuy < bBuy ? 1 : 0;
   });
 
   const best = quotes[0];
