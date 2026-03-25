@@ -8740,17 +8740,17 @@ async function makeTradeDecision(
   }
   console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 30% CUT' : ''}${cashDeployment?.active ? ' | 💵 DEPLOY MODE' : ''}`);
   const maxSellAmount = totalTokenValue * (CONFIG.trading.maxSellPercent / 100);
-  // v6.1: Merge static tokens with dynamically discovered tokens
-  const discoveredTokensList = tokenDiscoveryEngine?.getTradableTokens() || [];
-  const discoveredSymbols = discoveredTokensList.map(t => t.symbol);
+  // v6.2: Curated top opportunities from discovery engine (max 5, runner-aware)
+  const topOpportunities = tokenDiscoveryEngine?.getTopOpportunities(5) || [];
+  const discoveredSymbols = topOpportunities.map(t => t.symbol);
   const allTradeableTokens = [...CONFIG.activeTokens, ...discoveredSymbols.filter(s => !CONFIG.activeTokens.includes(s))];
   const tradeableTokens = allTradeableTokens.join(", ");
 
-  // v6.1: Build discovery intel for AI prompt
-  const discoveryIntel = discoveredTokensList.length > 0
-    ? `\n═══ DISCOVERED TOKENS (Dynamic Scanner) ═══\nTokens discovered by on-chain liquidity scanner (tradeable if you see opportunity):\n${discoveredTokensList.slice(0, 15).map(t =>
-        `${t.symbol} ($${t.priceUSD.toFixed(4)}) | Vol24h: $${(t.volume24hUSD / 1000).toFixed(0)}K | Liq: $${(t.liquidityUSD / 1000).toFixed(0)}K | ${t.priceChange24h > 0 ? '+' : ''}${t.priceChange24h.toFixed(1)}% | Sector: ${t.sector} | DEX: ${t.dexName}`
-      ).join("\n")}\nNote: Discovered tokens may have less data than core tokens. Size positions smaller (50-75% of normal) for discovered tokens.\n`
+  // v6.2: Focused discovery intel — only top 5 curated opportunities, runners flagged
+  const discoveryIntel = topOpportunities.length > 0
+    ? `\n═══ EMERGING OPPORTUNITIES (Top ${topOpportunities.length} from Discovery Scanner) ═══\n${topOpportunities.map(t =>
+        `${t.isRunner ? '🚀 RUNNER: ' : ''}${t.symbol} ($${t.priceUSD.toFixed(4)}) | Vol24h: $${(t.volume24hUSD / 1000).toFixed(0)}K | Liq: $${(t.liquidityUSD / 1000).toFixed(0)}K | ${t.priceChange24h > 0 ? '+' : ''}${t.priceChange24h.toFixed(1)}% | Score: ${t.compositeScore}/100 | Sector: ${t.sector} | Risk: ${t.riskLevel}`
+      ).join("\n")}\nThese are curated from ${tokenDiscoveryEngine?.getTradableTokens().length || 0} scanned tokens. Size discovered tokens at 50-75% of normal. Runners (🚀) show exceptional momentum — evaluate carefully.\n`
     : "";
 
   // Build technical indicators summary for the AI
@@ -9056,7 +9056,8 @@ HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reason
           console.log(`   🚀 Multi-trade: AI returned ${rawDecisions.length} action(s)`);
         }
 
-        const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens];
+        // v6.2: Include curated discovered tokens in validation (top 5 only, not full discovery pool)
+        const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens, ...discoveredSymbols];
         const validatedDecisions: TradeDecision[] = [];
 
         for (const decision of rawDecisions) {

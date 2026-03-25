@@ -472,10 +472,86 @@ export class TokenDiscoveryEngine {
   /** Get tokens suitable for adding to the trading registry */
   getTradableTokens(): DiscoveredToken[] {
     return this.state.discoveredTokens.filter(t =>
-      t.coingeckoId !== "" && // Must have CoinGecko ID for price feeds
       t.liquidityUSD >= TOKEN_DISCOVERY_CONFIG.minLiquidityUSD &&
       t.volume24hUSD >= TOKEN_DISCOVERY_CONFIG.minVolume24hUSD
     );
+  }
+
+  /**
+   * v6.2: Get top opportunities — curated shortlist for AI prompt & validation gate.
+   * Uses composite scoring to surface the best 5 tokens, with runner detection
+   * to ensure explosive movers always make the cut.
+   *
+   * Scoring weights:
+   *  - Volume momentum (40%): normalized 24h volume vs discovery pool median
+   *  - Liquidity depth (20%): deeper pools = safer execution
+   *  - Price action (25%): 24h price change magnitude (runners get boosted)
+   *  - Transaction density (15%): more txns = more organic interest
+   *
+   * Runner override: any token with 50%+ price change AND $100K+ volume
+   * forces into top 5 regardless of composite score.
+   */
+  getTopOpportunities(maxCount: number = 5): (DiscoveredToken & { compositeScore: number; isRunner: boolean })[] {
+    const tradeable = this.getTradableTokens();
+    if (tradeable.length === 0) return [];
+
+    // Calculate normalization baselines
+    const volumes = tradeable.map(t => t.volume24hUSD);
+    const liquidities = tradeable.map(t => t.liquidityUSD);
+    const txns = tradeable.map(t => t.txns24h);
+    const medianVolume = volumes.sort((a, b) => a - b)[Math.floor(volumes.length / 2)] || 1;
+    const maxLiquidity = Math.max(...liquidities) || 1;
+    const maxTxns = Math.max(...txns) || 1;
+
+    // Score each token
+    const scored = tradeable.map(t => {
+      // Volume momentum — how much above median (capped at 5x)
+      const volumeScore = Math.min(t.volume24hUSD / medianVolume, 5) / 5;
+
+      // Liquidity depth — normalized to pool max
+      const liquidityScore = Math.min(t.liquidityUSD / maxLiquidity, 1);
+
+      // Price action — absolute magnitude matters (both pumps and dips are signals)
+      // But positive action weighted 2x over negative (we want runners, not dumps)
+      const absChange = Math.abs(t.priceChange24h);
+      const priceScore = t.priceChange24h > 0
+        ? Math.min(absChange / 100, 1) // 100%+ move = max score
+        : Math.min(absChange / 200, 0.5); // Negative moves score lower
+
+      // Transaction density — organic interest signal
+      const txnScore = Math.min(t.txns24h / maxTxns, 1);
+
+      // Weighted composite
+      const compositeScore = (
+        volumeScore * 0.40 +
+        liquidityScore * 0.20 +
+        priceScore * 0.25 +
+        txnScore * 0.15
+      ) * 100;
+
+      // Runner detection: 50%+ gain with meaningful volume = forced inclusion
+      const isRunner = t.priceChange24h >= 50 && t.volume24hUSD >= 100_000;
+
+      return { ...t, compositeScore: Math.round(compositeScore * 10) / 10, isRunner };
+    });
+
+    // Separate runners from regular tokens
+    const runners = scored.filter(t => t.isRunner).sort((a, b) => b.priceChange24h - a.priceChange24h);
+    const regular = scored.filter(t => !t.isRunner).sort((a, b) => b.compositeScore - a.compositeScore);
+
+    // Runners get priority slots, remaining filled by top composite scores
+    const result: typeof scored = [];
+    for (const runner of runners.slice(0, maxCount)) {
+      result.push(runner);
+    }
+    for (const token of regular) {
+      if (result.length >= maxCount) break;
+      if (!result.find(r => r.symbol === token.symbol)) {
+        result.push(token);
+      }
+    }
+
+    return result.slice(0, maxCount);
   }
 
   /** Get the full discovery state (for API/dashboard) */
