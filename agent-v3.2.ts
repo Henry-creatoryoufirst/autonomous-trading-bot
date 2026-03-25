@@ -298,6 +298,8 @@ import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrai
 import { calculateAdaptiveSlippage, getSwapDeadline, needsMevProtection, logMevDecision, MEV_TX_DEADLINE_SECONDS } from './services/mev-protection.js';
 // v20.0: DEX Aggregator for better execution prices
 import { getBestAggregatorQuote, shouldUseAggregator } from './services/dex-aggregator.js';
+// v20.0: Adversarial Risk Reviewer + Enhanced Drawdown Controls
+import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, getDrawdownState, restoreDrawdownState, type RiskReviewInput } from './services/risk-reviewer.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
@@ -11008,6 +11010,9 @@ async function runTradingCycle() {
     // v12.2: Always update to actual value so dashboard matches sum of balances
     state.trading.totalPortfolioValue = newPortfolioValue;
 
+    // v20.0: Update drawdown tracking for daily/weekly halt controls
+    updateDrawdownTracking(newPortfolioValue);
+
     // v19.6: Telegram balance drop tracking (fire-and-forget)
     telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
 
@@ -12594,6 +12599,59 @@ async function runTradingCycle() {
       }
 
       // Execute if needed
+      if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
+        // v20.0: Enhanced drawdown controls — block buys during daily drawdown halt
+        const ddCheck = isTradeAllowedByDrawdown(decision.action as 'BUY' | 'SELL');
+        if (!ddCheck.allowed) {
+          console.log(`   🚨 DRAWDOWN HALT: ${decision.action} ${decision.toToken || decision.fromToken} blocked — ${ddCheck.reason}`);
+          decision.action = "HOLD";
+          decision.reasoning = `Drawdown halt: ${ddCheck.reason}`;
+        }
+
+        // v20.0: Adversarial Risk Reviewer — challenge trade before execution
+        if (["BUY", "SELL"].includes(decision.action)) {
+          const tradeToken = decision.action === "BUY" ? decision.toToken : decision.fromToken;
+          const tokenInd = marketData.indicators?.[tradeToken];
+          const position = state.costBasis[tradeToken];
+          const numLosing = Object.values(state.costBasis).filter((cb: any) => cb.unrealizedPnLPercent < 0).length;
+          const numTotal = Object.keys(state.costBasis).length;
+
+          const riskInput: RiskReviewInput = {
+            symbol: tradeToken,
+            action: decision.action as 'BUY' | 'SELL',
+            amountUSD: decision.amountUSD,
+            portfolioValue: state.trading.totalPortfolioValue,
+            cashPercent: ((marketData.tokens.find(t => t.symbol === 'USDC')?.balance || 0) / Math.max(1, state.trading.totalPortfolioValue)) * 100,
+            rsi: tokenInd?.rsi14 ?? undefined,
+            macdSignal: tokenInd?.macd?.signal ?? undefined,
+            confluenceScore: tokenInd?.confluenceScore ?? undefined,
+            atrPercent: tokenInd?.atrPercent ?? undefined,
+            buyRatio: tokenInd?.orderFlow ? tokenInd.orderFlow.buyVolumeUSD / Math.max(1, tokenInd.orderFlow.buyVolumeUSD + tokenInd.orderFlow.sellVolumeUSD) : undefined,
+            priceChange24h: marketData.tokens.find(t => t.symbol === tradeToken)?.priceChange24h,
+            existingPositionUSD: position?.totalUnits ? (position.totalUnits * (marketData.tokens.find(t => t.symbol === tradeToken)?.price || 0)) : undefined,
+            existingGainPct: position?.unrealizedPnLPercent,
+            fearGreedIndex: marketData.fearGreed?.value,
+            marketRegime: marketData.marketRegime,
+            numLosingPositions: numLosing,
+            numTotalPositions: numTotal,
+            drawdownPct: state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0,
+          };
+
+          const review = reviewTrade(riskInput);
+
+          if (!review.approved) {
+            console.log(`   🛑 RISK REVIEWER: ${review.recommendation}`);
+            recordFiltered(tradeToken, decision.action, dedupTier || 'AI', 'RISK_REVIEWER', decision.amountUSD);
+            decision.action = "HOLD";
+            decision.reasoning = `Risk reviewer blocked: ${review.recommendation}`;
+          } else if (review.sizeReduction < 1.0 && review.sizeReduction > 0) {
+            const preSize = decision.amountUSD;
+            decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * review.sizeReduction * 100) / 100);
+            console.log(`   ⚠️ RISK REVIEWER: ${review.recommendation} | Size: $${preSize.toFixed(2)} → $${decision.amountUSD.toFixed(2)}`);
+          }
+        }
+      }
+
       if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
         const tradeResult = await executeTrade(decision, marketData);
 
