@@ -12,6 +12,38 @@
 import axios from "axios";
 
 // ============================================================================
+// ON-CHAIN TOKEN DECIMALS FETCHER
+// ============================================================================
+
+const BASE_RPC = "https://mainnet.base.org";
+
+/**
+ * Fetch token decimals from on-chain ERC-20 contract.
+ * Returns null on failure (caller should use fallback).
+ */
+async function fetchTokenDecimals(tokenAddress: string): Promise<number | null> {
+  try {
+    // ERC-20 decimals() selector = 0x313ce567
+    const response = await axios.post(BASE_RPC, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_call",
+      params: [{ to: tokenAddress, data: "0x313ce567" }, "latest"],
+    }, { timeout: 5000 });
+
+    const result = response.data?.result;
+    if (!result || result === "0x" || result === "0x0") return null;
+
+    const decimals = parseInt(result, 16);
+    if (isNaN(decimals) || decimals < 0 || decimals > 18) return null;
+
+    return decimals;
+  } catch {
+    return null; // Fallback to default
+  }
+}
+
+// ============================================================================
 // CONFIGURATION
 // ============================================================================
 
@@ -254,7 +286,7 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
         address: token.address, // Keep original checksum
         symbol: token.symbol.toUpperCase(),
         name: token.name,
-        decimals: 18, // Default — will be verified on first trade
+        decimals: await fetchTokenDecimals(token.address) ?? 18, // Fetch on-chain, fallback to 18
         coingeckoId: "", // Will be resolved separately
         sector,
         riskLevel,

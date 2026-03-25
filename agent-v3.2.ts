@@ -287,10 +287,17 @@ import {
   DUST_CLEANUP_THRESHOLD_USD,
   DUST_CLEANUP_MIN_AGE_HOURS,
   DUST_CLEANUP_INTERVAL_CYCLES,
+  // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
+  MAX_CONSECUTIVE_FAILURES,
+  FAILURE_COOLDOWN_HOURS,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
-import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger } from './services/trailing-stops.js';
+import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
+// v20.0: MEV Protection
+import { calculateAdaptiveSlippage, getSwapDeadline, needsMevProtection, logMevDecision, MEV_TX_DEADLINE_SECONDS } from './services/mev-protection.js';
+// v20.0: DEX Aggregator for better execution prices
+import { getBestAggregatorQuote, shouldUseAggregator } from './services/dex-aggregator.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
@@ -2486,7 +2493,7 @@ function computeNextInterval(currentPrices: Map<string, number>): {
   let preservationNote = '';
   if (capitalPreservationMode.isActive) {
     finalInterval = finalInterval * PRESERVATION_CYCLE_MULTIPLIER;
-    preservationNote = ' | PRESERVATION MODE (10x)';
+    preservationNote = PRESERVATION_CYCLE_MULTIPLIER > 1 ? ` | PRESERVATION MODE (${PRESERVATION_CYCLE_MULTIPLIER}x)` : ' | PRESERVATION MODE (active)';
   }
 
   const reason = vol.maxChange > 0
@@ -4044,6 +4051,8 @@ function loadTradeHistory() {
         }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
+        // v20.0: Restore trailing stops from disk
+        loadTrailingStops();
         return;
       }
     }
@@ -4120,6 +4129,8 @@ function saveTradeHistory() {
       userDirectives: (state.userDirectives || []).slice(-30),
       configDirectives: (state.configDirectives || []).filter((d: ConfigDirective) => d.active).slice(-30),
     };
+    // v20.0: Save trailing stops alongside main state
+    saveTrailingStops();
     // Write to persistent volume path, creating directory if needed
     const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
     if (dir && !fs.existsSync(dir)) {
@@ -4555,8 +4566,8 @@ function logError(type: string, message: string, details?: any): void {
 // v5.3.3: CONSECUTIVE FAILURE CIRCUIT BREAKER
 // ============================================================================
 
-const MAX_CONSECUTIVE_FAILURES = 3;       // Block token after 3 consecutive failures
-const FAILURE_COOLDOWN_HOURS = 6;          // Unblock after 6 hours
+// v20.0: Use centralized constants (were previously shadowed here with identical values)
+// MAX_CONSECUTIVE_FAILURES and FAILURE_COOLDOWN_HOURS imported from config/constants.ts
 
 function recordTradeFailure(symbol: string): void {
   const existing = state.tradeFailures[symbol];
@@ -5710,8 +5721,9 @@ function savePriceCache() {
     const activeSymbols = new Set(Object.keys(TOKEN_REGISTRY));
     const keys = Object.keys(lastKnownPrices);
     if (keys.length > 300) {
-      const sorted = keys.sort((a, b) => (activeSymbols.has(b) ? 1 : 0) - (activeSymbols.has(a) ? 1 : 0));
-      const keep = sorted.slice(0, 200);
+      // Sort active symbols first (higher value = earlier in array), then keep first 200
+      const sorted = keys.sort((a, b) => (activeSymbols.has(a) ? 1 : 0) - (activeSymbols.has(b) ? 1 : 0));
+      const keep = sorted.slice(-200);
       const pruned: typeof lastKnownPrices = {};
       for (const k of keep) pruned[k] = lastKnownPrices[k];
       lastKnownPrices = pruned;
@@ -6328,6 +6340,7 @@ async function executeTWAP(
       ...decision,
       amountUSD: thisSliceAmount,
       tokenAmount: decision.tokenAmount ? (decision.tokenAmount * thisSliceAmount / totalAmount) : undefined,
+      isTWAPSlice: true, // v20.0: Prevent duplicate trade history — parent records the aggregate
     };
 
     console.log(`   ⏱️ TWAP slice ${i + 1}/${numSlices}: $${thisSliceAmount.toFixed(2)}`);
@@ -6370,7 +6383,7 @@ async function executeTWAP(
  * Get token balance before and after a swap to determine actual tokens received/sent.
  * This replaces the estimated `amountUSD / price` calculation.
  */
-async function getTokenBalance(tokenSymbol: string): Promise<number> {
+async function getTokenBalance(tokenSymbol: string): Promise<number | null> {
   try {
     // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet)
     const walletAddr = CONFIG.walletAddress;
@@ -6389,7 +6402,7 @@ async function getTokenBalance(tokenSymbol: string): Promise<number> {
     return await getERC20Balance(reg.address, walletAddr, reg.decimals);
   } catch (err: any) {
     console.warn(`  ⚠️ getTokenBalance(${tokenSymbol}) failed: ${err.message?.substring(0, 100)}`);
-    return 0;
+    return null; // Return null on error so callers can distinguish "no balance" from "RPC failure"
   }
 }
 
@@ -7870,7 +7883,8 @@ function calculateConfluence(
     }
 
     // v14.0: "Catching Fire" signal — DEX buy ratio > 60% with high volume = strong momentum
-    const buyRatio = orderFlow.buyVolumeUSD / (orderFlow.buyVolumeUSD + orderFlow.sellVolumeUSD);
+    const totalFlowVol = orderFlow.buyVolumeUSD + orderFlow.sellVolumeUSD;
+    const buyRatio = totalFlowVol > 0 ? orderFlow.buyVolumeUSD / totalFlowVol : 0.5;
     if (buyRatio > 0.60 && orderFlow.tradeCount > 50) {
       score += 10; // Bonus for catching-fire momentum (volume + buy pressure)
     }
@@ -8459,6 +8473,7 @@ interface TradeDecision {
   sector?: string;
   isExploration?: boolean;
   isForced?: boolean; // v12.2.7: Tag forced deploy / fallback trades — excluded from self-improvement engine
+  isTWAPSlice?: boolean; // v20.0: Skip trade history recording for individual TWAP slices
 }
 
 // ============================================================================
@@ -9141,7 +9156,7 @@ async function executeTrade(
   if (decision.action === 'SELL' && decision.fromToken !== 'USDC') {
     try {
       const actualBalance = await getTokenBalance(decision.fromToken);
-      if (actualBalance > 0) {
+      if (actualBalance !== null && actualBalance > 0) {
         const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 0;
         if (tokenPrice > 0) {
           const actualValueUSD = actualBalance * tokenPrice;
@@ -9200,6 +9215,46 @@ async function executeTrade(
     if (decision.amountUSD >= TWAP_THRESHOLD_USD) {
       console.log(`  ⏱️ Order $${decision.amountUSD.toFixed(2)} ≥ $${TWAP_THRESHOLD_USD} → routing through TWAP engine`);
       const twapResult = await executeTWAP(decision, marketData, executeSingleSwap);
+      // v20.0: Record a single aggregate trade entry for the entire TWAP order
+      if (twapResult.slicesExecuted > 0) {
+        const aggregateAmountUSD = decision.amountUSD * (twapResult.slicesExecuted / twapResult.slicesTotal);
+        const twapPortfolioValue = state.trading.totalPortfolioValue;
+        state.tradeHistory.push({
+          cycle: 0,
+          timestamp: new Date().toISOString(),
+          action: decision.action,
+          fromToken: decision.fromToken,
+          toToken: decision.toToken,
+          amountUSD: aggregateAmountUSD,
+          tokenAmount: twapResult.totalTokensReceived,
+          txHash: twapResult.txHash || '',
+          success: twapResult.success,
+          portfolioValueBefore: twapPortfolioValue,
+          portfolioValueAfter: twapPortfolioValue,
+          reasoning: `${decision.reasoning} [TWAP: ${twapResult.slicesExecuted}/${twapResult.slicesTotal} slices]`,
+          sector: decision.sector,
+          marketConditions: {
+            fearGreed: marketData.fearGreed.value,
+            ethPrice: marketData.tokens.find(t => t.symbol === "ETH")?.price || 0,
+            btcPrice: marketData.tokens.find(t => t.symbol === "cbBTC")?.price || 0,
+          },
+          signalContext: {
+            marketRegime: marketData.marketRegime,
+            confluenceScore: 0,
+            rsi: null,
+            macdSignal: null,
+            btcFundingRate: marketData.derivatives?.btcFundingRate || null,
+            ethFundingRate: marketData.derivatives?.ethFundingRate || null,
+            baseTVLChange24h: marketData.defiLlama?.baseTVLChange24h || null,
+            baseDEXVolume24h: marketData.defiLlama?.baseDEXVolume24h || null,
+            triggeredBy: decision.isExploration ? "EXPLORATION" : decision.isForced ? "FORCED_DEPLOY" : "AI",
+            isExploration: decision.isExploration || false,
+            isForced: decision.isForced || false,
+          },
+        });
+        if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
+        saveTradeHistory();
+      }
       // v11.4.7: Record successful trade in dedup log
       if (twapResult.success) {
         state.tradeDedupLog![dedupKey] = new Date().toISOString();
@@ -9347,7 +9402,7 @@ async function executeDirectDexSwap(
     if (isSell) {
       try {
         const actualBal = await getTokenBalance(tokenSymbol);
-        if (actualBal > 0) {
+        if (actualBal !== null && actualBal > 0) {
           const tPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 1;
           const actualValUSD = actualBal * tPrice;
           const cappedUSD = actualValUSD * 0.95;
@@ -9369,7 +9424,7 @@ async function executeDirectDexSwap(
       // v19.3.2: TOKEN-LEVEL BALANCE CAP for DEX sells
       try {
         const onChainBal = await getTokenBalance(tokenSymbol);
-        if (onChainBal > 0) {
+        if (onChainBal !== null && onChainBal > 0) {
           const maxFrom = parseUnits((onChainBal * 0.95).toFixed(Math.min(fromDecimals, 8)), fromDecimals);
           if (fromAmount > maxFrom) {
             console.log(`  📊 DEX TOKEN CAP: ${tokenSymbol} sell capped ${formatUnits(fromAmount, fromDecimals)} → ${formatUnits(maxFrom, fromDecimals)} tokens`);
@@ -9432,12 +9487,18 @@ async function executeDirectDexSwap(
     const balanceToken = isSell ? decision.fromToken : decision.toToken;
     let preSwapBalance = 0;
     try {
-      preSwapBalance = await getTokenBalance(balanceToken);
+      preSwapBalance = await getTokenBalance(balanceToken) ?? 0;
     } catch { /* non-critical */ }
 
     // Step 3: Calculate minimum output with slippage protection
-    // Use 2% slippage for DEX-direct swaps (slightly more than CDP since we're doing manual routing)
-    const slippageBps = 200; // 2%
+    // v20.0: MEV-aware adaptive slippage based on trade size and market conditions
+    const volatilityLevel = marketData.marketRegime === 'volatile' ? 'HIGH' : marketData.marketRegime === 'trending' ? 'NORMAL' : 'NORMAL';
+    const slippageBps = calculateAdaptiveSlippage({
+      tradeAmountUSD: decision.amountUSD,
+      poolLiquidityUSD: 0, // Pool liquidity not available here; base slippage is sufficient
+      volatilityLevel: volatilityLevel as 'LOW' | 'NORMAL' | 'HIGH' | 'EXTREME',
+      isBuy: !isSell,
+    });
     const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 0;
     let expectedOutput: number;
     let outDecimals: number;
@@ -9450,12 +9511,58 @@ async function executeDirectDexSwap(
     }
     const minOutput = expectedOutput * (1 - slippageBps / 10000);
     const amountOutMin = minOutput > 0 ? parseUnits(minOutput.toFixed(Math.min(outDecimals, 8)), outDecimals) : BigInt(0);
-    console.log(`     🛡️ Slippage: ${slippageBps / 100}% | Min output: ${formatUnits(amountOutMin, outDecimals)}`);
+    const mevProtected = needsMevProtection(decision.amountUSD);
+    console.log(`     🛡️ Slippage: ${slippageBps / 100}% | Min output: ${formatUnits(amountOutMin, outDecimals)} | MEV: ${mevProtected ? 'Flashbots RPC active' : 'standard (small trade)'}`);
 
-    // Step 4: Try swap routes — first direct, then multi-hop via WETH
-    const FEE_TIERS = [3000, 10000, 500]; // 0.3%, 1%, 0.05%
+    // Step 4: Try swap routes — first aggregator, then direct, then multi-hop via WETH
     let txHash = '';
     let swapSuccess = false;
+
+    // v20.0: Try DEX aggregator first for better pricing (0x / 1inch)
+    if (shouldUseAggregator(decision.amountUSD)) {
+      try {
+        console.log(`     🔀 Trying DEX aggregator for better execution...`);
+        const aggQuote = await getBestAggregatorQuote(
+          tokenIn, tokenOut, fromAmount.toString(), slippageBps, walletAddress
+        );
+        if (aggQuote?.to && aggQuote?.data) {
+          // Check if we need to approve the aggregator's allowance target
+          if (aggQuote.allowanceTarget && aggQuote.allowanceTarget !== UNISWAP_V3_SWAP_ROUTER) {
+            const allowanceData = "0xdd62ed3e" +
+              walletAddress.slice(2).padStart(64, "0") +
+              aggQuote.allowanceTarget.slice(2).padStart(64, "0");
+            const currentAllowance = await rpcCall("eth_call", [{ to: tokenIn, data: allowanceData }, "latest"]);
+            if (currentAllowance === "0x" || BigInt(currentAllowance) < fromAmount) {
+              console.log(`     🔓 Approving aggregator allowance target...`);
+              const APPROVE_SELECTOR = "0x095ea7b3";
+              const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+              const approveData = APPROVE_SELECTOR + aggQuote.allowanceTarget.slice(2).padStart(64, "0") + MAX_UINT256.slice(2);
+              await account.sendTransaction({
+                network: "base",
+                transaction: { to: tokenIn, data: approveData as `0x${string}`, value: BigInt(0) },
+              });
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+          }
+
+          const result = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: aggQuote.to as `0x${string}`,
+              data: aggQuote.data as `0x${string}`,
+              value: BigInt(aggQuote.value || '0'),
+            },
+          });
+          txHash = result.transactionHash;
+          swapSuccess = true;
+          console.log(`     ✅ Aggregator swap succeeded (${aggQuote.aggregator}) | Sources: ${aggQuote.sources.join(', ') || 'optimized'}`);
+        }
+      } catch (e: any) {
+        console.log(`     ⚠️ Aggregator swap failed: ${e.message?.substring(0, 100)} — falling back to direct Uniswap`);
+      }
+    }
+
+    const FEE_TIERS = [3000, 10000, 500]; // 0.3%, 1%, 0.05%
 
     // Try direct single-hop first (tokenIn -> tokenOut) with each fee tier
     for (const fee of FEE_TIERS) {
@@ -9537,7 +9644,7 @@ async function executeDirectDexSwap(
     for (let balAttempt = 1; balAttempt <= 5; balAttempt++) {
       try {
         await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? 2000 : 3000));
-        postSwapBalance = await getTokenBalance(balanceToken);
+        postSwapBalance = await getTokenBalance(balanceToken) ?? 0;
         actualTokens = Math.abs(postSwapBalance - preSwapBalance);
         if (actualTokens > 0) {
           console.log(`     📊 Actual tokens ${isSell ? 'sent' : 'received'}: ${actualTokens.toFixed(8)} ${balanceToken} (${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
@@ -9604,9 +9711,12 @@ async function executeDirectDexSwap(
         adaptiveSlippage: slippageBps,
       },
     };
-    state.tradeHistory.push(record);
-    if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-    saveTradeHistory();
+    // v20.0: Skip trade history for TWAP slices — parent records the aggregate
+    if (!decision.isTWAPSlice) {
+      state.tradeHistory.push(record);
+      if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
+      saveTradeHistory();
+    }
     recordExecuted(decision.action === 'BUY' ? (decision.toToken || '') : (decision.fromToken || ''), decision.action, dedupTier, decision.amountUSD);
 
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
@@ -9662,7 +9772,7 @@ async function executeSingleSwap(
       // This prevents "Insufficient balance" errors when cached balance drifts from on-chain reality
       try {
         const onChainBalance = await getTokenBalance(decision.fromToken);
-        if (onChainBalance > 0) {
+        if (onChainBalance !== null && onChainBalance > 0) {
           const maxFromAmount = parseUnits((onChainBalance * 0.95).toFixed(Math.min(fromDecimals, 8)), fromDecimals);
           if (fromAmount > maxFromAmount) {
             console.log(`  📊 TOKEN CAP: ${decision.fromToken} sell capped ${formatUnits(fromAmount, fromDecimals)} → ${formatUnits(maxFromAmount, fromDecimals)} tokens (on-chain: ${onChainBalance.toFixed(8)})`);
@@ -9754,7 +9864,7 @@ async function executeSingleSwap(
     const balanceToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
     let preSwapBalance = 0;
     try {
-      preSwapBalance = await getTokenBalance(balanceToken);
+      preSwapBalance = await getTokenBalance(balanceToken) ?? 0;
     } catch { /* non-critical — fall back to estimate */ }
 
     // Execute the swap with retry logic
@@ -9821,7 +9931,7 @@ async function executeSingleSwap(
     for (let balAttempt = 1; balAttempt <= 5; balAttempt++) {
       try {
         await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? 2000 : 3000));
-        postSwapBalance = await getTokenBalance(balanceToken);
+        postSwapBalance = await getTokenBalance(balanceToken) ?? 0;
         actualTokens = Math.abs(postSwapBalance - preSwapBalance);
         if (actualTokens > 0) {
           console.log(`     📊 Actual tokens ${decision.action === 'BUY' ? 'received' : 'sent'}: ${actualTokens.toFixed(8)} ${balanceToken} (balance: ${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
@@ -9893,10 +10003,13 @@ async function executeSingleSwap(
         adaptiveSlippage: adaptiveSlippage,
       },
     };
-    state.tradeHistory.push(record);
-    // v10.2: Cap trade history to prevent unbounded memory growth
-    if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-    saveTradeHistory();
+    // v20.0: Skip trade history for TWAP slices — parent records the aggregate
+    if (!decision.isTWAPSlice) {
+      state.tradeHistory.push(record);
+      // v10.2: Cap trade history to prevent unbounded memory growth
+      if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
+      saveTradeHistory();
+    }
 
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
 
@@ -9969,11 +10082,14 @@ async function executeSingleSwap(
         triggeredBy: "AI",
       },
     };
-    state.tradeHistory.push(record);
-    if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-    // v11.4.20: Don't increment totalTrades for failed trades — was inflating the counter
-    // totalTrades should only count successful executions (line 6967)
-    saveTradeHistory();
+    // v20.0: Skip trade history for TWAP slices — parent records the aggregate
+    if (!decision.isTWAPSlice) {
+      state.tradeHistory.push(record);
+      if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
+      // v11.4.20: Don't increment totalTrades for failed trades — was inflating the counter
+      // totalTrades should only count successful executions (line 6967)
+      saveTradeHistory();
+    }
 
     return { success: false, error: errorMsg };
   }
@@ -12362,18 +12478,35 @@ async function runTradingCycle() {
           decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
           console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
 
-          // ATR scaling only in normal mode — slight adjustment, floored at 0.75x
+          // v20.0: Enhanced volatility-adjusted position sizing
+          // Goal: each position contributes equal RISK to the portfolio.
+          // Higher ATR → more volatile → smaller position (and vice versa).
           const tokenATR = marketData.indicators[decision.toToken]?.atrPercent;
           if (tokenATR && tokenATR > 0) {
             const allATRs = Object.values(marketData.indicators)
               .map((ind: any) => ind?.atrPercent)
               .filter((a: any) => a && a > 0) as number[];
             const avgATR = allATRs.length > 0 ? allATRs.reduce((s, a) => s + a, 0) / allATRs.length : tokenATR;
-            const atrMultiplier = Math.max(0.75, Math.min(1.25, avgATR / tokenATR));
-            if (Math.abs(atrMultiplier - 1.0) > 0.05) {
+
+            // Inverse volatility sizing: target daily risk = VOL_TARGET_DAILY_PCT
+            // If token has 2x average volatility → 0.5x position size
+            // Clamped to 0.5x-1.5x to prevent extreme sizing
+            const volRatio = avgATR / tokenATR; // >1 means token is calmer than average
+            const atrMultiplier = Math.max(0.5, Math.min(1.5, volRatio));
+
+            // v20.0: Confluence-weighted sizing — high confidence gets full size, low gets reduced
+            const confluenceScore = marketData.indicators[decision.toToken]?.confluenceScore || 0;
+            const absConfluence = Math.abs(confluenceScore);
+            // Scale: 0-20 → 0.6x, 20-40 → 0.8x, 40-60 → 1.0x, 60+ → 1.0x (no boost above base)
+            const confidenceMultiplier = absConfluence >= 40 ? 1.0 : absConfluence >= 20 ? 0.8 : 0.6;
+
+            const combinedMultiplier = atrMultiplier * confidenceMultiplier;
+
+            if (Math.abs(combinedMultiplier - 1.0) > 0.05) {
               const preATR = decision.amountUSD;
-              decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * atrMultiplier * 100) / 100);
-              console.log(`   📊 ATR: ×${atrMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+              decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * combinedMultiplier * 100) / 100);
+              const volLabel = tokenATR > avgATR * 1.3 ? '⚡HIGH' : tokenATR < avgATR * 0.7 ? '🧊LOW' : '📊MED';
+              console.log(`   📊 VOL-SIZE: ${volLabel} vol (ATR ${tokenATR.toFixed(1)}% vs avg ${avgATR.toFixed(1)}%) → ×${atrMultiplier.toFixed(2)} | Confidence ${absConfluence.toFixed(0)} → ×${confidenceMultiplier} | Combined: ×${combinedMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
             }
           }
         }
