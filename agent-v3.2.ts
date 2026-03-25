@@ -12478,18 +12478,35 @@ async function runTradingCycle() {
           decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
           console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
 
-          // ATR scaling only in normal mode — slight adjustment, floored at 0.75x
+          // v20.0: Enhanced volatility-adjusted position sizing
+          // Goal: each position contributes equal RISK to the portfolio.
+          // Higher ATR → more volatile → smaller position (and vice versa).
           const tokenATR = marketData.indicators[decision.toToken]?.atrPercent;
           if (tokenATR && tokenATR > 0) {
             const allATRs = Object.values(marketData.indicators)
               .map((ind: any) => ind?.atrPercent)
               .filter((a: any) => a && a > 0) as number[];
             const avgATR = allATRs.length > 0 ? allATRs.reduce((s, a) => s + a, 0) / allATRs.length : tokenATR;
-            const atrMultiplier = Math.max(0.75, Math.min(1.25, avgATR / tokenATR));
-            if (Math.abs(atrMultiplier - 1.0) > 0.05) {
+
+            // Inverse volatility sizing: target daily risk = VOL_TARGET_DAILY_PCT
+            // If token has 2x average volatility → 0.5x position size
+            // Clamped to 0.5x-1.5x to prevent extreme sizing
+            const volRatio = avgATR / tokenATR; // >1 means token is calmer than average
+            const atrMultiplier = Math.max(0.5, Math.min(1.5, volRatio));
+
+            // v20.0: Confluence-weighted sizing — high confidence gets full size, low gets reduced
+            const confluenceScore = marketData.indicators[decision.toToken]?.confluenceScore || 0;
+            const absConfluence = Math.abs(confluenceScore);
+            // Scale: 0-20 → 0.6x, 20-40 → 0.8x, 40-60 → 1.0x, 60+ → 1.0x (no boost above base)
+            const confidenceMultiplier = absConfluence >= 40 ? 1.0 : absConfluence >= 20 ? 0.8 : 0.6;
+
+            const combinedMultiplier = atrMultiplier * confidenceMultiplier;
+
+            if (Math.abs(combinedMultiplier - 1.0) > 0.05) {
               const preATR = decision.amountUSD;
-              decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * atrMultiplier * 100) / 100);
-              console.log(`   📊 ATR: ×${atrMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+              decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * combinedMultiplier * 100) / 100);
+              const volLabel = tokenATR > avgATR * 1.3 ? '⚡HIGH' : tokenATR < avgATR * 0.7 ? '🧊LOW' : '📊MED';
+              console.log(`   📊 VOL-SIZE: ${volLabel} vol (ATR ${tokenATR.toFixed(1)}% vs avg ${avgATR.toFixed(1)}%) → ×${atrMultiplier.toFixed(2)} | Confidence ${absConfluence.toFixed(0)} → ×${confidenceMultiplier} | Combined: ×${combinedMultiplier.toFixed(2)} ($${preATR.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
             }
           }
         }
