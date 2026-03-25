@@ -11,7 +11,11 @@
  *
  * The trailing stop tracks each position's high-water mark (highest price since entry)
  * and dynamically adjusts the stop level based on ATR and position P&L.
+ *
+ * v20.0: Added persistence — trailing stops survive restarts/deploys.
  */
+
+import * as fs from "fs";
 
 interface TrailingStopEntry {
   symbol: string;
@@ -39,6 +43,56 @@ const LOSING_ATR_MULTIPLIER = 1.0;    // Tight trail — cut losses fast
 // P&L zone thresholds
 const WINNING_THRESHOLD_PCT = 5;       // Position is "winning" above +5%
 const LOSING_THRESHOLD_PCT = -3;       // Position is "losing" below -3%
+
+// v20.0: Persistence file path
+const PERSIST_DIR = process.env.PERSIST_DIR || "./logs";
+const TRAILING_STOPS_FILE = `${PERSIST_DIR}/trailing-stops.json`;
+
+/**
+ * Save trailing stops to disk (called by main agent's saveTradeHistory).
+ */
+export function saveTrailingStops(): void {
+  try {
+    if (!fs.existsSync(PERSIST_DIR)) fs.mkdirSync(PERSIST_DIR, { recursive: true });
+    const data = {
+      version: 1,
+      lastSaved: new Date().toISOString(),
+      stops: Array.from(trailingStops.entries()),
+    };
+    const tmpFile = TRAILING_STOPS_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(data));
+    fs.renameSync(tmpFile, TRAILING_STOPS_FILE);
+  } catch (err: any) {
+    console.warn(`  ⚠️ Failed to save trailing stops: ${err.message}`);
+  }
+}
+
+/**
+ * Load trailing stops from disk (called at startup).
+ */
+export function loadTrailingStops(): number {
+  try {
+    if (!fs.existsSync(TRAILING_STOPS_FILE)) return 0;
+    const raw = fs.readFileSync(TRAILING_STOPS_FILE, 'utf-8');
+    const data = JSON.parse(raw);
+    if (!data.stops || !Array.isArray(data.stops)) return 0;
+
+    let loaded = 0;
+    for (const [key, entry] of data.stops) {
+      if (key && entry && entry.symbol && entry.entryPrice > 0) {
+        trailingStops.set(key, entry as TrailingStopEntry);
+        loaded++;
+      }
+    }
+    if (loaded > 0) {
+      console.log(`  📂 Loaded ${loaded} trailing stops from disk (saved ${data.lastSaved || 'unknown'})`);
+    }
+    return loaded;
+  } catch (err: any) {
+    console.warn(`  ⚠️ Failed to load trailing stops: ${err.message}`);
+    return 0;
+  }
+}
 
 /**
  * Update the trailing stop for a position.

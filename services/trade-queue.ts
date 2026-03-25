@@ -1,5 +1,5 @@
 /**
- * Never Rest Capital — Trade Execution Queue (v7.0)
+ * Never Rest Capital — Trade Execution Queue (v7.0 / v20.0)
  *
  * Manages parallel trade EVALUATIONS vs serialized trade EXECUTIONS.
  *
@@ -15,6 +15,9 @@
  *   - Queue processor serializes on-chain txns with a small gap between each
  *   - Max 5 concurrent "in-flight" slots (prevents memory/API overload)
  *   - Emergency SELLs skip to the front of the queue
+ *
+ * v20.0: Added per-token locking to prevent two sells of the same token
+ *        from executing concurrently (race condition on balance reads).
  */
 
 import { MAX_CONCURRENT_TRADES, TRADE_EXECUTION_GAP_MS } from '../config/constants.js';
@@ -34,6 +37,8 @@ export interface TradeRequest {
 export class TradeQueue {
     private queue: TradeRequest[] = [];
     private inFlight: Set<string> = new Set();
+    // v20.0: Per-token lock to prevent concurrent trades on the same token
+    private tokenLocks: Set<string> = new Set();
     private processing = false;
     private maxConcurrent: number;
     private gapMs: number;
@@ -70,11 +75,12 @@ export class TradeQueue {
   /**
      * Get current queue status
      */
-  getStatus(): { queueDepth: number; inFlight: number; maxConcurrent: number } {
+  getStatus(): { queueDepth: number; inFlight: number; maxConcurrent: number; tokenLocks: string[] } {
         return {
                 queueDepth: this.queue.length,
                 inFlight: this.inFlight.size,
                 maxConcurrent: this.maxConcurrent,
+                tokenLocks: Array.from(this.tokenLocks),
         };
   }
 
@@ -82,7 +88,7 @@ export class TradeQueue {
      * Check if a specific token has a pending or in-flight trade
      */
   hasPending(symbol: string): boolean {
-        return this.queue.some(r => r.symbol === symbol) || this.inFlight.has(symbol);
+        return this.queue.some(r => r.symbol === symbol) || this.inFlight.has(symbol) || this.tokenLocks.has(symbol);
   }
 
   /**
@@ -111,23 +117,35 @@ export class TradeQueue {
                 continue;
           }
 
-          const request = this.queue.shift();
-              if (!request) {
-                        await this.sleep(100);
-                        continue;
-              }
+          // v20.0: Find the first request whose token is NOT locked
+          const requestIdx = this.queue.findIndex(r => !this.tokenLocks.has(r.symbol));
+          if (requestIdx === -1) {
+            if (this.queue.length > 0) {
+              // All queued tokens are locked — wait for a lock to release
+              await this.sleep(100);
+              continue;
+            }
+            // Queue empty but still have in-flight — wait
+            await this.sleep(100);
+            continue;
+          }
 
-          // Mark as in-flight
-          this.inFlight.add(request.symbol);
-              console.log(` 🔄 Executing: ${request.symbol} ${request.action} $${request.amountUSD.toFixed(0)} (${this.inFlight.size}/${this.maxConcurrent} in-flight)`);
+          const request = this.queue.splice(requestIdx, 1)[0];
+
+          // Mark as in-flight + acquire token lock
+          this.inFlight.add(request.id);
+          this.tokenLocks.add(request.symbol);
+              console.log(` 🔄 Executing: ${request.symbol} ${request.action} $${request.amountUSD.toFixed(0)} (${this.inFlight.size}/${this.maxConcurrent} in-flight, token locked)`);
 
           // Execute asynchronously — don't await, let multiple run in parallel up to maxConcurrent
           request.execute().then(success => {
-                    this.inFlight.delete(request.symbol);
+                    this.inFlight.delete(request.id);
+                    this.tokenLocks.delete(request.symbol);
                     if (request.onComplete) request.onComplete(success);
                     console.log(` ${success ? '✅' : '❌'} Completed: ${request.symbol} ${request.action} (${this.inFlight.size}/${this.maxConcurrent} in-flight)`);
           }).catch(err => {
-                    this.inFlight.delete(request.symbol);
+                    this.inFlight.delete(request.id);
+                    this.tokenLocks.delete(request.symbol);
                     if (request.onComplete) request.onComplete(false);
                     console.error(` ❌ Error executing ${request.symbol} ${request.action}:`, err);
           });
