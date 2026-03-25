@@ -3322,6 +3322,7 @@ interface ShadowProposal {
   confirmingReviews: number;      // How many subsequent reviews still agree
   contradictingReviews: number;   // How many subsequent reviews disagree
   status: "PENDING" | "PROMOTED" | "REJECTED";
+  regimesSeen?: string[];         // v20.0: Market regimes that confirmed this proposal (walk-forward validation)
 }
 
 // In-memory shadow proposal queue (persisted via state)
@@ -3330,7 +3331,7 @@ let shadowProposals: ShadowProposal[] = [];
 // v9.0: ATR comparison logging — tracks how many comparison entries we've emitted
 let atrComparisonLogCount = 0;
 
-function adaptThresholds(review: PerformanceReview): void {
+function adaptThresholds(review: PerformanceReview, currentRegime?: string): void {
   const t = state.adaptiveThresholds;
   const { winRate, totalTrades } = review.periodStats;
   if (totalTrades < 3) return; // Not enough data to adapt
@@ -3339,6 +3340,8 @@ function adaptThresholds(review: PerformanceReview): void {
   const MIN_CONFIRMING_REVIEWS = 3;   // Need 3 consecutive confirmations
   const MIN_SAMPLE_SIZE = 5;          // Need at least 5 trades in review period
   const MAX_CONTRADICTION_RATIO = 0.3; // Reject if >30% contradictions
+  // v20.0: Walk-forward validation — require confirmations from 2+ market regimes
+  const MIN_REGIME_DIVERSITY = 2;     // Must be confirmed in 2+ different regimes
 
   const proposeAdaptation = (field: string, delta: number, reason: string) => {
     const bounds = THRESHOLD_BOUNDS[field];
@@ -3350,15 +3353,20 @@ function adaptThresholds(review: PerformanceReview): void {
     );
 
     if (existing) {
-      // Confirm existing proposal
+      // Confirm existing proposal + track regime diversity
       existing.confirmingReviews++;
-      console.log(`     🔬 Shadow: ${field} proposal confirmed (${existing.confirmingReviews}/${MIN_CONFIRMING_REVIEWS} confirmations)`);
+      if (currentRegime) {
+        if (!existing.regimesSeen) existing.regimesSeen = [];
+        if (!existing.regimesSeen.includes(currentRegime)) existing.regimesSeen.push(currentRegime);
+      }
+      const regimeCount = existing.regimesSeen?.length || 0;
+      console.log(`     🔬 Shadow: ${field} confirmed (${existing.confirmingReviews}/${MIN_CONFIRMING_REVIEWS} reviews, ${regimeCount}/${MIN_REGIME_DIVERSITY} regimes)`);
 
-      // Check if ready for promotion
+      // Check if ready for promotion — requires both review count AND regime diversity
       const totalReviews = existing.confirmingReviews + existing.contradictingReviews;
       const contradictionRatio = totalReviews > 0 ? existing.contradictingReviews / totalReviews : 0;
 
-      if (existing.confirmingReviews >= MIN_CONFIRMING_REVIEWS && contradictionRatio <= MAX_CONTRADICTION_RATIO && totalTrades >= MIN_SAMPLE_SIZE) {
+      if (existing.confirmingReviews >= MIN_CONFIRMING_REVIEWS && contradictionRatio <= MAX_CONTRADICTION_RATIO && totalTrades >= MIN_SAMPLE_SIZE && regimeCount >= MIN_REGIME_DIVERSITY) {
         // PROMOTE — apply the change
         const currentVal = (t as any)[field] as number;
         const cappedDelta = Math.sign(existing.proposedDelta) * Math.min(Math.abs(existing.proposedDelta), bounds.maxStep);
@@ -3400,6 +3408,7 @@ function adaptThresholds(review: PerformanceReview): void {
         confirmingReviews: 1,
         contradictingReviews: 0,
         status: "PENDING",
+        regimesSeen: currentRegime ? [currentRegime] : [],
       });
       console.log(`     🔬 Shadow: New proposal for ${field} (delta: ${delta > 0 ? "+" : ""}${delta}) — needs ${MIN_CONFIRMING_REVIEWS} confirmations`);
     }
@@ -9287,6 +9296,10 @@ async function executeTrade(
 // ============================================================================
 
 const UNISWAP_V3_SWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481" as Address;
+
+// v20.0: Cache MAX_UINT256 approvals — once approved, no need to check on-chain again
+// Key: "tokenAddress:spenderAddress" → true
+const approvalCache = new Set<string>();
 const DEX_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 const DEX_WETH = "0x4200000000000000000000000000000000000006" as Address;
 
@@ -9452,37 +9465,45 @@ async function executeDirectDexSwap(
     console.log(`     Account: ${walletAddress}`);
 
     // Step 1: Approve the Uniswap V3 SwapRouter to spend tokenIn (if needed)
-    const APPROVE_SELECTOR = "0x095ea7b3";
-    const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-
-    const allowanceData = "0xdd62ed3e" +
-      walletAddress.slice(2).padStart(64, "0") +
-      UNISWAP_V3_SWAP_ROUTER.slice(2).padStart(64, "0");
-
-    const currentAllowance = await rpcCall("eth_call", [{
-      to: tokenIn,
-      data: allowanceData
-    }, "latest"]);
-
-    if (currentAllowance === "0x" || currentAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(currentAllowance) < fromAmount) {
-      console.log(`     🔓 Approving SwapRouter to spend ${isSell ? decision.fromToken : 'USDC'}...`);
-      const approveData = APPROVE_SELECTOR +
-        UNISWAP_V3_SWAP_ROUTER.slice(2).padStart(64, "0") +
-        MAX_UINT256.slice(2);
-
-      const approveTx = await account.sendTransaction({
-        network: "base",
-        transaction: {
-          to: tokenIn,
-          data: approveData as `0x${string}`,
-          value: BigInt(0),
-        },
-      });
-      console.log(`     ✅ SwapRouter approved: ${approveTx.transactionHash}`);
-      console.log(`     ⏳ Waiting 8s for approval to propagate...`);
-      await new Promise(resolve => setTimeout(resolve, 8000));
+    // v20.0: Check in-memory cache first to skip redundant on-chain allowance reads
+    const approvalKey = `${tokenIn}:${UNISWAP_V3_SWAP_ROUTER}`.toLowerCase();
+    if (approvalCache.has(approvalKey)) {
+      console.log(`     ✅ SwapRouter approved (cached) for ${isSell ? decision.fromToken : 'USDC'}`);
     } else {
-      console.log(`     ✅ SwapRouter already approved for ${isSell ? decision.fromToken : 'USDC'}`);
+      const APPROVE_SELECTOR = "0x095ea7b3";
+      const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+      const allowanceData = "0xdd62ed3e" +
+        walletAddress.slice(2).padStart(64, "0") +
+        UNISWAP_V3_SWAP_ROUTER.slice(2).padStart(64, "0");
+
+      const currentAllowance = await rpcCall("eth_call", [{
+        to: tokenIn,
+        data: allowanceData
+      }, "latest"]);
+
+      if (currentAllowance === "0x" || currentAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(currentAllowance) < fromAmount) {
+        console.log(`     🔓 Approving SwapRouter to spend ${isSell ? decision.fromToken : 'USDC'}...`);
+        const approveData = APPROVE_SELECTOR +
+          UNISWAP_V3_SWAP_ROUTER.slice(2).padStart(64, "0") +
+          MAX_UINT256.slice(2);
+
+        const approveTx = await account.sendTransaction({
+          network: "base",
+          transaction: {
+            to: tokenIn,
+            data: approveData as `0x${string}`,
+            value: BigInt(0),
+          },
+        });
+        console.log(`     ✅ SwapRouter approved: ${approveTx.transactionHash}`);
+        approvalCache.add(approvalKey);
+        console.log(`     ⏳ Waiting 8s for approval to propagate...`);
+        await new Promise(resolve => setTimeout(resolve, 8000));
+      } else {
+        console.log(`     ✅ SwapRouter already approved for ${isSell ? decision.fromToken : 'USDC'}`);
+        approvalCache.add(approvalKey); // Cache the on-chain confirmation
+      }
     }
 
     // Step 2: Snapshot token balance BEFORE swap
@@ -9529,21 +9550,26 @@ async function executeDirectDexSwap(
         );
         if (aggQuote?.to && aggQuote?.data) {
           // Check if we need to approve the aggregator's allowance target
+          // v20.0: Cache-aware approval for aggregator targets
           if (aggQuote.allowanceTarget && aggQuote.allowanceTarget !== UNISWAP_V3_SWAP_ROUTER) {
-            const allowanceData = "0xdd62ed3e" +
-              walletAddress.slice(2).padStart(64, "0") +
-              aggQuote.allowanceTarget.slice(2).padStart(64, "0");
-            const currentAllowance = await rpcCall("eth_call", [{ to: tokenIn, data: allowanceData }, "latest"]);
-            if (currentAllowance === "0x" || BigInt(currentAllowance) < fromAmount) {
-              console.log(`     🔓 Approving aggregator allowance target...`);
-              const APPROVE_SELECTOR = "0x095ea7b3";
-              const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-              const approveData = APPROVE_SELECTOR + aggQuote.allowanceTarget.slice(2).padStart(64, "0") + MAX_UINT256.slice(2);
-              await account.sendTransaction({
-                network: "base",
-                transaction: { to: tokenIn, data: approveData as `0x${string}`, value: BigInt(0) },
-              });
-              await new Promise(resolve => setTimeout(resolve, 5000));
+            const aggApprovalKey = `${tokenIn}:${aggQuote.allowanceTarget}`.toLowerCase();
+            if (!approvalCache.has(aggApprovalKey)) {
+              const allowanceData = "0xdd62ed3e" +
+                walletAddress.slice(2).padStart(64, "0") +
+                aggQuote.allowanceTarget.slice(2).padStart(64, "0");
+              const currentAllowance = await rpcCall("eth_call", [{ to: tokenIn, data: allowanceData }, "latest"]);
+              if (currentAllowance === "0x" || BigInt(currentAllowance) < fromAmount) {
+                console.log(`     🔓 Approving aggregator allowance target...`);
+                const APPROVE_SELECTOR = "0x095ea7b3";
+                const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+                const approveData = APPROVE_SELECTOR + aggQuote.allowanceTarget.slice(2).padStart(64, "0") + MAX_UINT256.slice(2);
+                await account.sendTransaction({
+                  network: "base",
+                  transaction: { to: tokenIn, data: approveData as `0x${string}`, value: BigInt(0) },
+                });
+                await new Promise(resolve => setTimeout(resolve, 5000));
+              }
+              approvalCache.add(aggApprovalKey);
             }
           }
 
@@ -10923,8 +10949,8 @@ async function runTradingCycle() {
       state.lastReviewTradeIndex = state.tradeHistory.length;
       state.lastReviewTimestamp = new Date().toISOString();
 
-      // Adapt thresholds based on review findings
-      adaptThresholds(review);
+      // Adapt thresholds based on review findings — pass current regime for walk-forward validation
+      adaptThresholds(review, marketData.marketRegime);
       console.log(`   Thresholds adapted (${state.adaptiveThresholds.adaptationCount} total adaptations)`);
 
       // Persist everything
