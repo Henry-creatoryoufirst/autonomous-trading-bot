@@ -216,13 +216,15 @@ import {
   STABLECOIN_SUPPLY_CHANGE_THRESHOLD,
   ALTSEASON_SECTOR_BOOST,
   BTC_DOMINANCE_SECTOR_BOOST,
-  // v11.1: Cash Deployment Engine
+  // v11.1/v20.2: Cash Deployment Engine (graduated tiers)
+  CASH_DEPLOYMENT_TIERS,
   CASH_DEPLOYMENT_THRESHOLD_PCT,
   CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
   CASH_DEPLOYMENT_MAX_DEPLOY_PCT,
   CASH_DEPLOYMENT_MIN_RESERVE_USD,
   CASH_DEPLOYMENT_MAX_ENTRIES,
   CASH_DEPLOY_REQUIRES_MOMENTUM,
+  MOMENTUM_HARD_BLOCK_THRESHOLD,
   // v11.2/v17.0: Crash-Buying Breaker Override (now flow-based)
   DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
   DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
@@ -2084,8 +2086,8 @@ let lastFearGreedValue = 0;
 // v19.3.2: Removed cycle multiplier — bot ALWAYS cycles at normal speed.
 // Preservation mode filters WHAT trades happen, not HOW OFTEN the bot runs.
 // The bot needs to cycle fast to execute trailing stop sells and cut losses.
-const PRESERVATION_FG_ACTIVATE = 15;   // Activate when F&G stays below this for 6h
-const PRESERVATION_FG_DEACTIVATE = 25; // Deactivate when F&G rises above this
+const PRESERVATION_FG_ACTIVATE = 12;   // v20.2: 15→12 — only activate in truly extreme fear. F&G 12-15 is fear, not extreme. Market bottoms here.
+const PRESERVATION_FG_DEACTIVATE = 20; // v20.2: 25→20 — resume normal trading sooner. Prevents overlap with graduated fear deploy multiplier.
 const PRESERVATION_RING_BUFFER_SIZE = 36; // 6 hours at 10-min cycles
 const PRESERVATION_CYCLE_MULTIPLIER = 1; // v19.3.2: NO slowdown — always cycle at normal speed
 // v19.6.1: REMOVED hard buy-block. The AI sees F&G data and should make its own decisions.
@@ -2166,6 +2168,79 @@ function updateCapitalPreservationMode(fgValue: number): void {
   }
 }
 
+// === v20.2: OPPORTUNITY COST TRACKER ===
+// Logs every time a deploy is blocked (fear/momentum/threshold) and scores it 4h later.
+// Feedback loop: shows what the bot missed by holding cash, informs future threshold tuning.
+interface OpportunityCostEntry {
+  timestamp: number;
+  token: string;
+  reason: string;         // 'fear_block' | 'momentum_hard_block' | 'momentum_soft' | 'threshold_inactive'
+  blockedSizeUSD: number;
+  priceAtBlock: number;
+  priceNow?: number;
+  missedPnlUSD?: number;
+  scored: boolean;
+}
+
+let opportunityCostLog: OpportunityCostEntry[] = [];
+let cumulativeMissedPnl = 0;
+let cumulativeMissedCount = 0;
+
+function logMissedOpportunity(token: string, reason: string, blockedSizeUSD: number, priceAtBlock: number): void {
+  opportunityCostLog.push({
+    timestamp: Date.now(),
+    token,
+    reason,
+    blockedSizeUSD,
+    priceAtBlock,
+    scored: false,
+  });
+  // Cap at 100 entries
+  if (opportunityCostLog.length > 100) opportunityCostLog = opportunityCostLog.slice(-100);
+  cumulativeMissedCount++;
+}
+
+/** Score missed opportunities after 4 hours — check if holding cash was the right call */
+function updateOpportunityCosts(currentPrices: Record<string, number>): void {
+  const SCORING_DELAY_MS = 4 * 60 * 60 * 1000; // 4 hours
+  for (const entry of opportunityCostLog) {
+    if (entry.scored) continue;
+    if (Date.now() - entry.timestamp < SCORING_DELAY_MS) continue;
+    if (entry.priceAtBlock <= 0) { entry.scored = true; continue; } // market-level blocks don't have per-token prices
+    const currentPrice = currentPrices[entry.token];
+    if (!currentPrice || currentPrice <= 0) continue;
+    entry.priceNow = currentPrice;
+    const pnlPct = (currentPrice - entry.priceAtBlock) / entry.priceAtBlock;
+    entry.missedPnlUSD = entry.blockedSizeUSD * pnlPct;
+    cumulativeMissedPnl += entry.missedPnlUSD;
+    entry.scored = true;
+    const sign = entry.missedPnlUSD >= 0 ? '+' : '';
+    console.log(`  📊 OPPORTUNITY COST: ${entry.token} (${entry.reason}) — blocked $${entry.blockedSizeUSD.toFixed(0)} → ${sign}$${entry.missedPnlUSD.toFixed(2)} (${(pnlPct * 100).toFixed(1)}%) after 4h`);
+  }
+}
+
+function getOpportunityCostSummary() {
+  const scored = opportunityCostLog.filter(e => e.scored && e.missedPnlUSD !== undefined);
+  const missedGains = scored.filter(e => (e.missedPnlUSD ?? 0) > 0);
+  const avoidedLosses = scored.filter(e => (e.missedPnlUSD ?? 0) <= 0);
+  return {
+    totalMissedPnl: cumulativeMissedPnl,
+    totalBlockedCount: cumulativeMissedCount,
+    scoredCount: scored.length,
+    missedGainsCount: missedGains.length,
+    avoidedLossesCount: avoidedLosses.length,
+    avgMissedPnl: scored.length > 0 ? cumulativeMissedPnl / scored.length : 0,
+    recentMisses: opportunityCostLog.slice(-10).map(e => ({
+      token: e.token,
+      reason: e.reason,
+      blockedUSD: e.blockedSizeUSD,
+      missedPnl: e.missedPnlUSD,
+      scored: e.scored,
+      age: Math.round((Date.now() - e.timestamp) / 3600000) + 'h ago',
+    })),
+  };
+}
+
 // v17.0: Store previous buy ratios for flow direction tracking
 let previousBuyRatios: Map<string, number> = new Map();
 let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
@@ -2238,58 +2313,79 @@ const adaptiveCycle: {
 
 let adaptiveCycleTimer: ReturnType<typeof setTimeout> | null = null;
 
-// === v11.1: CASH DEPLOYMENT ENGINE STATE ===
+// === v11.1/v20.2: CASH DEPLOYMENT ENGINE STATE ===
 let cashDeploymentMode = false;
 let cashDeploymentCycles = 0;
 
-/**
- * v11.1: Cash Deployment Detection
- * Calculates cash percentage and determines if the bot should enter deployment mode.
- * When cash exceeds CASH_DEPLOYMENT_THRESHOLD_PCT, returns deployment parameters
- * including reduced confluence thresholds and a deployment budget.
- */
-function checkCashDeploymentMode(
-  usdcBalance: number,
-  totalPortfolioValue: number,
-): {
+type DeploymentTierLabel = typeof CASH_DEPLOYMENT_TIERS[number]['label'] | 'NONE';
+
+interface CashDeploymentResult {
   active: boolean;
   cashPercent: number;
   excessCash: number;
   deployBudget: number;
   confluenceDiscount: number;
-} {
-  if (totalPortfolioValue <= 0) return { active: false, cashPercent: 0, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
+  tier: DeploymentTierLabel;
+  maxEntries: number;
+}
+
+/**
+ * v20.2: Graduated Cash Deployment Detection
+ * Replaces binary 40% threshold with 4 tiers that increase deployment pressure as cash grows.
+ * Fixes the "dead zone" where 25-39% cash sat idle doing nothing.
+ *
+ * Tiers: LIGHT (>25%) → MODERATE (>35%) → AGGRESSIVE (>50%) → URGENT (>65%)
+ * Each tier has its own deploy %, confluence discount, and max entries.
+ */
+function checkCashDeploymentMode(
+  usdcBalance: number,
+  totalPortfolioValue: number,
+): CashDeploymentResult {
+  const noDeployResult: CashDeploymentResult = { active: false, cashPercent: 0, excessCash: 0, deployBudget: 0, confluenceDiscount: 0, tier: 'NONE', maxEntries: 0 };
+  if (totalPortfolioValue <= 0) return noDeployResult;
 
   const cashPercent = (usdcBalance / totalPortfolioValue) * 100;
 
   // v11.4.19: Directive-aware threshold — aggressive directives lower the trigger
   const directiveAdj = getDirectiveThresholdAdjustments();
-  const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? CASH_DEPLOYMENT_THRESHOLD_PCT;
 
-  if (cashPercent <= effectiveThreshold) {
-    if (cashDeploymentMode) {
-      console.log(`  ✅ Cash deployment mode OFF — USDC at ${cashPercent.toFixed(1)}% (below ${effectiveThreshold}% threshold${directiveAdj.deploymentThresholdOverride ? ' [directive override]' : ''})`);
-      cashDeploymentMode = false;
+  // v20.2: Find highest matching tier (iterate descending)
+  let matchedTier = null;
+  for (let i = CASH_DEPLOYMENT_TIERS.length - 1; i >= 0; i--) {
+    const tier = CASH_DEPLOYMENT_TIERS[i];
+    const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? tier.cashPct;
+    if (cashPercent > effectiveThreshold) {
+      matchedTier = tier;
+      break;
     }
-    return { active: false, cashPercent, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
   }
 
-  // Calculate excess: how much USDC is above the target threshold
-  const targetCash = totalPortfolioValue * (effectiveThreshold / 100);
+  if (!matchedTier) {
+    if (cashDeploymentMode) {
+      console.log(`  ✅ Cash deployment mode OFF — USDC at ${cashPercent.toFixed(1)}% (below ${CASH_DEPLOYMENT_TIERS[0].cashPct}% lowest tier${directiveAdj.deploymentThresholdOverride ? ' [directive override]' : ''})`);
+      cashDeploymentMode = false;
+    }
+    return { ...noDeployResult, cashPercent };
+  }
+
+  // Calculate excess: how much USDC is above the matched tier's threshold
+  const targetCash = totalPortfolioValue * (matchedTier.cashPct / 100);
   const excessCash = Math.max(0, usdcBalance - Math.max(targetCash, CASH_DEPLOYMENT_MIN_RESERVE_USD));
 
   if (excessCash < 10) {
-    return { active: false, cashPercent, excessCash: 0, deployBudget: 0, confluenceDiscount: 0 };
+    return { ...noDeployResult, cashPercent };
   }
 
-  // Deploy up to CASH_DEPLOYMENT_MAX_DEPLOY_PCT of excess per cycle
-  const deployBudget = excessCash * (CASH_DEPLOYMENT_MAX_DEPLOY_PCT / 100);
+  // Deploy the tier's percentage of excess per cycle
+  const deployBudget = excessCash * (matchedTier.deployPct / 100);
 
   cashDeploymentMode = true;
   cashDeploymentCycles++;
 
-  // v11.4.19: Stack directive confluence reduction on top of deployment discount
-  const totalConfluenceDiscount = CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT + directiveAdj.confluenceReduction;
+  // v11.4.19: Stack directive confluence reduction on top of tier's discount
+  const totalConfluenceDiscount = matchedTier.confluenceDiscount + directiveAdj.confluenceReduction;
+
+  console.log(`  💰 CASH DEPLOYMENT [${matchedTier.label}]: ${cashPercent.toFixed(1)}% cash | budget $${deployBudget.toFixed(0)} | confluence -${totalConfluenceDiscount}pts | max ${matchedTier.maxEntries} entries`);
 
   return {
     active: true,
@@ -2297,6 +2393,8 @@ function checkCashDeploymentMode(
     excessCash,
     deployBudget,
     confluenceDiscount: totalConfluenceDiscount,
+    tier: matchedTier.label,
+    maxEntries: matchedTier.maxEntries,
   };
 }
 
@@ -2339,9 +2437,17 @@ function checkCrashBuyingOverride(
 } {
   const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES, blueChipOnly: false, maxPositionPct: 100, requirePositiveBuyRatio: false };
 
-  // v18.2: Block crash buying override in extreme fear — capital preservation first
-  if (fearGreedValue < 25) {
-    return { ...inactive, reason: `Extreme fear (F&G=${fearGreedValue}) — crash buying override disabled, preserving capital` };
+  // v20.2: Graduated fear gate for crash buying (replaces v18.2 hard block)
+  // Instead of blocking entirely at F&G < 25, reduce size and restrict to blue chips in extreme fear
+  let crashFearMult = 1.0;
+  let crashBlueChipOnly = false;
+  if (fearGreedValue < 15) {
+    crashFearMult = 0.25;
+    crashBlueChipOnly = true;
+  } else if (fearGreedValue < 25) {
+    crashFearMult = 0.50;
+  } else if (fearGreedValue < 40) {
+    crashFearMult = 0.75;
   }
 
   // v17.0: Gate on cash level, not F&G. Need significant idle capital to override breaker.
@@ -2364,10 +2470,10 @@ function checkCrashBuyingOverride(
 
   return {
     active: true,
-    reason: `Cash heavy (${deploymentCheck.cashPercent.toFixed(1)}%) + breaker active → deployment override (F&G=${fearGreedValue} for context)`,
-    sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
+    reason: `Cash heavy (${deploymentCheck.cashPercent.toFixed(1)}%) + breaker active → deployment override (F&G=${fearGreedValue}, fear mult: ${(crashFearMult * 100).toFixed(0)}%)`,
+    sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT * crashFearMult, // v20.2: fear reduces crash buy size
     maxEntries: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
-    blueChipOnly: false,          // v17.0: swarm decides sector allocation, not F&G
+    blueChipOnly: crashBlueChipOnly, // v20.2: extreme fear restricts to blue chips
     maxPositionPct: 5,
     requirePositiveBuyRatio: true, // v17.0: always require flow confirmation for breaker override
   };
@@ -8599,7 +8705,7 @@ async function makeTradeDecision(
   marketData: MarketData,
   totalPortfolioValue: number,
   sectorAllocations: SectorAllocation[],
-  cashDeployment?: { active: boolean; cashPercent: number; excessCash: number; deployBudget: number; confluenceDiscount: number },
+  cashDeployment?: CashDeploymentResult,
 ): Promise<TradeDecision[]> {
   const usdcBalance = balances.find(b => b.symbol === "USDC");
   const availableUSDC = usdcBalance?.balance || 0;
@@ -8629,7 +8735,7 @@ async function makeTradeDecision(
   let maxBuyAmount = Math.min(instSize.sizeUSD, availableUSDC);
   // v11.1: In cash deployment mode, allow larger per-trade buys (capped by deployment budget / max entries)
   if (cashDeployment?.active && cashDeployment.deployBudget > 0) {
-    const deployPerTrade = cashDeployment.deployBudget / CASH_DEPLOYMENT_MAX_ENTRIES;
+    const deployPerTrade = cashDeployment.deployBudget / (cashDeployment.maxEntries || CASH_DEPLOYMENT_MAX_ENTRIES);
     maxBuyAmount = Math.min(Math.max(maxBuyAmount, deployPerTrade), availableUSDC);
   }
   console.log(`   🎰 Position Sizer: Kelly=$${instSize.sizeUSD.toFixed(2)} (${instSize.kellyPct.toFixed(1)}% of portfolio) | Vol×${instSize.volMultiplier.toFixed(2)} (realized ${instSize.realizedVol.toFixed(1)}%) | WR=${(instSize.winRate * 100).toFixed(0)}%${instSize.breakerReduction ? ' | ⚠️ BREAKER 30% CUT' : ''}${cashDeployment?.active ? ' | 💵 DEPLOY MODE' : ''}`);
@@ -11420,32 +11526,58 @@ async function runTradingCycle() {
     // v11.4.19: threshold — if deployment mode is on, forced deploy fires too
     // v14.1: Now gated behind market momentum check to avoid buying into falling knives
     if (preAiCashPct > CASH_DEPLOYMENT_THRESHOLD_PCT && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
-      // v18.2: FEAR GATE — NEVER force-deploy cash in extreme fear. Capital preservation is non-negotiable.
-      // SCALE_UP and RIDE_THE_WAVE are unaffected (they run independently below, are opportunity-based)
+      // v20.2: GRADUATED FEAR + MOMENTUM GATES (replaces v18.2 hard blocks)
+      // Instead of blocking all deployment during fear/negative momentum, scale down size.
+      // The per-token signal quality gate (confluence + MACD) is the real falling knife filter.
       let shouldForceDeploy = true;
+      let deployGateMultiplier = 1.0; // Combined fear + momentum size reduction
+      let blueChipOnlyGate = false;
       const currentFearGreed = marketData?.fearGreed?.value ?? 50;
-      if (currentFearGreed < 25) {
-        console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
-        console.log(`   🛑 BLOCKED — Fear & Greed is ${currentFearGreed} (Extreme Fear). Capital preservation mode.`);
-        console.log(`   Cash is KING in extreme fear. SCALE_UP and RIDE_THE_WAVE still active for real opportunities.`);
-        shouldForceDeploy = false;
-      } else if (CASH_DEPLOY_REQUIRES_MOMENTUM) {
+
+      // --- Fear gate: graduated sizing instead of hard block ---
+      if (currentFearGreed < 15) {
+        deployGateMultiplier *= 0.25;
+        blueChipOnlyGate = true;
+        console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — F&G=${currentFearGreed} (extreme fear)`);
+        console.log(`   🛡️ FEAR GATE: Deploying at 25% size, blue chips only. Signal quality gate still active.`);
+      } else if (currentFearGreed < 25) {
+        deployGateMultiplier *= 0.50;
+        console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — F&G=${currentFearGreed} (fear)`);
+        console.log(`   🛡️ FEAR GATE: Deploying at 50% size. Per-token falling knife filter active.`);
+      } else if (currentFearGreed < 40) {
+        deployGateMultiplier *= 0.75;
+      }
+
+      // --- Momentum gate: soft gate, only hard-block at -5% crash ---
+      if (CASH_DEPLOY_REQUIRES_MOMENTUM) {
         const deployMomentum = calculateMarketMomentum();
         const btcEthAvgChange = (deployMomentum.btcChange24h + deployMomentum.ethChange24h) / 2;
-        if (btcEthAvgChange < 0) {
-          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
-          console.log(`   Skipping forced deploy — market momentum negative (BTC ${deployMomentum.btcChange24h >= 0 ? '+' : ''}${deployMomentum.btcChange24h.toFixed(2)}%, ETH ${deployMomentum.ethChange24h >= 0 ? '+' : ''}${deployMomentum.ethChange24h.toFixed(2)}%, avg ${btcEthAvgChange >= 0 ? '+' : ''}${btcEthAvgChange.toFixed(2)}%), preserving cash`);
-          console.log(`   SCALE_UP and RIDE_THE_WAVE still active — will catch opportunities independently`);
+        if (btcEthAvgChange < MOMENTUM_HARD_BLOCK_THRESHOLD) {
+          // Genuine crash: hard block
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — BTC/ETH avg ${btcEthAvgChange.toFixed(2)}%`);
+          console.log(`   🛑 MOMENTUM BLOCK: BTC/ETH avg below ${MOMENTUM_HARD_BLOCK_THRESHOLD}% — genuine crash, holding cash.`);
+          console.log(`   SCALE_UP and RIDE_THE_WAVE still active for real opportunities.`);
           shouldForceDeploy = false;
-        } else if (deployMomentum.score < 0) {
-          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
-          console.log(`   Skipping forced deploy — portfolio momentum score negative (${deployMomentum.score.toFixed(1)}), preserving cash`);
-          console.log(`   SCALE_UP and RIDE_THE_WAVE still active — will catch opportunities independently`);
-          shouldForceDeploy = false;
+          logMissedOpportunity('MARKET', 'momentum_hard_block', preAiUSDC * 0.10, 0);
+        } else if (btcEthAvgChange < 0) {
+          // Dip: scale down proportionally (e.g., -3% → 0.7x, -4.5% → 0.55x)
+          const dipPenalty = Math.max(0.3, 1 + (btcEthAvgChange / 10));
+          deployGateMultiplier *= dipPenalty;
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — BTC/ETH avg ${btcEthAvgChange.toFixed(2)}%`);
+          console.log(`   📉 MOMENTUM SOFT: Dip penalty ${(dipPenalty * 100).toFixed(0)}% — deploying at reduced size`);
+        } else if (deployMomentum.score < -30) {
+          // Strong negative portfolio momentum: reduce, don't block
+          deployGateMultiplier *= 0.5;
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — momentum score ${deployMomentum.score.toFixed(1)}`);
+          console.log(`   📉 MOMENTUM CAUTION: Negative portfolio momentum — deploying at 50% size`);
         } else {
-          // Market conditions neutral-to-positive — proceed with forced deployment
-          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — market momentum OK (score: ${deployMomentum.score.toFixed(1)}, BTC/ETH avg: ${btcEthAvgChange >= 0 ? '+' : ''}${btcEthAvgChange.toFixed(2)}%), deploying`);
+          console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — momentum OK (score: ${deployMomentum.score.toFixed(1)}, BTC/ETH avg: ${btcEthAvgChange >= 0 ? '+' : ''}${btcEthAvgChange.toFixed(2)}%)`);
         }
+      }
+
+      // Log if fear blocked without momentum crash
+      if (shouldForceDeploy && currentFearGreed < 25) {
+        console.log(`   Combined gate multiplier: ${(deployGateMultiplier * 100).toFixed(0)}%${blueChipOnlyGate ? ' (blue chips only)' : ''}`);
       }
 
       if (shouldForceDeploy) {
@@ -11457,7 +11589,10 @@ async function runTradingCycle() {
       // These tokens lack on-chain pricing pools (no WETH/USDC pair on known DEXes),
       // causing $0 price → phantom loss → AI panic-sells real positions.
       // Only deploy into tokens the price engine can reliably price.
-      const sectorTokenPool: Record<string, string[]> = {
+      // v20.2: When blueChipOnlyGate is true (extreme fear), restrict to blue chips only
+      const sectorTokenPool: Record<string, string[]> = blueChipOnlyGate ? {
+        BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
+      } : {
         BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
         AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT'],
         MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
@@ -11510,7 +11645,8 @@ async function runTradingCycle() {
         }
       }
 
-      const deploySize = Math.max(25, Math.min(150, preAiUSDC * 0.10)); // v14.2: min $25 per deploy (was no floor), max $150, 10% of USDC
+      const rawDeploySize = Math.max(25, Math.min(150, preAiUSDC * 0.10)); // v14.2: min $25, max $150, 10% of USDC
+      const deploySize = Math.max(15, rawDeploySize * deployGateMultiplier); // v20.2: Apply fear+momentum gate reduction (floor $15)
       let preAiBuys = 0;
       for (const target of deployTargets) {
         try {
@@ -11580,7 +11716,7 @@ async function runTradingCycle() {
     const deploymentCheck = checkCashDeploymentMode(effectiveCashForDeployment, state.trading.totalPortfolioValue);
     if (deploymentCheck.active) {
       console.log(`\n💵 CASH DEPLOYMENT MODE ACTIVE`);
-      console.log(`   USDC: $${currentUSDCForDeploy.toFixed(2)} (${deploymentCheck.cashPercent.toFixed(1)}% of portfolio) — exceeds ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold`);
+      console.log(`   USDC: $${currentUSDCForDeploy.toFixed(2)} (${deploymentCheck.cashPercent.toFixed(1)}% of portfolio) — tier: ${deploymentCheck.tier}`);
       console.log(`   Excess cash: $${deploymentCheck.excessCash.toFixed(2)} | Deploy budget this cycle: $${deploymentCheck.deployBudget.toFixed(2)}`);
       console.log(`   Confluence discount: -${deploymentCheck.confluenceDiscount} points (BUY threshold: ${state.adaptiveThresholds.confluenceBuy} → ${state.adaptiveThresholds.confluenceBuy - deploymentCheck.confluenceDiscount})`);
       console.log(`   Underweight sectors: ${sectorAllocations.filter(s => s.drift < -5).map(s => `${s.name}(${s.drift.toFixed(1)}%)`).join(', ') || 'none'}`);
@@ -13091,6 +13227,11 @@ async function runTradingCycle() {
   console.log(`   Cooldowns: ${cooldownManager.getActiveCount()} active | Cache: ${cacheManager.getStats().entries} entries (${cacheManager.getStats().hitRate} hit rate)`);
   console.log(`   Cycle type: HEAVY (${heavyReason}) | Light/Heavy: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H`);
 
+  // v20.2: Score missed opportunities from previous cycles
+  const priceRecord: Record<string, number> = {};
+  for (const [symbol, price] of currentPrices) { priceRecord[symbol] = price; }
+  updateOpportunityCosts(priceRecord);
+
   // v6.2: Compute and apply adaptive interval for next cycle
   const nextInterval = computeNextInterval(currentPrices);
   adaptiveCycle.currentIntervalSec = nextInterval.intervalSec;
@@ -14352,6 +14493,7 @@ function apiPortfolio() {
       active: cashDeploymentMode,
       cyclesActive: cashDeploymentCycles,
       thresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
+      tiers: CASH_DEPLOYMENT_TIERS,
       confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
       minReserveUSD: CASH_DEPLOYMENT_MIN_RESERVE_USD,
     },
@@ -14364,6 +14506,8 @@ function apiPortfolio() {
       maxEntriesPerCycle: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
       note: 'v17.0: Flow-based — activates on cash level, requires positive buy ratio per token',
     },
+    // v20.2: Opportunity cost tracker — shows what the bot missed by holding cash
+    opportunityCost: getOpportunityCostSummary(),
     // v11.4.22: On-chain recovery diagnostic
     _recovery: (state as any)._recoveryStatus || 'not run',
     _recoveryWallet: (state as any)._recoveryWallet || 'unknown',

@@ -499,35 +499,44 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
 // ============================================================================
 
 /**
- * When USDC exceeds this percentage of total portfolio, the bot enters
- * "capital deployment mode" — lowers confluence thresholds to actively
- * seek entries and bring the portfolio closer to sector targets.
+ * v20.2: GRADUATED CASH DEPLOYMENT TIERS
+ * Replaces the old binary threshold (40%) with 4 tiers that increase deployment
+ * pressure as cash grows. Fixes the "dead zone" where 25-39% cash sat idle.
  *
- * v11.4.13: Lowered from 50% → 30%. v11.4.19: Lowered from 30% → 20%.
- * Bot was stuck at 29.6% — 0.4% below threshold — doing nothing with $1,482 USDC.
- * 20% ensures deployment mode fires for any meaningful cash drag.
+ * History: v11.4.13: 50→30. v11.4.19: 30→20. v14.1: 25→40. v20.2: graduated tiers.
+ * The bot was stuck at 37.5% cash ($3K on $8K) — 2.5% below the 40% trigger — doing nothing.
  */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 40; // v14.1: 25% → 40% — not as lazy as 50, not as aggressive as 25. Pairs with momentum gate to avoid buying falling knives.
+export const CASH_DEPLOYMENT_TIERS = [
+  { cashPct: 25, deployPct: 30, confluenceDiscount: 5,  maxEntries: 2, label: 'LIGHT' as const },
+  { cashPct: 35, deployPct: 50, confluenceDiscount: 10, maxEntries: 3, label: 'MODERATE' as const },
+  { cashPct: 50, deployPct: 70, confluenceDiscount: 15, maxEntries: 4, label: 'AGGRESSIVE' as const },
+  { cashPct: 65, deployPct: 80, confluenceDiscount: 20, maxEntries: 5, label: 'URGENT' as const },
+];
 
-/** Confluence score reduction when in deployment mode (makes entries easier)
- *  v11.4.13: Raised from 15 → 20 — lower the bar further to get capital deployed */
+/** Backwards-compatible: lowest tier threshold. Used by forced deploy gate check. */
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 25; // v20.2: 40% → 25% (first tier)
+
+/** Legacy — still used as the URGENT tier's confluence discount for directive stacking */
 export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 20;
 
-/** Maximum percentage of excess cash to deploy per cycle (prevents all-in)
- *  v11.4.13: Raised from 50% → 65% — deploy faster, the bot needs to be in the market */
+/** Legacy — kept for reference; tiers now define per-tier deploy percentages */
 export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 80;
 
 /** Minimum USDC to always keep as reserve (gas + emergency buffer) */
 export const CASH_DEPLOYMENT_MIN_RESERVE_USD = 150;
 
-/** Number of tokens to target per deployment cycle (spread across sectors) */
+/** Legacy fallback — tiers define per-tier maxEntries now */
 export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
 
 /** v14.1: Gate forced cash deployment behind market momentum check.
- *  When true, FORCED_DEPLOY only fires when BTC+ETH avg 24h change >= 0 AND
- *  portfolio momentum score >= 0. Prevents buying into falling knives.
+ *  v20.2: Softened — only hard-blocks at -5% BTC+ETH avg (genuine crash).
+ *  Dips between -5% and 0% scale deployment down proportionally.
  *  SCALE_UP and RIDE_THE_WAVE are unaffected — those are opportunity-based. */
 export const CASH_DEPLOY_REQUIRES_MOMENTUM = true;
+
+/** v20.2: BTC+ETH avg 24h change must be worse than this to hard-block forced deployment.
+ *  Between this and 0%, deployment scales down proportionally. */
+export const MOMENTUM_HARD_BLOCK_THRESHOLD = -5;
 
 // v11.2: CRASH-BUYING OVERRIDE — v17.0: Now flow-based, not F&G-based
 /** Minimum cash % to qualify for breaker override (must be heavily overweight cash)
