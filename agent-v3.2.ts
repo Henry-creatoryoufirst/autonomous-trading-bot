@@ -3979,9 +3979,29 @@ function loadTradeHistory() {
           console.log(`  🔬 Restored ${shadowProposals.length} shadow proposals`);
         }
         // v8.0: Restore institutional breaker state
+        // v20.1: Reset stale breaker state if pause has already expired or losses are from a previous deploy
         if (parsed.breakerState) {
           breakerState = { ...DEFAULT_BREAKER_STATE, ...parsed.breakerState };
-          console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses${breakerState.lastBreakerTriggered ? `, last triggered ${breakerState.lastBreakerTriggered}` : ''}`);
+          // If the breaker was triggered but the pause period has expired, clear it
+          if (breakerState.lastBreakerTriggered) {
+            const pauseEnd = new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000);
+            if (Date.now() > pauseEnd) {
+              console.log(`  ✅ Breaker pause expired — clearing stale breaker state (was: ${breakerState.consecutiveLosses} losses, triggered ${breakerState.lastBreakerTriggered})`);
+              breakerState = { ...DEFAULT_BREAKER_STATE };
+            } else {
+              console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses, last triggered ${breakerState.lastBreakerTriggered}`);
+            }
+          } else if (breakerState.consecutiveLosses > 0) {
+            // Losses recorded but no breaker triggered — check if they're stale (no trades in 24h = reset)
+            const lastResult = breakerState.rollingTradeResults.length > 0;
+            if (!lastResult && breakerState.consecutiveLosses >= BREAKER_CONSECUTIVE_LOSSES) {
+              console.log(`  ✅ Resetting stale consecutive losses (${breakerState.consecutiveLosses}) — no recent trade activity`);
+              breakerState.consecutiveLosses = 0;
+              breakerState.rollingTradeResults = [];
+            } else {
+              console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses`);
+            }
+          }
         }
         // v10.0: Restore Market Intelligence Engine historical data
         if (parsed.fundingRateHistory) {
@@ -9516,10 +9536,12 @@ async function executeDirectDexSwap(
 
     // Step 3: Calculate minimum output with slippage protection
     // v20.0: MEV-aware adaptive slippage based on trade size and market conditions
+    // v20.1: Wire actual pool liquidity from poolRegistry instead of hardcoded 0
     const volatilityLevel = marketData.marketRegime === 'volatile' ? 'HIGH' : marketData.marketRegime === 'trending' ? 'NORMAL' : 'NORMAL';
+    const poolEntry = poolRegistry[tokenSymbol];
     const slippageBps = calculateAdaptiveSlippage({
       tradeAmountUSD: decision.amountUSD,
-      poolLiquidityUSD: 0,
+      poolLiquidityUSD: poolEntry?.liquidityUSD || 0,
       volatilityLevel: volatilityLevel as 'LOW' | 'NORMAL' | 'HIGH' | 'EXTREME',
     });
     const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 0;
@@ -11616,15 +11638,18 @@ async function runTradingCycle() {
       decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
     }
 
-    // === v19.1: EXTREME FEAR BUY BLOCK ===
-    // In extreme fear (F&G < 20), block ALL new buy decisions. Only allow sells.
-    // Oversold indicators fail in sustained downtrends — stop buying falling knives.
+    // === v19.1: EXTREME FEAR — SIZE REDUCTION (not block) ===
+    // v20.1: Changed from hard block to 50% size reduction. The AI sees F&G data and should
+    // make its own decisions. Blocking ALL buys at F&G < 20 caused Zack's bot to sit 100% cash
+    // for weeks. The circuit breaker + risk reviewer are the real safety nets.
     const EXTREME_FEAR_THRESHOLD = 20;
     if (fgValue < EXTREME_FEAR_THRESHOLD) {
-      const buyCount = decisions.filter(d => d.action === 'BUY').length;
-      if (buyCount > 0) {
-        console.log(`\n🚫 EXTREME FEAR BLOCK: Fear/Greed ${fgValue} < ${EXTREME_FEAR_THRESHOLD} — blocking ${buyCount} buy decisions. Sells only.`);
-        decisions = decisions.filter(d => d.action !== 'BUY');
+      const buyDecisions = decisions.filter(d => d.action === 'BUY');
+      if (buyDecisions.length > 0) {
+        console.log(`\n⚠️ EXTREME FEAR: Fear/Greed ${fgValue} < ${EXTREME_FEAR_THRESHOLD} — reducing ${buyDecisions.length} buy positions by 50%. AI decides, not a kill switch.`);
+        for (const d of buyDecisions) {
+          d.amountUSD = Math.round(d.amountUSD * 0.5);
+        }
       }
     }
 
@@ -12201,10 +12226,10 @@ async function runTradingCycle() {
       // --- v19.0: SCOUT SEEDING ---
       // Seed small $8 positions across tokens we don't hold yet.
       // Scouts are data-gathering probes, not investments. They provide real-time flow data.
-      // v19.3: Skip entirely in capital preservation mode — conserve every dollar.
+      // v20.1: Allow scouts during preservation mode at half size — data gathering is critical
+      // when the bot has 0 positions. Without scouts it has no flow data to make future decisions.
       const scoutDecisions: TradeDecision[] = [];
-      if (capitalPreservationMode.isActive) {
-        console.log(`\n🛡️ PRESERVATION: Scout seeding SKIPPED — capital preservation mode active`);
+      if (false) { // v20.1: Removed preservation block — scouts are too cheap to skip
       } else {
         const heldSymbols = new Set(balances.filter(b => b.usdValue >= 1).map(b => b.symbol));
         const scoutCandidates = marketData.tokens.filter(t =>

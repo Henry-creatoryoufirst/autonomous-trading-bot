@@ -11,6 +11,7 @@
  */
 
 import axios from 'axios';
+import { BASE_USDC_ADDRESS } from '../config/constants.js';
 
 // ============================================================================
 // CONSTANTS
@@ -22,7 +23,7 @@ const RATE_LIMIT_MS = 2100; // ~28 calls/min to stay under 30/min limit
 
 // Token addresses we trade (lowercase for matching)
 const TRACKED_TOKENS: Record<string, string> = {
-  'USDC':    '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  'USDC':    BASE_USDC_ADDRESS,
   'ETH':     '0x4200000000000000000000000000000000000006', // WETH on Base
   'WETH':    '0x4200000000000000000000000000000000000006',
   'cbBTC':   '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf',

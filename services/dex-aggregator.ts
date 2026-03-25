@@ -16,12 +16,11 @@
  */
 
 import axios from "axios";
+import { BASE_CHAIN_ID } from "../config/constants.js";
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
-
-const BASE_CHAIN_ID = 8453;
 
 /** 0x API base URL for Base chain */
 const ZERO_X_API_URL = "https://base.api.0x.org";

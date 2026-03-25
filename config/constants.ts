@@ -4,6 +4,16 @@
  */
 
 // ============================================================================
+// BASE CHAIN ADDRESSES & IDS
+// ============================================================================
+
+/** Base Mainnet chain ID */
+export const BASE_CHAIN_ID = 8453;
+
+/** USDC on Base Mainnet (checksummed) */
+export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+
+// ============================================================================
 // TRADING CYCLE TIMING
 // ============================================================================
 
@@ -520,8 +530,6 @@ export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
 export const CASH_DEPLOY_REQUIRES_MOMENTUM = true;
 
 // v11.2: CRASH-BUYING OVERRIDE — v17.0: Now flow-based, not F&G-based
-/** @deprecated v17.0: F&G no longer gates breaker override. Cash level is the trigger. */
-export const DEPLOYMENT_BREAKER_OVERRIDE_FG_MAX = 30; // v17.0: kept for backward compat but not used as gate
 /** Minimum cash % to qualify for breaker override (must be heavily overweight cash)
  *  v11.4.13: 60 → 40 — don't need to be 60% cash to override, 40% is already too much */
 export const DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT = 40;
@@ -658,29 +666,6 @@ export const RANGING_MAX_TRADES_PER_CYCLE = 2;
 
 /** Max position percent override for tokens showing strong momentum */
 export const MOMENTUM_MAX_POSITION_PERCENT = 15;
-
-// ============================================================================
-// v16.0: FEAR/REGIME MARKET BEHAVIOR TUNING — NVR Live Audit P1-1
-// v17.0: DEPRECATED — F&G is no longer used as a trading gate.
-//        These constants are kept for backward compatibility but are NOT used
-//        in buy/sell decisions. The swarm agents make all trading decisions
-//        based on capital flow, momentum, risk metrics, and trend.
-// ============================================================================
-
-/** @deprecated v17.0: F&G no longer gates trading decisions */
-export const EXTREME_FEAR_FG_THRESHOLD = 20;
-
-/** @deprecated v17.0: Swarm handles confluence, no F&G override */
-export const EXTREME_FEAR_CONFLUENCE_MIN = 30;
-
-/** @deprecated v17.0: Swarm handles trade limits, no F&G override */
-export const EXTREME_FEAR_MAX_TRADES = 1;
-
-/** @deprecated v17.0: F&G no longer gates trading decisions */
-export const FEAR_FG_THRESHOLD = 30;
-
-/** @deprecated v17.0: Swarm handles confluence, no F&G override */
-export const FEAR_CONFLUENCE_MIN = 25;
 
 // ============================================================================
 // v16.0: DUST/MICRO POSITION CLEANUP — NVR Live Audit P1-3

@@ -13,14 +13,14 @@
  */
 
 import axios from 'axios';
-import { BASE_RPC_ENDPOINTS } from '../config/constants.js';
+import { BASE_RPC_ENDPOINTS, BASE_USDC_ADDRESS } from '../config/constants.js';
 
 // ============================================================================
 // CONTRACT ADDRESSES (Base Mainnet)
 // ============================================================================
 
 const AAVE_V3_POOL = '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5';
-const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const USDC_ADDRESS = BASE_USDC_ADDRESS;
 const ABASUSDC_ADDRESS = '0x4e65fE4DBa92790696d040ac24Aa414708F5c0AB';
 const USDC_DECIMALS = 6;
 

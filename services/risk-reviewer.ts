@@ -436,7 +436,15 @@ export function getDrawdownState(): DrawdownState {
  * Restore drawdown state from persisted data (called at startup).
  */
 export function restoreDrawdownState(saved: Partial<DrawdownState>): void {
-  if (saved) {
-    drawdownState = { ...drawdownState, ...saved };
-  }
+  if (!saved || typeof saved !== 'object') return;
+  const validated: Partial<DrawdownState> = {};
+  if (typeof saved.dailyHighValue === 'number' && saved.dailyHighValue >= 0) validated.dailyHighValue = saved.dailyHighValue;
+  if (typeof saved.dailyHighTimestamp === 'string') validated.dailyHighTimestamp = saved.dailyHighTimestamp;
+  if (typeof saved.weeklyHighValue === 'number' && saved.weeklyHighValue >= 0) validated.weeklyHighValue = saved.weeklyHighValue;
+  if (typeof saved.weeklyHighTimestamp === 'string') validated.weeklyHighTimestamp = saved.weeklyHighTimestamp;
+  if (typeof saved.dailyHaltActive === 'boolean') validated.dailyHaltActive = saved.dailyHaltActive;
+  if (saved.dailyHaltUntil === null || typeof saved.dailyHaltUntil === 'string') validated.dailyHaltUntil = saved.dailyHaltUntil;
+  if (typeof saved.weeklyDefensiveMode === 'boolean') validated.weeklyDefensiveMode = saved.weeklyDefensiveMode;
+  if (saved.weeklyDefensiveUntil === null || typeof saved.weeklyDefensiveUntil === 'string') validated.weeklyDefensiveUntil = saved.weeklyDefensiveUntil;
+  drawdownState = { ...drawdownState, ...validated };
 }

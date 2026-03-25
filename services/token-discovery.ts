@@ -286,7 +286,7 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
         address: token.address, // Keep original checksum
         symbol: token.symbol.toUpperCase(),
         name: token.name,
-        decimals: await fetchTokenDecimals(token.address) ?? 18, // Fetch on-chain, fallback to 18
+        decimals: 18, // Placeholder — batch-resolved below
         coingeckoId: "", // Will be resolved separately
         sector,
         riskLevel,
@@ -302,6 +302,14 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
         pairAddress: pair.pairAddress,
         minTradeUSD: liquidity > 200_000 ? 5 : 3,
       });
+    }
+
+    // Batch-fetch decimals in parallel instead of serial awaits
+    const decimalResults = await Promise.all(
+      discovered.map(t => fetchTokenDecimals(t.address).catch(() => null))
+    );
+    for (let i = 0; i < discovered.length; i++) {
+      discovered[i].decimals = decimalResults[i] ?? 18;
     }
 
     // Sort by volume (highest first) and cap
