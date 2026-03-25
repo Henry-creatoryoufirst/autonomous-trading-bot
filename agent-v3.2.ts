@@ -294,6 +294,8 @@ import {
 import type { CooldownDecision } from "./types/index.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
 import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
+// v20.0: MEV Protection
+import { calculateAdaptiveSlippage, getSwapDeadline, needsMevProtection, logMevDecision, MEV_TX_DEADLINE_SECONDS } from './services/mev-protection.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
@@ -9487,8 +9489,14 @@ async function executeDirectDexSwap(
     } catch { /* non-critical */ }
 
     // Step 3: Calculate minimum output with slippage protection
-    // Use 2% slippage for DEX-direct swaps (slightly more than CDP since we're doing manual routing)
-    const slippageBps = 200; // 2%
+    // v20.0: MEV-aware adaptive slippage based on trade size and market conditions
+    const volatilityLevel = marketData.marketRegime === 'volatile' ? 'HIGH' : marketData.marketRegime === 'trending' ? 'NORMAL' : 'NORMAL';
+    const slippageBps = calculateAdaptiveSlippage({
+      tradeAmountUSD: decision.amountUSD,
+      poolLiquidityUSD: 0, // Pool liquidity not available here; base slippage is sufficient
+      volatilityLevel: volatilityLevel as 'LOW' | 'NORMAL' | 'HIGH' | 'EXTREME',
+      isBuy: !isSell,
+    });
     const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 0;
     let expectedOutput: number;
     let outDecimals: number;
@@ -9501,7 +9509,8 @@ async function executeDirectDexSwap(
     }
     const minOutput = expectedOutput * (1 - slippageBps / 10000);
     const amountOutMin = minOutput > 0 ? parseUnits(minOutput.toFixed(Math.min(outDecimals, 8)), outDecimals) : BigInt(0);
-    console.log(`     🛡️ Slippage: ${slippageBps / 100}% | Min output: ${formatUnits(amountOutMin, outDecimals)}`);
+    const mevProtected = needsMevProtection(decision.amountUSD);
+    console.log(`     🛡️ Slippage: ${slippageBps / 100}% | Min output: ${formatUnits(amountOutMin, outDecimals)} | MEV: ${mevProtected ? 'Flashbots RPC active' : 'standard (small trade)'}`);
 
     // Step 4: Try swap routes — first direct, then multi-hop via WETH
     const FEE_TIERS = [3000, 10000, 500]; // 0.3%, 1%, 0.05%
