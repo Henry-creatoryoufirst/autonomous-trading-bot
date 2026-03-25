@@ -296,6 +296,8 @@ import type { CooldownDecision } from "./types/index.js";
 import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
 // v20.0: MEV Protection
 import { calculateAdaptiveSlippage, getSwapDeadline, needsMevProtection, logMevDecision, MEV_TX_DEADLINE_SECONDS } from './services/mev-protection.js';
+// v20.0: DEX Aggregator for better execution prices
+import { getBestAggregatorQuote, shouldUseAggregator } from './services/dex-aggregator.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
 import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
@@ -9512,10 +9514,55 @@ async function executeDirectDexSwap(
     const mevProtected = needsMevProtection(decision.amountUSD);
     console.log(`     🛡️ Slippage: ${slippageBps / 100}% | Min output: ${formatUnits(amountOutMin, outDecimals)} | MEV: ${mevProtected ? 'Flashbots RPC active' : 'standard (small trade)'}`);
 
-    // Step 4: Try swap routes — first direct, then multi-hop via WETH
-    const FEE_TIERS = [3000, 10000, 500]; // 0.3%, 1%, 0.05%
+    // Step 4: Try swap routes — first aggregator, then direct, then multi-hop via WETH
     let txHash = '';
     let swapSuccess = false;
+
+    // v20.0: Try DEX aggregator first for better pricing (0x / 1inch)
+    if (shouldUseAggregator(decision.amountUSD)) {
+      try {
+        console.log(`     🔀 Trying DEX aggregator for better execution...`);
+        const aggQuote = await getBestAggregatorQuote(
+          tokenIn, tokenOut, fromAmount.toString(), slippageBps, walletAddress
+        );
+        if (aggQuote?.to && aggQuote?.data) {
+          // Check if we need to approve the aggregator's allowance target
+          if (aggQuote.allowanceTarget && aggQuote.allowanceTarget !== UNISWAP_V3_SWAP_ROUTER) {
+            const allowanceData = "0xdd62ed3e" +
+              walletAddress.slice(2).padStart(64, "0") +
+              aggQuote.allowanceTarget.slice(2).padStart(64, "0");
+            const currentAllowance = await rpcCall("eth_call", [{ to: tokenIn, data: allowanceData }, "latest"]);
+            if (currentAllowance === "0x" || BigInt(currentAllowance) < fromAmount) {
+              console.log(`     🔓 Approving aggregator allowance target...`);
+              const APPROVE_SELECTOR = "0x095ea7b3";
+              const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+              const approveData = APPROVE_SELECTOR + aggQuote.allowanceTarget.slice(2).padStart(64, "0") + MAX_UINT256.slice(2);
+              await account.sendTransaction({
+                network: "base",
+                transaction: { to: tokenIn, data: approveData as `0x${string}`, value: BigInt(0) },
+              });
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+          }
+
+          const result = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: aggQuote.to as `0x${string}`,
+              data: aggQuote.data as `0x${string}`,
+              value: BigInt(aggQuote.value || '0'),
+            },
+          });
+          txHash = result.transactionHash;
+          swapSuccess = true;
+          console.log(`     ✅ Aggregator swap succeeded (${aggQuote.aggregator}) | Sources: ${aggQuote.sources.join(', ') || 'optimized'}`);
+        }
+      } catch (e: any) {
+        console.log(`     ⚠️ Aggregator swap failed: ${e.message?.substring(0, 100)} — falling back to direct Uniswap`);
+      }
+    }
+
+    const FEE_TIERS = [3000, 10000, 500]; // 0.3%, 1%, 0.05%
 
     // Try direct single-hop first (tokenIn -> tokenOut) with each fee tier
     for (const fee of FEE_TIERS) {
