@@ -21,7 +21,6 @@ interface SlippageParams {
   tradeAmountUSD: number;
   poolLiquidityUSD: number;
   volatilityLevel: 'LOW' | 'NORMAL' | 'HIGH' | 'EXTREME';
-  isBuy: boolean;
 }
 
 /**

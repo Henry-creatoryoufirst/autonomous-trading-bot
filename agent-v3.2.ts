@@ -1,5 +1,5 @@
 /**
- * Henry's Autonomous Trading Agent v5.2.0
+ * Henry's Autonomous Trading Agent v20.0
  *
  * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE + v5.1 INTELLIGENCE UPGRADE
  *
@@ -9298,8 +9298,9 @@ async function executeTrade(
 const UNISWAP_V3_SWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481" as Address;
 
 // v20.0: Cache MAX_UINT256 approvals — once approved, no need to check on-chain again
-// Key: "tokenAddress:spenderAddress" → true
+// Key: "tokenAddress:spenderAddress". Cleared on startup since it's an in-memory cache.
 const approvalCache = new Set<string>();
+// Note: approvals persist on-chain, so cache only saves RPC reads — no correctness risk on restart.
 const DEX_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 const DEX_WETH = "0x4200000000000000000000000000000000000006" as Address;
 
@@ -9518,9 +9519,8 @@ async function executeDirectDexSwap(
     const volatilityLevel = marketData.marketRegime === 'volatile' ? 'HIGH' : marketData.marketRegime === 'trending' ? 'NORMAL' : 'NORMAL';
     const slippageBps = calculateAdaptiveSlippage({
       tradeAmountUSD: decision.amountUSD,
-      poolLiquidityUSD: 0, // Pool liquidity not available here; base slippage is sufficient
+      poolLiquidityUSD: 0,
       volatilityLevel: volatilityLevel as 'LOW' | 'NORMAL' | 'HIGH' | 'EXTREME',
-      isBuy: !isSell,
     });
     const tokenPrice = marketData.tokens.find(t => t.symbol === tokenSymbol)?.price || 0;
     let expectedOutput: number;
@@ -11376,8 +11376,14 @@ async function runTradingCycle() {
           reasoning: explorationTrade.reasoning,
           isExploration: true,
         };
-        await executeTrade(exploreDecision, marketData);
-        explorationsThisCycle++;
+        // v20.0: Gate exploration buys behind drawdown controls
+        const explDD = isTradeAllowedByDrawdown('BUY');
+        if (!explDD.allowed) {
+          console.log(`   🚨 DRAWDOWN: Blocking exploration buy — ${explDD.reason}`);
+        } else {
+          await executeTrade(exploreDecision, marketData);
+          explorationsThisCycle++;
+        }
         analyzeStrategyPatterns();
         saveTradeHistory();
       }
@@ -11509,6 +11515,12 @@ async function runTradingCycle() {
             sector: target.sector,
             isForced: true,
           };
+          // v20.0: Gate forced deploy behind drawdown controls
+          const deployDD = isTradeAllowedByDrawdown('BUY');
+          if (!deployDD.allowed) {
+            console.log(`   🚨 DRAWDOWN: Blocking forced deploy — ${deployDD.reason}`);
+            break;
+          }
           console.log(`   📦 FORCED_DEPLOY: $${deploySize.toFixed(0)} → ${target.token}`);
           const result = await executeTrade(deployDecision, marketData);
           if (result.success) {
@@ -14169,7 +14181,7 @@ function downsample(arr: number[], n: number): number[] {
 
 // v10.2: Auth token for sensitive endpoints. Auto-generates a random token if not set — never leave admin endpoints open.
 const API_AUTH_TOKEN = process.env.API_AUTH_TOKEN || `auto-${Date.now()}-${Math.random().toString(36).substring(2, 14)}`;
-if (!process.env.API_AUTH_TOKEN) console.warn(`⚠️  API_AUTH_TOKEN not set — auto-generated token: ${API_AUTH_TOKEN} (set API_AUTH_TOKEN env var for stable access)`);
+if (!process.env.API_AUTH_TOKEN) console.warn(`⚠️  API_AUTH_TOKEN not set — auto-generated (set API_AUTH_TOKEN env var for stable access)`);
 function isAuthorized(req: http.IncomingMessage): boolean {
   const authHeader = req.headers['authorization'] || '';
   return authHeader === `Bearer ${API_AUTH_TOKEN}`;
@@ -15209,6 +15221,7 @@ const healthServer = http.createServer(async (req, res) => {
       }
 
       case '/api/accounts': {
+        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized' }); break; }
         // Temporary endpoint: list ALL CDP accounts to find wallet 0xB7c51b
         try {
           if (!cdpClient) { sendJSON(res, 500, { error: 'CDP not initialized' }); break; }
@@ -15234,10 +15247,8 @@ const healthServer = http.createServer(async (req, res) => {
 
       // === v19.6: KILL SWITCH — Immediately halt all trading ===
       case '/api/kill': {
-        if (req.method !== 'POST') {
-          sendJSON(res, 405, { error: 'POST required' });
-          break;
-        }
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST required' }); break; }
+        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized' }); break; }
         CONFIG.trading.enabled = false;
         triggerCircuitBreaker('KILL SWITCH activated via /api/kill');
         telegramService.onKillSwitch('API endpoint /api/kill').catch(() => {});
@@ -15252,10 +15263,8 @@ const healthServer = http.createServer(async (req, res) => {
 
       // === v19.6: RESUME — Re-enable trading after kill switch ===
       case '/api/resume': {
-        if (req.method !== 'POST') {
-          sendJSON(res, 405, { error: 'POST required' });
-          break;
-        }
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST required' }); break; }
+        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized' }); break; }
         CONFIG.trading.enabled = true;
         breakerState.lastBreakerTriggered = null;
         breakerState.lastBreakerReason = null;
