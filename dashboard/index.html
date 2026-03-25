@@ -3119,7 +3119,10 @@ function renderOverview() {
   const a = Store.data.adaptive || {};
 
   AV.portfolio.set(p.totalValue);
-  $('kpi-portfolio-sub').textContent = 'Capital in: ' + fmtUSD(p.totalCapitalIn || (p.initialValue + (p.totalDeposited || 0))) + ' | Peak: ' + fmtUSD(p.peakValue);
+  // v20.1: Fix capital-in calculation — use netCapitalIn (deposits minus withdrawals) instead of
+  // initialValue + totalDeposited which double-counts (initialValue IS the first deposit)
+  const capitalIn = p.netCapitalIn || p.totalDeposited || p.initialValue || 0;
+  $('kpi-portfolio-sub').textContent = 'Capital in: ' + fmtUSD(capitalIn) + ' | Peak: ' + fmtUSD(p.peakValue);
   const pnlCard = $('kpiCard-portfolio');
   const tradingPnlForGlow = (p.realizedPnL || 0) + (p.unrealizedPnL || 0);
   pnlCard.classList.toggle('glow-green', tradingPnlForGlow >= 0);
@@ -3127,7 +3130,7 @@ function renderOverview() {
 
   // Trading P&L = realized + unrealized from actual trades (not portfolio delta)
   const tradingPnl = (p.realizedPnL || 0) + (p.unrealizedPnL || 0);
-  const totalCapIn = p.totalCapitalIn || (p.initialValue + (p.totalDeposited || 0));
+  const totalCapIn = p.netCapitalIn || p.totalDeposited || p.initialValue || 0;
   const tradingPnlPct = totalCapIn > 0 ? (tradingPnl / totalCapIn) * 100 : 0;
   AV.returnVal.set(tradingPnl);
   $('kpi-return').className = 'card-value ' + clsPnl(tradingPnl);
