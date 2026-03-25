@@ -270,6 +270,61 @@ export class TelegramAlertService {
   // DAILY P&L DIGEST
   // ============================================================================
 
+  // ============================================================================
+  // HOURLY STATUS REPORT — All-bot health snapshot
+  // ============================================================================
+
+  async sendHourlyReport(data: {
+    portfolioValue: number;
+    hourlyPnL: number;
+    hourlyTrades: number;
+    hourlyWins: number;
+    totalTrades: number;
+    totalCycles: number;
+    cashPercent: number;
+    positions: { symbol: string; usdValue: number; pnlPct: number }[];
+    marketRegime?: string;
+    fearGreedIndex?: number;
+    preservationMode?: boolean;
+    uptime: string;
+    version: string;
+  }): Promise<void> {
+    const pnlSign = data.hourlyPnL >= 0 ? "+" : "";
+    const pnlEmoji = data.hourlyPnL >= 0 ? "\u{2705}" : "\u{1F534}"; // ✅ or 🔴
+
+    // Top positions summary (top 5 by value)
+    const topPositions = data.positions
+      .sort((a, b) => b.usdValue - a.usdValue)
+      .slice(0, 5)
+      .map((p) => {
+        const sign = p.pnlPct >= 0 ? "+" : "";
+        return `  ${p.symbol}: $${p.usdValue.toFixed(2)} (${sign}${p.pnlPct.toFixed(1)}%)`;
+      })
+      .join("\n");
+
+    const statusFlags: string[] = [];
+    if (data.preservationMode) statusFlags.push("\u{1F6E1}\u{FE0F} Preservation Mode");
+    if (data.fearGreedIndex !== undefined && data.fearGreedIndex <= 25) statusFlags.push(`\u{1F628} Extreme Fear (${data.fearGreedIndex})`);
+    if (data.cashPercent > 50) statusFlags.push(`\u{1F4B0} ${data.cashPercent.toFixed(0)}% Cash`);
+
+    await this.sendAlert({
+      severity: "INFO",
+      title: `Hourly Report \u{1F4CA}`,
+      message: [
+        `<b>Portfolio:</b> $${data.portfolioValue.toFixed(2)}`,
+        `<b>Last Hour:</b> ${pnlEmoji} ${pnlSign}$${data.hourlyPnL.toFixed(2)} | ${data.hourlyTrades} trades (${data.hourlyWins} wins)`,
+        `<b>Market:</b> ${data.marketRegime || "Unknown"}${data.fearGreedIndex !== undefined ? ` | F&G: ${data.fearGreedIndex}` : ""}`,
+        "",
+        `<b>Top Positions:</b>`,
+        topPositions || "  No active positions",
+        "",
+        `<b>Stats:</b> ${data.totalTrades} total trades | ${data.totalCycles} cycles | ${data.uptime} uptime`,
+        statusFlags.length > 0 ? `\n<b>Flags:</b> ${statusFlags.join(" | ")}` : "",
+        `<i>v${data.version}</i>`,
+      ].filter(Boolean).join("\n"),
+    });
+  }
+
   async sendDailyDigest(data: {
     portfolioValue: number;
     dailyPnL: number;
