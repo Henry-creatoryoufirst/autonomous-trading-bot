@@ -29,9 +29,6 @@ const ZERO_X_API_URL = "https://base.api.0x.org";
 /** 1inch API base URL */
 const ONE_INCH_API_URL = "https://api.1inch.dev/swap/v6.0";
 
-/** Base USDC address */
-const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-
 /** Minimum trade size to use aggregator (smaller trades: direct is fine) */
 export const AGGREGATOR_MIN_TRADE_USD = 20;
 
