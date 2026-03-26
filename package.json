@@ -16,6 +16,8 @@
     "@langchain/anthropic": "^0.3.14",
     "@langchain/core": "^0.3.19",
     "@langchain/langgraph": "^0.2.21",
+    "@x402/axios": "^2.8.0",
+    "@x402/evm": "^2.8.0",
     "axios": "^1.7.9",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",

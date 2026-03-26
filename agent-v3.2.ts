@@ -410,9 +410,16 @@ const SECTORS = {
   },
   DEFI: {
     name: "DeFi Protocols",
-    targetAllocation: 0.20, // 20% of portfolio
+    targetAllocation: 0.18, // v20.3.1: 20%→18% to make room for tokenized stocks
     description: "Base DeFi ecosystem tokens",
     tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "PENDLE", "RSR"],
+  },
+  // v20.3.1: Tokenized real-world assets — stocks, ETFs, commodities on Base
+  TOKENIZED_STOCKS: {
+    name: "Tokenized Stocks",
+    targetAllocation: 0.02, // 2% — conservative start, increase as liquidity deepens
+    description: "Tokenized equities and RWAs via Backed Finance on Base",
+    tokens: ["bCOIN"],
   },
 };
 
@@ -577,6 +584,12 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  // v20.3.1: Tokenized stocks — Backed Finance bTokens on Base
+  bCOIN: {
+    address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
+    symbol: "bCOIN", name: "Backed Coinbase Stock", coingeckoId: "",
+    sector: "TOKENIZED_STOCKS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
 };
 
 // ============================================================================
@@ -590,7 +603,10 @@ const CHAINLINK_FEEDS_BASE: Record<string, { feed: string; decimals: number }> =
   WETH:  { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Same as ETH
   cbBTC: { feed: "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", decimals: 8 },  // BTC/USD
   cbETH: { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Uses ETH feed as proxy
-  LINK:  { feed: "0x17CAb8FE31E32f08326e5E27412894e49B0f9D65", decimals: 8 },  // LINK/USD (verified: data.chain.link/feeds/base/mainnet/link-usd)
+  LINK:  { feed: "0x17CAb8FE31E32f08326e5E27412894e49B0f9D65", decimals: 8 },  // LINK/USD
+  // v20.3.1: Expanded oracle coverage — stablecoins + additional assets
+  USDC:  { feed: "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B", decimals: 8 },  // USDC/USD — verify stablecoin peg
+  EURC:  { feed: "0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250", decimals: 8 },  // EURC/USD — EUR forex exposure
 };
 
 const CHAINLINK_ABI_FRAGMENT = "0x50d25bcd"; // latestAnswer() → int256
@@ -1103,6 +1119,26 @@ async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
     if (entry.consecutiveFailures >= POOL_REDISCOVERY_FAILURE_THRESHOLD) {
       console.warn(`  🔄 ${symbol}: ${entry.consecutiveFailures} consecutive failures — will re-discover pool on next startup`);
     }
+  }
+
+  // v20.3.1: Chainlink deviation detection — compare DEX prices vs oracle reference
+  // When DEX deviates >2% from Chainlink, it signals mispricing or arbitrage opportunity
+  const chainlinkPrices = await fetchChainlinkPrices();
+  const deviations: { symbol: string; dexPrice: number; oraclePrice: number; deviationPct: number }[] = [];
+  for (const [symbol, oraclePrice] of chainlinkPrices) {
+    const dexPrice = prices.get(symbol);
+    if (dexPrice && oraclePrice > 0) {
+      const deviation = ((dexPrice - oraclePrice) / oraclePrice) * 100;
+      if (Math.abs(deviation) > 2.0) {
+        deviations.push({ symbol, dexPrice, oraclePrice, deviationPct: deviation });
+      }
+    }
+  }
+  if (deviations.length > 0) {
+    chainlinkDeviations = deviations;
+    console.log(`  ⚡ CHAINLINK DEVIATION: ${deviations.map(d => `${d.symbol} DEX=$${d.dexPrice.toFixed(2)} vs Oracle=$${d.oraclePrice.toFixed(2)} (${d.deviationPct > 0 ? '+' : ''}${d.deviationPct.toFixed(1)}%)`).join(' | ')}`);
+  } else {
+    chainlinkDeviations = [];
   }
 
   return prices;
@@ -2076,6 +2112,7 @@ let lastPriceSnapshot: Map<string, number> = new Map();
 let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
 let lastMarketRegime = 'UNKNOWN'; // v20.3.1: Track for hourly Telegram reports
+let chainlinkDeviations: { symbol: string; dexPrice: number; oraclePrice: number; deviationPct: number }[] = []; // v20.3.1: DEX vs oracle price deviations
 
 // === v19.3: CAPITAL PRESERVATION MODE ===
 // When F&G < 15 for >6 consecutive hours, only allow high-conviction trades.
@@ -6794,6 +6831,100 @@ async function fetchCrossAssetData(fredKey: string | undefined): Promise<MacroDa
   }
 }
 
+// ============================================================================
+// v20.3.1: COINMARKETCAP INTELLIGENCE — trending narratives + global metrics
+// Uses standard CMC API key (free tier). x402 pay-per-request ready when CDP
+// wallets support x402 EIP-712 signing (tracked: github.com/coinbase/x402).
+// ============================================================================
+
+interface CMCIntelligence {
+  trendingCoins: { name: string; symbol: string; change24h: number }[];
+  globalMetrics: { totalMarketCap: number; btcDominance: number; totalVolume24h: number; altcoinMarketCap: number };
+  fetchedAt: number;
+}
+
+let cmcCache: { data: CMCIntelligence | null; lastFetch: number } = { data: null, lastFetch: 0 };
+const CMC_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+let x402DailySpendUSD = 0;
+let x402DailyResetDate = new Date().toISOString().split('T')[0];
+const X402_DAILY_SPEND_CAP_USD = 5;
+
+async function fetchCMCIntelligence(): Promise<CMCIntelligence | null> {
+  // Cache check
+  if (cmcCache.data && Date.now() - cmcCache.lastFetch < CMC_CACHE_TTL) {
+    return cmcCache.data;
+  }
+
+  // Reset daily x402 spend counter at midnight UTC
+  const today = new Date().toISOString().split('T')[0];
+  if (today !== x402DailyResetDate) {
+    x402DailySpendUSD = 0;
+    x402DailyResetDate = today;
+  }
+
+  const cmcApiKey = process.env.CMC_API_KEY;
+  if (!cmcApiKey) {
+    // x402 path: TODO — enable when CDP Smart Wallets support x402 EIP-712 signing
+    // For now, CMC API key is required (free at coinmarketcap.com/api)
+    return cmcCache.data;
+  }
+
+  // Daily spending cap check (for future x402 integration)
+  if (x402DailySpendUSD >= X402_DAILY_SPEND_CAP_USD) {
+    console.log(`  💰 x402 daily cap reached ($${x402DailySpendUSD.toFixed(2)}/$${X402_DAILY_SPEND_CAP_USD}) — using cached CMC data`);
+    return cmcCache.data;
+  }
+
+  try {
+    const headers = { 'X-CMC_PRO_API_KEY': cmcApiKey, Accept: 'application/json' };
+
+    const [trendingRes, globalRes] = await Promise.allSettled([
+      axios.get('https://pro-api.coinmarketcap.com/v1/cryptocurrency/trending/latest', {
+        headers, timeout: 10000, params: { limit: 10 },
+      }),
+      axios.get('https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest', {
+        headers, timeout: 10000,
+      }),
+    ]);
+
+    const trending: CMCIntelligence['trendingCoins'] = [];
+    if (trendingRes.status === 'fulfilled' && trendingRes.value.data?.data) {
+      for (const coin of trendingRes.value.data.data.slice(0, 10)) {
+        trending.push({
+          name: coin.name || '',
+          symbol: coin.symbol || '',
+          change24h: coin.quote?.USD?.percent_change_24h || 0,
+        });
+      }
+    }
+
+    let globalMetrics: CMCIntelligence['globalMetrics'] = {
+      totalMarketCap: 0, btcDominance: 0, totalVolume24h: 0, altcoinMarketCap: 0,
+    };
+    if (globalRes.status === 'fulfilled' && globalRes.value.data?.data) {
+      const g = globalRes.value.data.data;
+      globalMetrics = {
+        totalMarketCap: g.quote?.USD?.total_market_cap || 0,
+        btcDominance: g.btc_dominance || 0,
+        totalVolume24h: g.quote?.USD?.total_volume_24h || 0,
+        altcoinMarketCap: g.quote?.USD?.altcoin_market_cap || 0,
+      };
+    }
+
+    const result: CMCIntelligence = { trendingCoins: trending, globalMetrics, fetchedAt: Date.now() };
+    cmcCache = { data: result, lastFetch: Date.now() };
+
+    if (trending.length > 0) {
+      console.log(`  📊 CMC Intelligence: ${trending.length} trending (${trending.slice(0, 3).map(t => t.symbol).join(', ')}...) | BTC dom: ${globalMetrics.btcDominance.toFixed(1)}%`);
+    }
+
+    return result;
+  } catch (err: any) {
+    console.warn(`  ⚠️ CMC Intelligence fetch failed: ${err?.message?.substring(0, 100)}`);
+    return cmcCache.data;
+  }
+}
+
 async function fetchMacroData(): Promise<MacroData | null> {
   // v10.2: Use success TTL for good data, retry TTL for failures
   const ttl = macroCache.data ? MACRO_CACHE_TTL : MACRO_CACHE_RETRY_TTL;
@@ -7350,11 +7481,12 @@ async function getMarketData(): Promise<MarketData> {
         cacheManager.getOrFetch(CacheKeys.DEFI_LLAMA_TVL, CACHE_TTL.DEFI_LLAMA, fetchDefiLlamaData),
         cacheManager.getOrFetch(CacheKeys.BINANCE_FUNDING, CACHE_TTL.DERIVATIVES, fetchDerivativesData),
       ]);
-      const [news, macro] = await Promise.allSettled([
+      const [news, macro, cmcIntel] = await Promise.allSettled([
         cacheManager.getOrFetch(CacheKeys.NEWS_SENTIMENT, CACHE_TTL.NEWS, fetchNewsSentiment),
         cacheManager.getOrFetch(CacheKeys.MACRO_DATA, CACHE_TTL.MACRO, fetchMacroData),
+        fetchCMCIntelligence(), // v20.3.1: CMC trending + global metrics
       ]);
-      return { fng, defi, deriv, news, macro };
+      return { fng, defi, deriv, news, macro, cmcIntel };
     })();
 
     // v12.0: On-chain pricing — fetch all token prices from DEX pools in parallel
@@ -7367,7 +7499,7 @@ async function getMarketData(): Promise<MarketData> {
       fetchBaseUSDCSupply(),
       fetchAllOnChainIntelligence(ethPrice, onChainPrices, true), // includeTickDepth on heavy cycles
     ]);
-    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult } = await intelligencePromise;
+    const { fng: fngResult, defi: defiResult, deriv: derivResult, news: newsResult, macro: macroResult, cmcIntel: cmcIntelResult } = await intelligencePromise;
 
     const fearGreed = fngResult.status === "fulfilled"
       ? { value: parseInt(fngResult.value.data.data[0].value), classification: fngResult.value.data.data[0].value_classification }
@@ -7459,11 +7591,13 @@ async function getMarketData(): Promise<MarketData> {
     currentAltseasonSignal = computeLocalAltseasonSignal();
 
     // v12.0: Build globalMarket with available on-chain data
+    // v20.3.1: Enrich globalMarket with CMC intelligence if available
+    const cmcData = cmcIntelResult?.status === 'fulfilled' ? cmcIntelResult.value : null;
     const globalMarket: GlobalMarketData | null = {
-      btcDominance: 0, // Not available on-chain — altseason signal derived from BTC/ETH ratio instead
+      btcDominance: cmcData?.globalMetrics?.btcDominance || 0,
       ethDominance: 0,
-      totalMarketCap: 0,
-      totalVolume24h: 0,
+      totalMarketCap: cmcData?.globalMetrics?.totalMarketCap || 0,
+      totalVolume24h: cmcData?.globalMetrics?.totalVolume24h || 0,
       defiMarketCap: null,
       defiVolume24h: null,
       btcDominanceChange7d: 0,

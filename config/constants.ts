@@ -231,6 +231,7 @@ export const ALTSEASON_SECTOR_BOOST = {
   MEME_COINS: 0.05,
   BLUE_CHIP: -0.10,
   DEFI: 0.00,
+  TOKENIZED_STOCKS: 0.00,
 } as const;
 
 /** BTC dominance sector allocation adjustments (added to base targets) */
@@ -239,6 +240,7 @@ export const BTC_DOMINANCE_SECTOR_BOOST = {
   AI_TOKENS: -0.03,
   MEME_COINS: -0.05,
   DEFI: -0.02,
+  TOKENIZED_STOCKS: 0.00,
 } as const;
 
 // ============================================================================
@@ -331,10 +333,11 @@ export const CAPITAL_FLOOR_ABSOLUTE_USD = 50; // $50 absolute minimum
 /** v18.0: Tightened non-blue-chip stops to ~4% effective, blue chips keep 6%
  *  Core fix: losses were 2x wins because stops were too wide for $20-30 trades */
 export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTrailing: number; maxPositionPercent: number }> = {
-  MEME_COINS:  { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 15 },
-  AI_TOKENS:   { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 20 },
-  DEFI:        { maxLoss: -5,  maxTrailing: -4,  maxPositionPercent: 25 },
-  BLUE_CHIP:   { maxLoss: -6,  maxTrailing: -5,  maxPositionPercent: 30 },
+  MEME_COINS:       { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 15 },
+  AI_TOKENS:        { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 20 },
+  DEFI:             { maxLoss: -5,  maxTrailing: -4,  maxPositionPercent: 25 },
+  BLUE_CHIP:        { maxLoss: -6,  maxTrailing: -5,  maxPositionPercent: 30 },
+  TOKENIZED_STOCKS: { maxLoss: -5,  maxTrailing: -4,  maxPositionPercent: 10 }, // v20.3.1: Conservative — thin liquidity
 } as const;
 
 // ============================================================================
@@ -359,10 +362,11 @@ export const ATR_TRAIL_ACTIVATION_MULTIPLIER = 1.0;
 
 /** Per-sector ATR multipliers — higher = wider stop for that sector */
 export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
-  MEME_COINS: 2.0,   // Meme coins: volatile, use 2× ATR
-  AI_TOKENS: 2.5,     // AI tokens: moderate vol, use 2.5× ATR
-  DEFI: 2.5,          // DeFi: moderate vol, use 2.5× ATR
-  BLUE_CHIP: 3.0,     // Blue chips: low vol, wider multiple needed
+  MEME_COINS: 2.0,        // Meme coins: volatile, use 2× ATR
+  AI_TOKENS: 2.5,          // AI tokens: moderate vol, use 2.5× ATR
+  DEFI: 2.5,               // DeFi: moderate vol, use 2.5× ATR
+  BLUE_CHIP: 3.0,          // Blue chips: low vol, wider multiple needed
+  TOKENIZED_STOCKS: 3.0,   // v20.3.1: Similar to blue chips — tracks TradFi equity vol
 };
 
 /** ATR-relative profit harvest tiers: [atrMultiple, sellPercent]
