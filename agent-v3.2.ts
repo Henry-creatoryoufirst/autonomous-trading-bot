@@ -400,7 +400,7 @@ const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20, // 20% of portfolio
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "CLANKER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -498,11 +498,6 @@ const TOKEN_REGISTRY: Record<string, {
   HIGHER: {
     address: "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  VVV: {
-    address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
-    symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   CLANKER: {
@@ -11595,7 +11590,7 @@ async function runTradingCycle() {
         BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
       } : {
         BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
-        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'VVV', 'AIXBT'],
+        AI_TOKENS: ['VIRTUAL', 'HIGHER', 'AIXBT'],
         MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
         DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'RSR'],  // v14.2: removed MORPHO, PENDLE (CDP unsupported)
       };
