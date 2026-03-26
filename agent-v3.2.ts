@@ -412,7 +412,7 @@ const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.18, // v20.3.1: 20%→18% to make room for tokenized stocks
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "RSR"], // v20.4.1: Removed PENDLE — all DEX swap routes failing (no Uni V3 liquidity on Base)
+    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "PENDLE", "RSR"], // v20.4.2: PENDLE re-enabled — Aerodrome Slipstream router handles it
   },
   // v20.3.1: Tokenized real-world assets — stocks, ETFs, commodities on Base
   TOKENIZED_STOCKS: {
@@ -840,6 +840,20 @@ async function discoverPoolAddresses(): Promise<void> {
         const dec0 = token0IsOurToken ? tokenInfo.decimals : quoteDec;
         const dec1 = token0IsOurToken ? quoteDec : tokenInfo.decimals;
 
+        // v20.4.2: Read tickSpacing for Aerodrome Slipstream pools
+        let tickSpacing: number | undefined;
+        if (poolType === 'aerodromeV3') {
+          try {
+            // tickSpacing() selector: 0xd0c93a7c
+            const tsResult = await rpcCall('eth_call', [{ to: pool.pairAddress, data: '0xd0c93a7c' }, 'latest']);
+            if (tsResult && tsResult !== '0x' && tsResult.length >= 66) {
+              const raw = parseInt(tsResult.slice(0, 66), 16);
+              tickSpacing = raw > 0x7fffff ? raw - 0x1000000 : raw; // int24 decoding
+              console.log(`     🔵 ${symbol}: Aerodrome Slipstream tickSpacing=${tickSpacing}`);
+            }
+          } catch { /* non-critical — will try all spacings during swap */ }
+        }
+
         newRegistry[symbol] = {
           poolAddress: pool.pairAddress,
           poolType,
@@ -850,6 +864,7 @@ async function discoverPoolAddresses(): Promise<void> {
           dexName: pool.dexId || 'unknown',
           liquidityUSD: pool.liquidity?.usd || 0,
           consecutiveFailures: 0,
+          tickSpacing,
         };
         break; // Use first viable pool (deepest liquidity)
       }
@@ -9560,6 +9575,9 @@ async function executeTrade(
 // ============================================================================
 
 const UNISWAP_V3_SWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481" as Address;
+// v20.4.2: Aerodrome Slipstream SwapRouter — 50%+ of Base DEX volume
+const AERODROME_SLIPSTREAM_ROUTER = "0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5" as Address;
+const AERODROME_TICK_SPACINGS = [200, 100, 50, 2000, 1]; // Common Slipstream tick spacings, ordered by liquidity likelihood
 
 // v20.0: Cache MAX_UINT256 approvals — once approved, no need to check on-chain again
 // Key: "tokenAddress:spenderAddress". Cleared on startup since it's an in-memory cache.
@@ -9582,6 +9600,37 @@ const EXACT_INPUT_SINGLE_SELECTOR = "0x04e45aaf";
 //   uint256 amountOutMinimum
 // }
 const EXACT_INPUT_SELECTOR = "0xb858183f";
+
+// v20.4.2: Aerodrome Slipstream selectors — different struct layout (has deadline, uses int24 tickSpacing)
+const AERO_EXACT_INPUT_SINGLE_SELECTOR = "0xa026383e";
+// struct ExactInputSingleParams { address tokenIn, address tokenOut, int24 tickSpacing,
+//   address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96 }
+
+/**
+ * v20.4.2: Build Aerodrome Slipstream exactInputSingle calldata.
+ * Same concept as Uniswap V3 but with tickSpacing instead of fee, and includes deadline.
+ */
+function buildAerodromeExactInputSingleCalldata(
+  tokenIn: Address,
+  tokenOut: Address,
+  tickSpacing: number,
+  recipient: Address,
+  amountIn: bigint,
+  amountOutMin: bigint,
+): `0x${string}` {
+  const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minute deadline
+  const params = [
+    tokenIn.slice(2).toLowerCase().padStart(64, "0"),
+    tokenOut.slice(2).toLowerCase().padStart(64, "0"),
+    (tickSpacing < 0 ? (0x1000000 + tickSpacing) : tickSpacing).toString(16).padStart(64, "0"), // int24 encoding
+    recipient.slice(2).toLowerCase().padStart(64, "0"),
+    deadline.toString(16).padStart(64, "0"),
+    amountIn.toString(16).padStart(64, "0"),
+    amountOutMin.toString(16).padStart(64, "0"),
+    "0".padStart(64, "0"), // sqrtPriceLimitX96 = 0
+  ].join("");
+  return `${AERO_EXACT_INPUT_SINGLE_SELECTOR}${params}` as `0x${string}`;
+}
 
 /**
  * Build Uniswap V3 exactInputSingle calldata.
@@ -9853,6 +9902,53 @@ async function executeDirectDexSwap(
         }
       } catch (e: any) {
         console.log(`     ⚠️ Aggregator swap failed: ${e.message?.substring(0, 100)} — falling back to direct Uniswap`);
+      }
+    }
+
+    // v20.4.2: Try Aerodrome Slipstream if the token's pool is on Aerodrome
+    const poolEntry = poolRegistry[tokenSymbol];
+    if (!swapSuccess && poolEntry && (poolEntry.poolType === 'aerodromeV3' || poolEntry.poolType === 'aerodrome')) {
+      const tickSpacings = poolEntry.tickSpacing ? [poolEntry.tickSpacing, ...AERODROME_TICK_SPACINGS.filter(t => t !== poolEntry.tickSpacing)] : AERODROME_TICK_SPACINGS;
+
+      // Ensure approval for Aerodrome router (same pattern as Uniswap V3 approval above)
+      const aeroApprovalKey = `${tokenIn}:${AERODROME_SLIPSTREAM_ROUTER}`;
+      if (!approvalCache.has(aeroApprovalKey) && tokenIn !== DEX_WETH) {
+        const APPROVE_SEL = "0x095ea7b3";
+        const MAX_U256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        const allowData = "0xdd62ed3e" + walletAddress.slice(2).padStart(64, "0") + AERODROME_SLIPSTREAM_ROUTER.slice(2).padStart(64, "0");
+        const curAllowance = await rpcCall("eth_call", [{ to: tokenIn, data: allowData }, "latest"]);
+        if (curAllowance === "0x" || curAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(curAllowance) < fromAmount) {
+          console.log(`     🔑 Approving ${tokenSymbol} for Aerodrome Slipstream router...`);
+          const appData = APPROVE_SEL + AERODROME_SLIPSTREAM_ROUTER.slice(2).padStart(64, "0") + MAX_U256.slice(2);
+          await account.sendTransaction({ network: "base", transaction: { to: tokenIn, data: appData as `0x${string}`, value: BigInt(0) } });
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+        approvalCache.add(aeroApprovalKey);
+      }
+
+      for (const tickSpacing of tickSpacings) {
+        if (swapSuccess) break;
+        try {
+          console.log(`     🔵 Trying Aerodrome Slipstream (tickSpacing: ${tickSpacing})...`);
+          const calldata = buildAerodromeExactInputSingleCalldata(
+            tokenIn, tokenOut, tickSpacing, walletAddress, fromAmount, amountOutMin
+          );
+
+          const result = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: AERODROME_SLIPSTREAM_ROUTER,
+              data: calldata,
+              value: BigInt(0),
+            },
+          });
+          txHash = result.transactionHash;
+          swapSuccess = true;
+          console.log(`     ✅ Aerodrome Slipstream swap succeeded (tickSpacing: ${tickSpacing})`);
+        } catch (e: any) {
+          const msg = e?.message || '';
+          console.log(`     ⚠️ Aerodrome Slipstream failed (tickSpacing: ${tickSpacing}): ${msg.substring(0, 100)}`);
+        }
       }
     }
 
