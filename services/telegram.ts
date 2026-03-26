@@ -161,6 +161,9 @@ export class TelegramAlertService {
   // TRADE FAILURE TRACKING — Alert on 3+ consecutive failures
   // ============================================================================
 
+  private lastFailureAlertAt = 0;
+  private readonly FAILURE_ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between alerts
+
   async onTradeResult(success: boolean, details?: { token?: string; error?: string; action?: string }): Promise<void> {
     if (success) {
       this.tradeFailureCount = 0;
@@ -169,7 +172,11 @@ export class TelegramAlertService {
 
     this.tradeFailureCount++;
 
-    if (this.tradeFailureCount >= this.FAILURE_ALERT_THRESHOLD) {
+    // Only alert once per hour to avoid spamming — first alert at threshold, then hourly
+    const now = Date.now();
+    const cooldownElapsed = now - this.lastFailureAlertAt > this.FAILURE_ALERT_COOLDOWN_MS;
+    if (this.tradeFailureCount >= this.FAILURE_ALERT_THRESHOLD && cooldownElapsed) {
+      this.lastFailureAlertAt = now;
       await this.sendAlert({
         severity: "CRITICAL",
         title: `${this.tradeFailureCount} Consecutive Trade Failures`,
