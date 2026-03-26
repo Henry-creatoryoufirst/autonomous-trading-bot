@@ -14413,16 +14413,29 @@ function apiPortfolio() {
   const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
   const riskReward = calculateRiskRewardMetrics();
   const perfStats = calculateTradePerformance();
-  // v11.4.20: Daily P&L — use start-of-day baseline instead of unreliable lifetime deposit tracking
+  // v11.4.20: Daily P&L — use start-of-day baseline
   const dailyBaseline = breakerState.dailyBaseline.value;
   const dailyPnl = dailyBaseline > 0 ? state.trading.totalPortfolioValue - dailyBaseline : 0;
   const dailyPnlPercent = dailyBaseline > 0 ? (dailyPnl / dailyBaseline) * 100 : 0;
+  // v20.3: Use on-chain deposits as source of truth for P&L (not stale initialValue)
+  // truePnL = current portfolio + withdrawn profits - total deposited
+  const netCapitalIn = state.totalDeposited - state.onChainWithdrawn;
+  const truePnL = state.totalDeposited > 0
+    ? Math.round((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) * 100) / 100
+    : dailyPnl;
+  const truePnLPercent = state.totalDeposited > 0
+    ? Math.round(((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) / state.totalDeposited) * 10000) / 100
+    : dailyPnlPercent;
+  // initialValue should reflect total capital injected, not first-startup snapshot
+  const effectiveInitialValue = state.totalDeposited > 0 ? netCapitalIn : state.trading.initialValue;
   return {
     totalValue: state.trading.totalPortfolioValue,
-    initialValue: state.trading.initialValue,
+    initialValue: effectiveInitialValue,
     peakValue: state.trading.peakValue,
-    pnl: dailyPnl,
-    pnlPercent: dailyPnlPercent,
+    pnl: truePnL,
+    pnlPercent: truePnLPercent,
+    dailyPnl,
+    dailyPnlPercent,
     dailyBaseline,
     drawdown: state.trading.peakValue > 0 ? Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100) : 0,
     realizedPnL: totalRealized,
