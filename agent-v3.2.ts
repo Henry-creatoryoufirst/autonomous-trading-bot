@@ -412,7 +412,7 @@ const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.18, // v20.3.1: 20%→18% to make room for tokenized stocks
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "PENDLE", "RSR"],
+    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "RSR"], // v20.4.1: Removed PENDLE — all DEX swap routes failing (no Uni V3 liquidity on Base)
   },
   // v20.3.1: Tokenized real-world assets — stocks, ETFs, commodities on Base
   TOKENIZED_STOCKS: {
