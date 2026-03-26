@@ -5055,6 +5055,8 @@ function checkProfitTaking(
 
   for (const b of balances) {
     if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
+    // v20.4.1: Skip tokens not in active registry
+    if (!TOKEN_REGISTRY[b.symbol]) continue;
     const cb = state.costBasis[b.symbol];
     if (!cb || cb.averageCostBasis <= 0) continue;
 
@@ -5266,6 +5268,8 @@ function checkStopLoss(
 
   for (const b of balances) {
     if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
+    // v20.4.1: Skip tokens not in active registry — can't execute the sell anyway
+    if (!TOKEN_REGISTRY[b.symbol]) continue;
     const cb = state.costBasis[b.symbol];
     if (!cb || cb.averageCostBasis <= 0) continue;
 
