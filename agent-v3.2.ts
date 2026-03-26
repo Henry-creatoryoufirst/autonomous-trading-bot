@@ -4072,9 +4072,22 @@ function loadTradeHistory() {
         state.tradeFailures = parsed.tradeFailures || {};
         // v11.4.11: Clear stale circuit breaker entries on startup — unsupported tokens
         // are now skipped via CDP_UNSUPPORTED_TOKENS, so old failures won't recur
+        // v20.4.2: Preserve trade failures across restarts — don't clear on startup.
+        // If a token's swap routes are broken, restarting shouldn't retry them immediately.
+        // The cooldown timer (FAILURE_COOLDOWN_HOURS) handles expiry automatically.
         if (Object.keys(state.tradeFailures).length > 0) {
-          console.log(`  🔓 Clearing ${Object.keys(state.tradeFailures).length} circuit breaker entries on startup`);
-          state.tradeFailures = {};
+          const active = Object.entries(state.tradeFailures).filter(([, f]) => {
+            const hours = (Date.now() - new Date(f.lastFailure).getTime()) / 3600000;
+            return hours < FAILURE_COOLDOWN_HOURS && f.count >= MAX_CONSECUTIVE_FAILURES;
+          });
+          if (active.length > 0) {
+            console.log(`  🚫 ${active.length} token(s) still blocked: ${active.map(([s, f]) => `${s}(${f.count} fails)`).join(', ')}`);
+          }
+          // Clear expired entries
+          for (const [sym, f] of Object.entries(state.tradeFailures)) {
+            const hours = (Date.now() - new Date(f.lastFailure).getTime()) / 3600000;
+            if (hours >= FAILURE_COOLDOWN_HOURS) delete state.tradeFailures[sym];
+          }
         }
         state.harvestedProfits = parsed.harvestedProfits || { totalHarvested: 0, harvestCount: 0, harvests: [] };
         // Phase 3 fields
@@ -5285,6 +5298,8 @@ function checkStopLoss(
     if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
     // v20.4.1: Skip tokens not in active registry — can't execute the sell anyway
     if (!TOKEN_REGISTRY[b.symbol]) continue;
+    // v20.4.2: Skip tokens blocked by per-token circuit breaker — swap routes are broken
+    if (isTokenBlocked(b.symbol)) continue;
     const cb = state.costBasis[b.symbol];
     if (!cb || cb.averageCostBasis <= 0) continue;
 
@@ -13029,11 +13044,12 @@ async function runTradingCycle() {
       // v11.4.15: Diversity guard REMOVED — the position size guard (sector limits) already
       // prevents over-concentration. This guard was blocking legitimate conviction plays.
 
-      // v5.3.3: Circuit breaker guard
-      if (["SELL", "REBALANCE"].includes(decision.action) && decision.fromToken && isTokenBlocked(decision.fromToken)) {
-        console.log(`   🚫 CIRCUIT BREAKER: Skipping ${decision.action} for ${decision.fromToken} — too many consecutive failures`);
+      // v20.4.2: Circuit breaker guard — block ALL actions for tokens with broken swap routes
+      const blockedToken = decision.action === "BUY" ? decision.toToken : decision.fromToken;
+      if (blockedToken && isTokenBlocked(blockedToken)) {
+        console.log(`   🚫 CIRCUIT BREAKER: Skipping ${decision.action} for ${blockedToken} — swap routes broken, cooling off`);
         decision.action = "HOLD";
-        decision.reasoning = `Circuit breaker: ${decision.fromToken} blocked after repeated failures. Cooling off.`;
+        decision.reasoning = `Circuit breaker: ${blockedToken} blocked after repeated swap failures. Auto-unblocks after ${FAILURE_COOLDOWN_HOURS}h.`;
       }
 
       // v11.4.11: Block AI from buying CDP-unsupported tokens
@@ -14215,7 +14231,12 @@ async function main() {
     const lastTradeAge = lastTrade ? `${((Date.now() - new Date(lastTrade.timestamp).getTime()) / 60000).toFixed(0)}m ago` : 'never';
     const cycleStatus = cycleInProgress ? `IN_PROGRESS (${((Date.now() - cycleStartedAt) / 1000).toFixed(0)}s)` : 'idle';
     const lastHeavyAge = lastHeavyCycleAt ? `${((Date.now() - lastHeavyCycleAt) / 1000).toFixed(0)}s ago` : 'never';
-    console.log(`💓 Heartbeat | ${new Date().toISOString()} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | Last trade: ${lastTradeAge} | Cycle: ${cycleStatus} | Last heavy: ${lastHeavyAge} | Portfolio: $${(state.trading.totalPortfolioValue || 0).toFixed(0)}`);
+    // v20.4.2: Self-healing health score — GREEN / YELLOW / RED
+    const blockedTokens = Object.entries(state.tradeFailures).filter(([, f]) => f.count >= MAX_CONSECUTIVE_FAILURES).map(([s]) => s);
+    const lastTradeMinutes = lastTrade ? (Date.now() - new Date(lastTrade.timestamp).getTime()) / 60000 : Infinity;
+    const breakerActive = breakerState.lastBreakerTriggered ? Date.now() < new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000) : false;
+    const healthScore = breakerActive ? '🔴 RED' : (blockedTokens.length >= 3 || lastTradeMinutes > 360) ? '🟡 YELLOW' : '🟢 GREEN';
+    console.log(`💓 Heartbeat | ${new Date().toISOString()} | ${healthScore} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | Last trade: ${lastTradeAge} | Blocked: ${blockedTokens.length > 0 ? blockedTokens.join(',') : 'none'} | Portfolio: $${(state.trading.totalPortfolioValue || 0).toFixed(0)}`);
     // v5.2: Save state every heartbeat
     saveTradeHistory();
   }, 5 * 60 * 1000);
