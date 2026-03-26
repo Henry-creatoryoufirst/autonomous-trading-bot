@@ -9906,9 +9906,9 @@ async function executeDirectDexSwap(
     }
 
     // v20.4.2: Try Aerodrome Slipstream if the token's pool is on Aerodrome
-    const poolEntry = poolRegistry[tokenSymbol];
-    if (!swapSuccess && poolEntry && (poolEntry.poolType === 'aerodromeV3' || poolEntry.poolType === 'aerodrome')) {
-      const tickSpacings = poolEntry.tickSpacing ? [poolEntry.tickSpacing, ...AERODROME_TICK_SPACINGS.filter(t => t !== poolEntry.tickSpacing)] : AERODROME_TICK_SPACINGS;
+    const aeroPool = poolRegistry[tokenSymbol];
+    if (!swapSuccess && aeroPool && (aeroPool.poolType === 'aerodromeV3' || aeroPool.poolType === 'aerodrome')) {
+      const tickSpacings = aeroPool.tickSpacing ? [aeroPool.tickSpacing, ...AERODROME_TICK_SPACINGS.filter(t => t !== aeroPool.tickSpacing)] : AERODROME_TICK_SPACINGS;
 
       // Ensure approval for Aerodrome router (same pattern as Uniswap V3 approval above)
       const aeroApprovalKey = `${tokenIn}:${AERODROME_SLIPSTREAM_ROUTER}`;
