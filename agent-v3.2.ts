@@ -13022,7 +13022,11 @@ async function runTradingCycle() {
         } else if (decision.action === "BUY" && tradeResult.success) {
           // Buys are neutral for breaker — determined on sell
         } else if (!tradeResult.success) {
-          recordTradeResultForBreaker(false, 0);
+          recordTradeResultForBreaker(false, 0, {
+            token: decision.toToken || decision.fromToken || '?',
+            error: tradeResult.error || 'unknown',
+            action: decision.action,
+          });
         }
 
         // v6.0: Set cooldown for traded token
