@@ -4140,7 +4140,7 @@ function loadTradeHistory() {
           if (breakerState.lastBreakerTriggered) {
             const pauseEnd = new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000);
             if (Date.now() > pauseEnd) {
-              console.log(`  ✅ Breaker pause expired — clearing stale breaker state (was: ${breakerState.consecutiveLosses} losses, triggered ${breakerState.lastBreakerTriggered})`);
+              console.log(`  ✅ Breaker pause expired — clearing stale breaker state (was: ${breakerState.consecutiveLosses} losses, rolling: ${breakerState.rollingTradeResults?.length || 0} entries, triggered ${breakerState.lastBreakerTriggered})`);
               breakerState = { ...DEFAULT_BREAKER_STATE };
             } else {
               console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses, last triggered ${breakerState.lastBreakerTriggered}`);
@@ -6187,6 +6187,13 @@ function checkCircuitBreaker(portfolioValue: number, lastTradeResult?: { success
       const remaining = Math.ceil((pauseEnd - Date.now()) / 60000);
       return `PAUSED: ${breakerState.lastBreakerReason} (${remaining}m remaining)`;
     }
+    // v20.4.2: Pause expired — clear the rolling window and consecutive losses so the bot can trade again.
+    // Without this, the stale 8/8 losses would immediately re-trip the breaker.
+    console.log(`  ✅ Breaker pause expired — resetting rolling window (${breakerState.rollingTradeResults.length} entries) and consecutive losses (${breakerState.consecutiveLosses})`);
+    breakerState.lastBreakerTriggered = null;
+    breakerState.lastBreakerReason = null;
+    breakerState.consecutiveLosses = 0;
+    breakerState.rollingTradeResults = [];
   }
 
   // 1. Consecutive losses
@@ -13122,11 +13129,27 @@ async function runTradingCycle() {
         } else if (decision.action === "BUY" && tradeResult.success) {
           // Buys are neutral for breaker — determined on sell
         } else if (!tradeResult.success) {
-          recordTradeResultForBreaker(false, 0, {
-            token: decision.toToken || decision.fromToken || '?',
-            error: tradeResult.error || 'unknown',
-            action: decision.action,
-          });
+          // v20.4.2: Only count ACTUAL trading losses in the breaker, not execution failures.
+          // Swap routing failures (PENDLE, TWAP) are not losses — no money was lost.
+          // Still track for Telegram alerts, but don't poison the rolling window.
+          const isExecutionFailure = tradeResult.error?.includes('swap routes failed') ||
+            tradeResult.error?.includes('TWAP slices failed') ||
+            tradeResult.error?.includes('Insufficient balance') ||
+            tradeResult.error?.includes('Balance too small');
+          if (!isExecutionFailure) {
+            recordTradeResultForBreaker(false, 0, {
+              token: decision.toToken || decision.fromToken || '?',
+              error: tradeResult.error || 'unknown',
+              action: decision.action,
+            });
+          } else {
+            // Still notify Telegram but don't count toward breaker
+            telegramService.onTradeResult(false, {
+              token: decision.toToken || decision.fromToken || '?',
+              error: tradeResult.error || 'unknown',
+              action: decision.action,
+            }).catch(() => {});
+          }
         }
 
         // v6.0: Set cooldown for traded token
