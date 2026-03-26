@@ -79,8 +79,8 @@
  * Sectors:
  * - BLUE_CHIP (40%): ETH, cbBTC, cbETH
  * - AI_TOKENS (20%): VIRTUAL, AIXBT, HIGHER
- * - MEME_COINS (20%): BRETT, DEGEN, TOSHI, MOCHI, NORMIE
- * - DEFI (20%): AERO, WELL, SEAM, EXTRA, BAL
+ * - MEME_COINS (15%): BRETT, DEGEN, TOSHI
+ * - DEFI (18%): AERO, MORPHO, PENDLE, RSR, AAVE, CRV, ENA, ETHFI
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -400,19 +400,19 @@ const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20, // 20% of portfolio
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "CLANKER"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15, // 15% of portfolio
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI", "MOCHI", "NORMIE", "KEYCAT"],
+    tokens: ["BRETT", "DEGEN", "TOSHI"],
   },
   DEFI: {
     name: "DeFi Protocols",
     targetAllocation: 0.18, // v20.3.1: 20%→18% to make room for tokenized stocks
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "WELL", "SEAM", "EXTRA", "BAL", "MORPHO", "PENDLE", "RSR"], // v20.4.2: PENDLE re-enabled — Aerodrome Slipstream router handles it
+    tokens: ["AERO", "MORPHO", "PENDLE", "RSR", "AAVE", "CRV", "ENA", "ETHFI"], // v20.5: Pruned WELL/SEAM/EXTRA/BAL (dust), added AAVE/CRV/ENA/ETHFI (high mcap, real volume)
   },
   // v20.3.1: Tokenized real-world assets — stocks, ETFs, commodities on Base
   TOKENIZED_STOCKS: {
@@ -507,11 +507,7 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
-  CLANKER: {
-    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
-    symbol: "CLANKER", name: "Clanker", coingeckoId: "clanker",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
+  // CLANKER removed v20.5 — thin liquidity, fallen from highs
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
@@ -528,45 +524,33 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
-  MOCHI: {
-    address: "0xF6e932Ca12afa26665dC4dDE7e27be02A7c02e50",
-    symbol: "MOCHI", name: "Mochi", coingeckoId: "mochi-2",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  NORMIE: {
-    address: "0x7F12d13B34F5F4f0a9449c16Bcd42f0da47AF200",
-    symbol: "NORMIE", name: "Normie", coingeckoId: "normie-base",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  KEYCAT: {
-    address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
-    symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
+  // MOCHI, NORMIE, KEYCAT removed v20.5 — dead memes, no volume
   // === DEFI PROTOCOLS (20%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
     symbol: "AERO", name: "Aerodrome Finance", coingeckoId: "aerodrome-finance",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  WELL: {
-    address: "0xA88594D404727625A9437C3f886C7643872296AE",
-    symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
+  // WELL, SEAM, EXTRA, BAL removed v20.5 — dust positions, negligible volume on Base
+  // v20.5: Added high-conviction DeFi tokens with real market cap and volume
+  AAVE: {
+    address: "0x63706e401c06ac8513145b7687a14804d17f814b",
+    symbol: "AAVE", name: "Aave", coingeckoId: "aave",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  SEAM: {
-    address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
-    symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
+  CRV: {
+    address: "0x8Ee73c484A26e0A5df2Ee2a4960B789967dd0415",
+    symbol: "CRV", name: "Curve DAO", coingeckoId: "curve-dao-token",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  EXTRA: {
-    address: "0x2dAD3a13ef0C6366220f989157009e501e7938F8",
-    symbol: "EXTRA", name: "Extra Finance", coingeckoId: "extra-finance",
+  ENA: {
+    address: "0x58538e6A46E07434d7E7375Bc268D3cb839C0133",
+    symbol: "ENA", name: "Ethena", coingeckoId: "ethena",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  BAL: {
-    address: "0x4158734D47Fc9692176B5085E0F52ee0Da5d47F1",
-    symbol: "BAL", name: "Balancer", coingeckoId: "balancer",
+  ETHFI: {
+    address: "0x6c240DDA6b5c336DF09A4D011139beAAA1eA2aa2",
+    symbol: "ETHFI", name: "Ether.fi", coingeckoId: "ether-fi",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   MORPHO: {
@@ -671,7 +655,7 @@ interface PoolRegistryFile {
   pools: Record<string, PoolRegistryEntry>;
 }
 
-const POOL_REGISTRY_VERSION = 5; // v12.2.1: Bump — force re-discovery for new tokens (cbXRP, CLANKER, KEYCAT, cbLTC)
+const POOL_REGISTRY_VERSION = 6; // v20.5: Bump — force re-discovery for new tokens (AAVE, CRV, ENA, ETHFI)
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
 
@@ -5630,10 +5614,13 @@ async function fetchDefiLlamaData(): Promise<DefiLlamaData | null> {
     // Map protocol names to our token symbols for matching
     const tokenProtocolMap: Record<string, string[]> = {
       AERO: ["aerodrome"],
-      WELL: ["moonwell"],
-      SEAM: ["seamless-protocol", "seamless"],
-      EXTRA: ["extra-finance"],
-      BAL: ["balancer"],
+      MORPHO: ["morpho"],
+      PENDLE: ["pendle"],
+      AAVE: ["aave"],
+      CRV: ["curve", "curve-dex"],
+      ENA: ["ethena"],
+      ETHFI: ["ether.fi", "etherfi"],
+      RSR: ["reserve"],
     };
 
     const topProtocols: { name: string; tvl: number; change24h: number }[] = [];
@@ -9194,8 +9181,8 @@ v9.2 MULTI-TRADE: You may return a JSON ARRAY of actions per cycle to deploy cap
 Return as many actions as you see strong signals for — each will be validated independently by position guards, Kelly sizing, and circuit breakers.
 Return a single object for 1 trade, or an array for multiple. HOLD can be a single object (no array needed).
 Examples:
-Single: {"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":10,"reasoning":"RSI oversold, MACD bullish","sector":"DEFI"}
-Multi: [{"action":"BUY","fromToken":"USDC","toToken":"WELL","amountUSD":15,"reasoning":"RSI oversold","sector":"DEFI"},{"action":"BUY","fromToken":"USDC","toToken":"VIRTUAL","amountUSD":12,"reasoning":"AI sector underweight","sector":"AI_TOKENS"}]
+Single: {"action":"BUY","fromToken":"USDC","toToken":"AAVE","amountUSD":10,"reasoning":"RSI oversold, MACD bullish","sector":"DEFI"}
+Multi: [{"action":"BUY","fromToken":"USDC","toToken":"CRV","amountUSD":15,"reasoning":"RSI oversold","sector":"DEFI"},{"action":"BUY","fromToken":"USDC","toToken":"VIRTUAL","amountUSD":12,"reasoning":"AI sector underweight","sector":"AI_TOKENS"}]
 HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals"}` + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
 
   // Retry up to 3 times with exponential backoff for rate limits
@@ -11861,8 +11848,8 @@ async function runTradingCycle() {
       } : {
         BLUE_CHIP: ['ETH', 'cbBTC', 'cbETH', 'LINK', 'wstETH'],
         AI_TOKENS: ['VIRTUAL', 'HIGHER', 'AIXBT'],
-        MEME_COINS: ['TOSHI', 'BRETT', 'MOCHI', 'NORMIE', 'DEGEN'],
-        DEFI: ['AERO', 'SEAM', 'WELL', 'EXTRA', 'BAL', 'RSR'],  // v14.2: removed MORPHO, PENDLE (CDP unsupported)
+        MEME_COINS: ['TOSHI', 'BRETT', 'DEGEN'],
+        DEFI: ['AERO', 'RSR', 'AAVE', 'CRV', 'ENA', 'ETHFI'],  // v20.5: pruned dust, added high-mcap tokens. MORPHO/PENDLE via DEX only
       };
 
       // v12.2: Shuffle each sector's token list to prevent first-token bias (ETH dominance fix)
@@ -15078,7 +15065,7 @@ const CHAT_TOOLS: any[] = [
     input_schema: {
       type: 'object',
       properties: {
-        token: { type: 'string', description: 'Token symbol to avoid (e.g. NORMIE, BRETT)' },
+        token: { type: 'string', description: 'Token symbol to avoid (e.g. DEGEN, BRETT)' },
         reason: { type: 'string', description: 'Why to avoid it' },
       },
       required: ['token', 'reason'],
