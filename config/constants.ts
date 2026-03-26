@@ -36,17 +36,28 @@ export const VOLUME_SPIKE_THRESHOLD = 2.0;
 // v6.2: ADAPTIVE CYCLE ENGINE — Dynamic tempo based on market conditions
 // ============================================================================
 
+/** v20.4.3: Tiered cycle architecture — three layers of data pull
+ *  Layer 1: Price stream (10s polling) — emergency detection, always running
+ *  Layer 2: Normal cycle (10min) — price check, stop-loss, quick decisions
+ *  Layer 3: Heavy cycle (30-60min) — full intelligence refresh (APIs, indicators, AI)
+ *
+ *  Why: indicators update on hourly data, F&G changes slowly, macro is daily.
+ *  Cycling every 1-5min was 288 cycles/day with 98% HOLD decisions.
+ *  At 10min normal + 30min heavy: 144 cycles/day, 66% less infra load.
+ *  At 100 bots this is the difference between $X and $3X in RPC costs.
+ */
+
 /** Minimum cycle interval in seconds (maximum vigilance during volatility) */
-export const ADAPTIVE_MIN_INTERVAL_SEC = 60; // v14.2: 30→60s — even max vigilance shouldn't be sub-minute
+export const ADAPTIVE_MIN_INTERVAL_SEC = 120; // v20.4.3: 60→120s — 2min floor, price stream handles emergencies
 
 /** Maximum cycle interval in seconds (calm markets, conserve API quota) */
-export const ADAPTIVE_MAX_INTERVAL_SEC = 300; // 5 minutes
+export const ADAPTIVE_MAX_INTERVAL_SEC = 900; // v20.4.3: 300→900s (15min) — calm markets don't need 5min checks
 
 /** Default cycle interval in seconds (normal conditions) */
-export const ADAPTIVE_DEFAULT_INTERVAL_SEC = 300; // v14.2: 120→300s (5 min) — matches VOLATILITY_SPEED_MAP.NORMAL
+export const ADAPTIVE_DEFAULT_INTERVAL_SEC = 600; // v20.4.3: 300→600s (10min) — the new normal
 
 /** Emergency rapid-fire interval in seconds (triggered by large drops) */
-export const EMERGENCY_INTERVAL_SEC = 30; // v14.2: 15→30s — even emergencies don't need 15s cycles
+export const EMERGENCY_INTERVAL_SEC = 30; // Stays at 30s — emergencies are emergencies
 
 /** Emergency trigger: any position drops this much → immediate heavy cycle */
 export const EMERGENCY_DROP_THRESHOLD = -0.05; // -5%
@@ -60,14 +71,15 @@ export const PORTFOLIO_SENSITIVITY_TIERS = [
   { minUSD: 100000, priceChangeThreshold: 0.003, label: 'INSTITUTIONAL' }, // $100K+: 0.3% move triggers
 ] as const;
 
-/** Volatility levels that control cycle speed */
+/** v20.4.3: Volatility-tiered cycle speeds
+ *  Price stream (10s) catches emergencies. These are for the trading cycle. */
 export const VOLATILITY_SPEED_MAP = {
-  EXTREME: 60,    // v14.2: 30→60s cycles — reduce churn, 308 trades/day was killing the portfolio
-  HIGH: 120,      // v14.2: 45→120s cycles — 2min minimum for significant movement
-  ELEVATED: 180,  // v14.2: 60→180s cycles — 3min for above normal activity
-  NORMAL: 300,    // v14.2: 120→300s cycles — 5min standard conditions
-  LOW: 300,       // 5min cycles — quiet market (unchanged)
-  DEAD: 300,      // 5min cycles — nothing happening (unchanged)
+  EXTREME: 120,   // v20.4.3: 60→120s — 2min, price stream already watching at 10s
+  HIGH: 300,      // v20.4.3: 120→300s — 5min, enough to react to fast moves
+  ELEVATED: 480,  // v20.4.3: 180→480s — 8min, above normal but not urgent
+  NORMAL: 600,    // v20.4.3: 300→600s — 10min, the new standard
+  LOW: 900,       // v20.4.3: 300→900s — 15min, nothing happening, save resources
+  DEAD: 900,      // v20.4.3: 300→900s — 15min, market is asleep
 } as const;
 
 /** WebSocket reconnect delay in ms */
