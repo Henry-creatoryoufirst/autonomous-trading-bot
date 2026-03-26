@@ -2050,11 +2050,19 @@ function createCdpClient(): CdpClient {
   console.log(`  🔑 CDP Auth: walletSecret ${walletSecret ? `present (${walletSecret.length} chars)` : 'NOT SET - trades may fail'}`);
   console.log(`  🔑 Node.js: ${process.version} | NODE_OPTIONS: ${process.env.NODE_OPTIONS || 'not set'}`);
 
-  return new CdpClient({
+  const client = new CdpClient({
     apiKeyId,
     apiKeySecret,
     walletSecret,
   });
+
+  // v20.4.3: Validate CDP client is functional before returning
+  // If credentials are malformed, fail fast at startup rather than silently during trades
+  if (!client || typeof client.evm?.getOrCreateAccount !== 'function') {
+    throw new Error('CDP client created but evm.getOrCreateAccount is not available — SDK version mismatch or malformed credentials');
+  }
+
+  return client;
 }
 
 let cdpClient: CdpClient;
@@ -11523,10 +11531,12 @@ async function runTradingCycle() {
     }
 
     // Percentage floor: if portfolio < 60% of peak, HOLD-ONLY mode (stop-losses still fire)
-    const capitalFloorValue = state.trading.peakValue * (CAPITAL_FLOOR_PERCENT / 100);
-    const belowCapitalFloor = !isPhantomDrop && state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
+    // v20.4.3: Guard against peakValue being 0/undefined — would make capitalFloorValue 0 and always trigger
+    const safePeakValue = state.trading.peakValue > CAPITAL_FLOOR_ABSOLUTE_USD ? state.trading.peakValue : state.trading.totalPortfolioValue;
+    const capitalFloorValue = safePeakValue * (CAPITAL_FLOOR_PERCENT / 100);
+    const belowCapitalFloor = !isPhantomDrop && state.trading.totalPortfolioValue > 0 && capitalFloorValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
     if (belowCapitalFloor) {
-      console.log(`\n⚠️ CAPITAL FLOOR: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < floor $${capitalFloorValue.toFixed(2)} (${CAPITAL_FLOOR_PERCENT}% of peak $${state.trading.peakValue.toFixed(2)})`);
+      console.log(`\n⚠️ CAPITAL FLOOR: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < floor $${capitalFloorValue.toFixed(2)} (${CAPITAL_FLOOR_PERCENT}% of peak $${safePeakValue.toFixed(2)})`);
       console.log(`   HOLD-ONLY mode active — no new buys, only stop-loss sells allowed.`);
     }
 
