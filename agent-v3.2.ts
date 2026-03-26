@@ -2075,6 +2075,7 @@ let lastHeavyCycleAt = 0;
 let lastPriceSnapshot: Map<string, number> = new Map();
 let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
+let lastMarketRegime = 'UNKNOWN'; // v20.3.1: Track for hourly Telegram reports
 
 // === v19.3: CAPITAL PRESERVATION MODE ===
 // When F&G < 15 for >6 consecutive hours, only allow high-conviction trades.
@@ -5956,7 +5957,8 @@ function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number;
   // $15 trades don't build meaningful positions. Use 5% to actually deploy capital while
   // gathering the 20 trades needed for Kelly to kick in.
   if (sells.length < KELLY_MIN_TRADES) {
-    const fallback = Math.min(Math.max(50, portfolioValue * 0.05), portfolioValue * (effectiveCeiling / 100));
+    // v20.3.1: 5%→8%, $50→$75 — build meaningful positions faster while gathering trade history
+    const fallback = Math.min(Math.max(75, portfolioValue * 0.08), portfolioValue * (effectiveCeiling / 100));
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
@@ -5973,7 +5975,8 @@ function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number;
   }
 
   if (wins.length + losses.length < KELLY_MIN_TRADES) {
-    const fallback = Math.min(Math.max(50, portfolioValue * 0.05), portfolioValue * (effectiveCeiling / 100));
+    // v20.3.1: 5%→8%, $50→$75 — match above fallback
+    const fallback = Math.min(Math.max(75, portfolioValue * 0.08), portfolioValue * (effectiveCeiling / 100));
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
@@ -7444,6 +7447,7 @@ async function getMarketData(): Promise<MarketData> {
 
     // Determine market regime
     const marketRegime = determineMarketRegime(fearGreed.value, indicators, derivatives);
+    lastMarketRegime = marketRegime; // v20.3.1: Persist for hourly Telegram report
     console.log(`  🌐 Market Regime: ${marketRegime}`);
 
     // v12.0: Compute derived signals — on-chain altseason + stablecoin, no CoinGecko
@@ -11832,10 +11836,15 @@ async function runTradingCycle() {
           }
 
           // Size reduction: half-size during extreme fear
-          if (d.amountUSD) {
+          // v20.3.1: Exempt deployment-mode buys — the whole point is to get cash deployed.
+          // Preservation already filters low-conviction trades above; don't also neuter sizing on the survivors.
+          const isDeploymentBuy = d.signalContext?.triggeredBy === "FORCED_DEPLOY" || d.signalContext?.triggeredBy === "CASH_DEPLOYMENT";
+          if (d.amountUSD && !isDeploymentBuy) {
             const originalSize = d.amountUSD;
             d.amountUSD = d.amountUSD * PRESERVATION_SIZE_MULTIPLIER;
             console.log(`   🛡️ PRESERVATION: Sizing down BUY ${d.toToken} $${originalSize.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${PRESERVATION_SIZE_MULTIPLIER}x extreme fear)`);
+          } else if (d.amountUSD && isDeploymentBuy) {
+            console.log(`   🛡️ PRESERVATION: Exempt deployment BUY ${d.toToken} $${d.amountUSD.toFixed(2)} — cash deployment override`);
           }
           capitalPreservationMode.tradesPassed++;
           preservationFiltered.push(d);
@@ -12666,8 +12675,8 @@ async function runTradingCycle() {
 
         if (deploymentCheck.active) {
           // DEPLOYMENT MODE: Use generous sizing — the whole point is to get capital deployed.
-          // Floor at 2.5% of portfolio or $100, whichever is larger. Cap at remaining USDC.
-          const deployFloor = Math.max(100, state.trading.totalPortfolioValue * 0.025);
+          // v20.3.1: Raised floor from $100/2.5% to $150/3.5% — deploy meaningfully, not in drips.
+          const deployFloor = Math.max(150, state.trading.totalPortfolioValue * 0.035);
           const deployMax = Math.min(deployFloor, remainingUSDC);
           decision.amountUSD = Math.max(decision.amountUSD, deployMax);
           decision.amountUSD = Math.min(decision.amountUSD, remainingUSDC);
@@ -13882,6 +13891,61 @@ async function main() {
       }
     }, { timezone: 'UTC' });
     console.log(`  📊 Daily P&L digest: Telegram at 11:00 UTC (7 AM EDT)`);
+
+    // v20.3.1: Hourly status report — bot health snapshot every hour
+    cron.schedule('0 * * * *', async () => {
+      try {
+        const pv = state.trading.totalPortfolioValue || 0;
+        const uptimeSec = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
+        const uptimeStr = `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m`;
+
+        // Hourly P&L: compare to portfolio value from 1 hour ago
+        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+        const recentTrades = state.tradeHistory.filter(t =>
+          t.timestamp && new Date(t.timestamp).getTime() > oneHourAgo
+        );
+        const hourlyWins = recentTrades.filter(t => t.success).length;
+
+        // Hourly realized P&L from trade history
+        const hourlyPnL = recentTrades.reduce((sum, t) => sum + (t.realizedPnL || 0), 0);
+
+        // Cash percentage from balance entries
+        const balances = state.trading.balances || [];
+        const usdcEntry = balances.find(b => b.symbol === 'USDC');
+        const usdcValue = usdcEntry?.usdValue || 0;
+        const cashPct = pv > 0 ? (usdcValue / pv) * 100 : 0;
+
+        // Top positions from balance entries
+        const positions = balances
+          .filter(b => b.symbol !== 'USDC' && b.usdValue > 1)
+          .map(b => {
+            const cb = state.costBasis[b.symbol];
+            const pnlPct = cb?.averageCostBasis && b.price
+              ? ((b.price - cb.averageCostBasis) / cb.averageCostBasis) * 100
+              : 0;
+            return { symbol: b.symbol, usdValue: b.usdValue, pnlPct };
+          });
+
+        await telegramService.sendHourlyReport({
+          portfolioValue: pv,
+          hourlyPnL,
+          hourlyTrades: recentTrades.length,
+          hourlyWins,
+          totalTrades: state.trading.totalTrades,
+          totalCycles: state.totalCycles,
+          cashPercent: cashPct,
+          positions,
+          marketRegime: lastMarketRegime || undefined,
+          fearGreedIndex: lastFearGreedValue || undefined,
+          preservationMode: capitalPreservationMode.isActive,
+          uptime: uptimeStr,
+          version: BOT_VERSION,
+        });
+      } catch (err: any) {
+        console.warn(`[Telegram Hourly] Error: ${err?.message?.substring(0, 200)}`);
+      }
+    }, { timezone: 'UTC' });
+    console.log(`  ⏰ Hourly status report: Telegram every hour on the hour`);
   }
 
   // Heartbeat every 5 minutes to confirm process is alive

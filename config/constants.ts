@@ -507,14 +507,14 @@ export const DAILY_PAYOUT_USDC_BUFFER = 5.00;
  * The bot was stuck at 37.5% cash ($3K on $8K) — 2.5% below the 40% trigger — doing nothing.
  */
 export const CASH_DEPLOYMENT_TIERS = [
-  { cashPct: 25, deployPct: 30, confluenceDiscount: 5,  maxEntries: 2, label: 'LIGHT' as const },
+  { cashPct: 20, deployPct: 30, confluenceDiscount: 5,  maxEntries: 2, label: 'LIGHT' as const },      // v20.3.1: 25→20 — start deploying sooner, no more dead zone
   { cashPct: 35, deployPct: 50, confluenceDiscount: 10, maxEntries: 3, label: 'MODERATE' as const },
   { cashPct: 50, deployPct: 70, confluenceDiscount: 15, maxEntries: 4, label: 'AGGRESSIVE' as const },
   { cashPct: 65, deployPct: 80, confluenceDiscount: 20, maxEntries: 5, label: 'URGENT' as const },
 ];
 
 /** Backwards-compatible: lowest tier threshold. Used by forced deploy gate check. */
-export const CASH_DEPLOYMENT_THRESHOLD_PCT = 25; // v20.2: 40% → 25% (first tier)
+export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v20.3.1: 25% → 20% (match first tier)
 
 /** Legacy — still used as the URGENT tier's confluence discount for directive stacking */
 export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 20;
