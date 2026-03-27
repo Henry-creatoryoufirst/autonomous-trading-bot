@@ -295,6 +295,10 @@ import {
   // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
   MAX_CONSECUTIVE_FAILURES,
   FAILURE_COOLDOWN_HOURS,
+  // v20.6: Compressed prompt system
+  SYSTEM_PROMPT_CORE,
+  SYSTEM_PROMPT_STRATEGY,
+  estimateTokens,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
@@ -2703,6 +2707,8 @@ function scheduleNextCycle() {
       console.error(`[Adaptive Cycle Error] ${err?.message?.substring(0, 300) || err}`);
     } finally {
       cycleInProgress = false;
+      // v20.5: Flush any dirty state at end of cycle (batched I/O)
+      flushStateIfDirty('end-of-cycle');
     }
     // After cycle completes, schedule the next one (interval may have changed)
     scheduleNextCycle();
@@ -2710,8 +2716,14 @@ function scheduleNextCycle() {
 }
 
 /**
- * v6.2: Initialize WebSocket price stream from DexScreener.
+ * v6.2 / v21.0: Initialize smart price stream from DexScreener.
  * Provides real-time price updates between cycles for emergency detection.
+ *
+ * v21.0: Smart polling — instead of polling all 40+ tokens every 10s, only poll
+ * tokens that matter. Three tiers:
+ *   - Every 10s: Active tokens (holdings + ETH/USDC + watchlist) — ~15-20 tokens
+ *   - Every 60s: Also include cooldown tokens — adds ~5-10 more
+ *   - Every 5min: Full registry sweep — catch new opportunities on all tokens
  */
 function initPriceStream() {
   // DexScreener doesn't have a public WebSocket API, so we use a high-frequency
@@ -2719,13 +2731,100 @@ function initPriceStream() {
   // This is more reliable than WebSocket for DexScreener and avoids connection issues.
 
   const STREAM_INTERVAL = 10000; // 10 seconds
+  const COOLDOWN_POLL_INTERVAL = 60000; // 60 seconds — poll cooldown tokens less often
+  const FULL_SWEEP_INTERVAL = 5 * 60 * 1000; // 5 minutes — full registry discovery
+
+  let lastCooldownPollAt = 0;
+  let lastFullPollAt = 0;
+
+  /**
+   * v21.0: Determine which tokens should be polled this tick.
+   * Returns [symbolsToQuery, pollMode] where pollMode is for logging.
+   */
+  function getActiveTokens(): [string[], string] {
+    const now = Date.now();
+    const activeSymbols = new Set<string>();
+
+    // --- ALWAYS POLL: ETH and USDC (base pair, needed for gas/balance) ---
+    activeSymbols.add("ETH");
+    activeSymbols.add("WETH");
+    // USDC is filtered out before the API call (no DexScreener pair), but we
+    // include it in the set so it's counted in the log correctly.
+
+    // --- ALWAYS POLL: Tokens the bot currently holds (costBasis entries with value) ---
+    if (state.costBasis) {
+      for (const sym of Object.keys(state.costBasis)) {
+        if (TOKEN_REGISTRY[sym]) {
+          activeSymbols.add(sym);
+        }
+      }
+    }
+    // Also check live balances — costBasis may lag behind on-chain state
+    if (state.trading?.balances) {
+      for (const b of state.trading.balances) {
+        if (b.usdValue > 1 && TOKEN_REGISTRY[b.symbol]) {
+          activeSymbols.add(b.symbol);
+        }
+      }
+    }
+
+    // --- ALWAYS POLL: Watchlist tokens from user directives ---
+    const activeDirectives = (state.userDirectives || []).filter(
+      (d: UserDirective) => !d.expiresAt || d.expiresAt > new Date().toISOString()
+    );
+    for (const d of activeDirectives) {
+      if ((d.type === 'WATCHLIST' || d.type === 'RESEARCH') && d.token && TOKEN_REGISTRY[d.token]) {
+        activeSymbols.add(d.token);
+      }
+    }
+
+    // --- Determine poll mode based on elapsed time ---
+    const doFullSweep = (now - lastFullPollAt) >= FULL_SWEEP_INTERVAL;
+    const doCooldownPoll = (now - lastCooldownPollAt) >= COOLDOWN_POLL_INTERVAL;
+
+    if (doFullSweep) {
+      // Full registry sweep — all tokens for discovery
+      lastFullPollAt = now;
+      lastCooldownPollAt = now; // Reset cooldown timer too
+      const allSymbols = Object.keys(TOKEN_REGISTRY);
+      return [allSymbols, "full"];
+    }
+
+    if (doCooldownPoll) {
+      // Include cooldown tokens alongside active tokens
+      lastCooldownPollAt = now;
+      const cooldowns = cooldownManager.getActiveCooldowns();
+      for (const cd of cooldowns) {
+        if (TOKEN_REGISTRY[cd.symbol]) {
+          activeSymbols.add(cd.symbol);
+        }
+      }
+      // Also include circuit-breaker tokens (tradeFailures) — they're in cooldown too
+      if (state.tradeFailures) {
+        for (const sym of Object.keys(state.tradeFailures)) {
+          if (TOKEN_REGISTRY[sym]) {
+            activeSymbols.add(sym);
+          }
+        }
+      }
+      return [Array.from(activeSymbols), "cooldown"];
+    }
+
+    // Normal 10s tick — active tokens only
+    return [Array.from(activeSymbols), "active"];
+  }
 
   const streamPrices = async () => {
     try {
-      const addresses = Object.entries(TOKEN_REGISTRY)
-        .filter(([s]) => s !== "USDC")
-        .map(([_, t]) => t.address)
+      const [symbolsToQuery, pollMode] = getActiveTokens();
+
+      const addresses = symbolsToQuery
+        .filter(s => s !== "USDC") // USDC has no DexScreener pair
+        .map(s => TOKEN_REGISTRY[s]?.address)
+        .filter(Boolean)
         .join(",");
+
+      if (!addresses) return; // Nothing to poll
 
       const dexRes = await axios.get(
         `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
@@ -2781,6 +2880,16 @@ function initPriceStream() {
           }
         }
         adaptiveCycle.wsConnected = true; // Mark stream as active
+
+        // v21.0: Log polling mode and token count (skip "active" mode to keep console clean)
+        const totalRegistry = Object.keys(TOKEN_REGISTRY).length;
+        const polledCount = symbolsToQuery.filter(s => s !== "USDC").length;
+        if (pollMode === "full") {
+          console.log(`  [Price] Polling ${polledCount} tokens (full sweep — discovery cycle)`);
+        } else if (pollMode === "cooldown") {
+          console.log(`  [Price] Polling ${polledCount}/${totalRegistry} tokens (${pollMode}: active + cooldown)`);
+        }
+        // "active" mode logs nothing — it fires every 10s, would spam the console
       }
     } catch {
       // Silent fail — normal cycles still work as backup
@@ -2788,10 +2897,10 @@ function initPriceStream() {
     }
   };
 
-  // Start streaming
+  // Start streaming — first call is always a full sweep (lastFullPollAt = 0 triggers it)
   streamPrices();
   setInterval(streamPrices, STREAM_INTERVAL);
-  console.log(`   📡 Real-time price stream: active (${STREAM_INTERVAL / 1000}s polling)`);
+  console.log(`   📡 Real-time price stream: active (${STREAM_INTERVAL / 1000}s polling, smart filter: active/60s cooldown/5m full)`);
 }
 
 // ============================================================================
@@ -4339,6 +4448,44 @@ function saveTradeHistory() {
 }
 
 // ============================================================================
+// v20.5: BATCHED STATE PERSISTENCE — dirty-flag system to reduce disk I/O
+// Instead of writing on every state mutation (~33 call sites), we mark state
+// as dirty and flush periodically. Critical saves (post-trade) flush within 5s.
+// Non-critical saves (HOLD, status updates) batch into 30s windows.
+// Shutdown handlers still save immediately for data safety.
+// ============================================================================
+let stateDirty = false;
+let lastSaveAt = Date.now();
+let criticalSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const SAVE_INTERVAL_MS = 30_000;          // Flush every 30s if dirty
+const SAVE_CRITICAL_INTERVAL_MS = 5_000;  // Flush within 5s after trade execution
+
+function markStateDirty(critical?: boolean): void {
+  stateDirty = true;
+  if (critical && !criticalSaveTimer) {
+    criticalSaveTimer = setTimeout(() => {
+      criticalSaveTimer = null;
+      flushStateIfDirty('critical-timer');
+    }, SAVE_CRITICAL_INTERVAL_MS);
+  }
+}
+
+function flushStateIfDirty(reason: string = 'periodic'): void {
+  if (!stateDirty) return;
+  const elapsed = Date.now() - lastSaveAt;
+  // For periodic flushes, respect the interval; for explicit calls, always flush
+  if (reason === 'periodic' && elapsed < SAVE_INTERVAL_MS) return;
+  saveTradeHistory();
+  stateDirty = false;
+  lastSaveAt = Date.now();
+  if (criticalSaveTimer) {
+    clearTimeout(criticalSaveTimer);
+    criticalSaveTimer = null;
+  }
+  console.log(`[State] Flushed state (reason: ${reason}, dirty for ${elapsed}ms)`);
+}
+
+// ============================================================================
 // v11.4.22: ON-CHAIN TRADE HISTORY RECOVERY
 // Reconstructs trade history from Basescan ERC20 transfer logs.
 // This is the source of truth — it survives any state corruption, restart,
@@ -4729,7 +4876,7 @@ async function recoverOnChainTradeHistory(walletAddress?: string): Promise<{ rec
     state.trading.successfulTrades = actionable.filter(t => t.success).length;
 
     // Persist the recovered state
-    saveTradeHistory();
+    markStateDirty();
   } else {
     console.log(`  ✅ On-chain history matches state — no new trades to recover`);
   }
@@ -5020,7 +5167,7 @@ async function consolidateDustPositions(
   }
   if (consolidated > 0) {
     console.log(`  🧹 Consolidated ${consolidated}/${dustPositions.length} dust positions to USDC`);
-    saveTradeHistory();
+    markStateDirty(true);
   }
   return consolidated;
 }
@@ -5119,7 +5266,7 @@ function checkProfitTaking(
       cb.unrealizedPnL = 0;
       cb.firstBuyDate = now.toISOString();
       cb.lastTradeDate = now.toISOString();
-      saveTradeHistory();
+      markStateDirty();
       continue; // Skip harvesting — cost basis was bogus
     }
 
@@ -9056,9 +9203,8 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
-  const systemPrompt = `You are Henry's autonomous crypto trading agent v12.0 "On-Chain Intelligence Engine" on Base network.
-You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicators, DeFi protocol intelligence, news sentiment analysis, Federal Reserve macro data (rates, yield curve, CPI, M2, dollar), cross-asset correlations (Gold, Oil, VIX, S&P 500), market regime analysis, BTC dominance & altseason rotation, TVL-price divergence, and stablecoin capital flow. Your decisions execute LIVE swaps with adaptive MEV protection. You think like a macro-aware hedge fund — reading both the market microstructure AND the global economic environment. Pay special attention to altseason rotation signals, TVL-price divergence, and cross-asset correlations — these are your highest-conviction indicators.
-
+  // v20.6: Build dynamic data sections (always included regardless of prompt tier)
+  const dynamicData = `
 ═══ PORTFOLIO ═══
 - USDC Available: $${availableUSDC.toFixed(2)}${cashDeployment?.active ? ` ⚠️ CASH OVERWEIGHT (${cashDeployment.cashPercent.toFixed(1)}% of portfolio)` : ''}
 - Token Holdings: $${totalTokenValue.toFixed(2)}
@@ -9066,7 +9212,7 @@ You are a MULTI-DIMENSIONAL TRADER with real-time access to: technical indicator
 - Today's P&L: ${breakerState.dailyBaseline.value > 0 ? `${((totalPortfolioValue - breakerState.dailyBaseline.value) / breakerState.dailyBaseline.value * 100).toFixed(2)}% ($${(totalPortfolioValue - breakerState.dailyBaseline.value).toFixed(2)})` : 'Calculating...'}
 - Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%
 - Today's Realized P&L (from sells): $${todayRealizedPnL.toFixed(2)} (${todaySells.length} sells) | Next payout: ${hoursUntilPayout}h${cashDeployment?.active ? `
-- 💵 DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
+- DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
 ═══ YOUR TRADE PERFORMANCE ═══
 ${perfSummary}
@@ -9106,95 +9252,20 @@ ${tradeHistoryContext}${tradeHistorySummary}
 
 ${discoveryIntel}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 30%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
-- Available tokens: ${tradeableTokens}
+- Available tokens: ${tradeableTokens}`;
 
-═══ STRATEGY FRAMEWORK v12.0 ═══
-
-ENTRY RULES (when to BUY):
-1. CONFLUENCE: Buy when 2+ indicators agree (RSI oversold + MACD bullish, or BB oversold + uptrend). In strong momentum, 1 signal is enough
-2. SECTOR PRIORITY: Buy into the most underweight sector first
-3. VOLUME CONFIRMATION: Prefer tokens where volume is above 7-day average
-4. TREND ALIGNMENT: Prefer buying tokens in UP or STRONG_UP trends
-5. MOMENTUM DEPLOYMENT: When BTC/ETH are moving +3%+ in 24h, deploy USDC AGGRESSIVELY with 1.5x position sizes. Don't sit in idle USDC when the market is running — this is where money is made
-6. CATCHING FIRE: Token with DEX buy ratio >60% AND volume >2x 7-day average = STRONG BUY — apply 1.5x position size. This is real on-chain demand, not noise
-7. DEX VOLUME SPIKES: Token with >2x normal volume AND buy-heavy pressure (>55% buys) = strong BUY signal
-8. TVL-PRICE DIVERGENCE: DeFi token with rising TVL but flat price = undervalued, prioritize buying
-9. QUALITY OVER QUANTITY: You are a TRADING bot but NOT a churning bot. Only enter when 2+ signals align with clear conviction. A missed trade costs nothing — a bad trade costs slippage, fees, and capital. Patience IS a position
-12. FALLING KNIFE FILTER: NEVER buy on oversold RSI alone if MACD is bearish. RSI < 30 with bearish MACD is a falling knife, not a buying opportunity. Wait for MACD to turn bullish or neutral before entering oversold positions. This prevents catching falling knives like RSR (-54.8%)
-10. SCALE INTO WINNERS: When an existing position is up ${SCALE_UP_MIN_GAIN_PCT}%+ from cost basis AND has strong momentum (buy ratio > ${SCALE_UP_BUY_RATIO_MIN}%, volume above average), INCREASE the position by 2-4x the original size. This is the most important rule. Small scout positions that prove themselves deserve real capital. A $2 position up 8% is a signal to deploy $50-100 more, not to sit and watch.
-11. RIDE THE WAVE: If a token is up ${RIDE_THE_WAVE_MIN_MOVE}%+ in the last 4 hours with increasing volume, this is a momentum trade opportunity. Deploy ${RIDE_THE_WAVE_SIZE_PCT}% of portfolio immediately. Don't wait for confluence of 3 indicators. Volume + price action IS the signal.
-
-EXIT RULES (when to SELL):
-1. PROFIT HARVESTING: Auto-harvests at +25%, +50%, +100%, +200% gain tiers BUT ONLY when momentum is decelerating (buy ratio dropping or MACD turning). If buy ratio >55% and MACD bullish, let winners run
-2. OVERBOUGHT EXIT: Sell if RSI > 75 AND MACD turning bearish
-3. STOP LOSS: Tightened to -4% for non-blue-chip, -6% for blue chips. Cut losses FAST
-4. SECTOR TRIM: Sell from overweight sectors (>10% drift) to rebalance
-5. TIME-BASED HARVEST: Positions held 72+ hours with +15% gain get a 10% trim
-6. CAPITAL RECYCLING: If USDC < $10, SELL 20-30% of your highest-gain position to free capital. A bot with $0 USDC cannot compound
-7. MOMENTUM REVERSAL: When a held token's DEX buy ratio drops below 45% (buyers turning into sellers), this is a SELL signal regardless of profit/loss. Exit before the crowd
-8. MOMENTUM EXIT: When a held position shows buy ratio dropping below ${MOMENTUM_EXIT_BUY_RATIO}% OR MACD crosses bearish AFTER a profitable run of ${MOMENTUM_EXIT_MIN_PROFIT}%+, SELL the position. Don't wait for stop-loss. The momentum wave is over. Take the profit and redeploy.
-9. DAILY PAYOUT AWARENESS: Every day at 8 AM UTC, REALIZED profits are distributed to stakeholders. Unrealized gains don't count. Today's realized P&L: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.${payoutUrgency ? ` ⚠️ <4h to settlement — sell a portion of winners NOW to lock in realized profit for distribution.` : ''} Always be banking wins, not just holding them
-
-CORE PHILOSOPHY (v18.0):
-Trade based on DEX order flow, not market sentiment. Buy when buy ratio confirms accumulation with volume. Sell when flow reverses. Fear & Greed Index is a MACRO FILTER, not a trade signal. Use it for position sizing and deployment bias (extreme fear = reduce exposure, extreme greed = tighten stops), but NEVER as a standalone buy/sell trigger. On-chain flow remains the primary signal. Be willing to buy in extreme fear IF on-chain flow confirms real buying is happening.
-
-RISK/REWARD (v18.0 — CRITICAL): Only enter trades where potential reward is at least 2x the risk. If a token is near its 30-day high (within 5%), the upside is limited — prefer tokens with more room to run. Tokens 20%+ below their 30-day high with bullish MACD have the best risk/reward.
-
-LET WINNERS RUN (v18.0 — CRITICAL): Do NOT sell a profitable position if buy ratio is still above 55% and MACD is bullish. Trim ONLY on deceleration — when momentum is SLOWING. The old approach of harvesting small wins while letting losses compound created negative expectancy. Cut losses FAST (4-6% stops), let winners RUN (hold through momentum).
-NOTE — "Let Winners Run" vs Profit Harvest Tiers: Profit harvest tiers (+25%, +50%, +100%, +200%) trigger ONLY when momentum is decelerating (buy ratio dropping or MACD turning bearish). If buy ratio >55% and MACD bullish, winners run regardless of gain level. Deceleration is the gate, not the gain percentage.
-
-PATIENCE IN RANGING (v18.0): In ranging markets, make FEWER trades with HIGHER conviction. Each trade has fees that compound. Target 2 high-conviction trades max per cycle in ranging markets. A missed trade costs nothing — a bad trade costs slippage, fees, and capital.
-
-CONFLUENCE THRESHOLD VARIANTS (context-dependent):
-- Normal mode: confluence >= 27 required for entry
-- Cash deployment mode: confluence >= 22 (reduced by up to 5 when portfolio is cash-heavy)
-- Exploration mode: confluence >= 0 (scout positions only, minimal size)
-- Preservation mode: confluence >= 25 (extreme fear — high conviction only)
-
-EXPLORATION TRADE RULES (data-gathering positions):
-- Exploration trades must have neutral or positive confluence (>= 0) — never explore into negative confluence
-- Never explore against the trend — MACD must not be bearish for the target token
-- Exploration requires buy ratio above 45% — do not explore when sellers dominate
-- In RANGING markets: exploration size is cut 50%, max 1 exploration per cycle
-
-REGIME STRATEGY:
-- TRENDING_UP: Maximum aggression. Buy dips, deploy idle USDC
-- TRENDING_DOWN: Hunt oversold bounces. Sell clear losers, recycle capital
-- RANGING: PATIENCE. Fewer trades, higher conviction. Max 2 trades per cycle. Only enter with 2+ confirming signals and R:R >= 2:1
-- VOLATILE: More trades, smaller sizes. Buy at dislocated prices
-${cashDeployment?.active ? `
-═══ 💵 CASH DEPLOYMENT AWARENESS ═══
+  // v20.6: Dynamic addenda only included on heavy (full strategy) cycles
+  const dynamicStrategyAddenda = `${cashDeployment?.active ? `
+═══ CASH DEPLOYMENT AWARENESS ═══
 Portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} idle). Deploy budget: $${cashDeployment.deployBudget.toFixed(0)}.
 Look for quality entries in underweight sectors. Prefer tokens with 2+ confirming signals.
 - Focus on: most oversold tokens (RSI < 40), underweight sectors, volume confirming
 - Size: $${Math.min(40, cashDeployment.deployBudget / 4).toFixed(0)}-$${Math.min(80, cashDeployment.deployBudget / 3).toFixed(0)} per trade
 - Confluence threshold lowered by ${cashDeployment.confluenceDiscount} points
 - HOLD is acceptable if no quality entries exist. Better to wait than force bad trades
-` : ''}
-RISK RULES:
-1. No single token > 25% of portfolio
-2. ${cashDeployment?.active
-    ? `Cash is high — prefer entries with confluence > ${Math.min(state.adaptiveThresholds.confluenceBuy - cashDeployment.confluenceDiscount, 5)}, but HOLD if nothing qualifies`
-    : 'HOLD only if confluence is between -15 and +15 (no clear signal)'}
-3. Don't chase pumps — if token up >20% in 24h with RSI >75, wait for pullback
-4. Minimum trade $15.00 — if you can't size at least $15, skip the trade entirely. No dust positions
-
-DECISION PRIORITY: Market Regime > Altseason/BTC Dominance > Macro Environment > Technical signals + DeFi flows > DEX Intelligence (volume spikes + buy/sell pressure) > TVL-Price Divergence > Stablecoin Capital Flow > Cross-Asset Correlations > News sentiment > Sector rebalancing
-
-For SELLING: fromToken = token symbol, toToken = USDC
-For BUYING: fromToken = USDC, toToken = token symbol
-
-DIVERSIFICATION RULE: NEVER buy the same token more than 2 cycles in a row UNLESS it is a SCALE-UP candidate (up ${SCALE_UP_MIN_GAIN_PCT}%+ from cost basis with strong momentum). Winners deserve concentration. Rotate for NEW positions only.
-If a token already holds >20% of portfolio, do NOT buy more UNLESS it qualifies for SCALE INTO WINNERS (up ${SCALE_UP_MIN_GAIN_PCT}%+ with buy ratio >${SCALE_UP_BUY_RATIO_MIN}%).
-
-CRITICAL: Respond with ONLY raw JSON. NO prose, NO explanation outside JSON, NO markdown.
-v9.2 MULTI-TRADE: You may return a JSON ARRAY of actions per cycle to deploy capital across multiple tokens simultaneously.
-Return as many actions as you see strong signals for — each will be validated independently by position guards, Kelly sizing, and circuit breakers.
-Return a single object for 1 trade, or an array for multiple. HOLD can be a single object (no array needed).
-Examples:
-Single: {"action":"BUY","fromToken":"USDC","toToken":"AAVE","amountUSD":10,"reasoning":"RSI oversold, MACD bullish","sector":"DEFI"}
-Multi: [{"action":"BUY","fromToken":"USDC","toToken":"CRV","amountUSD":15,"reasoning":"RSI oversold","sector":"DEFI"},{"action":"BUY","fromToken":"USDC","toToken":"VIRTUAL","amountUSD":12,"reasoning":"AI sector underweight","sector":"AI_TOKENS"}]
-HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals"}` + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
+` : ''}${payoutUrgency ? `
+⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
+` : ''}`;
 
   // v20.5: Model routing — use Haiku for routine forced-interval cycles, Sonnet for everything else
   const reasonLower = (heavyCycleReason || '').toLowerCase();
@@ -9203,46 +9274,16 @@ HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reason
     || (cashDeployment?.active);  // Cash deployment mode needs full intelligence
   const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
   const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
+
+  // v20.6: Compressed prompt system — CORE (always) + STRATEGY (heavy cycles only) + dynamic data (always)
+  const isFullPrompt = needsSonnet;
+  const promptForAI = isFullPrompt
+    ? SYSTEM_PROMPT_CORE + '\n\n' + dynamicData + '\n\n' + SYSTEM_PROMPT_STRATEGY + '\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
+    : SYSTEM_PROMPT_CORE + '\n\n' + dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
+
+  const promptTokens = estimateTokens(promptForAI);
   console.log(`  [AI] Using ${modelLabel} for cycle | Reason: ${heavyCycleReason || 'unknown'}`);
-
-  // v20.5: Condensed prompt for routine (Haiku) cycles — skip trading philosophy, focus on monitoring
-  const promptForAI = needsSonnet ? systemPrompt : `You are Henry's autonomous crypto trading agent on Base network. ROUTINE MONITORING CYCLE — check for stop-losses and profit tiers only.
-
-═══ PORTFOLIO ═══
-- USDC Available: $${availableUSDC.toFixed(2)}
-- Token Holdings: $${totalTokenValue.toFixed(2)}
-- Total: $${totalPortfolioValue.toFixed(2)}
-
-═══ HOLDINGS ═══
-${Object.entries(holdingsBySector).map(([sector, holdings]) =>
-  `${sector}: ${holdings.length > 0 ? holdings.join(" | ") : "Empty"}`
-).join("\n")}
-
-═══ TOKEN PRICES ═══
-${Object.entries(marketBySector).map(([sector, tokens]) =>
-  `${sector}: ${tokens.slice(0, 5).join(" | ")}`
-).join("\n")}
-
-═══ TECHNICAL INDICATORS ═══
-${indicatorsSummary || "  No indicator data available"}
-
-${strongBuySignals.length > 0 ? `STRONGEST BUY SIGNALS: ${strongBuySignals.join(", ")}` : ""}
-${strongSellSignals.length > 0 ? `STRONGEST SELL SIGNALS: ${strongSellSignals.join(", ")}` : ""}
-
-═══ MONITORING RULES ═══
-- If any position hits stop-loss (-4% non-blue-chip, -6% blue chip): SELL
-- If any position hits profit tier (+25%, +50%, +100%, +200%) AND momentum is decelerating: SELL partial
-- If no stop-loss or profit tier is triggered: HOLD
-- Available tokens: ${tradeableTokens}
-- Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
-
-For SELLING: fromToken = token symbol, toToken = USDC
-For BUYING: fromToken = USDC, toToken = token symbol
-
-CRITICAL: Respond with ONLY raw JSON. NO prose, NO explanation outside JSON, NO markdown.
-Examples:
-SELL: {"action":"SELL","fromToken":"AERO","toToken":"USDC","amountUSD":10,"reasoning":"Hit -5% stop-loss"}
-HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No stop-loss or profit tier triggered"}`;
+  console.log(`  [Prompt] ${isFullPrompt ? 'Full' : 'Compact'} prompt: ~${promptTokens} tokens`);
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -9619,7 +9660,7 @@ async function executeTrade(
           },
         });
         if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-        saveTradeHistory();
+        markStateDirty(true);
       }
       // v11.4.7: Record successful trade in dedup log
       if (twapResult.success) {
@@ -10181,7 +10222,7 @@ async function executeDirectDexSwap(
     if (!decision.isTWAPSlice) {
       state.tradeHistory.push(record);
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-      saveTradeHistory();
+      markStateDirty(true);
     }
     recordExecuted(decision.action === 'BUY' ? (decision.toToken || '') : (decision.fromToken || ''), decision.action, dedupTier, decision.amountUSD);
 
@@ -10474,7 +10515,7 @@ async function executeSingleSwap(
       state.tradeHistory.push(record);
       // v10.2: Cap trade history to prevent unbounded memory growth
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-      saveTradeHistory();
+      markStateDirty(true);
     }
 
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
@@ -10554,7 +10595,7 @@ async function executeSingleSwap(
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
       // v11.4.20: Don't increment totalTrades for failed trades — was inflating the counter
       // totalTrades should only count successful executions (line 6967)
-      saveTradeHistory();
+      markStateDirty(true);
     }
 
     return { success: false, error: errorMsg };
@@ -10611,7 +10652,7 @@ async function executeDailyPayout(): Promise<void> {
       payoutPercent: 0, totalDistributed: 0, transfers: [], skippedReason: 'NEGATIVE_PNL',
     });
     state.lastDailyPayoutDate = yesterdayStr;
-    saveTradeHistory();
+    markStateDirty();
     return;
   }
 
@@ -10626,7 +10667,7 @@ async function executeDailyPayout(): Promise<void> {
       payoutPercent: 0, totalDistributed: 0, transfers: [], skippedReason: 'BELOW_FLOOR',
     });
     state.lastDailyPayoutDate = yesterdayStr;
-    saveTradeHistory();
+    markStateDirty();
     return;
   }
 
@@ -10646,7 +10687,7 @@ async function executeDailyPayout(): Promise<void> {
       payoutPercent: 0, totalDistributed: 0, transfers: [], skippedReason: 'LOW_GAS',
     });
     state.lastDailyPayoutDate = yesterdayStr;
-    saveTradeHistory();
+    markStateDirty();
     return;
   }
 
@@ -10762,7 +10803,7 @@ async function executeDailyPayout(): Promise<void> {
     console.log(`[Daily Payout] Peak adjusted: $${oldPeak.toFixed(2)} → $${state.trading.peakValue.toFixed(2)} (payout-aware baseline)`);
   }
 
-  saveTradeHistory();
+  markStateDirty(true);
 
   const reinvestPct = 100 - totalRecipientPct;
   console.log(`[Daily Payout] DONE: Sent $${totalSent.toFixed(2)} | Reinvested $${(realizedPnL - totalSent).toFixed(2)} (${reinvestPct}%)`);
@@ -11392,7 +11433,7 @@ async function runTradingCycle() {
       console.log(`   Thresholds adapted (${state.adaptiveThresholds.adaptationCount} total adaptations)`);
 
       // Persist everything
-      saveTradeHistory();
+      markStateDirty();
       console.log(`   Review #${state.performanceReviews.length} stored | Next review after ${state.lastReviewTradeIndex + 10} trades or 24h`);
     }
 
@@ -11403,7 +11444,7 @@ async function runTradingCycle() {
       analyzeStrategyPatterns();
       const validPatterns = Object.values(state.strategyPatterns).filter(p => !p.patternId.startsWith("UNKNOWN"));
       console.log(`   Identified ${Object.keys(state.strategyPatterns).length} patterns (${validPatterns.length} with signal data)`);
-      saveTradeHistory();
+      markStateDirty();
     }
 
     // Update USD values
@@ -11526,7 +11567,7 @@ async function runTradingCycle() {
 
     // v11.4.21: Persist state after portfolio/peak/sector updates — ensures peakValue
     // survives if cycle crashes later (previously peak was only saved during trades/sanity checks).
-    saveTradeHistory();
+    markStateDirty();
 
     // v11.4.21: Update daily/weekly baselines BEFORE capital floor / circuit breaker checks.
     // Previously this was only called inside checkCircuitBreaker(), which runs AFTER the capital
@@ -11550,7 +11591,7 @@ async function runTradingCycle() {
       console.log(`\n🔧 PEAK VALUE RUNTIME CORRECTION: peak $${state.trading.peakValue.toFixed(2)} exceeds reasonable max $${maxReasonablePeak.toFixed(2)} (portfolio $${state.trading.totalPortfolioValue.toFixed(2)} + payouts $${totalPayoutsSent.toFixed(2)} + 15% buffer)`);
       state.trading.peakValue = maxReasonablePeak;
       console.log(`   Corrected peak: $${state.trading.peakValue.toFixed(2)}`);
-      saveTradeHistory();
+      markStateDirty();
     }
 
     const drawdown = Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100);
@@ -11701,7 +11742,7 @@ async function runTradingCycle() {
       }
       // v8.0: Record stop-loss as a loss for breaker tracking
       recordTradeResultForBreaker(slResult.success, -(stopLossDecision.amountUSD * 0.05)); // Estimate ~5% loss on stop-loss
-      saveTradeHistory();
+      markStateDirty(true);
       // v10.4: Refresh balances and continue to AI phase
       const refreshedAfterSL = await getBalances();
       if (refreshedAfterSL && refreshedAfterSL.length > 0) {
@@ -11760,7 +11801,7 @@ async function runTradingCycle() {
         if (refreshedAfterDust && refreshedAfterDust.length > 0) {
           balances = refreshedAfterDust;
         }
-        saveTradeHistory();
+        markStateDirty(true);
       }
     }
 
@@ -11785,7 +11826,7 @@ async function runTradingCycle() {
         }
         // v8.0: Profit-take is a win for breaker tracking
         recordTradeResultForBreaker(ptResult.success, ptResult.success ? profitTakeDecision.amountUSD * 0.05 : 0);
-        saveTradeHistory();
+        markStateDirty(true);
         // v10.4: Refresh balances after harvest so AI sees updated USDC
         const refreshedBalances = await getBalances();
         if (refreshedBalances && refreshedBalances.length > 0) {
@@ -11825,7 +11866,7 @@ async function runTradingCycle() {
           explorationsThisCycle++;
         }
         analyzeStrategyPatterns();
-        saveTradeHistory();
+        markStateDirty(true);
       }
     }
 
@@ -12005,7 +12046,7 @@ async function runTradingCycle() {
       }
       if (preAiBuys > 0) {
         console.log(`   ⚡ FORCED_DEPLOY: ${preAiBuys} buys executed`);
-        saveTradeHistory();
+        markStateDirty(true);
         // Refresh balances for the AI call
         const refreshedBalances = await getBalances();
         if (refreshedBalances && refreshedBalances.length > 0) {
@@ -13244,7 +13285,7 @@ async function runTradingCycle() {
       state.explorationState.lastTradeTimestamp = new Date().toISOString();
       state.explorationState.consecutiveHolds = 0;
       state.explorationState.totalExploitationTrades++;
-      saveTradeHistory();
+      markStateDirty(true);
     } else {
       // All decisions were HOLD
       state.explorationState.consecutiveHolds++;
@@ -13367,7 +13408,7 @@ async function runTradingCycle() {
           aaveYieldService.recordWithdraw(withdrawAmount, tx.transactionHash, `${regime} regime, F&G ${fearGreedVal}${aiNeedsCapital ? ', AI needs capital' : ''}`);
           lastYieldAction = `WITHDRAW $${withdrawAmount.toFixed(2)} @ ${new Date().toISOString()}`;
           console.log(`  ✅ Aave withdraw: $${withdrawAmount.toFixed(2)} USDC — tx: ${tx.transactionHash}`);
-          saveTradeHistory();
+          markStateDirty(true);
         } else if (depositAmount > 0 && !anyTradeExecuted) {
           // DEPOSIT: Only when no trades executed this cycle (don't compete for USDC)
           console.log(`\n  🏦 AAVE YIELD: Depositing $${depositAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
@@ -13403,7 +13444,7 @@ async function runTradingCycle() {
           aaveYieldService.recordSupply(depositAmount, tx.transactionHash, `${regime} regime, F&G ${fearGreedVal}`);
           lastYieldAction = `SUPPLY $${depositAmount.toFixed(2)} @ ${new Date().toISOString()}`;
           console.log(`  ✅ Aave supply: $${depositAmount.toFixed(2)} USDC — tx: ${tx.transactionHash}`);
-          saveTradeHistory();
+          markStateDirty(true);
         } else {
           const yieldState = aaveYieldService.getState();
           if (yieldState.depositedUSDC > 0) {
@@ -14293,8 +14334,8 @@ async function main() {
     const breakerActive = breakerState.lastBreakerTriggered ? Date.now() < new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000) : false;
     const healthScore = breakerActive ? '🔴 RED' : (blockedTokens.length >= 3 || lastTradeMinutes > 360) ? '🟡 YELLOW' : '🟢 GREEN';
     console.log(`💓 Heartbeat | ${new Date().toISOString()} | ${healthScore} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | Last trade: ${lastTradeAge} | Blocked: ${blockedTokens.length > 0 ? blockedTokens.join(',') : 'none'} | Portfolio: $${(state.trading.totalPortfolioValue || 0).toFixed(0)}`);
-    // v5.2: Save state every heartbeat
-    saveTradeHistory();
+    // v20.5: Heartbeat now flushes only if state is dirty (was: unconditional save every 5min)
+    flushStateIfDirty('heartbeat');
   }, 5 * 60 * 1000);
 
   const { tier: startTier } = getPortfolioSensitivity(state.trading.totalPortfolioValue || 0);
@@ -15058,7 +15099,7 @@ function applyConfigChanges(parseResult: ParseResult, instruction: string): Conf
   }
 
   console.log(`[NL Config] Applied ${parseResult.changes.length} config changes from: "${instruction.substring(0, 60)}"`);
-  saveTradeHistory();
+  markStateDirty();
   return directive;
 }
 
@@ -15076,7 +15117,7 @@ function removeConfigDirective(id: string): boolean {
   if (!directive) return false;
   directive.active = false;
   console.log(`[NL Config] Removed config directive: ${id}`);
-  saveTradeHistory();
+  markStateDirty();
   return true;
 }
 
@@ -16422,7 +16463,8 @@ const healthServer = http.createServer(async (req, res) => {
             }
             // Recalculate derived values
             const drawdown = Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100);
-            saveTradeHistory();
+            markStateDirty();
+            flushStateIfDirty('admin-correction');
             console.log(`\n🔧 ADMIN STATE CORRECTION applied:`);
             applied.forEach(a => console.log(`   ${a}`));
             sendJSON(res, 200, {
