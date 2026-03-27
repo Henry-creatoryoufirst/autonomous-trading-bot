@@ -158,12 +158,13 @@ function reviewBuy(input: RiskReviewInput, objections: RiskObjection[]): void {
     });
   }
 
-  // 2. Bearish MACD with negative confluence — falling knife
+  // 2. Bearish MACD with negative confluence — falling knife (HARD BLOCK)
+  // Philosophy rule: NEVER buy into falling knives. Severity 20+ = automatic BLOCK.
   if (macdSignal === 'BEARISH' && (confluenceScore ?? 0) < FALLING_KNIFE_CONFLUENCE) {
     objections.push({
       check: 'FALLING_KNIFE',
-      severity: 7,
-      reason: `${symbol} bearish MACD + negative confluence (${confluenceScore?.toFixed(0)}) — falling knife`,
+      severity: 20,
+      reason: `BLOCKED: Falling knife — bearish MACD with negative confluence (${confluenceScore?.toFixed(0)}). Philosophy rule: NEVER buy into falling knives.`,
     });
   }
 

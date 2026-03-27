@@ -131,6 +131,9 @@ import { CACHE_TTL } from "./config/constants.js";
 import { cooldownManager } from "./services/cooldown-manager.js";
 import {
   HEAVY_CYCLE_FORCED_INTERVAL_MS,
+  AI_MODEL_HEAVY,
+  AI_MODEL_ROUTINE,
+  SONNET_REQUIRED_REASONS,
   PRICE_CHANGE_THRESHOLD,
   FG_CHANGE_THRESHOLD,
   DEFAULT_TRADING_INTERVAL_MINUTES,
@@ -8875,6 +8878,7 @@ async function makeTradeDecision(
   totalPortfolioValue: number,
   sectorAllocations: SectorAllocation[],
   cashDeployment?: CashDeploymentResult,
+  heavyCycleReason?: string,
 ): Promise<TradeDecision[]> {
   const usdcBalance = balances.find(b => b.symbol === "USDC");
   const availableUSDC = usdcBalance?.balance || 0;
@@ -9132,13 +9136,20 @@ EXIT RULES (when to SELL):
 9. DAILY PAYOUT AWARENESS: Every day at 8 AM UTC, REALIZED profits are distributed to stakeholders. Unrealized gains don't count. Today's realized P&L: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.${payoutUrgency ? ` ⚠️ <4h to settlement — sell a portion of winners NOW to lock in realized profit for distribution.` : ''} Always be banking wins, not just holding them
 
 CORE PHILOSOPHY (v18.0):
-Trade based on DEX order flow, not market sentiment. Buy when buy ratio confirms accumulation with volume. Sell when flow reverses. Fear and Greed is noise. Capital flow is signal. Be willing to buy in extreme fear IF on-chain flow confirms real buying is happening.
+Trade based on DEX order flow, not market sentiment. Buy when buy ratio confirms accumulation with volume. Sell when flow reverses. Fear & Greed Index is a MACRO FILTER, not a trade signal. Use it for position sizing and deployment bias (extreme fear = reduce exposure, extreme greed = tighten stops), but NEVER as a standalone buy/sell trigger. On-chain flow remains the primary signal. Be willing to buy in extreme fear IF on-chain flow confirms real buying is happening.
 
 RISK/REWARD (v18.0 — CRITICAL): Only enter trades where potential reward is at least 2x the risk. If a token is near its 30-day high (within 5%), the upside is limited — prefer tokens with more room to run. Tokens 20%+ below their 30-day high with bullish MACD have the best risk/reward.
 
 LET WINNERS RUN (v18.0 — CRITICAL): Do NOT sell a profitable position if buy ratio is still above 55% and MACD is bullish. Trim ONLY on deceleration — when momentum is SLOWING. The old approach of harvesting small wins while letting losses compound created negative expectancy. Cut losses FAST (4-6% stops), let winners RUN (hold through momentum).
+NOTE — "Let Winners Run" vs Profit Harvest Tiers: Profit harvest tiers (+25%, +50%, +100%, +200%) trigger ONLY when momentum is decelerating (buy ratio dropping or MACD turning bearish). If buy ratio >55% and MACD bullish, winners run regardless of gain level. Deceleration is the gate, not the gain percentage.
 
 PATIENCE IN RANGING (v18.0): In ranging markets, make FEWER trades with HIGHER conviction. Each trade has fees that compound. Target 2 high-conviction trades max per cycle in ranging markets. A missed trade costs nothing — a bad trade costs slippage, fees, and capital.
+
+CONFLUENCE THRESHOLD VARIANTS (context-dependent):
+- Normal mode: confluence >= 27 required for entry
+- Cash deployment mode: confluence >= 22 (reduced by up to 5 when portfolio is cash-heavy)
+- Exploration mode: confluence >= 0 (scout positions only, minimal size)
+- Preservation mode: confluence >= 25 (extreme fear — high conviction only)
 
 EXPLORATION TRADE RULES (data-gathering positions):
 - Exploration trades must have neutral or positive confluence (>= 0) — never explore into negative confluence
@@ -9185,14 +9196,62 @@ Single: {"action":"BUY","fromToken":"USDC","toToken":"AAVE","amountUSD":10,"reas
 Multi: [{"action":"BUY","fromToken":"USDC","toToken":"CRV","amountUSD":15,"reasoning":"RSI oversold","sector":"DEFI"},{"action":"BUY","fromToken":"USDC","toToken":"VIRTUAL","amountUSD":12,"reasoning":"AI sector underweight","sector":"AI_TOKENS"}]
 HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals"}` + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
 
+  // v20.5: Model routing — use Haiku for routine forced-interval cycles, Sonnet for everything else
+  const reasonLower = (heavyCycleReason || '').toLowerCase();
+  const needsSonnet = !heavyCycleReason  // No reason = unknown, play safe with Sonnet
+    || SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()))
+    || (cashDeployment?.active);  // Cash deployment mode needs full intelligence
+  const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
+  const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
+  console.log(`  [AI] Using ${modelLabel} for cycle | Reason: ${heavyCycleReason || 'unknown'}`);
+
+  // v20.5: Condensed prompt for routine (Haiku) cycles — skip trading philosophy, focus on monitoring
+  const promptForAI = needsSonnet ? systemPrompt : `You are Henry's autonomous crypto trading agent on Base network. ROUTINE MONITORING CYCLE — check for stop-losses and profit tiers only.
+
+═══ PORTFOLIO ═══
+- USDC Available: $${availableUSDC.toFixed(2)}
+- Token Holdings: $${totalTokenValue.toFixed(2)}
+- Total: $${totalPortfolioValue.toFixed(2)}
+
+═══ HOLDINGS ═══
+${Object.entries(holdingsBySector).map(([sector, holdings]) =>
+  `${sector}: ${holdings.length > 0 ? holdings.join(" | ") : "Empty"}`
+).join("\n")}
+
+═══ TOKEN PRICES ═══
+${Object.entries(marketBySector).map(([sector, tokens]) =>
+  `${sector}: ${tokens.slice(0, 5).join(" | ")}`
+).join("\n")}
+
+═══ TECHNICAL INDICATORS ═══
+${indicatorsSummary || "  No indicator data available"}
+
+${strongBuySignals.length > 0 ? `STRONGEST BUY SIGNALS: ${strongBuySignals.join(", ")}` : ""}
+${strongSellSignals.length > 0 ? `STRONGEST SELL SIGNALS: ${strongSellSignals.join(", ")}` : ""}
+
+═══ MONITORING RULES ═══
+- If any position hits stop-loss (-4% non-blue-chip, -6% blue chip): SELL
+- If any position hits profit tier (+25%, +50%, +100%, +200%) AND momentum is decelerating: SELL partial
+- If no stop-loss or profit tier is triggered: HOLD
+- Available tokens: ${tradeableTokens}
+- Max BUY: $${maxBuyAmount.toFixed(2)} | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
+
+For SELLING: fromToken = token symbol, toToken = USDC
+For BUYING: fromToken = USDC, toToken = token symbol
+
+CRITICAL: Respond with ONLY raw JSON. NO prose, NO explanation outside JSON, NO markdown.
+Examples:
+SELL: {"action":"SELL","fromToken":"AERO","toToken":"USDC","amountUSD":10,"reasoning":"Hit -5% stop-loss"}
+HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No stop-loss or profit tier triggered"}`;
+
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       // v11.4.9: 90-second timeout on AI call — prevents cycle hanging if API stalls
       const aiCallPromise = anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2000, // v9.2: increased for multi-trade array responses
-        messages: [{ role: "user", content: systemPrompt }],
+        model: selectedModel,
+        max_tokens: needsSonnet ? 2000 : 500, // v20.5: Haiku needs less tokens for simple monitoring
+        messages: [{ role: "user", content: promptForAI }],
       });
       const response = await Promise.race([
         aiCallPromise,
@@ -12022,9 +12081,9 @@ async function runTradingCycle() {
       }
       console.log(`  📡 Central decisions: ${decisions.length} (${decisions.filter(d => d.action === 'BUY').length} buys, ${decisions.filter(d => d.action === 'SELL').length} sells)`);
     } else {
-      // Existing Claude AI call — unchanged
+      // Existing Claude AI call — v20.5: now with tiered model routing
       console.log("\n🧠 AI analyzing portfolio & market...");
-      decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined);
+      decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined, heavyReason);
     }
 
     // === v19.1: EXTREME FEAR — SIZE REDUCTION (not block) ===
@@ -15239,8 +15298,10 @@ Use specific numbers from context. Keep responses conversational and under 150 w
   console.log(`[Chat API] Question: "${userMessage.substring(0, 60)}..." | History: ${safeHistory.length} msgs | Directives: ${activeDirectives.length}`);
 
   // v11.4.16: Use tool_use so Claude can take actions
+  // v20.5: Chat uses Haiku — dashboard queries don't need Sonnet-level intelligence
+  console.log(`  [AI] Using Haiku (chat) for dashboard query`);
   const chatCallPromise = anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: AI_MODEL_ROUTINE,
     max_tokens: 1000,
     tools: CHAT_TOOLS,
     messages,

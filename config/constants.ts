@@ -14,6 +14,23 @@ export const BASE_CHAIN_ID = 8453;
 export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 
 // ============================================================================
+// AI MODEL ROUTING — Cost Optimization (v20.5)
+// ============================================================================
+
+/** Sonnet for complex decisions: trade execution, portfolio rebalancing, emergencies */
+export const AI_MODEL_HEAVY = 'claude-sonnet-4-20250514';
+
+/** Haiku for routine monitoring: forced-interval checks, status updates, chat */
+export const AI_MODEL_ROUTINE = 'claude-haiku-4-5-20251001';
+
+/** Heavy cycle reasons that MUST use Sonnet (any cycle that could trigger a trade) */
+export const SONNET_REQUIRED_REASONS = [
+  'EMERGENCY',
+  'moved',         // price move — could trigger trade
+  'exited cooldown', // token ready to trade again
+] as const;
+
+// ============================================================================
 // TRADING CYCLE TIMING
 // ============================================================================
 
