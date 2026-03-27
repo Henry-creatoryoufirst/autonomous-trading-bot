@@ -13975,6 +13975,37 @@ async function main() {
   console.log(`  ✅ Discovery engine active. Static pool: ${staticTokens.length} tokens. Dynamic discovery every 6h.`);
 
   loadTradeHistory();
+
+  // v20.7: STATE_BACKUP_URL fallback — if disk state is empty and a backup URL is configured,
+  // fetch state from the URL and restore it. This handles cases where volumes AND local disk fail.
+  if (state.tradeHistory.length === 0 && Object.keys(state.costBasis).length === 0 && process.env.STATE_BACKUP_URL) {
+    console.log(`[State] No local state found — attempting recovery from STATE_BACKUP_URL...`);
+    try {
+      const backupRes = await axios.get(process.env.STATE_BACKUP_URL, {
+        timeout: 15_000,
+        headers: process.env.STATE_BACKUP_AUTH ? { 'Authorization': `Bearer ${process.env.STATE_BACKUP_AUTH}` } : {},
+      });
+      const backupData = backupRes.data;
+      // The backup URL may return the raw state or a wrapper { state: "..." }
+      const statePayload = backupData.state ? (typeof backupData.state === 'string' ? JSON.parse(backupData.state) : backupData.state) : backupData;
+      if (statePayload.trades && Array.isArray(statePayload.trades) && statePayload.trades.length > 0) {
+        // Write to disk
+        const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf('/'));
+        if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const tmpFile = CONFIG.logFile + '.tmp';
+        fs.writeFileSync(tmpFile, JSON.stringify(statePayload, null, 2));
+        fs.renameSync(tmpFile, CONFIG.logFile);
+        // Reload from disk into memory
+        loadTradeHistory();
+        console.log(`[State] Recovered ${state.tradeHistory.length} trades and ${Object.keys(state.costBasis).length} positions from backup URL`);
+      } else {
+        console.log(`[State] Backup URL returned empty/invalid state — starting fresh`);
+      }
+    } catch (e: any) {
+      console.warn(`[State] Failed to recover from backup URL: ${e.message} — starting fresh`);
+    }
+  }
+
   // v11.4.19: Startup diagnostic — confirm state file location and persistence
   console.log(`  💾 State file: ${CONFIG.logFile}`);
   console.log(`  💾 PERSIST_DIR: ${process.env.PERSIST_DIR || '(not set — using ./logs)'}`);
@@ -14372,12 +14403,32 @@ async function gracefulShutdown(signal: string): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log(`\n🛑 Received ${signal} — saving state before shutdown...`);
+
+  // v20.7: Save state IMMEDIATELY with timeout protection
+  console.log(`[Shutdown] Saving state before exit...`);
+  const saveStart = Date.now();
+  const saveTimeout = setTimeout(() => {
+    console.error(`[Shutdown] State save timed out after 5s — forcing exit`);
+    process.exit(1);
+  }, 5000);
+
   try {
     saveTradeHistory();
-    console.log("   ✅ State saved successfully.");
+    clearTimeout(saveTimeout);
+    const elapsed = Date.now() - saveStart;
+    // Log state file path and size for debugging
+    let fileSizeKB = 0;
+    try {
+      const stat = fs.statSync(CONFIG.logFile);
+      fileSizeKB = Math.round(stat.size / 1024);
+    } catch {}
+    console.log(`   ✅ State saved successfully in ${elapsed}ms — ${CONFIG.logFile} (${fileSizeKB}KB)`);
+    console.log(`   📊 ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} positions`);
   } catch (e: any) {
+    clearTimeout(saveTimeout);
     console.error(`   ❌ Error saving state on shutdown: ${e.message}`);
   }
+
   // v19.6: Telegram shutdown notification (best-effort, 3s timeout)
   telegramService.onShutdown(`Received ${signal}`).catch(() => {}).finally(() => {
     console.log("   Goodbye.");
@@ -17027,6 +17078,91 @@ const healthServer = http.createServer(async (req, res) => {
           }
         });
         return; // Don't end response here — it's handled in req.on('end')
+      }
+
+      // ============================================================================
+      // v20.7: STATE BACKUP & RECOVERY — protect against volume/container failures
+      // ============================================================================
+      case '/api/state-backup': {
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+          break;
+        }
+        try {
+          // Force a fresh save so the file is up-to-date
+          saveTradeHistory();
+          const stateData = fs.readFileSync(CONFIG.logFile, 'utf-8');
+          sendJSON(res, 200, {
+            state: stateData,
+            timestamp: Date.now(),
+            version: BOT_VERSION,
+            tradeCount: state.tradeHistory.length,
+            costBasisCount: Object.keys(state.costBasis).length,
+            filePath: CONFIG.logFile,
+            fileSizeBytes: Buffer.byteLength(stateData, 'utf-8'),
+          });
+        } catch (e: any) {
+          sendJSON(res, 500, { error: `Failed to export state: ${e.message}` });
+        }
+        break;
+      }
+
+      case '/api/state-restore': {
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+          break;
+        }
+        let restoreBody = '';
+        let restoreBodyTooLarge = false;
+        req.on('data', (chunk: Buffer) => {
+          restoreBody += chunk.toString();
+          if (restoreBody.length > 50_000_000) { restoreBodyTooLarge = true; req.destroy(); }
+        });
+        req.on('end', () => {
+          if (restoreBodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large (50MB limit)' }); return; }
+          try {
+            const body = JSON.parse(restoreBody);
+            const parsed = typeof body.state === 'string' ? JSON.parse(body.state) : body.state;
+
+            // Validate required fields
+            if (!parsed.trades || !Array.isArray(parsed.trades)) {
+              sendJSON(res, 400, { error: 'Invalid state: missing "trades" array' });
+              return;
+            }
+            if (!parsed.costBasis || typeof parsed.costBasis !== 'object') {
+              sendJSON(res, 400, { error: 'Invalid state: missing "costBasis" object' });
+              return;
+            }
+
+            // Write to disk first (atomic write)
+            const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf('/'));
+            if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            const tmpFile = CONFIG.logFile + '.tmp';
+            fs.writeFileSync(tmpFile, typeof body.state === 'string' ? body.state : JSON.stringify(parsed, null, 2));
+            fs.renameSync(tmpFile, CONFIG.logFile);
+
+            // Reload into memory
+            const tradesBeforeRestore = state.tradeHistory.length;
+            const positionsBeforeRestore = Object.keys(state.costBasis).length;
+            loadTradeHistory();
+
+            const tradesRestored = state.tradeHistory.length;
+            const positionsRestored = Object.keys(state.costBasis).length;
+            console.log(`[State] Restored from API: ${tradesRestored} trades, ${positionsRestored} positions (was: ${tradesBeforeRestore} trades, ${positionsBeforeRestore} positions)`);
+
+            sendJSON(res, 200, {
+              success: true,
+              tradesRestored,
+              positionsRestored,
+              version: parsed.version || 'unknown',
+              lastUpdated: parsed.lastUpdated || null,
+            });
+          } catch (e: any) {
+            sendJSON(res, 400, { error: `Failed to restore state: ${e.message}` });
+          }
+        });
+        return; // Don't end response here — handled in req.on('end')
       }
 
       default: {
