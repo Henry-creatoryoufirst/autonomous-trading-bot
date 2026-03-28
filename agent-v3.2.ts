@@ -13114,7 +13114,21 @@ async function runTradingCycle() {
           }
         }
 
-        // v14.0: Enforce minimum $15 position — no dust trades
+        // v20.5.4: Small portfolio minimum — after all multipliers (vol, ATR, fear, confluence),
+        // ensure trades stay above a useful size. Without this, multiplicative reductions stack
+        // to produce $1-3 trades that waste gas. For portfolios <$5K, enforce a $10 floor on buys
+        // so the bot can actually rebalance instead of churning micro-trades.
+        const SMALL_PORTFOLIO_MIN_TRADE = 10;
+        const SMALL_PORTFOLIO_THRESHOLD = 5000;
+        if (state.trading.totalPortfolioValue < SMALL_PORTFOLIO_THRESHOLD && decision.amountUSD > 0 && decision.amountUSD < SMALL_PORTFOLIO_MIN_TRADE) {
+          const boosted = Math.min(SMALL_PORTFOLIO_MIN_TRADE, remainingUSDC);
+          if (boosted >= SMALL_PORTFOLIO_MIN_TRADE) {
+            console.log(`   📈 SMALL PORTFOLIO BOOST: $${decision.amountUSD.toFixed(2)} → $${boosted.toFixed(2)} (min $${SMALL_PORTFOLIO_MIN_TRADE} for portfolios <$${SMALL_PORTFOLIO_THRESHOLD})`);
+            decision.amountUSD = boosted;
+          }
+        }
+
+        // v14.0: Enforce minimum position — no dust trades
         if (decision.amountUSD < KELLY_POSITION_FLOOR_USD) {
           console.log(`   🚫 DUST GUARD: $${decision.amountUSD.toFixed(2)} < $${KELLY_POSITION_FLOOR_USD} minimum — skipping trade`);
           recordFiltered(decision.toToken || decision.fromToken || '?', decision.action, dedupTier || 'AI', 'DUST_GUARD', decision.amountUSD);
