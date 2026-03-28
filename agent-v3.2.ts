@@ -6090,12 +6090,19 @@ function loadPriceCache() {
     if (fs.existsSync(PRICE_CACHE_FILE)) {
       const data = JSON.parse(fs.readFileSync(PRICE_CACHE_FILE, "utf-8"));
       const age = Date.now() - new Date(data.lastUpdated).getTime();
-      // Only use cache if less than 1 hour old — stale prices are worse than no prices
-      if (age < 60 * 60 * 1000 && data.prices) {
+      // v20.5.1: Use cache up to 6 hours old — stale prices are better than $0 portfolio drops.
+      // Fresh on-chain prices will overwrite these on first successful cycle anyway.
+      if (age < 6 * 60 * 60 * 1000 && data.prices) {
         lastKnownPrices = data.prices;
         console.log(`♻️ Loaded ${Object.keys(lastKnownPrices).length} cached prices from disk (${(age / 60000).toFixed(0)}m old)`);
       } else {
-        console.log(`⏭️ Price cache too old (${(age / 3600000).toFixed(1)}h) — will fetch fresh`);
+        // v20.5.1: Still load stale cache as emergency fallback but warn
+        if (data.prices && Object.keys(data.prices).length > 0) {
+          lastKnownPrices = data.prices;
+          console.log(`⚠️ Price cache is old (${(age / 3600000).toFixed(1)}h) — loaded ${Object.keys(lastKnownPrices).length} prices as emergency fallback`);
+        } else {
+          console.log(`⏭️ No usable price cache — will fetch fresh`);
+        }
       }
     }
   } catch { /* non-critical */ }
@@ -11480,7 +11487,16 @@ async function runTradingCycle() {
             balance.price = lastPrice;
             console.log(`   ♻️ Using last known price for ${balance.symbol}: $${lastPrice.toFixed(4)} (feed unavailable)`);
           } else {
-            console.warn(`   ⚠️ No price data for ${balance.symbol} — no cache available, showing $0`);
+            // v20.5.1: Final fallback — use previous cycle's price from state.trading.balances
+            // Prevents phantom portfolio drops when both live feed AND price cache miss
+            const prevBalance = state.trading.balances?.find(b => b.symbol === balance.symbol);
+            if (prevBalance && prevBalance.price && prevBalance.price > 0) {
+              balance.usdValue = balance.balance * prevBalance.price;
+              balance.price = prevBalance.price;
+              console.log(`   📎 Using previous cycle price for ${balance.symbol}: $${prevBalance.price.toFixed(4)} (all feeds unavailable)`);
+            } else {
+              console.warn(`   ⚠️ No price data for ${balance.symbol} — no cache or previous cycle data, showing $0`);
+            }
           }
         }
       }
