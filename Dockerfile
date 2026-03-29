@@ -15,7 +15,7 @@ RUN npm ci
 COPY . .
 
 RUN mkdir -p logs
-RUN mkdir -p /data
+# /data is provided by Railway volume mount — don't mkdir here to avoid conflicts
 
 ENV NODE_OPTIONS="--max-old-space-size=512"
 ENV PERSIST_DIR="/data"
