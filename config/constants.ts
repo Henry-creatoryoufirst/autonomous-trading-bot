@@ -622,7 +622,7 @@ export const VOLUME_ENRICHMENT_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const VOLUME_SELF_SUFFICIENT_POINTS = 168; // 7 days of hourly data
 
 /** Price sanity check — skip update if on-chain price deviates more than this from last known */
-export const PRICE_SANITY_MAX_DEVIATION = 0.50; // 50%
+export const PRICE_SANITY_MAX_DEVIATION = 0.30; // 30% — v20.6: tightened from 50% to reject volatile meme coin price swings
 
 // ============================================================================
 // v12.3: ON-CHAIN ORDER FLOW INTELLIGENCE

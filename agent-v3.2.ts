@@ -11528,14 +11528,45 @@ async function runTradingCycle() {
       console.warn(`   Tokens missing prices: ${missingPrices.join(', ') || 'none'}`);
       console.warn(`   Portfolio value updated to actual — circuit breaker/peak protected.`);
     }
+
+    // v20.6: Phantom SPIKE detection — mirror of phantom drop guard.
+    // If portfolio jumps >10% in a single cycle without any trades, it's almost certainly
+    // a bad DEX pool read or a token going from $0 → inflated value (e.g. low-liquidity meme coins).
+    // Protect peak and baseline from false inflation that would corrupt drawdown/P&L calculations.
+    const spikePercent = prevValue > 0 ? ((newPortfolioValue - prevValue) / prevValue) * 100 : 0;
+    const isPhantomSpike = spikePercent > 10 && prevValue > 100;
+    if (isPhantomSpike) {
+      const suspectTokens = balances
+        .filter(b => b.symbol !== 'USDC' && b.usdValue > 0)
+        .filter(b => {
+          const prevBal = state.trading.balances?.find(pb => pb.symbol === b.symbol);
+          if (!prevBal || !prevBal.usdValue) return b.usdValue > 50; // new token appearing with value
+          return prevBal.usdValue > 0 && ((b.usdValue - prevBal.usdValue) / prevBal.usdValue) > 0.5; // >50% jump
+        })
+        .map(b => {
+          const prevBal = state.trading.balances?.find(pb => pb.symbol === b.symbol);
+          const prevUSD = prevBal?.usdValue || 0;
+          return `${b.symbol} $${prevUSD.toFixed(2)}→$${b.usdValue.toFixed(2)}`;
+        });
+      console.warn(`\n🛡️ PHANTOM SPIKE DETECTED: Portfolio $${prevValue.toFixed(2)} → $${newPortfolioValue.toFixed(2)} (+${spikePercent.toFixed(1)}% in one cycle)`);
+      console.warn(`   Suspect tokens: ${suspectTokens.join(', ') || 'none identified'}`);
+      console.warn(`   Portfolio value updated to actual — peak/baseline protected from false inflation.`);
+    }
+
+    const isPhantomMove = isPhantomDrop || isPhantomSpike;
+
     // v12.2: Always update to actual value so dashboard matches sum of balances
     state.trading.totalPortfolioValue = newPortfolioValue;
 
     // v20.0: Update drawdown tracking for daily/weekly halt controls
     updateDrawdownTracking(newPortfolioValue);
 
-    // v19.6: Telegram balance drop tracking (fire-and-forget)
-    telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
+    // v19.6 + v20.6: Telegram balance drop tracking (fire-and-forget)
+    // Skip update during phantom moves — prevents false drop alerts AND prevents
+    // inflating Telegram's lastKnownBalance baseline during phantom spikes
+    if (!isPhantomMove) {
+      telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
+    }
 
     // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
     // The blockchain is the source of truth. We query Blockscout for real USDC transfers
@@ -11573,8 +11604,8 @@ async function runTradingCycle() {
     }
     state.lastKnownUSDCBalance = currentUSDCBalance;
 
-    // v12.2: Skip peak/baseline updates during phantom drops to prevent false drawdown triggers
-    if (!isPhantomDrop && state.trading.totalPortfolioValue > state.trading.peakValue) {
+    // v12.2 + v20.6: Skip peak/baseline updates during phantom moves to prevent false drawdown/inflation
+    if (!isPhantomMove && state.trading.totalPortfolioValue > state.trading.peakValue) {
       state.trading.peakValue = state.trading.totalPortfolioValue;
     }
 
@@ -11588,8 +11619,8 @@ async function runTradingCycle() {
     // v11.4.21: Update daily/weekly baselines BEFORE capital floor / circuit breaker checks.
     // Previously this was only called inside checkCircuitBreaker(), which runs AFTER the capital
     // floor check. If the floor check returned early, dailyBaseline never got set → P&L stayed 0.
-    // v12.2: Skip baseline update during phantom drop to prevent false daily P&L swing
-    if (!isPhantomDrop) {
+    // v12.2 + v20.6: Skip baseline update during phantom move to prevent false daily P&L swing
+    if (!isPhantomMove) {
       updateDrawdownBaselines(state.trading.totalPortfolioValue);
     }
 
@@ -11620,13 +11651,13 @@ async function runTradingCycle() {
       console.log(`\n⏳ COLD START: Portfolio value $0 — skipping capital floor (waiting for first balance fetch)`);
     }
 
-    // v12.2: Skip capital floor and circuit breaker checks during phantom drops (price feed glitch)
-    if (isPhantomDrop) {
-      console.warn(`   Skipping capital floor / circuit breaker checks this cycle (phantom drop).`);
+    // v12.2 + v20.6: Skip capital floor and circuit breaker checks during phantom moves (price feed glitch)
+    if (isPhantomMove) {
+      console.warn(`   Skipping capital floor / circuit breaker checks this cycle (phantom ${isPhantomDrop ? 'drop' : 'spike'}).`);
     }
 
     // Absolute minimum: if portfolio is below $50, halt ALL trading (prevent dust churn)
-    if (!isPhantomDrop && state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
+    if (!isPhantomMove && state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) {
       console.log(`\n🚨 CAPITAL FLOOR BREACH: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < absolute minimum $${CAPITAL_FLOOR_ABSOLUTE_USD}`);
       console.log(`   ALL TRADING HALTED — wallet needs funding or manual intervention.`);
       state.trading.lastCheck = new Date();
@@ -11637,7 +11668,7 @@ async function runTradingCycle() {
     // v20.4.3: Guard against peakValue being 0/undefined — would make capitalFloorValue 0 and always trigger
     const safePeakValue = state.trading.peakValue > CAPITAL_FLOOR_ABSOLUTE_USD ? state.trading.peakValue : state.trading.totalPortfolioValue;
     const capitalFloorValue = safePeakValue * (CAPITAL_FLOOR_PERCENT / 100);
-    const belowCapitalFloor = !isPhantomDrop && state.trading.totalPortfolioValue > 0 && capitalFloorValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
+    const belowCapitalFloor = !isPhantomMove && state.trading.totalPortfolioValue > 0 && capitalFloorValue > 0 && state.trading.totalPortfolioValue < capitalFloorValue;
     if (belowCapitalFloor) {
       console.log(`\n⚠️ CAPITAL FLOOR: Portfolio $${state.trading.totalPortfolioValue.toFixed(2)} < floor $${capitalFloorValue.toFixed(2)} (${CAPITAL_FLOOR_PERCENT}% of peak $${safePeakValue.toFixed(2)})`);
       console.log(`   HOLD-ONLY mode active — no new buys, only stop-loss sells allowed.`);
@@ -11646,7 +11677,7 @@ async function runTradingCycle() {
     // === CIRCUIT BREAKERS ===
     // v10.3: Skip breakers when portfolio is $0 — cold-start artifact, not real drawdown
     // Hard halt: if drawdown exceeds 20% from peak, stop all trading this cycle
-    if (!isPhantomDrop && drawdown >= 20 && !belowCapitalFloor && state.trading.totalPortfolioValue > 0) {
+    if (!isPhantomMove && drawdown >= 20 && !belowCapitalFloor && state.trading.totalPortfolioValue > 0) {
       console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% exceeds 20% threshold. Halting trading this cycle.`);
       console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Current: $${state.trading.totalPortfolioValue.toFixed(2)}`);
       state.trading.lastCheck = new Date();
