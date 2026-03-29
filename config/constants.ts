@@ -546,8 +546,19 @@ export const CASH_DEPLOYMENT_TIERS = [
   { cashPct: 65, deployPct: 80, confluenceDiscount: 20, maxEntries: 5, label: 'URGENT' as const },
 ];
 
-/** Backwards-compatible: lowest tier threshold. Used by forced deploy gate check. */
+/** Backwards-compatible: lowest tier threshold. Used by forced deploy gate check in normal markets. */
 export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v20.3.1: 25% → 20% (match first tier)
+
+/** v20.7: Fear-adjusted cash deployment thresholds.
+ *  During fear/bearish markets, the bot is comfortable holding more cash.
+ *  When sentiment recovers, thresholds drop instantly — ready to deploy on the turn.
+ *  Entries must be sorted ascending by maxFearGreed. */
+export const CASH_DEPLOY_FEAR_THRESHOLDS = [
+  { maxFearGreed: 15, threshold: 70 },  // Extreme fear: hold up to 70% cash
+  { maxFearGreed: 25, threshold: 50 },  // Fear: hold up to 50% cash
+  { maxFearGreed: 40, threshold: 35 },  // Caution: hold up to 35% cash
+  // F&G > 40: use CASH_DEPLOYMENT_THRESHOLD_PCT (20%)
+];
 
 /** Legacy — still used as the URGENT tier's confluence discount for directive stacking */
 export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 20;

@@ -222,6 +222,7 @@ import {
   // v11.1/v20.2: Cash Deployment Engine (graduated tiers)
   CASH_DEPLOYMENT_TIERS,
   CASH_DEPLOYMENT_THRESHOLD_PCT,
+  CASH_DEPLOY_FEAR_THRESHOLDS,
   CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
   CASH_DEPLOYMENT_MAX_DEPLOY_PCT,
   CASH_DEPLOYMENT_MIN_RESERVE_USD,
@@ -2377,16 +2378,32 @@ interface CashDeploymentResult {
 }
 
 /**
+ * v20.7: Fear-Adjusted Deploy Threshold
+ * During fear/bearish markets, raise the cash threshold so the bot holds cash comfortably.
+ * When F&G recovers, threshold drops instantly — no delay, ready to deploy on the turn.
+ */
+function getFearAdjustedDeployThreshold(fearGreedValue: number): number {
+  for (const tier of CASH_DEPLOY_FEAR_THRESHOLDS) {
+    if (fearGreedValue < tier.maxFearGreed) {
+      return tier.threshold;
+    }
+  }
+  return CASH_DEPLOYMENT_THRESHOLD_PCT; // Normal markets: 20%
+}
+
+/**
  * v20.2: Graduated Cash Deployment Detection
  * Replaces binary 40% threshold with 4 tiers that increase deployment pressure as cash grows.
  * Fixes the "dead zone" where 25-39% cash sat idle doing nothing.
  *
  * Tiers: LIGHT (>25%) → MODERATE (>35%) → AGGRESSIVE (>50%) → URGENT (>65%)
  * Each tier has its own deploy %, confluence discount, and max entries.
+ * v20.7: Tiers shift up during fear — bot holds cash comfortably in bearish markets.
  */
 function checkCashDeploymentMode(
   usdcBalance: number,
   totalPortfolioValue: number,
+  fearGreedValue: number = 50,
 ): CashDeploymentResult {
   const noDeployResult: CashDeploymentResult = { active: false, cashPercent: 0, excessCash: 0, deployBudget: 0, confluenceDiscount: 0, tier: 'NONE', maxEntries: 0 };
   if (totalPortfolioValue <= 0) return noDeployResult;
@@ -2396,11 +2413,14 @@ function checkCashDeploymentMode(
   // v11.4.19: Directive-aware threshold — aggressive directives lower the trigger
   const directiveAdj = getDirectiveThresholdAdjustments();
 
+  // v20.7: Fear-adjusted tier thresholds — shift tiers up during fear so bot holds cash
+  const fearDelta = getFearAdjustedDeployThreshold(fearGreedValue) - CASH_DEPLOYMENT_THRESHOLD_PCT;
+
   // v20.2: Find highest matching tier (iterate descending)
   let matchedTier = null;
   for (let i = CASH_DEPLOYMENT_TIERS.length - 1; i >= 0; i--) {
     const tier = CASH_DEPLOYMENT_TIERS[i];
-    const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? tier.cashPct;
+    const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? (tier.cashPct + fearDelta);
     if (cashPercent > effectiveThreshold) {
       matchedTier = tier;
       break;
@@ -11925,10 +11945,13 @@ async function runTradingCycle() {
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
     // v11.4.19: threshold — if deployment mode is on, forced deploy fires too
     // v14.1: Now gated behind market momentum check to avoid buying into falling knives
-    if (preAiCashPct > CASH_DEPLOYMENT_THRESHOLD_PCT && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
+    const fearAdjustedThreshold = getFearAdjustedDeployThreshold(marketData?.fearGreed?.value ?? 50);
+    if (preAiCashPct > fearAdjustedThreshold && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
+      // v20.7: Fear-adjusted threshold — bot holds cash comfortably during fear, deploys instantly on recovery
       // v20.2: GRADUATED FEAR + MOMENTUM GATES (replaces v18.2 hard blocks)
       // Instead of blocking all deployment during fear/negative momentum, scale down size.
       // The per-token signal quality gate (confluence + MACD) is the real falling knife filter.
+      console.log(`⚡ FORCED_DEPLOY gate: cash ${preAiCashPct.toFixed(0)}% > ${fearAdjustedThreshold}% threshold (F&G=${marketData?.fearGreed?.value ?? '?'})`);
       let shouldForceDeploy = true;
       let deployGateMultiplier = 1.0; // Combined fear + momentum size reduction
       let blueChipOnlyGate = false;
@@ -12113,7 +12136,8 @@ async function runTradingCycle() {
       .filter(b => b.symbol !== 'USDC' && b.symbol !== 'ETH' && b.symbol !== 'WETH' && b.usdValue < SCOUT_STOP_EXEMPT_THRESHOLD_USD)
       .reduce((sum, b) => sum + (b.usdValue || 0), 0);
     const effectiveCashForDeployment = currentUSDCForDeploy + scoutValue;
-    const deploymentCheck = checkCashDeploymentMode(effectiveCashForDeployment, state.trading.totalPortfolioValue);
+    const currentFearGreedForDeploy = marketData?.fearGreed?.value ?? 50;
+    const deploymentCheck = checkCashDeploymentMode(effectiveCashForDeployment, state.trading.totalPortfolioValue, currentFearGreedForDeploy);
     if (deploymentCheck.active) {
       console.log(`\n💵 CASH DEPLOYMENT MODE ACTIVE`);
       console.log(`   USDC: $${currentUSDCForDeploy.toFixed(2)} (${deploymentCheck.cashPercent.toFixed(1)}% of portfolio) — tier: ${deploymentCheck.tier}`);
@@ -12236,15 +12260,13 @@ async function runTradingCycle() {
           }
 
           // Size reduction: half-size during extreme fear
-          // v20.3.1: Exempt deployment-mode buys — the whole point is to get cash deployed.
-          // Preservation already filters low-conviction trades above; don't also neuter sizing on the survivors.
-          const isDeploymentBuy = d.signalContext?.triggeredBy === "FORCED_DEPLOY" || d.signalContext?.triggeredBy === "CASH_DEPLOYMENT";
-          if (d.amountUSD && !isDeploymentBuy) {
+          // v20.7: ALL buys get sized down during preservation — including deployment buys.
+          // The bot should be comfortable holding cash during fear, not forcing full-size buys.
+          if (d.amountUSD) {
             const originalSize = d.amountUSD;
             d.amountUSD = d.amountUSD * PRESERVATION_SIZE_MULTIPLIER;
-            console.log(`   🛡️ PRESERVATION: Sizing down BUY ${d.toToken} $${originalSize.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${PRESERVATION_SIZE_MULTIPLIER}x extreme fear)`);
-          } else if (d.amountUSD && isDeploymentBuy) {
-            console.log(`   🛡️ PRESERVATION: Exempt deployment BUY ${d.toToken} $${d.amountUSD.toFixed(2)} — cash deployment override`);
+            const isDeploymentBuy = d.signalContext?.triggeredBy === "FORCED_DEPLOY" || d.signalContext?.triggeredBy === "CASH_DEPLOYMENT";
+            console.log(`   🛡️ PRESERVATION: Sizing down ${isDeploymentBuy ? 'deployment ' : ''}BUY ${d.toToken} $${originalSize.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${PRESERVATION_SIZE_MULTIPLIER}x extreme fear)`);
           }
           capitalPreservationMode.tradesPassed++;
           preservationFiltered.push(d);
@@ -15056,7 +15078,8 @@ function apiPortfolio() {
     cashDeployment: {
       active: cashDeploymentMode,
       cyclesActive: cashDeploymentCycles,
-      thresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
+      thresholdPercent: getFearAdjustedDeployThreshold(marketData?.fearGreed?.value ?? 50),
+      baseThresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
       tiers: CASH_DEPLOYMENT_TIERS,
       confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
       minReserveUSD: CASH_DEPLOYMENT_MIN_RESERVE_USD,
