@@ -11743,39 +11743,10 @@ async function runTradingCycle() {
       console.log(`   Expectancy: $${rrMetrics.expectancy.toFixed(2)}/trade | Profit Factor: ${rrMetrics.profitFactor.toFixed(2)}`);
     }
 
-    // === STOP-LOSS CHECK (highest priority) ===
-    // v10.4: Stop-loss no longer returns early — executes the emergency sell, then
-    // continues to profit-take and AI decision phases. A stop-loss on one token
-    // shouldn't prevent the AI from deploying capital into other opportunities.
-    const stopLossDecision = checkStopLoss(balances, marketData.indicators);
-    if (stopLossDecision) {
-      console.log(`\n  🛑 STOP-LOSS GUARD executing sell...`);
-      const slResult = await executeTrade(stopLossDecision, marketData);
-      // v5.3.3: Track failures and set cooldown
-      state.stopLossCooldowns[stopLossDecision.fromToken] = new Date().toISOString();
-      // v11.4.6: Reset peak price to current after stop-loss — prevents re-triggering trailing stop
-      const slCb = state.costBasis[stopLossDecision.fromToken];
-      if (slCb && slResult.success) {
-        const currentPrice = slCb.averageCostBasis; // Use cost basis as new reference
-        slCb.peakPrice = currentPrice;
-        slCb.peakPriceDate = new Date().toISOString();
-      }
-      if (!slResult.success) {
-        const slBalErr = slResult.error?.includes('Insufficient balance') || slResult.error?.includes('Balance too small');
-        if (!slBalErr) recordTradeFailure(stopLossDecision.fromToken);
-      } else {
-        clearTradeFailures(stopLossDecision.fromToken);
-      }
-      // v8.0: Record stop-loss as a loss for breaker tracking
-      recordTradeResultForBreaker(slResult.success, -(stopLossDecision.amountUSD * 0.05)); // Estimate ~5% loss on stop-loss
-      markStateDirty(true);
-      // v10.4: Refresh balances and continue to AI phase
-      const refreshedAfterSL = await getBalances();
-      if (refreshedAfterSL && refreshedAfterSL.length > 0) {
-        balances = refreshedAfterSL;
-      }
-      console.log(`  ✅ Stop-loss executed — continuing to AI decision phase`);
-    }
+    // v21.0: MECHANICAL STOP-LOSS REMOVED — Claude decides all exits.
+    // The circuit breaker (8% daily drawdown) is the catastrophic safety net.
+    // Claude sees every position's P&L, entry price, hold time, and flow data.
+    // It decides when to cut losses based on the full picture, not a fixed % threshold.
 
     // === v16.0: DUST/MICRO POSITION CLEANUP (NVR Audit P1-3) ===
     // Every DUST_CLEANUP_INTERVAL_CYCLES cycles, auto-sell positions under $5 held >24h
@@ -11831,77 +11802,22 @@ async function runTradingCycle() {
       }
     }
 
-    // === PROFIT-TAKING CHECK ===
-    // v10.4: Profit-take no longer returns early — after harvesting, the cycle
-    // continues to the AI decision phase so the bot can also deploy capital.
-    // Previously, this `return` caused a harvest-only loop: every cycle found
-    // something to harvest, sold a slice, and exited before AI could recommend BUYs.
-    const profitTakeDecision = checkProfitTaking(balances, marketData.indicators);
-    if (profitTakeDecision) {
-      // v5.3.3: Check circuit breaker before attempting profit-take
-      if (isTokenBlocked(profitTakeDecision.fromToken)) {
-        console.log(`\n  🚫 PROFIT-TAKE skipped: ${profitTakeDecision.fromToken} blocked by circuit breaker`);
-      } else {
-        console.log(`\n  🎯 PROFIT-TAKE GUARD executing sell...`);
-        const ptResult = await executeTrade(profitTakeDecision, marketData);
-        if (!ptResult.success) {
-          const ptBalErr = ptResult.error?.includes('Insufficient balance') || ptResult.error?.includes('Balance too small');
-          if (!ptBalErr) recordTradeFailure(profitTakeDecision.fromToken);
-        } else {
-          clearTradeFailures(profitTakeDecision.fromToken);
-        }
-        // v8.0: Profit-take is a win for breaker tracking
-        recordTradeResultForBreaker(ptResult.success, ptResult.success ? profitTakeDecision.amountUSD * 0.05 : 0);
-        markStateDirty(true);
-        // v10.4: Refresh balances after harvest so AI sees updated USDC
-        const refreshedBalances = await getBalances();
-        if (refreshedBalances && refreshedBalances.length > 0) {
-          balances = refreshedBalances;
-        }
-        console.log(`  ✅ Profit harvested — continuing to AI decision phase`);
-      }
-    }
+    // v21.0: MECHANICAL PROFIT-TAKING REMOVED — Claude decides when to harvest.
+    // Claude sees each position's gain %, hold duration, momentum, and flow data.
+    // It decides profit-taking based on deceleration signals and portfolio balance,
+    // not fixed 25/50/100% thresholds.
 
-    // === PHASE 3: STAGNATION CHECK ===
-    // v10.4: Exploration trade no longer returns early — continues to AI phase
-    // v14.2: Pass indicators + regime for guardrail filtering
-    const usdcBal = balances.find(b => b.symbol === "USDC");
-    const availableUSDCForExplore = usdcBal?.balance || 0;
-    const explorationTrade = checkStagnation(availableUSDCForExplore, marketData.tokens, marketData.indicators, marketData.marketRegime);
-    if (explorationTrade) {
-      // v14.2: In RANGING markets, enforce max 1 exploration trade per cycle
-      // (explorationsThisCycle is tracked at the top of the cycle loop)
-      if (marketData.marketRegime === "RANGING" && explorationsThisCycle >= EXPLORATION_RANGING_MAX_PER_CYCLE) {
-        console.log(`\n🔬 EXPLORATION CAPPED: RANGING market — already ${explorationsThisCycle} exploration(s) this cycle (max ${EXPLORATION_RANGING_MAX_PER_CYCLE})`);
-      } else {
-        console.log(`\n🔬 EXPLORATION TRADE: ${explorationTrade.reasoning}`);
-        const exploreDecision: TradeDecision = {
-          action: "BUY",
-          fromToken: "USDC",
-          toToken: explorationTrade.toToken,
-          amountUSD: explorationTrade.amountUSD,
-          reasoning: explorationTrade.reasoning,
-          isExploration: true,
-        };
-        // v20.0: Gate exploration buys behind drawdown controls
-        const explDD = isTradeAllowedByDrawdown('BUY');
-        if (!explDD.allowed) {
-          console.log(`   🚨 DRAWDOWN: Blocking exploration buy — ${explDD.reason}`);
-        } else {
-          await executeTrade(exploreDecision, marketData);
-          explorationsThisCycle++;
-        }
-        analyzeStrategyPatterns();
-        markStateDirty(true);
-      }
-    }
+    // v21.0: STAGNATION/EXPLORATION TRADES REMOVED — Claude decides all buys.
+    // Claude sees cash %, market conditions, and token opportunities. It decides
+    // when and what to explore. No more mechanical "stagnation" buys.
 
-    // === v11.4.8: PRE-AI FORCED DEPLOYMENT ===
-    // If cash >80%, deploy BEFORE the AI call. This guarantees deployment even if
-    // the AI call fails, times out, or returns HOLD. Runs in the same proven path
-    // as exploration trades above.
+    // v21.0: PRE-AI FORCED DEPLOYMENT REMOVED — Claude decides all capital deployment.
+    // Claude sees cash %, sector allocations, momentum, and market conditions.
+    // It decides when, how much, and where to deploy capital.
+    // The cash deployment engine data (below) is kept to provide context to Claude.
     const preAiUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
+    if (false) { // v21.0: Forced deployment disabled — block preserved for reference only
     // v11.4.19: threshold — if deployment mode is on, forced deploy fires too
     // v14.1: Now gated behind market momentum check to avoid buying into falling knives
     // v20.8: Pure physics-based deployment — F&G is info-only, threshold is always 20%
@@ -12209,9 +12125,25 @@ async function runTradingCycle() {
       decisions = preservationFiltered;
     }
 
-    // === v19.1: POSITION SPRAWL REDUCER ===
-    // Auto-sell small losing positions that lack flow data coverage.
-    // These are dead weight — can't make flow-based decisions without data.
+    // v21.0: MIND-FIRST ARCHITECTURE — All mechanical trading systems removed.
+    // Claude is the ONLY source of trade decisions. It sees:
+    // - Every position with entry price, P&L, hold time, ATR, flow data
+    // - Market momentum, regime, volume, technical indicators
+    // - Portfolio cash %, sector allocations, sector drift
+    // - Recent trade history with outcomes
+    //
+    // REMOVED SYSTEMS (v21.0):
+    // - Position Sprawl Reducer (auto-sell small positions)
+    // - Trailing Stop Exits (ATR-based mechanical exits)
+    // - Per-Position Hard Stops (-15%, -12% mechanical exits)
+    // - Flow-Reversal Exit Engine (buy ratio < 40% exits)
+    // - Scale-Into-Winners (scale-up, momentum exit, decel trim)
+    // - Scout Seeding ($8 data probes)
+    // - Ride The Wave (FOMO momentum buys)
+    // - Deployment Fallback (auto-deploy after 3 HOLDs)
+    //
+    // KEPT: Directive Enforcement (user commands) + Trade Cap Guard (prevent churn)
+    if (false) { // v21.0: Dead code block — preserved for reference during transition
     {
       const sprawlSells: TradeDecision[] = [];
       const tokensWithFlowData = new Set<string>();
@@ -12451,8 +12383,9 @@ async function runTradingCycle() {
         decisions = [...flowReversalDecisions, ...decisions];
       }
     }
+    } // end v21.0 if(false) dead code block
 
-    // === v16.0: DIRECTIVE SELL ENFORCEMENT ===
+    // === v16.0: DIRECTIVE SELL ENFORCEMENT === (KEPT — user commands are not mechanical trading)
     // Parse active directives for explicit sell/exit instructions and generate SELL decisions
     // every cycle until the position is gone. Fixes P0-2 (directives not executing).
     {
@@ -12556,6 +12489,10 @@ async function runTradingCycle() {
       }
     }
 
+    // v21.0: SCALE-INTO-WINNERS + DEPLOYMENT FALLBACK REMOVED
+    // Claude decides all scaling, exits, scouts, and deployment. These mechanical
+    // systems are preserved as dead code during the transition period.
+    if (false) {
     // === v13.0: SCALE-INTO-WINNERS ENGINE ===
     // Check each held position for scale-up candidates and momentum exits.
     // These are injected alongside (not replacing) the AI's decisions.
@@ -12846,6 +12783,7 @@ async function runTradingCycle() {
         console.log(`   Generated ${fallbackBuys.length} fallback BUY decisions`);
       }
     }
+    } // end v21.0 if(false) — scale-into-winners + deployment fallback dead code
 
     // v14.2: MAX_TRADES_PER_CYCLE GUARD — cap total trades to prevent churn
     // v18.0: RANGING regime gets tighter cap (2 trades) — fewer, higher-conviction trades
