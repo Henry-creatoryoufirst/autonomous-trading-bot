@@ -14169,11 +14169,20 @@ function calculateRiskRewardMetrics(): {
 }
 
 function apiPortfolio() {
+  try {
   const uptime = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
   const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
   const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
-  const riskReward = calculateRiskRewardMetrics();
-  const perfStats = calculateTradePerformance();
+  let riskReward: ReturnType<typeof calculateRiskRewardMetrics>;
+  let perfStats: ReturnType<typeof calculateTradePerformance>;
+  try {
+    riskReward = calculateRiskRewardMetrics();
+    perfStats = calculateTradePerformance();
+  } catch {
+    // v21.0: Graceful fallback when trade history is empty after restart
+    riskReward = { avgWinUSD: 0, avgLossUSD: 0, riskRewardRatio: 0, largestWin: 0, largestLoss: 0, expectancy: 0, profitFactor: 0 };
+    perfStats = { winRate: 0, avgWinPercent: 0, avgLossPercent: 0, avgHoldTimeMinutes: 0, totalRealizedPnL: totalRealized, profitableTrades: 0, unprofitableTrades: 0 } as any;
+  }
   // v11.4.20: Daily P&L — use start-of-day baseline
   const dailyBaseline = breakerState.dailyBaseline.value;
   const dailyPnl = dailyBaseline > 0 ? state.trading.totalPortfolioValue - dailyBaseline : 0;
@@ -14283,6 +14292,21 @@ function apiPortfolio() {
     _recovery: (state as any)._recoveryStatus || 'not run',
     _recoveryWallet: (state as any)._recoveryWallet || 'unknown',
   };
+  } catch (err: any) {
+    // v21.0: Graceful fallback — return minimal portfolio data instead of 500 error
+    console.error(`apiPortfolio() error: ${err.message}`);
+    const totalFromBalances = state.trading.balances.reduce((s, b) => s + (b.usdValue || 0), 0);
+    return {
+      totalValue: totalFromBalances,
+      pnl: 0,
+      pnlPercent: 0,
+      totalTrades: state.trading.totalTrades,
+      totalCycles: state.totalCycles,
+      version: BOT_VERSION,
+      uptime: `${Math.floor((Date.now() - state.startTime.getTime()) / 3600000)}h`,
+      error: `Partial data: ${err.message}`,
+    };
+  }
 }
 
 function apiBalances() {
