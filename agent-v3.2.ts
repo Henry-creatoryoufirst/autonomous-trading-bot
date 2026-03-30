@@ -14188,16 +14188,23 @@ function apiPortfolio() {
   const dailyPnl = dailyBaseline > 0 ? state.trading.totalPortfolioValue - dailyBaseline : 0;
   const dailyPnlPercent = dailyBaseline > 0 ? (dailyPnl / dailyBaseline) * 100 : 0;
   // v20.3: Use on-chain deposits as source of truth for P&L (not stale initialValue)
+  // v21.0: Fallback to INITIAL_DEPOSIT_USD env var for CDP-provisioned wallets
+  // CDP deposits don't show as standard ERC-20 transfers on Blockscout,
+  // so on-chain detection returns $0. The env var is set during onboarding.
+  const effectiveDeposited = state.totalDeposited > 0
+    ? state.totalDeposited
+    : parseFloat(process.env.INITIAL_DEPOSIT_USD || '0');
+  const effectiveWithdrawn = state.onChainWithdrawn;
   // truePnL = current portfolio + withdrawn profits - total deposited
-  const netCapitalIn = state.totalDeposited - state.onChainWithdrawn;
-  const truePnL = state.totalDeposited > 0
-    ? Math.round((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) * 100) / 100
+  const netCapitalIn = effectiveDeposited - effectiveWithdrawn;
+  const truePnL = effectiveDeposited > 0
+    ? Math.round((state.trading.totalPortfolioValue + effectiveWithdrawn - effectiveDeposited) * 100) / 100
     : dailyPnl;
-  const truePnLPercent = state.totalDeposited > 0
-    ? Math.round(((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) / state.totalDeposited) * 10000) / 100
+  const truePnLPercent = effectiveDeposited > 0
+    ? Math.round(((state.trading.totalPortfolioValue + effectiveWithdrawn - effectiveDeposited) / effectiveDeposited) * 10000) / 100
     : dailyPnlPercent;
   // initialValue should reflect total capital injected, not first-startup snapshot
-  const effectiveInitialValue = state.totalDeposited > 0 ? netCapitalIn : state.trading.initialValue;
+  const effectiveInitialValue = effectiveDeposited > 0 ? netCapitalIn : state.trading.initialValue;
   return {
     totalValue: state.trading.totalPortfolioValue,
     initialValue: effectiveInitialValue,
@@ -14219,17 +14226,15 @@ function apiPortfolio() {
     lastCycle: state.trading.lastCheck.toISOString(),
     tradingEnabled: CONFIG.trading.enabled,
     version: BOT_VERSION,
-    // v19.5.0: On-chain verified capital flows (blockchain = source of truth)
-    totalDeposited: state.totalDeposited,
-    totalWithdrawn: state.onChainWithdrawn,
-    netCapitalIn: Math.round((state.totalDeposited - state.onChainWithdrawn) * 100) / 100,
-    depositCount: state.depositHistory.length,
+    // v19.5.0 + v21.0: Capital flows — uses INITIAL_DEPOSIT_USD fallback for CDP wallets
+    totalDeposited: effectiveDeposited,
+    totalWithdrawn: effectiveWithdrawn,
+    netCapitalIn: Math.round(netCapitalIn * 100) / 100,
+    depositCount: state.depositHistory.length || (effectiveDeposited > 0 ? 1 : 0),
     recentDeposits: state.depositHistory.slice(-5),
-    // v19.5.0: True P&L = current portfolio + withdrawn - deposited
-    truePnL: Math.round((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) * 100) / 100,
-    truePnLPercent: state.totalDeposited > 0
-      ? Math.round(((state.trading.totalPortfolioValue + state.onChainWithdrawn - state.totalDeposited) / state.totalDeposited) * 10000) / 100
-      : 0,
+    // True P&L = current portfolio + withdrawn - deposited
+    truePnL,
+    truePnLPercent,
     // v6.2: Risk-reward metrics
     riskReward: {
       avgWinUSD: riskReward.avgWinUSD,
