@@ -10159,6 +10159,8 @@ async function executeDirectDexSwap(
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
       // v20.0: Clean up trailing stop after sell
       removeTrailingStop(decision.fromToken);
+      // v20.8.1: Add cooldown to prevent re-buying recently stopped-out tokens
+      state.stopLossCooldowns[decision.fromToken] = new Date().toISOString();
     }
 
     // Record trade
@@ -12723,9 +12725,17 @@ async function runTradingCycle() {
       if (false) { // v20.1: Removed preservation block — scouts are too cheap to skip
       } else {
         const heldSymbols = new Set(balances.filter(b => b.usdValue >= 1).map(b => b.symbol));
+        // v20.8.1: Exclude tokens sold in the last 2 hours — prevents scout→sell→re-scout churn
+        const SCOUT_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 hours
+        const recentlySold = new Set(
+          Object.entries(state.stopLossCooldowns)
+            .filter(([_, ts]) => Date.now() - new Date(ts).getTime() < SCOUT_COOLDOWN_MS)
+            .map(([symbol]) => symbol)
+        );
         const scoutCandidates = marketData.tokens.filter(t =>
           t.symbol !== 'USDC' && t.symbol !== 'ETH' && t.symbol !== 'WETH' &&
           !heldSymbols.has(t.symbol) &&
+          !recentlySold.has(t.symbol) && // v20.8.1: don't re-scout recently stopped-out tokens
           TOKEN_REGISTRY[t.symbol] // Only scout tokens in our registry
         );
 
@@ -13020,7 +13030,12 @@ async function runTradingCycle() {
       // Previously: Kelly × Vol × ATR × Confidence × LegacyBreaker stacked to kill trade sizes.
       // With 0 trade history, Kelly fallback was $15, confidence ~0.5 → $7.50 per trade.
       // Now: Kelly sets a ceiling. During deployment mode, use a generous floor instead.
-      if (decision.action === "BUY" && decision.amountUSD > 0) {
+      // v20.8.1: Scout trades are EXEMPT from deployment sizing — they're $8 data probes, not investments.
+      const isScoutTrade = decision.reasoning?.startsWith('SCOUT:') || decision.signalContext?.triggeredBy === 'SCOUT';
+      if (isScoutTrade && decision.action === "BUY") {
+        decision.amountUSD = Math.min(SCOUT_POSITION_USD, remainingUSDC);
+        console.log(`   🔭 SCOUT SIZING: $${decision.amountUSD.toFixed(2)} (exempt from deployment/Kelly sizing)`);
+      } else if (decision.action === "BUY" && decision.amountUSD > 0) {
         const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue);
 
         if (deploymentCheck.active) {

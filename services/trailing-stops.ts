@@ -30,6 +30,7 @@ interface TrailingStopEntry {
   stopTriggered: boolean;      // Whether the stop has been hit
   triggerPrice?: number;       // Price at which stop was triggered
   triggerDate?: string;        // When stop was triggered
+  cyclesSinceEntry: number;    // v20.8.1: Cycles elapsed since position opened
 }
 
 // In-memory store for trailing stops
@@ -37,12 +38,18 @@ const trailingStops: Map<string, TrailingStopEntry> = new Map();
 
 // ATR multipliers for asymmetric stops
 const WINNING_ATR_MULTIPLIER = 2.5;   // Wide trail — let profits run
-const NEUTRAL_ATR_MULTIPLIER = 1.5;   // Moderate trail
+const NEUTRAL_ATR_MULTIPLIER = 2.0;   // v20.8.1: 1.5→2.0 — wider trail in neutral zone to ride moves
 const LOSING_ATR_MULTIPLIER = 1.0;    // Tight trail — cut losses fast
 
 // P&L zone thresholds
 const WINNING_THRESHOLD_PCT = 5;       // Position is "winning" above +5%
 const LOSING_THRESHOLD_PCT = -3;       // Position is "losing" below -3%
+
+// v20.8.1: Minimum trail distance — prevents stops that are too tight on low-ATR blue chips
+const MIN_TRAIL_DISTANCE_PCT = 2.0;    // Never trail tighter than 2% below HWM/entry
+
+// v20.8.1: Minimum hold time before trailing stop can fire — prevents buy-then-sell churn
+const MIN_HOLD_CYCLES = 4;             // ~1 hour at 15-min cycles before stop can trigger
 
 // v20.0: Persistence file path
 const PERSIST_DIR = process.env.PERSIST_DIR || "./logs";
@@ -130,6 +137,7 @@ export function updateTrailingStop(
       zone: 'NEUTRAL',
       lastUpdated: new Date().toISOString(),
       stopTriggered: false,
+      cyclesSinceEntry: 0,
     };
     trailingStops.set(symbol, entry);
   }
@@ -160,7 +168,11 @@ export function updateTrailingStop(
   // For losing positions: trail below entry price (cut losses fast)
   // For neutral: trail below high-water mark (moderate protection)
   const atrDollar = currentPrice * (atrPercent / 100);
-  const trailDistance = multiplier * atrDollar;
+  const minTrailDollar = currentPrice * (MIN_TRAIL_DISTANCE_PCT / 100);
+  const trailDistance = Math.max(multiplier * atrDollar, minTrailDollar); // v20.8.1: enforce 2% floor
+
+  // v20.8.1: Increment hold time counter
+  entry.cyclesSinceEntry = (entry.cyclesSinceEntry || 0) + 1;
 
   let newStopPrice: number;
   if (zone === 'LOSING') {
@@ -195,6 +207,11 @@ export function checkTrailingStopHit(symbol: string, currentPrice: number): bool
   const entry = trailingStops.get(symbol);
   if (!entry) return false;
   if (entry.currentStopPrice <= 0) return false;
+
+  // v20.8.1: Minimum hold time — don't stop out positions in their first hour
+  if ((entry.cyclesSinceEntry || 0) < MIN_HOLD_CYCLES) {
+    return false;
+  }
 
   if (currentPrice <= entry.currentStopPrice) {
     // Keep firing every cycle until the sell actually executes
