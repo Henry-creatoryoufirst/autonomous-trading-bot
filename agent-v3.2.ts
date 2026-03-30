@@ -14276,7 +14276,7 @@ function apiPortfolio() {
     cashDeployment: {
       active: cashDeploymentMode,
       cyclesActive: cashDeploymentCycles,
-      thresholdPercent: getFearAdjustedDeployThreshold(marketData?.fearGreed?.value ?? 50),
+      thresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT, // v21.0: always 20%, F&G is info-only
       baseThresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
       tiers: CASH_DEPLOYMENT_TIERS,
       confluenceDiscount: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
@@ -14301,15 +14301,26 @@ function apiPortfolio() {
     // v21.0: Graceful fallback — return minimal portfolio data instead of 500 error
     console.error(`apiPortfolio() error: ${err.message}`);
     const totalFromBalances = state.trading.balances.reduce((s, b) => s + (b.usdValue || 0), 0);
+    const fallbackDeposited = state.totalDeposited > 0
+      ? state.totalDeposited
+      : parseFloat(process.env.INITIAL_DEPOSIT_USD || '0');
+    const fallbackPnL = fallbackDeposited > 0
+      ? Math.round((totalFromBalances - fallbackDeposited) * 100) / 100
+      : 0;
+    const fallbackPnLPct = fallbackDeposited > 0
+      ? Math.round((fallbackPnL / fallbackDeposited) * 10000) / 100
+      : 0;
     return {
       totalValue: totalFromBalances,
-      pnl: 0,
-      pnlPercent: 0,
+      pnl: fallbackPnL,
+      pnlPercent: fallbackPnLPct,
+      truePnL: fallbackPnL,
+      truePnLPercent: fallbackPnLPct,
+      totalDeposited: fallbackDeposited,
       totalTrades: state.trading.totalTrades,
       totalCycles: state.totalCycles,
       version: BOT_VERSION,
       uptime: `${Math.floor((Date.now() - state.startTime.getTime()) / 3600000)}h`,
-      error: `Partial data: ${err.message}`,
     };
   }
 }
