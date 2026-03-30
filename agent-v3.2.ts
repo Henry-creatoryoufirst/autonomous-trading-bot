@@ -222,7 +222,7 @@ import {
   // v11.1/v20.2: Cash Deployment Engine (graduated tiers)
   CASH_DEPLOYMENT_TIERS,
   CASH_DEPLOYMENT_THRESHOLD_PCT,
-  CASH_DEPLOY_FEAR_THRESHOLDS,
+  // CASH_DEPLOY_FEAR_THRESHOLDS removed in v20.8 — F&G is info-only
   CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
   CASH_DEPLOYMENT_MAX_DEPLOY_PCT,
   CASH_DEPLOYMENT_MIN_RESERVE_USD,
@@ -2172,47 +2172,20 @@ const capitalPreservationMode: {
  * so preservation mode activates immediately instead of waiting 6 hours after every restart.
  */
 function updateCapitalPreservationMode(fgValue: number): void {
-  // v19.3.1: Startup pre-fill — if this is the first reading and F&G is already in extreme territory,
-  // assume it's been this way (market doesn't jump from 50 to 10 instantly). Fill buffer to activate immediately.
-  if (capitalPreservationMode.fearReadings.length === 0 && fgValue < PRESERVATION_FG_ACTIVATE) {
-    console.log(`\n🛡️ PRESERVATION STARTUP: F&G=${fgValue} already below ${PRESERVATION_FG_ACTIVATE} — pre-filling buffer for immediate activation`);
-    for (let i = 0; i < PRESERVATION_RING_BUFFER_SIZE - 1; i++) {
-      capitalPreservationMode.fearReadings.push(fgValue);
-    }
-  }
-
-  // Push to ring buffer
+  // v20.8: F&G demoted to info-only. Preservation mode is DISABLED.
+  // The bot follows price physics (momentum, volume, capital flows), not sentiment surveys.
+  // F&G is still tracked for logging/dashboard display.
   capitalPreservationMode.fearReadings.push(fgValue);
   if (capitalPreservationMode.fearReadings.length > PRESERVATION_RING_BUFFER_SIZE) {
     capitalPreservationMode.fearReadings.shift();
   }
   capitalPreservationMode.lastUpdated = Date.now();
 
+  // Force deactivation if somehow still active from before this update
   if (capitalPreservationMode.isActive) {
-    // Deactivation check: F&G must rise above threshold
-    if (fgValue > PRESERVATION_FG_DEACTIVATE) {
-      console.log(`\n🟢 CAPITAL PRESERVATION MODE DEACTIVATED — F&G ${fgValue} > ${PRESERVATION_FG_DEACTIVATE}`);
-      console.log(`   Duration: ${capitalPreservationMode.activatedAt ? ((Date.now() - capitalPreservationMode.activatedAt) / 3600000).toFixed(1) : '?'}h | Blocked: ${capitalPreservationMode.tradesBlocked} | Passed: ${capitalPreservationMode.tradesPassed}`);
-      capitalPreservationMode.isActive = false;
-      capitalPreservationMode.activatedAt = null;
-      capitalPreservationMode.tradesBlocked = 0;
-      capitalPreservationMode.tradesPassed = 0;
-      capitalPreservationMode.deactivationCount++;
-    }
-  } else {
-    // Activation check: all readings in buffer must be < threshold AND buffer must be full
-    if (capitalPreservationMode.fearReadings.length >= PRESERVATION_RING_BUFFER_SIZE) {
-      const allBelowThreshold = capitalPreservationMode.fearReadings.every(r => r < PRESERVATION_FG_ACTIVATE);
-      if (allBelowThreshold) {
-        capitalPreservationMode.isActive = true;
-        capitalPreservationMode.activatedAt = Date.now();
-        capitalPreservationMode.tradesBlocked = 0;
-        capitalPreservationMode.tradesPassed = 0;
-        console.log(`\n🔴 CAPITAL PRESERVATION MODE ACTIVATED — F&G < ${PRESERVATION_FG_ACTIVATE} sustained for 6+ hours`);
-        console.log(`   Cycle speed: NORMAL (sells always allowed) | Min buy confluence: ${PRESERVATION_MIN_CONFLUENCE} | Target cash: ${PRESERVATION_TARGET_CASH_PCT}%`);
-        console.log(`   Scout seeding: DISABLED | Only high-conviction trades allowed`);
-      }
-    }
+    console.log(`\n🟢 PRESERVATION MODE DISABLED (v20.8) — F&G=${fgValue} logged as info-only`);
+    capitalPreservationMode.isActive = false;
+    capitalPreservationMode.activatedAt = null;
   }
 }
 
@@ -2378,17 +2351,11 @@ interface CashDeploymentResult {
 }
 
 /**
- * v20.7: Fear-Adjusted Deploy Threshold
- * During fear/bearish markets, raise the cash threshold so the bot holds cash comfortably.
- * When F&G recovers, threshold drops instantly — no delay, ready to deploy on the turn.
+ * v20.8: F&G demoted to info-only. Always returns the base threshold.
+ * The bot follows price physics (momentum, volume, capital flows), not sentiment surveys.
  */
-function getFearAdjustedDeployThreshold(fearGreedValue: number): number {
-  for (const tier of CASH_DEPLOY_FEAR_THRESHOLDS) {
-    if (fearGreedValue < tier.maxFearGreed) {
-      return tier.threshold;
-    }
-  }
-  return CASH_DEPLOYMENT_THRESHOLD_PCT; // Normal markets: 20%
+function getFearAdjustedDeployThreshold(_fearGreedValue: number): number {
+  return CASH_DEPLOYMENT_THRESHOLD_PCT; // Always 20% — physics-based, not sentiment-based
 }
 
 /**
@@ -2403,7 +2370,7 @@ function getFearAdjustedDeployThreshold(fearGreedValue: number): number {
 function checkCashDeploymentMode(
   usdcBalance: number,
   totalPortfolioValue: number,
-  fearGreedValue: number = 50,
+  _fearGreedValue: number = 50, // v20.8: F&G info-only, no longer gates deployment
 ): CashDeploymentResult {
   const noDeployResult: CashDeploymentResult = { active: false, cashPercent: 0, excessCash: 0, deployBudget: 0, confluenceDiscount: 0, tier: 'NONE', maxEntries: 0 };
   if (totalPortfolioValue <= 0) return noDeployResult;
@@ -2413,14 +2380,12 @@ function checkCashDeploymentMode(
   // v11.4.19: Directive-aware threshold — aggressive directives lower the trigger
   const directiveAdj = getDirectiveThresholdAdjustments();
 
-  // v20.7: Fear-adjusted tier thresholds — shift tiers up during fear so bot holds cash
-  const fearDelta = getFearAdjustedDeployThreshold(fearGreedValue) - CASH_DEPLOYMENT_THRESHOLD_PCT;
-
+  // v20.8: F&G removed from tier thresholds — pure momentum-based deployment
   // v20.2: Find highest matching tier (iterate descending)
   let matchedTier = null;
   for (let i = CASH_DEPLOYMENT_TIERS.length - 1; i >= 0; i--) {
     const tier = CASH_DEPLOYMENT_TIERS[i];
-    const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? (tier.cashPct + fearDelta);
+    const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? tier.cashPct;
     if (cashPercent > effectiveThreshold) {
       matchedTier = tier;
       break;
@@ -2504,18 +2469,10 @@ function checkCrashBuyingOverride(
 } {
   const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES, blueChipOnly: false, maxPositionPct: 100, requirePositiveBuyRatio: false };
 
-  // v20.2: Graduated fear gate for crash buying (replaces v18.2 hard block)
-  // Instead of blocking entirely at F&G < 25, reduce size and restrict to blue chips in extreme fear
-  let crashFearMult = 1.0;
-  let crashBlueChipOnly = false;
-  if (fearGreedValue < 15) {
-    crashFearMult = 0.25;
-    crashBlueChipOnly = true;
-  } else if (fearGreedValue < 25) {
-    crashFearMult = 0.50;
-  } else if (fearGreedValue < 40) {
-    crashFearMult = 0.75;
-  }
+  // v20.8: F&G demoted to info-only. No fear gates on crash buying.
+  // The bot follows capital flows and momentum, not sentiment surveys.
+  const crashFearMult = 1.0;
+  const crashBlueChipOnly = false;
 
   // v17.0: Gate on cash level, not F&G. Need significant idle capital to override breaker.
   if (deploymentCheck.cashPercent < DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT) {
@@ -11945,31 +11902,12 @@ async function runTradingCycle() {
     const preAiCashPct = state.trading.totalPortfolioValue > 0 ? (preAiUSDC / state.trading.totalPortfolioValue) * 100 : 0;
     // v11.4.19: threshold — if deployment mode is on, forced deploy fires too
     // v14.1: Now gated behind market momentum check to avoid buying into falling knives
-    const fearAdjustedThreshold = getFearAdjustedDeployThreshold(marketData?.fearGreed?.value ?? 50);
-    if (preAiCashPct > fearAdjustedThreshold && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
-      // v20.7: Fear-adjusted threshold — bot holds cash comfortably during fear, deploys instantly on recovery
-      // v20.2: GRADUATED FEAR + MOMENTUM GATES (replaces v18.2 hard blocks)
-      // Instead of blocking all deployment during fear/negative momentum, scale down size.
-      // The per-token signal quality gate (confluence + MACD) is the real falling knife filter.
-      console.log(`⚡ FORCED_DEPLOY gate: cash ${preAiCashPct.toFixed(0)}% > ${fearAdjustedThreshold}% threshold (F&G=${marketData?.fearGreed?.value ?? '?'})`);
+    // v20.8: Pure physics-based deployment — F&G is info-only, threshold is always 20%
+    if (preAiCashPct > CASH_DEPLOYMENT_THRESHOLD_PCT && preAiUSDC > CASH_DEPLOYMENT_MIN_RESERVE_USD) {
+      console.log(`⚡ FORCED_DEPLOY gate: cash ${preAiCashPct.toFixed(0)}% > ${CASH_DEPLOYMENT_THRESHOLD_PCT}% threshold (F&G=${marketData?.fearGreed?.value ?? '?'} info-only)`);
       let shouldForceDeploy = true;
-      let deployGateMultiplier = 1.0; // Combined fear + momentum size reduction
-      let blueChipOnlyGate = false;
-      const currentFearGreed = marketData?.fearGreed?.value ?? 50;
-
-      // --- Fear gate: graduated sizing instead of hard block ---
-      if (currentFearGreed < 15) {
-        deployGateMultiplier *= 0.25;
-        blueChipOnlyGate = true;
-        console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — F&G=${currentFearGreed} (extreme fear)`);
-        console.log(`   🛡️ FEAR GATE: Deploying at 25% size, blue chips only. Signal quality gate still active.`);
-      } else if (currentFearGreed < 25) {
-        deployGateMultiplier *= 0.50;
-        console.log(`\n⚡ FORCED_DEPLOY: ${preAiCashPct.toFixed(0)}% cash ($${preAiUSDC.toFixed(0)}) — F&G=${currentFearGreed} (fear)`);
-        console.log(`   🛡️ FEAR GATE: Deploying at 50% size. Per-token falling knife filter active.`);
-      } else if (currentFearGreed < 40) {
-        deployGateMultiplier *= 0.75;
-      }
+      let deployGateMultiplier = 1.0; // Momentum-only size reduction (no F&G gating)
+      const blueChipOnlyGate = false; // v20.8: all sectors available regardless of sentiment
 
       // --- Momentum gate: soft gate, only hard-block at -5% crash ---
       if (CASH_DEPLOY_REQUIRES_MOMENTUM) {
@@ -11998,9 +11936,9 @@ async function runTradingCycle() {
         }
       }
 
-      // Log if fear blocked without momentum crash
-      if (shouldForceDeploy && currentFearGreed < 25) {
-        console.log(`   Combined gate multiplier: ${(deployGateMultiplier * 100).toFixed(0)}%${blueChipOnlyGate ? ' (blue chips only)' : ''}`);
+      // v20.8: Log momentum gate multiplier (F&G no longer affects this)
+      if (shouldForceDeploy && deployGateMultiplier < 1.0) {
+        console.log(`   Momentum gate multiplier: ${(deployGateMultiplier * 100).toFixed(0)}%`);
       }
 
       if (shouldForceDeploy) {
@@ -12198,20 +12136,10 @@ async function runTradingCycle() {
       decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined, heavyReason);
     }
 
-    // === v19.1: EXTREME FEAR — SIZE REDUCTION (not block) ===
-    // v20.1: Changed from hard block to 50% size reduction. The AI sees F&G data and should
-    // make its own decisions. Blocking ALL buys at F&G < 20 caused Zack's bot to sit 100% cash
-    // for weeks. The circuit breaker + risk reviewer are the real safety nets.
-    const EXTREME_FEAR_THRESHOLD = 20;
-    if (fgValue < EXTREME_FEAR_THRESHOLD) {
-      const buyDecisions = decisions.filter(d => d.action === 'BUY');
-      if (buyDecisions.length > 0) {
-        console.log(`\n⚠️ EXTREME FEAR: Fear/Greed ${fgValue} < ${EXTREME_FEAR_THRESHOLD} — reducing ${buyDecisions.length} buy positions by 50%. AI decides, not a kill switch.`);
-        for (const d of buyDecisions) {
-          d.amountUSD = Math.round(d.amountUSD * 0.5);
-        }
-      }
-    }
+    // v20.8: EXTREME FEAR SIZE REDUCTION REMOVED — F&G is info-only.
+    // The bot follows price physics. Momentum gates and signal quality filters
+    // (confluence, MACD, RSI) handle risk. Sentiment surveys don't gate trades.
+    // F&G=${fgValue} logged for dashboard display only.
 
     // === v19.3: CAPITAL PRESERVATION MODE — HIGH-CONVICTION FILTER ===
     // When preservation mode is active, only allow trades with high confluence or high swarm consensus.
