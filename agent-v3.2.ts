@@ -567,7 +567,13 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "MORPHO", name: "Morpho", coingeckoId: "morpho",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  // PENDLE removed v21.2 — chronic underperformer, -$56 combined losses, user reports persistent bad fills
+  // v21.2: PENDLE kept in registry for SELL-ONLY (removed from DEFI sector tokens list so bot won't buy).
+  // Without a registry entry, stop-loss and profit-taking skip the token entirely, trapping the position.
+  PENDLE: {
+    address: "0xA99F6e6785Da0F5d6fB42495Fe424BCE029Eeb3E",
+    symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
   RSR: {
     address: "0xaB36452DbAC151bE02b16Ca17d8919826072f64a",
     symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
