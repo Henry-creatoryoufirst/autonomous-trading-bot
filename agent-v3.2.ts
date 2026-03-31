@@ -2391,11 +2391,25 @@ function checkCashDeploymentMode(
   // v11.4.19: Directive-aware threshold — aggressive directives lower the trigger
   const directiveAdj = getDirectiveThresholdAdjustments();
 
-  // v20.8: F&G removed from tier thresholds — pure momentum-based deployment
+  // v21.2: F&G RESTORED as deployment gate — v20.8 removed it which caused the bot to
+  // force-deploy into crashing markets at F&G=8, losing hundreds in buy-sell-buy-sell churn.
+  // When fear is extreme, the bot should sit in cash, not force-deploy.
+  if (_fearGreedValue < 15) {
+    if (cashDeploymentMode) {
+      console.log(`  🛑 Cash deployment SUSPENDED — F&G ${_fearGreedValue} (extreme fear). Holding cash.`);
+      cashDeploymentMode = false;
+    }
+    return { ...noDeployResult, cashPercent };
+  }
+  // F&G 15-25: Only allow URGENT tier (>65% cash) — severely limit forced buys in fear
+  const fearDampened = _fearGreedValue < 25;
+
   // v20.2: Find highest matching tier (iterate descending)
   let matchedTier = null;
   for (let i = CASH_DEPLOYMENT_TIERS.length - 1; i >= 0; i--) {
     const tier = CASH_DEPLOYMENT_TIERS[i];
+    // v21.2: In fear markets, only URGENT tier activates
+    if (fearDampened && tier.label !== 'URGENT') continue;
     const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? tier.cashPct;
     if (cashPercent > effectiveThreshold) {
       matchedTier = tier;
@@ -4996,6 +5010,19 @@ function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceiv
   const cb = getOrCreateCostBasis(symbol);
   if (cb.totalTokensAcquired === 0) cb.firstBuyDate = new Date().toISOString();
 
+  // v21.2: Reset peakPrice on re-entry after full/near-full exit.
+  // Without this, buying cbBTC at $68K with a stale peakPrice of $69.9K means
+  // the trailing stop fires instantly (-2.7% from "peak"). The buy-sell-buy-sell
+  // death loop burned hundreds of dollars.
+  const currentPrice = tokensReceived > 0 ? amountUSD / tokensReceived : 0;
+  const wasEmpty = cb.currentHolding <= 0 || cb.totalTokensAcquired <= 0;
+  if (wasEmpty && currentPrice > 0) {
+    cb.peakPrice = currentPrice;
+    cb.peakPriceDate = new Date().toISOString();
+    cb.trailActivated = false; // Reset trailing stop activation
+    console.log(`  🔄 Peak price reset for ${symbol}: $${currentPrice.toFixed(6)} (re-entry after exit)`);
+  }
+
   // v11.4.15: Guard against zero tokensReceived which corrupts avgCostBasis to infinity.
   // This happened with ETH buys where balance read returned native ETH instead of WETH.
   if (tokensReceived <= 0) {
@@ -5469,6 +5496,19 @@ function checkStopLoss(
     if (lastStopLoss) {
       const hoursSince = (Date.now() - new Date(lastStopLoss).getTime()) / (1000 * 60 * 60);
       if (hoursSince < 24) continue; // Skip — already triggered within 24h
+    }
+
+    // v21.2: FORCED_DEPLOY cooldown — if last buy was a forced deployment, don't trigger
+    // trailing stop for 2 hours. This prevents the buy-sell-buy-sell death loop where
+    // FORCED_DEPLOY buys and the trailing stop immediately sells every 15 minutes.
+    const recentBuy = state.tradeHistory.find(t =>
+      t.toToken === b.symbol && t.action === 'BUY' && t.success !== false
+    );
+    if (recentBuy && (recentBuy.reasoning?.includes('FORCED_DEPLOY') || recentBuy.reasoning?.includes('SCOUT'))) {
+      const hoursSinceBuy = (Date.now() - new Date(recentBuy.timestamp).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceBuy < 2) {
+        continue; // Give forced/scout buys 2 hours before trailing stop can fire
+      }
     }
 
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
