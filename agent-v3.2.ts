@@ -419,16 +419,16 @@ const SECTORS = {
   },
   DEFI: {
     name: "DeFi Protocols",
-    targetAllocation: 0.18, // v20.3.1: 20%→18% to make room for tokenized stocks
+    targetAllocation: 0.15, // v21.2: 18%→15% to fund expanded RWA sector (deSPXA)
     description: "Base DeFi ecosystem tokens",
     tokens: ["AERO", "MORPHO", "PENDLE", "RSR", "AAVE", "CRV", "ENA", "ETHFI"], // v20.5: Pruned WELL/SEAM/EXTRA/BAL (dust), added AAVE/CRV/ENA/ETHFI (high mcap, real volume)
   },
-  // v20.3.1: Tokenized real-world assets — stocks, ETFs, commodities on Base
+  // v20.3.1 / v21.2: Tokenized real-world assets — stocks, ETFs, commodities on Base
   TOKENIZED_STOCKS: {
-    name: "Tokenized Stocks",
-    targetAllocation: 0.02, // 2% — conservative start, increase as liquidity deepens
-    description: "Tokenized equities and RWAs via Backed Finance on Base",
-    tokens: ["bCOIN"],
+    name: "Tokenized RWAs",
+    targetAllocation: 0.05, // v21.2: 2%→5% with deSPXA (S&P 500) added
+    description: "Tokenized equities and RWAs — S&P 500, stocks via Centrifuge/Backed on Base",
+    tokens: ["bCOIN", "deSPXA"],
   },
 };
 
@@ -439,7 +439,7 @@ const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
 
 // v14.3: Tokens that CDP SDK can't swap but CAN be traded via direct DEX swap (Uniswap V3 / Aerodrome).
 // These are NOT blocked — executeDirectDexSwap handles them via account.sendTransaction().
-const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'PENDLE']);
+const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'PENDLE', 'deSPXA']);
 
 // Complete token registry with addresses and metadata
 const TOKEN_REGISTRY: Record<string, {
@@ -582,6 +582,14 @@ const TOKEN_REGISTRY: Record<string, {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
     symbol: "bCOIN", name: "Backed Coinbase Stock", coingeckoId: "",
     sector: "TOKENIZED_STOCKS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  // v21.2: deSPXA — Tokenized S&P 500 via Centrifuge on Base
+  // DeFi wrapper of SPXA (Janus Henderson Anemoy S&P 500 Fund), freely transferable ERC-20.
+  // Trades on Aerodrome. Licensed by S&P Dow Jones Indices.
+  deSPXA: {
+    address: "0x9c5C365e764829876243d0b289733B9D2b729685",
+    symbol: "deSPXA", name: "Centrifuge S&P 500", coingeckoId: "",
+    sector: "TOKENIZED_STOCKS", riskLevel: "LOW", minTradeUSD: 25, decimals: 18,
   },
 };
 
