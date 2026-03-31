@@ -5027,13 +5027,13 @@ function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceiv
   // Without this, buying cbBTC at $68K with a stale peakPrice of $69.9K means
   // the trailing stop fires instantly (-2.7% from "peak"). The buy-sell-buy-sell
   // death loop burned hundreds of dollars.
-  const currentPrice = tokensReceived > 0 ? amountUSD / tokensReceived : 0;
+  const buyPrice = tokensReceived > 0 ? amountUSD / tokensReceived : 0;
   const wasEmpty = cb.currentHolding <= 0 || cb.totalTokensAcquired <= 0;
-  if (wasEmpty && currentPrice > 0) {
-    cb.peakPrice = currentPrice;
+  if (wasEmpty && buyPrice > 0) {
+    cb.peakPrice = buyPrice;
     cb.peakPriceDate = new Date().toISOString();
     cb.trailActivated = false; // Reset trailing stop activation
-    console.log(`  🔄 Peak price reset for ${symbol}: $${currentPrice.toFixed(6)} (re-entry after exit)`);
+    console.log(`  🔄 Peak price reset for ${symbol}: $${buyPrice.toFixed(6)} (re-entry after exit)`);
   }
 
   // v11.4.15: Guard against zero tokensReceived which corrupts avgCostBasis to infinity.
