@@ -11,7 +11,14 @@
 
 import axios from 'axios';
 import { aaveYieldService } from './aave-yield.js';
-import { morphoYieldService } from './morpho-yield.js';
+// v21.2: Safe import — stub if module fails to load
+let morphoYieldService: any = { getDepositedUSDC() { return 0; }, getState() { return { depositedUSDC: 0 }; } };
+try {
+  const m = await import('./morpho-yield.js');
+  morphoYieldService = m.morphoYieldService;
+} catch {
+  console.warn('  ⚠️ morpho-yield module not available in yield-optimizer');
+}
 import {
   YIELD_CHECK_INTERVAL_CYCLES,
   YIELD_MIN_DIFFERENTIAL_PCT,
