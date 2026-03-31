@@ -1,16 +1,17 @@
 /**
  * Never Rest Capital — Multi-Protocol Yield Optimizer
- * v15.3: Compare rates across Aave, Compound, Morpho, Moonwell on Base.
+ * v21.2: Compare rates across Aave, Compound, Morpho, Moonwell on Base.
  * Move idle USDC to the highest-yielding protocol. Gas on Base is $0.01-0.05,
  * making frequent rebalancing economical.
  *
- * Architecture: Only Aave has live deposit/withdraw wiring (via aave-yield.ts).
- * Other protocols are monitored for rates — actual movement is logged as a
- * placeholder until their on-chain integrations are built.
+ * Architecture: Aave (via aave-yield.ts) and Morpho (via morpho-yield.ts) have
+ * live deposit/withdraw wiring. Compound & Moonwell are monitored for rates.
+ * The optimizer selects the best-yielding active protocol automatically.
  */
 
 import axios from 'axios';
 import { aaveYieldService } from './aave-yield.js';
+import { morphoYieldService } from './morpho-yield.js';
 import {
   YIELD_CHECK_INTERVAL_CYCLES,
   YIELD_MIN_DIFFERENTIAL_PCT,
@@ -50,7 +51,7 @@ export interface YieldOptimizerState {
 const PROTOCOLS: Record<string, { contract: string; supplyToken: string; name: string }> = {
   aave:     { contract: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5', supplyToken: 'aBasUSDC', name: 'Aave V3' },
   compound: { contract: '0xb125E6687d4313864e53df431d5425969c15Eb2F', supplyToken: 'cUSDCv3',  name: 'Compound V3' },
-  morpho:   { contract: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb', supplyToken: 'maUSDC',   name: 'Morpho Blue' },
+  morpho:   { contract: '0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2', supplyToken: 'steakUSDC', name: 'Morpho (Steakhouse)' },
   moonwell: { contract: '0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22', supplyToken: 'mUSDC',    name: 'Moonwell' },
 };
 
@@ -154,7 +155,12 @@ export class YieldOptimizerService {
         const data = await fetcher();
         if (data) {
           const info = PROTOCOLS[protocol];
-          const deposited = protocol === 'aave' ? aaveYieldService.getState().depositedUSDC : 0;
+          const deposited = protocol === 'aave'
+            ? aaveYieldService.getState().depositedUSDC
+            : protocol === 'morpho'
+              ? morphoYieldService.getDepositedUSDC()
+              : 0;
+          const isActive = protocol === 'aave' || protocol === 'morpho';
           results.push({
             protocol,
             apy: Math.round(data.apy * 100) / 100,
@@ -162,7 +168,7 @@ export class YieldOptimizerService {
             deposited,
             contractAddress: info.contract,
             supplyToken: info.supplyToken,
-            status: protocol === 'aave' ? 'active' : 'monitored',
+            status: isActive ? 'active' : 'monitored',
             lastUpdated: new Date().toISOString(),
           });
         }
@@ -201,44 +207,73 @@ export class YieldOptimizerService {
     const differential = bestProtocol.apy - currentRate.apy;
     if (differential < minDifferential) return false;
 
-    // Only rebalance TO active protocols (currently only Aave has live integration)
-    // But allow rebalancing FROM Aave if another protocol is monitored-only
-    // (this logs the intent without moving funds)
+    // Only rebalance between active protocols (Aave and Morpho have live integrations)
+    const activeProtocols = new Set(['aave', 'morpho']);
+    if (!activeProtocols.has(bestProtocol.protocol)) {
+      // Log intent for monitored-only protocols but don't block
+      return true;
+    }
     return true;
   }
 
+  /**
+   * Returns rebalance instructions for the agent main loop to execute.
+   * The optimizer doesn't execute transactions directly — it returns calldata
+   * that the agent executes via CDP account.sendTransaction().
+   */
   async rebalance(
     from: string,
     to: string,
     amount: number,
-  ): Promise<{ success: boolean; txHash?: string; message: string }> {
-    // Only Aave has live deposit/withdraw wiring for now
-    if (from === 'aave' && to !== 'aave') {
-      // Would withdraw from Aave and deposit to another protocol
-      // For now, just log intent — don't actually move funds to unimplemented protocols
-      console.log(`  🔄 YIELD OPTIMIZER: ${PROTOCOLS[to]?.name || to} offers +${(this.getRate(to) - this.getRate(from)).toFixed(2)}% better APY`);
-      console.log(`  📋 Would move $${amount.toFixed(2)} from Aave → ${PROTOCOLS[to]?.name || to} (integration pending)`);
+  ): Promise<{ success: boolean; txHash?: string; message: string; action?: 'REBALANCE_AAVE_TO_MORPHO' | 'REBALANCE_MORPHO_TO_AAVE' }> {
+    const activeProtocols = new Set(['aave', 'morpho']);
+    const fromName = PROTOCOLS[from]?.name || from;
+    const toName = PROTOCOLS[to]?.name || to;
+    const differential = (this.getRate(to) - this.getRate(from)).toFixed(2);
+
+    // Aave → Morpho: withdraw from Aave, deposit to Morpho
+    if (from === 'aave' && to === 'morpho') {
+      console.log(`  🔄 YIELD OPTIMIZER: Morpho offers +${differential}% better APY — rebalancing $${amount.toFixed(2)}`);
+      this.state.currentProtocol = 'morpho';
       this.state.lastRebalance = new Date().toISOString();
       this.state.rebalanceCount++;
       return {
         success: true,
-        message: `Logged rebalance intent: $${amount.toFixed(2)} Aave → ${PROTOCOLS[to]?.name || to} (${to} integration pending)`,
+        action: 'REBALANCE_AAVE_TO_MORPHO',
+        message: `Rebalance: $${amount.toFixed(2)} Aave → Morpho (+${differential}% APY)`,
       };
     }
 
-    if (from !== 'aave' && to === 'aave') {
-      // Would withdraw from another protocol and deposit to Aave
-      console.log(`  🔄 YIELD OPTIMIZER: Would move $${amount.toFixed(2)} from ${PROTOCOLS[from]?.name || from} → Aave`);
-      console.log(`  📋 ${PROTOCOLS[from]?.name || from} withdrawal not yet implemented`);
+    // Morpho → Aave: withdraw from Morpho, deposit to Aave
+    if (from === 'morpho' && to === 'aave') {
+      console.log(`  🔄 YIELD OPTIMIZER: Aave offers +${differential}% better APY — rebalancing $${amount.toFixed(2)}`);
+      this.state.currentProtocol = 'aave';
       this.state.lastRebalance = new Date().toISOString();
       this.state.rebalanceCount++;
       return {
         success: true,
-        message: `Logged rebalance intent: $${amount.toFixed(2)} ${PROTOCOLS[from]?.name || from} → Aave (${from} withdrawal pending)`,
+        action: 'REBALANCE_MORPHO_TO_AAVE',
+        message: `Rebalance: $${amount.toFixed(2)} Morpho → Aave (+${differential}% APY)`,
+      };
+    }
+
+    // Non-active protocol — log intent only
+    if (!activeProtocols.has(to)) {
+      console.log(`  🔄 YIELD OPTIMIZER: ${toName} offers +${differential}% better APY`);
+      console.log(`  📋 Would move $${amount.toFixed(2)} from ${fromName} → ${toName} (integration pending)`);
+      this.state.lastRebalance = new Date().toISOString();
+      this.state.rebalanceCount++;
+      return {
+        success: true,
+        message: `Logged rebalance intent: $${amount.toFixed(2)} ${fromName} → ${toName} (${to} integration pending)`,
       };
     }
 
     return { success: false, message: 'No rebalance needed (same protocol or no integration)' };
+  }
+
+  setCurrentProtocol(protocol: string): void {
+    this.state.currentProtocol = protocol;
   }
 
   // --- Helpers ---

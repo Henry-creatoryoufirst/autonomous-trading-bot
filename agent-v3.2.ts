@@ -317,6 +317,7 @@ import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from './services/aave-yield.js';
+import { morphoYieldService } from './services/morpho-yield.js';
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
 import { yieldOptimizer } from './services/yield-optimizer.js';
@@ -4270,6 +4271,12 @@ function loadTradeHistory() {
           const ys = aaveYieldService.getState();
           console.log(`  🏦 Aave yield restored: $${ys.depositedUSDC.toFixed(2)} deposited, $${ys.totalYieldEarned.toFixed(4)} earned, ${ys.supplyCount} supplies`);
         }
+        // v21.2: Restore Morpho yield state
+        if (parsed.morphoYieldState) {
+          morphoYieldService.restoreState(parsed.morphoYieldState);
+          const ms = morphoYieldService.getState();
+          console.log(`  🏦 Morpho yield restored: $${ms.depositedUSDC.toFixed(2)} deposited, $${ms.totalYieldEarned.toFixed(4)} earned, ${ms.supplyCount} supplies`);
+        }
         // v11.4.5-6: Restore migration flags
         if (parsed._migrationCostBasisV1145) {
           (state as any)._migrationCostBasisV1145 = true;
@@ -4397,6 +4404,8 @@ function saveTradeHistory() {
       stablecoinSupplyHistory: { values: stablecoinSupplyHistory.values.slice(-504) },
       // v11.0: Aave V3 yield state persistence
       aaveYieldState: aaveYieldService.getState(),
+      // v21.2: Morpho yield state persistence
+      morphoYieldState: morphoYieldService.getState(),
       // v11.4.5-6: Migration flags
       _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
       _migrationCostBasisV1146: (state as any)._migrationCostBasisV1146 || false,
@@ -12735,8 +12744,91 @@ async function runTradingCycle() {
       }
     }
 
-    // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER CYCLE ===
+    // === v21.2: MORPHO YIELD CYCLE ===
+    // Park idle USDC in Morpho Steakhouse Prime vault (ERC-4626) when optimizer selects Morpho.
+    if (yieldEnabled && cdpClient && yieldOptimizer.getCurrentProtocol() === 'morpho') {
+      try {
+        const walletAddr = CONFIG.walletAddress;
+        const usdcBalance = balances.find(b => b.symbol === 'USDC')?.balance || 0;
+        const regime = marketData.marketRegime || 'UNKNOWN';
+        const fearGreedVal = marketData.fearGreed?.value || 50;
+
+        // Refresh share balance every 3 heavy cycles
+        if (yieldCycleCount % 3 === 1) {
+          await morphoYieldService.refreshBalance(walletAddr);
+        }
+
+        const aiNeedsCapital = decisions.some(
+          (d: any) => d.action === 'BUY' && d.amountUSD > usdcBalance * 0.8
+        );
+
+        const depositAmount = morphoYieldService.calculateDepositAmount(usdcBalance, regime, fearGreedVal);
+        const withdrawAmount = morphoYieldService.calculateWithdrawAmount(usdcBalance, regime, fearGreedVal, aiNeedsCapital);
+
+        if (withdrawAmount > 0) {
+          console.log(`\n  🏦 MORPHO YIELD: Withdrawing $${withdrawAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
+          const withdrawCalldata = morphoYieldService.buildWithdrawCalldata(withdrawAmount, walletAddr);
+          const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+          const tx = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: withdrawCalldata.to as `0x${string}`,
+              data: withdrawCalldata.data as `0x${string}`,
+              value: BigInt(0),
+            },
+          });
+          morphoYieldService.recordWithdraw(withdrawAmount, tx.transactionHash, `${regime} regime, F&G ${fearGreedVal}${aiNeedsCapital ? ', AI needs capital' : ''}`);
+          lastYieldAction = `MORPHO WITHDRAW $${withdrawAmount.toFixed(2)} @ ${new Date().toISOString()}`;
+          console.log(`  ✅ Morpho withdraw: $${withdrawAmount.toFixed(2)} USDC — tx: ${tx.transactionHash}`);
+          markStateDirty(true);
+        } else if (depositAmount > 0 && !anyTradeExecuted) {
+          console.log(`\n  🏦 MORPHO YIELD: Depositing $${depositAmount.toFixed(2)} USDC (${regime}, F&G: ${fearGreedVal})`);
+          const depositCalldata = morphoYieldService.buildDepositCalldata(depositAmount, walletAddr);
+          const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+
+          // Check and set approval if needed
+          const currentAllowance = await morphoYieldService.getAllowance(walletAddr);
+          const depositAmountRaw = BigInt(Math.floor(depositAmount * 1e6));
+          if (currentAllowance < depositAmountRaw) {
+            console.log(`  🔓 Approving Morpho vault to spend USDC...`);
+            const approveTx = await account.sendTransaction({
+              network: "base",
+              transaction: {
+                to: depositCalldata.approvalTo as `0x${string}`,
+                data: depositCalldata.approvalData as `0x${string}`,
+                value: BigInt(0),
+              },
+            });
+            console.log(`  ✅ Morpho approval: ${approveTx.transactionHash}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          }
+
+          const tx = await account.sendTransaction({
+            network: "base",
+            transaction: {
+              to: depositCalldata.to as `0x${string}`,
+              data: depositCalldata.data as `0x${string}`,
+              value: BigInt(0),
+            },
+          });
+          morphoYieldService.recordSupply(depositAmount, tx.transactionHash, `${regime} regime, F&G ${fearGreedVal}`);
+          lastYieldAction = `MORPHO SUPPLY $${depositAmount.toFixed(2)} @ ${new Date().toISOString()}`;
+          console.log(`  ✅ Morpho supply: $${depositAmount.toFixed(2)} USDC — tx: ${tx.transactionHash}`);
+          markStateDirty(true);
+        } else {
+          const morphoState = morphoYieldService.getState();
+          if (morphoState.depositedUSDC > 0) {
+            console.log(`  🏦 Morpho yield: $${morphoState.currentValueUSDC.toFixed(2)} earning ~${morphoState.estimatedAPY}% APY | Yield: $${morphoState.totalYieldEarned.toFixed(4)}`);
+          }
+        }
+      } catch (morphoError: any) {
+        console.error(`  ❌ Morpho yield cycle error: ${morphoError?.message?.substring(0, 200)}`);
+      }
+    }
+
+    // === v15.3 / v21.2: MULTI-PROTOCOL YIELD OPTIMIZER CYCLE ===
     // Compare rates across Aave, Compound, Morpho, Moonwell every YIELD_CHECK_INTERVAL_CYCLES cycles.
+    // v21.2: Now supports live Aave <-> Morpho rebalancing.
     if (yieldEnabled) {
       try {
         yieldOptimizerCycleCount++;
@@ -12756,11 +12848,89 @@ async function runTradingCycle() {
 
             // Check if rebalancing is warranted
             if (best && yieldOptimizer.shouldRebalance(current, best, YIELD_MIN_DIFFERENTIAL_PCT)) {
-              const deposited = aaveYieldService.getState().depositedUSDC;
+              // v21.2: Get deposited amount from whichever protocol is currently active
+              const deposited = current === 'morpho'
+                ? morphoYieldService.getDepositedUSDC()
+                : aaveYieldService.getState().depositedUSDC;
               if (deposited >= YIELD_MIN_IDLE_USD) {
                 const result = await yieldOptimizer.rebalance(current, best.protocol, deposited);
                 if (result.success) {
                   console.log(`  🔄 ${result.message}`);
+
+                  // v21.2: Execute real rebalance between Aave and Morpho
+                  if (result.action === 'REBALANCE_AAVE_TO_MORPHO' && cdpClient) {
+                    try {
+                      const walletAddr = CONFIG.walletAddress;
+                      const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+
+                      // Step 1: Withdraw from Aave
+                      const withdrawCalldata = aaveYieldService.buildWithdrawCalldata(deposited, walletAddr);
+                      const withdrawTx = await account.sendTransaction({
+                        network: "base",
+                        transaction: { to: withdrawCalldata.to as `0x${string}`, data: withdrawCalldata.data as `0x${string}`, value: BigInt(0) },
+                      });
+                      aaveYieldService.recordWithdraw(deposited, withdrawTx.transactionHash, 'Rebalance to Morpho (higher APY)');
+                      console.log(`  ✅ Aave → withdraw $${deposited.toFixed(2)}: ${withdrawTx.transactionHash}`);
+                      await new Promise(resolve => setTimeout(resolve, 5000));
+
+                      // Step 2: Deposit to Morpho
+                      const depositCalldata = morphoYieldService.buildDepositCalldata(deposited, walletAddr);
+                      const allowance = await morphoYieldService.getAllowance(walletAddr);
+                      if (allowance < BigInt(Math.floor(deposited * 1e6))) {
+                        const approveTx = await account.sendTransaction({
+                          network: "base",
+                          transaction: { to: depositCalldata.approvalTo as `0x${string}`, data: depositCalldata.approvalData as `0x${string}`, value: BigInt(0) },
+                        });
+                        console.log(`  ✅ Morpho approval: ${approveTx.transactionHash}`);
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                      }
+                      const depositTx = await account.sendTransaction({
+                        network: "base",
+                        transaction: { to: depositCalldata.to as `0x${string}`, data: depositCalldata.data as `0x${string}`, value: BigInt(0) },
+                      });
+                      morphoYieldService.recordSupply(deposited, depositTx.transactionHash, 'Rebalance from Aave (higher APY)');
+                      console.log(`  ✅ Morpho ← deposit $${deposited.toFixed(2)}: ${depositTx.transactionHash}`);
+                      markStateDirty(true);
+                    } catch (rebalErr: any) {
+                      console.error(`  ❌ Aave→Morpho rebalance error: ${rebalErr?.message?.substring(0, 200)}`);
+                    }
+                  } else if (result.action === 'REBALANCE_MORPHO_TO_AAVE' && cdpClient) {
+                    try {
+                      const walletAddr = CONFIG.walletAddress;
+                      const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+
+                      // Step 1: Withdraw from Morpho
+                      const withdrawCalldata = morphoYieldService.buildWithdrawCalldata(deposited, walletAddr);
+                      const withdrawTx = await account.sendTransaction({
+                        network: "base",
+                        transaction: { to: withdrawCalldata.to as `0x${string}`, data: withdrawCalldata.data as `0x${string}`, value: BigInt(0) },
+                      });
+                      morphoYieldService.recordWithdraw(deposited, withdrawTx.transactionHash, 'Rebalance to Aave (higher APY)');
+                      console.log(`  ✅ Morpho → withdraw $${deposited.toFixed(2)}: ${withdrawTx.transactionHash}`);
+                      await new Promise(resolve => setTimeout(resolve, 5000));
+
+                      // Step 2: Deposit to Aave
+                      const supplyCalldata = aaveYieldService.buildSupplyCalldata(deposited, walletAddr);
+                      const allowance = await aaveYieldService.getAllowance(walletAddr);
+                      if (allowance < BigInt(Math.floor(deposited * 1e6))) {
+                        const approveTx = await account.sendTransaction({
+                          network: "base",
+                          transaction: { to: supplyCalldata.approvalTo as `0x${string}`, data: supplyCalldata.approvalData as `0x${string}`, value: BigInt(0) },
+                        });
+                        console.log(`  ✅ Aave approval: ${approveTx.transactionHash}`);
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                      }
+                      const depositTx = await account.sendTransaction({
+                        network: "base",
+                        transaction: { to: supplyCalldata.to as `0x${string}`, data: supplyCalldata.data as `0x${string}`, value: BigInt(0) },
+                      });
+                      aaveYieldService.recordSupply(deposited, depositTx.transactionHash, 'Rebalance from Morpho (higher APY)');
+                      console.log(`  ✅ Aave ← deposit $${deposited.toFixed(2)}: ${depositTx.transactionHash}`);
+                      markStateDirty(true);
+                    } catch (rebalErr: any) {
+                      console.error(`  ❌ Morpho→Aave rebalance error: ${rebalErr?.message?.substring(0, 200)}`);
+                    }
+                  }
                 }
               }
             }
@@ -12870,11 +13040,20 @@ async function runTradingCycle() {
   if (derivativesEngine?.isEnabled()) {
     console.log(`   Derivatives: ACTIVE | Buying Power: $${(derivativesEngine?.getState()?.availableBuyingPower || 0).toFixed(2)}`);
   }
-  if (yieldEnabled && aaveYieldService.getState().depositedUSDC > 0) {
+  if (yieldEnabled) {
     const ys = aaveYieldService.getState();
+    const ms = morphoYieldService.getState();
+    const totalDeposited = ys.aTokenBalance + ms.currentValueUSDC;
+    const totalYield = ys.totalYieldEarned + ms.totalYieldEarned;
+    const currentProto = yieldOptimizer.getCurrentProtocol();
     const bestRate = lastYieldRates.length > 0 ? lastYieldRates[0] : null;
     const bestInfo = bestRate ? ` | Best: ${bestRate.protocol} ${bestRate.apy.toFixed(2)}%` : '';
-    console.log(`   Yield: $${ys.aTokenBalance.toFixed(2)} in Aave (~${ys.estimatedAPY}% APY) | Earned: $${ys.totalYieldEarned.toFixed(4)}${bestInfo}`);
+    if (totalDeposited > 0) {
+      const parts: string[] = [];
+      if (ys.aTokenBalance > 0) parts.push(`Aave: $${ys.aTokenBalance.toFixed(2)}`);
+      if (ms.currentValueUSDC > 0) parts.push(`Morpho: $${ms.currentValueUSDC.toFixed(2)}`);
+      console.log(`   Yield: ${parts.join(' + ')} ($${totalDeposited.toFixed(2)} total) | Active: ${currentProto} | Earned: $${totalYield.toFixed(4)}${bestInfo}`);
+    }
   }
   if (lastDexIntelligence) {
     const di = lastDexIntelligence;
@@ -13154,32 +13333,56 @@ async function main() {
     console.error(`  Family trading disabled — bot continues in single-wallet mode`);
   }
 
-  // === v11.0: AAVE V3 YIELD SERVICE INITIALIZATION ===
+  // === v11.0 / v21.2: YIELD SERVICE INITIALIZATION (Aave + Morpho) ===
   if (yieldEnabled && signalMode !== 'producer') {
     try {
       aaveYieldService.enable();
+      morphoYieldService.enable();
       const walletAddr = CONFIG.walletAddress;
-      await aaveYieldService.refreshBalance(walletAddr);
+
+      // Initialize both yield services in parallel
+      await Promise.allSettled([
+        aaveYieldService.refreshBalance(walletAddr),
+        morphoYieldService.refreshBalance(walletAddr),
+      ]);
+
       const ys = aaveYieldService.getState();
-      console.log(`\n🏦 Aave V3 Yield Service: ACTIVE`);
-      console.log(`  💰 aBasUSDC balance: $${ys.aTokenBalance.toFixed(2)}`);
-      console.log(`  📈 Deposited: $${ys.depositedUSDC.toFixed(2)} | Yield earned: $${ys.totalYieldEarned.toFixed(4)}`);
-      console.log(`  📊 Estimated APY: ~${ys.estimatedAPY}%`);
+      const ms = morphoYieldService.getState();
+      console.log(`\n🏦 Yield Services: ACTIVE (Aave + Morpho)`);
+      console.log(`  💰 Aave:   $${ys.aTokenBalance.toFixed(2)} deposited | Yield: $${ys.totalYieldEarned.toFixed(4)} | ~${ys.estimatedAPY}% APY`);
+      console.log(`  💰 Morpho: $${ms.currentValueUSDC.toFixed(2)} deposited | Yield: $${ms.totalYieldEarned.toFixed(4)} | ~${ms.estimatedAPY}% APY`);
       console.log(`  ⚙️ Config: Keep $500 liquid, min deposit $50, min withdraw $25`);
-      // v15.3: Initialize yield optimizer — fetch initial rates
+
+      // v15.3 / v21.2: Initialize yield optimizer — fetch initial rates, select best protocol
       try {
         const rates = await yieldOptimizer.getCurrentRates();
         lastYieldRates = rates;
-        console.log(`  🔍 Yield Optimizer: ${rates.length} protocols monitored`);
+        console.log(`  🔍 Yield Optimizer: ${rates.length} protocols (${rates.filter(r => r.status === 'active').length} active)`);
         rates.forEach(r => console.log(`     ${r.protocol.padEnd(10)} ${r.apy.toFixed(2)}% APY  [${r.status}]`));
+
+        // Auto-select best active protocol on startup
+        const bestActive = rates.find(r => r.status === 'active');
+        if (bestActive) {
+          // If we already have deposits in a protocol, stay there (avoid unnecessary rebalance on restart)
+          if (ms.depositedUSDC > 0 && ys.depositedUSDC === 0) {
+            yieldOptimizer.setCurrentProtocol('morpho');
+            console.log(`  ✅ Active protocol: Morpho (has existing deposits)`);
+          } else if (ys.depositedUSDC > 0) {
+            yieldOptimizer.setCurrentProtocol('aave');
+            console.log(`  ✅ Active protocol: Aave (has existing deposits)`);
+          } else {
+            yieldOptimizer.setCurrentProtocol(bestActive.protocol);
+            console.log(`  ✅ Active protocol: ${bestActive.protocol} (best APY: ${bestActive.apy.toFixed(2)}%)`);
+          }
+        }
       } catch (optErr: any) {
         console.warn(`  ⚠️ Yield optimizer init: ${optErr?.message?.substring(0, 100)} — will retry on cycle`);
       }
     } catch (yieldInitErr: any) {
-      console.warn(`  ⚠️ Aave yield init: ${yieldInitErr.message?.substring(0, 150)} — will retry on first cycle`);
+      console.warn(`  ⚠️ Yield init: ${yieldInitErr.message?.substring(0, 150)} — will retry on first cycle`);
     }
   } else {
-    console.log(`\n🏦 Aave V3 Yield: disabled (set AAVE_YIELD_ENABLED=true to activate)`);
+    console.log(`\n🏦 Yield Services: disabled (set AAVE_YIELD_ENABLED=true to activate)`);
   }
 
   // === DERIVATIVES MODULE INITIALIZATION (v6.0) ===
@@ -15537,9 +15740,18 @@ const healthServer = http.createServer(async (req, res) => {
 
       // === v11.0: AAVE V3 YIELD API ENDPOINT ===
       case '/api/yield':
+        const aaveState = aaveYieldService.getState();
+        const morphoState = morphoYieldService.getState();
         sendJSON(res, 200, {
           enabled: yieldEnabled,
-          ...aaveYieldService.toJSON(),
+          currentProtocol: yieldOptimizer.getCurrentProtocol(),
+          // Combined yield totals
+          totalDepositedUSDC: aaveState.depositedUSDC + morphoState.depositedUSDC,
+          totalValueUSDC: aaveState.aTokenBalance + morphoState.currentValueUSDC,
+          totalYieldEarned: aaveState.totalYieldEarned + morphoState.totalYieldEarned,
+          // Per-protocol breakdown
+          aave: aaveYieldService.toJSON(),
+          morpho: morphoYieldService.toJSON(),
           lastAction: lastYieldAction,
           yieldCycles: yieldCycleCount,
           optimizer: yieldOptimizer.toJSON(),
@@ -15552,7 +15764,9 @@ const healthServer = http.createServer(async (req, res) => {
           rates: lastYieldRates.length > 0 ? lastYieldRates : yieldOptimizer.getRates(),
           aaveDeposited: aaveYieldService.getState().depositedUSDC,
           aaveBalance: aaveYieldService.getState().aTokenBalance,
-          totalYieldEarned: aaveYieldService.getState().totalYieldEarned,
+          morphoDeposited: morphoYieldService.getDepositedUSDC(),
+          morphoValue: morphoYieldService.getState().currentValueUSDC,
+          totalYieldEarned: aaveYieldService.getState().totalYieldEarned + morphoYieldService.getState().totalYieldEarned,
           lastRateCheck: yieldOptimizer.getState().lastRateCheck,
           checkCount: yieldOptimizer.getCheckCount(),
           rebalanceCount: yieldOptimizer.getState().rebalanceCount,
