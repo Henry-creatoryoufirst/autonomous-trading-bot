@@ -421,7 +421,7 @@ const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15, // v21.2: 18%→15% to fund expanded RWA sector (deSPXA)
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "PENDLE", "RSR", "AAVE", "CRV", "ENA", "ETHFI"], // v20.5: Pruned WELL/SEAM/EXTRA/BAL (dust), added AAVE/CRV/ENA/ETHFI (high mcap, real volume)
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI"], // v21.2: Removed PENDLE (chronic underperformer, -$56 realized+unrealized). v20.5: Pruned WELL/SEAM/EXTRA/BAL (dust), added AAVE/CRV/ENA/ETHFI
   },
   // v20.3.1 / v21.2: Tokenized real-world assets — stocks, ETFs, commodities on Base
   TOKENIZED_STOCKS: {
@@ -439,7 +439,7 @@ const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
 
 // v14.3: Tokens that CDP SDK can't swap but CAN be traded via direct DEX swap (Uniswap V3 / Aerodrome).
 // These are NOT blocked — executeDirectDexSwap handles them via account.sendTransaction().
-const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'PENDLE', 'deSPXA']);
+const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'deSPXA']);
 
 // Complete token registry with addresses and metadata
 const TOKEN_REGISTRY: Record<string, {
@@ -567,11 +567,7 @@ const TOKEN_REGISTRY: Record<string, {
     symbol: "MORPHO", name: "Morpho", coingeckoId: "morpho",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  PENDLE: {
-    address: "0xA99F6e6785Da0F5d6fB42495Fe424BCE029Eeb3E",
-    symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
+  // PENDLE removed v21.2 — chronic underperformer, -$56 combined losses, user reports persistent bad fills
   RSR: {
     address: "0xaB36452DbAC151bE02b16Ca17d8919826072f64a",
     symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
@@ -3252,9 +3248,9 @@ interface ExplorationState {
 const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: number }> = {
   rsiOversold:           { min: 20, max: 40, maxStep: 2 },
   rsiOverbought:         { min: 60, max: 80, maxStep: 2 },
-  confluenceBuy:         { min: 5,  max: 30, maxStep: 2 },
+  confluenceBuy:         { min: 5,  max: 28, maxStep: 2 },  // v21.2: capped at 28 (was 30) — bot tuned itself to 30 and stopped trading entirely
   confluenceSell:        { min: -30, max: -5, maxStep: 2 },
-  confluenceStrongBuy:   { min: 25, max: 60, maxStep: 3 },
+  confluenceStrongBuy:   { min: 25, max: 45, maxStep: 3 },  // v21.2: capped at 45 (was 60) — death spiral prevention
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
   profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
@@ -4342,6 +4338,29 @@ function loadTradeHistory() {
           state.adaptiveThresholds.atrTrailMultiplier = ATR_TRAILING_STOP_MULTIPLIER;
         } else {
           state.adaptiveThresholds.atrTrailMultiplier = Math.max(1.5, Math.min(4.0, state.adaptiveThresholds.atrTrailMultiplier));
+        }
+        // v21.2: Clamp ALL adaptive thresholds to THRESHOLD_BOUNDS on restore.
+        // The shadow proposal system drifted confluenceBuy to 30 and confluenceStrongBuy to 60,
+        // which paralyzed the bot (zero trades for 15+ hours). Force back within safe bounds.
+        for (const [field, bounds] of Object.entries(THRESHOLD_BOUNDS)) {
+          const val = (state.adaptiveThresholds as any)[field];
+          if (val !== undefined && typeof val === 'number') {
+            const clamped = Math.max(bounds.min, Math.min(bounds.max, val));
+            if (clamped !== val) {
+              console.log(`  ⚠️ Clamped ${field}: ${val} → ${clamped} (bounds: ${bounds.min}–${bounds.max})`);
+              (state.adaptiveThresholds as any)[field] = clamped;
+            }
+          }
+        }
+        // v21.2: Hard reset — if confluenceBuy drifted above 25, reset to 25.
+        // The bot MUST be able to trade. A threshold of 30 means nothing qualifies.
+        if (state.adaptiveThresholds.confluenceBuy > 25) {
+          console.log(`  🔧 RESET confluenceBuy: ${state.adaptiveThresholds.confluenceBuy} → 25 (was paralyzed)`);
+          state.adaptiveThresholds.confluenceBuy = 25;
+        }
+        if (state.adaptiveThresholds.confluenceStrongBuy > 40) {
+          console.log(`  🔧 RESET confluenceStrongBuy: ${state.adaptiveThresholds.confluenceStrongBuy} → 40 (was paralyzed)`);
+          state.adaptiveThresholds.confluenceStrongBuy = 40;
         }
         console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
         console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
