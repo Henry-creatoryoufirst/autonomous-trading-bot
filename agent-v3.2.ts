@@ -317,26 +317,20 @@ import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from './services/aave-yield.js';
-// v21.2: Morpho yield — lazy import to prevent crash if module fails to load
-let morphoYieldService: any = {
+// v21.2: Morpho yield — DISABLED for now (was crashing Railway deploys)
+// TODO: Re-enable once import issue is resolved
+const morphoYieldService = {
   enable() {}, disable() {}, isEnabled() { return false; },
   getState() { return { enabled: false, depositedUSDC: 0, currentValueUSDC: 0, totalYieldEarned: 0, shareBalance: 0, supplyCount: 0, withdrawCount: 0, lastSupply: null, lastWithdraw: null, estimatedAPY: 0, operations: [] }; },
   getDepositedUSDC() { return 0; },
-  restoreState() {}, toJSON() { return {}; },
-  refreshBalance() { return Promise.resolve(); },
+  restoreState(_s: any) {}, toJSON() { return {}; },
+  refreshBalance(_w: string) { return Promise.resolve(); },
   calculateDepositAmount() { return 0; }, calculateWithdrawAmount() { return 0; },
-  buildDepositCalldata() { return { to: '', data: '', approvalNeeded: false, approvalTo: '', approvalData: '' }; },
-  buildWithdrawCalldata() { return { to: '', data: '' }; },
-  getAllowance() { return Promise.resolve(0n); },
+  buildDepositCalldata(_a: number, _w: string) { return { to: '', data: '', approvalNeeded: false, approvalTo: '', approvalData: '' }; },
+  buildWithdrawCalldata(_a: number, _w: string) { return { to: '', data: '' }; },
+  getAllowance(_w: string) { return Promise.resolve(0n); },
   recordSupply() {}, recordWithdraw() {},
 };
-try {
-  const morphoModule = await import('./services/morpho-yield.js');
-  morphoYieldService = morphoModule.morphoYieldService;
-  console.log('  ✅ Morpho yield service loaded');
-} catch (e: any) {
-  console.warn(`  ⚠️ Morpho yield service failed to load: ${e.message?.substring(0, 100)} — using stub`);
-}
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
 import { yieldOptimizer } from './services/yield-optimizer.js';
