@@ -5992,24 +5992,31 @@ function calculateMarketMomentum(): MarketMomentumSignal {
   score = Math.max(-100, Math.min(100, score));
 
   // Calculate position multiplier based on momentum score
-  // v14.0: More aggressive momentum deployment
-  // Score > +20: market is moving, deploy more aggressively (up to 1.5x)
-  // BTC/ETH +3% or more in 24h: immediate 1.5x multiplier (catching the wave)
-  // Score < -30: market is dropping, be cautious (down to 0.5x)
+  // v21.1: Momentum-based position scaling — ride the wave hard, sit out when dead
+  // The multiplier controls how much of the deploy budget gets used.
+  // Strong momentum = deploy aggressively. Weak/negative = hold back.
   let positionMultiplier = 1.0;
 
-  // v14.0: Direct BTC/ETH momentum boost — when majors move +3%, go 1.5x immediately
-  const btcStrongMomentum = (btc24h ?? 0) >= 3;
-  const ethStrongMomentum = (eth24h ?? 0) >= 3;
-  if (btcStrongMomentum || ethStrongMomentum) {
-    positionMultiplier = 1.5;
+  // v21.1: Tiered momentum boost — the bigger the wave, the harder we ride
+  const btcMom = btc24h ?? 0;
+  const ethMom = eth24h ?? 0;
+  const strongestMajor = Math.max(btcMom, ethMom);
+  const btcStrongMomentum = btcMom >= 2;  // v21.1: lowered from 3% to 2% — catch the wave earlier
+  const ethStrongMomentum = ethMom >= 2;
+
+  if (strongestMajor >= 5) {
+    positionMultiplier = 2.0;  // v21.1: Major wave (+5%+) — go 2x, this is the opportunity
+  } else if (strongestMajor >= 3) {
+    positionMultiplier = 1.75; // Strong wave — ride it hard
+  } else if (btcStrongMomentum || ethStrongMomentum) {
+    positionMultiplier = 1.5;  // Wave building — lean in
   } else if (score > 20) {
-    positionMultiplier = 1.0 + Math.min(0.5, (score - 20) / 160); // +20 to +100 → 1.0 to 1.5
+    positionMultiplier = 1.0 + Math.min(0.5, (score - 20) / 160);
   } else if (score < -30) {
-    positionMultiplier = 1.0 + Math.max(-0.5, (score + 30) / 140); // -30 to -100 → 1.0 to 0.5
+    positionMultiplier = 1.0 + Math.max(-0.5, (score + 30) / 140); // Cautious in downturn
   }
 
-  const deploymentBias = (btcStrongMomentum || ethStrongMomentum || score > 20) ? 'AGGRESSIVE' : score < -30 ? 'CAUTIOUS' : 'NORMAL';
+  const deploymentBias = strongestMajor >= 3 ? 'WAVE' : (btcStrongMomentum || ethStrongMomentum || score > 20) ? 'AGGRESSIVE' : score < -30 ? 'CAUTIOUS' : 'NORMAL';
 
   return {
     score: Math.round(score * 10) / 10,
@@ -9240,22 +9247,26 @@ ${discoveryIntel}═══ TRADING LIMITS ═══
 
   // v20.6: Dynamic addenda only included on heavy (full strategy) cycles
   const dynamicStrategyAddenda = `${cashDeployment?.active ? `
-═══ CASH DEPLOYMENT AWARENESS ═══
-Portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} idle). Deploy budget: $${cashDeployment.deployBudget.toFixed(0)}.
-Look for quality entries in underweight sectors. Prefer tokens with 2+ confirming signals.
-- Focus on: most oversold tokens (RSI < 40), underweight sectors, volume confirming
-- Size: $${Math.min(40, cashDeployment.deployBudget / 4).toFixed(0)}-$${Math.min(80, cashDeployment.deployBudget / 3).toFixed(0)} per trade
-- Confluence threshold lowered by ${cashDeployment.confluenceDiscount} points
-- HOLD is acceptable if no quality entries exist. Better to wait than force bad trades
+═══ CASH STATUS ═══
+Portfolio is ${cashDeployment.cashPercent.toFixed(0)}% USDC ($${availableUSDC.toFixed(0)} available). Deploy budget: $${cashDeployment.deployBudget.toFixed(0)}.
+High cash is NOT a problem — it means you have ammunition for the next wave.
+ONLY deploy if you see real momentum and conviction. Do NOT buy just to reduce cash.
+If the market is dead, HOLD is the best trade. Protect capital for when opportunity arrives.
 ` : ''}${payoutUrgency ? `
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
 ` : ''}`;
 
-  // v20.5: Model routing — use Haiku for routine forced-interval cycles, Sonnet for everything else
+  // v21.1: Model routing — Sonnet for all cycles in difficult markets.
+  // Haiku is only used for routine cycles when the market is calm (F&G > 25, trending up).
+  // In fear/ranging/volatile conditions, every decision matters — use full intelligence.
   const reasonLower = (heavyCycleReason || '').toLowerCase();
+  const currentFG = lastFearGreedValue ?? 50;
+  const currentRegime = state.trading.marketRegime || 'UNKNOWN';
+  const isDifficultMarket = currentFG < 25 || currentRegime === 'RANGING' || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
   const needsSonnet = !heavyCycleReason  // No reason = unknown, play safe with Sonnet
     || SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()))
-    || (cashDeployment?.active);  // Cash deployment mode needs full intelligence
+    || (cashDeployment?.active)  // Cash deployment mode needs full intelligence
+    || isDifficultMarket;  // v21.1: Difficult markets get Sonnet ALWAYS — no intern during a crisis
   const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
   const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
 
