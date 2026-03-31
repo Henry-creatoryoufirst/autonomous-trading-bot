@@ -14961,7 +14961,9 @@ const healthServer = http.createServer(async (req, res) => {
         const uptimeSec = (Date.now() - state.startTime.getTime()) / 1000;
         const lastCycleAge = state.trading.lastCheck ? (Date.now() - state.trading.lastCheck.getTime()) / 1000 : Infinity;
         const inStartupGrace = uptimeSec < 300; // 5 min grace
-        const isHealthy = inStartupGrace || (lastCycleAge < 600);
+        // v21.1: Bumped from 600s to 1200s — 15-min cycles regularly exceed 600s,
+        // causing false "degraded" that locked users out of the dashboard.
+        const isHealthy = inStartupGrace || (lastCycleAge < 1200);
         sendJSON(res, isHealthy ? 200 : 503, {
           status: isHealthy ? "ok" : "degraded",
           version: BOT_VERSION,
