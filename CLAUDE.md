@@ -7,8 +7,8 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 
 ## Quick Reference
 - **Main file:** `agent-v3.2.ts` (~850KB)
-- **Bot wallet:** `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1`
-- **BaseScan:** basescan.org/address/0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1
+- **Bot wallet:** `0x55509AA76E2769eCCa5B4293359e3001dA16dd0F`
+- **BaseScan:** basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F
 - **Network:** Base Mainnet (Coinbase L2)
 
 ## Deployment
