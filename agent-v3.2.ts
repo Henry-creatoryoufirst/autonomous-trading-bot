@@ -2145,6 +2145,12 @@ let lastDerivativesData: {
   commoditySignal: MacroCommoditySignal | null;
 } | null = null;
 
+// === v21.3: TRADE DROUGHT DETECTOR ===
+// Alert if the bot runs for 2+ hours without executing a single trade.
+let lastSuccessfulTradeAt = Date.now(); // Assume last trade was "now" on startup
+let tradeDroughtAlerted = false; // Prevent spamming — alert once per drought
+const TRADE_DROUGHT_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 // === v6.0: LIGHT/HEAVY CYCLE STATE ===
 let lastHeavyCycleAt = 0;
 let lastPriceSnapshot: Map<string, number> = new Map();
@@ -2724,6 +2730,28 @@ function scheduleNextCycle() {
       cycleInProgress = false;
       // v20.5: Flush any dirty state at end of cycle (batched I/O)
       flushStateIfDirty('end-of-cycle');
+
+      // v21.3: TRADE DROUGHT DETECTOR — alert if no trades for 2+ hours
+      const timeSinceLastTrade = Date.now() - lastSuccessfulTradeAt;
+      if (timeSinceLastTrade > TRADE_DROUGHT_THRESHOLD_MS && !tradeDroughtAlerted) {
+        tradeDroughtAlerted = true;
+        const droughtHours = (timeSinceLastTrade / 3600000).toFixed(1);
+        const blockers: string[] = [];
+        if (!CONFIG.trading.enabled) blockers.push("Trading is DISABLED (dry run)");
+        if (!cdpClient) blockers.push("CDP client not initialized");
+        const drawdown = state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0;
+        if (drawdown >= 20) blockers.push(`Circuit breaker: ${drawdown.toFixed(1)}% drawdown`);
+        if (state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD && state.trading.totalPortfolioValue > 0) blockers.push(`Capital floor: $${state.trading.totalPortfolioValue.toFixed(2)} < $${CAPITAL_FLOOR_ABSOLUTE_USD}`);
+        if (blockers.length === 0) blockers.push("No obvious blockers — AI may be choosing HOLD for all tokens");
+
+        console.warn(`\n🚨 TRADE DROUGHT: No trades in ${droughtHours} hours!`);
+        blockers.forEach(b => console.warn(`   ❌ ${b}`));
+        await telegramService.sendAlert({
+          severity: "WARNING",
+          title: `Trade Drought — ${droughtHours}h with zero trades`,
+          message: `Bot has been running but hasn't executed a trade in ${droughtHours} hours.\n\nPossible causes:\n${blockers.map(b => `• ${b}`).join('\n')}\n\nPortfolio: $${state.trading.totalPortfolioValue.toFixed(2)}\nCycles completed: ${state.totalCycles}`,
+        });
+      }
     }
     // After cycle completes, schedule the next one (interval may have changed)
     scheduleNextCycle();
@@ -10318,6 +10346,10 @@ async function executeDirectDexSwap(
     }
     recordExecuted(decision.action === 'BUY' ? (decision.toToken || '') : (decision.fromToken || ''), decision.action, dedupTier, decision.amountUSD);
 
+    // v21.3: Reset trade drought tracker on successful trade
+    lastSuccessfulTradeAt = Date.now();
+    tradeDroughtAlerted = false;
+
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
 
   } catch (error: any) {
@@ -10609,6 +10641,10 @@ async function executeSingleSwap(
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
       markStateDirty(true);
     }
+
+    // v21.3: Reset trade drought tracker on successful trade
+    lastSuccessfulTradeAt = Date.now();
+    tradeDroughtAlerted = false;
 
     return { success: true, txHash, actualTokens: actualTokens > 0 ? actualTokens : undefined };
 
@@ -13740,6 +13776,33 @@ async function main() {
     console.log(`  ⏳ Fresh start — indicators will activate after ~20 hours of data collection`);
   }
 
+  // === v21.3: STARTUP STATUS ALERT — Never silently run in dry-run mode again ===
+  // Send Telegram alert on every startup so we KNOW if trading is live or disabled.
+  const startupBlockers: string[] = [];
+  if (!CONFIG.trading.enabled) startupBlockers.push("TRADING_ENABLED env var is not 'true'");
+  if (!cdpClient) startupBlockers.push("CDP client failed to initialize");
+  const portfolioVal = state.trading.totalPortfolioValue || 0;
+  if (portfolioVal > 0 && portfolioVal < CAPITAL_FLOOR_ABSOLUTE_USD) startupBlockers.push(`Portfolio $${portfolioVal.toFixed(2)} below $${CAPITAL_FLOOR_ABSOLUTE_USD} capital floor`);
+  const startupDrawdown = state.trading.peakValue > 0 ? ((state.trading.peakValue - portfolioVal) / state.trading.peakValue) * 100 : 0;
+  if (startupDrawdown >= 20) startupBlockers.push(`Drawdown ${startupDrawdown.toFixed(1)}% exceeds 20% circuit breaker`);
+
+  if (startupBlockers.length > 0) {
+    console.error(`\n🚨 STARTUP: Trading is BLOCKED by ${startupBlockers.length} issue(s):`);
+    startupBlockers.forEach(b => console.error(`   ❌ ${b}`));
+    await telegramService.sendAlert({
+      severity: "CRITICAL",
+      title: "Bot Started — Trading DISABLED",
+      message: `Bot deployed but CANNOT trade:\n${startupBlockers.map(b => `❌ ${b}`).join('\n')}\n\nPortfolio: $${portfolioVal.toFixed(2)}\nFix these issues and redeploy.`,
+    });
+  } else {
+    console.log(`\n✅ STARTUP: Trading is LIVE — no blockers detected`);
+    await telegramService.sendAlert({
+      severity: "INFO",
+      title: "Bot Started — Trading LIVE 🟢",
+      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min`,
+    });
+  }
+
   // Run immediately
   await runTradingCycle();
 
@@ -15264,12 +15327,30 @@ const healthServer = http.createServer(async (req, res) => {
         // v21.1: Bumped from 600s to 1200s — 15-min cycles regularly exceed 600s,
         // causing false "degraded" that locked users out of the dashboard.
         const isHealthy = inStartupGrace || (lastCycleAge < 1200);
+
+        // v21.3: Include trading status and blockers so health check reveals WHY bot isn't trading
+        const healthBlockers: string[] = [];
+        if (!CONFIG.trading.enabled) healthBlockers.push("TRADING_ENABLED is not 'true' — dry run mode");
+        if (!cdpClient) healthBlockers.push("CDP client not initialized");
+        const healthDrawdown = state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0;
+        if (healthDrawdown >= 20) healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown`);
+        if (state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) healthBlockers.push(`Capital floor breach: $${state.trading.totalPortfolioValue.toFixed(2)}`);
+        const timeSinceTradeHealth = Date.now() - lastSuccessfulTradeAt;
+        const recentTradeCount = state.tradeHistory.filter(t => t.success && t.action !== 'HOLD').length;
+
         sendJSON(res, isHealthy ? 200 : 503, {
           status: isHealthy ? "ok" : "degraded",
           version: BOT_VERSION,
           uptimeSec: Math.round(uptimeSec),
           lastCycleAgeSec: Math.round(lastCycleAge),
           inStartupGrace,
+          tradingEnabled: CONFIG.trading.enabled,
+          tradingMode: CONFIG.trading.enabled ? "LIVE" : "DRY_RUN",
+          tradingBlockers: healthBlockers,
+          totalTradesExecuted: recentTradeCount,
+          hoursSinceLastTrade: Math.round(timeSinceTradeHealth / 3600000 * 10) / 10,
+          portfolioValue: Math.round(state.trading.totalPortfolioValue * 100) / 100,
+          drawdownPercent: Math.round(healthDrawdown * 10) / 10,
         });
         break;
       }
