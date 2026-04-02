@@ -1,6 +1,6 @@
 # Silo Architecture Refactor Plan
 
-## Status: Phases 1-3, 5, 7(partial) COMPLETE (17,451 → 14,000 lines, -19.8%)
+## Status: Phases 1-3, 5, 7 COMPLETE (17,451 → 13,200 lines, -24.4%)
 
 ## Architecture
 ```
@@ -25,6 +25,7 @@ types/                   (903 lines)    — All type definitions (0 inline remai
 | 3b | 7443ca8 | -301 | Extract 25 remaining types to 3 new files |
 | 7p | 1bfbc19 | -878 | Dashboard exports + embedded HTML |
 | 5 | 4175aa7 | -854 | Self-improvement engine (12 functions) |
+| 7r | ef23efc | -800 | Dashboard API (22 functions) |
 
 ## Overview
 Extract the 17,451-line monolith (agent-v3.2.ts) into isolated, testable modules using a silo architecture.
@@ -104,7 +105,7 @@ Zero inline type definitions remain in the monolith.
 ## Phase 6: Extract data fetchers (PENDING — mapped, not yet extracted)
 - On-chain pricing, DeFi intelligence, macro data -> src/data/
 
-## Phase 7: Extract dashboard/API (PARTIAL — exports + HTML done, HTTP server pending)
+## Phase 7: Extract dashboard/API (DONE — exports + HTML + API functions extracted, HTTP routes stay)
 - HTTP server, API routes, dashboard HTML -> src/dashboard/
 
 ## Critical Rules
