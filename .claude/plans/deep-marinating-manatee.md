@@ -1,6 +1,6 @@
 # Silo Architecture Refactor Plan
 
-## Status: Phase 1b COMPLETE
+## Status: Phases 1-3 COMPLETE (17,451 → 15,732 lines, -9.9%)
 
 ## Overview
 Extract the 17,451-line monolith (agent-v3.2.ts) into isolated, testable modules using a silo architecture.
@@ -55,20 +55,22 @@ Barrel re-exports all functions + types.
 Monolith retains thin wrapper functions that pass globals to the extracted modules.
 This preserves the original call signatures so no callers need changes.
 
-## Phase 2: Extract token registry + sectors to config/ (NEXT)
+## Phase 2: Extract token registry + sectors to config/ (DONE)
 - TOKEN_REGISTRY (lines 458-609) -> config/token-registry.ts
 - SECTORS (lines 414-446) -> config/sectors.ts
 - CHAINLINK_FEEDS_BASE (lines 617-626) -> config/chainlink-feeds.ts
 - CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS -> config/swap-routing.ts
 - QUOTE_DECIMALS -> config/token-registry.ts
 
-## Phase 3: Extract market intelligence types
-- Create types/market-intelligence.ts
-- Move GlobalMarketData, MarketData, TradingSignal, SignalPayload, etc.
-- Create types/dex.ts (PoolRegistryEntry, PoolLiquidity)
-- Create types/state.ts (AgentState, BreakerState, PriceHistoryStore)
+## Phase 3: Extract ALL inline types (DONE)
+Phase 3a: Deleted 18 duplicate inline types (types already in types/index.ts or src/algorithm/)
+Phase 3b: Extracted all 25 remaining inline types to 3 new files:
+- types/market-data.ts (170 lines): NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData, CMCIntelligence, TradingSignal, SignalPayload, TradeDecision
+- types/state.ts (159 lines): AgentState, UserDirective, BreakerState, RoundTripTrade, WinRateTruthData, CashDeploymentResult, SignalHistoryEntry, OpportunityCostEntry, HarvestRecipient
+- types/services.ts (77 lines): PoolRegistryEntry, PoolRegistryFile, PoolLiquidity, PriceHistoryStore, OnChainCapitalFlows, BasescanTransfer
+Zero inline type definitions remain in the monolith.
 
-## Phase 4: Extract execution engine
+## Phase 4: Extract execution engine (NEXT)
 - Trade execution functions -> src/execution/
 - DEX swap, TWAP, gas management -> src/execution/
 
