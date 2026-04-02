@@ -329,6 +329,10 @@ import {
   computeAtrStopLevels as _computeAtrStopLevels,
 } from "./src/algorithm/index.js";
 import type { TechnicalIndicators as _TechnicalIndicators } from "./src/algorithm/index.js";
+// Phase 2: Extracted config modules
+import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
+import type { SectorKey } from "./config/token-registry.js";
+import { CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT } from "./config/chainlink-feeds.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
 import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
 // v20.0: MEV Protection
@@ -434,225 +438,12 @@ console.error = (...args: any[]) => {
 };
 
 // ============================================================================
-// EXPANDED TOKEN UNIVERSE - V3.1
+// TOKEN UNIVERSE — imported from config/token-registry.ts (Phase 2)
 // ============================================================================
 
-// Sector definitions with target allocations
-const SECTORS = {
-  BLUE_CHIP: {
-    name: "Blue Chip",
-    targetAllocation: 0.45, // 45% of portfolio
-    description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP"],
-  },
-  AI_TOKENS: {
-    name: "AI & Agents",
-    targetAllocation: 0.20, // 20% of portfolio
-    description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER"],
-  },
-  MEME_COINS: {
-    name: "Meme Coins",
-    targetAllocation: 0.15, // 15% of portfolio
-    description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
-  },
-  DEFI: {
-    name: "DeFi Protocols",
-    targetAllocation: 0.15, // v21.2: 18%→15% to fund expanded RWA sector (deSPXA)
-    description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI"], // v21.2: Removed PENDLE (chronic underperformer, -$56 realized+unrealized). v20.5: Pruned WELL/SEAM/EXTRA/BAL (dust), added AAVE/CRV/ENA/ETHFI
-  },
-  // v20.3.1 / v21.2: Tokenized real-world assets — stocks, ETFs, commodities on Base
-  TOKENIZED_STOCKS: {
-    name: "Tokenized RWAs",
-    targetAllocation: 0.05, // v21.2: 2%→5% with deSPXA (S&P 500) added
-    description: "Tokenized equities and RWAs — S&P 500, stocks via Centrifuge/Backed on Base",
-    tokens: ["bCOIN", "deSPXA"],
-  },
-};
+// TOKEN_REGISTRY, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS — imported from config/token-registry.ts
 
-// v11.4.11: Tokens that CDP SDK's routing service cannot swap (returns "Invalid request").
-// CoinbaseSmartWallet uses AA — can't fall back to direct DEX calls either.
-// These are skipped during forced deployment rotation; alternatives from the same sector are used.
-const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
-
-// v14.3: Tokens that CDP SDK can't swap but CAN be traded via direct DEX swap (Uniswap V3 / Aerodrome).
-// These are NOT blocked — executeDirectDexSwap handles them via account.sendTransaction().
-const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'deSPXA']);
-
-// Complete token registry with addresses and metadata
-const TOKEN_REGISTRY: Record<string, {
-  address: string;
-  symbol: string;
-  name: string;
-  coingeckoId: string;
-  sector: keyof typeof SECTORS;
-  riskLevel: "LOW" | "MEDIUM" | "HIGH";
-  minTradeUSD: number;
-  decimals: number;
-}> = {
-  // === STABLECOINS ===
-  USDC: {
-    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    symbol: "USDC", name: "USD Coin", coingeckoId: "usd-coin",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 1, decimals: 6,
-  },
-  // === BLUE CHIP (40%) ===
-  ETH: {
-    address: "native",
-    symbol: "ETH", name: "Ethereum", coingeckoId: "ethereum",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
-  },
-  WETH: {
-    address: "0x4200000000000000000000000000000000000006",
-    symbol: "WETH", name: "Wrapped Ethereum", coingeckoId: "ethereum",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
-  },
-  cbBTC: {
-    address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
-    symbol: "cbBTC", name: "Coinbase Wrapped BTC", coingeckoId: "bitcoin",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8,
-  },
-  cbETH: {
-    address: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22",
-    symbol: "cbETH", name: "Coinbase Staked ETH", coingeckoId: "coinbase-wrapped-staked-eth",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
-  },
-  wstETH: {
-    address: "0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452",
-    symbol: "wstETH", name: "Wrapped Lido Staked ETH", coingeckoId: "wrapped-steth",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
-  },
-  LINK: {
-    address: "0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196",
-    symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
-  },
-  cbLTC: {
-    address: "0xcb17C9Db87B595717C857a08468793f5bAb6445F",
-    symbol: "cbLTC", name: "Coinbase Wrapped LTC", coingeckoId: "litecoin",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8,
-  },
-  cbXRP: {
-    address: "0xcb585250f852C6c6bf90434AB21A00f02833a4af",
-    symbol: "cbXRP", name: "Coinbase Wrapped XRP", coingeckoId: "ripple",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 6,
-  },
-  // === AI & AGENT TOKENS (20%) ===
-  VIRTUAL: {
-    address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
-    symbol: "VIRTUAL", name: "Virtuals Protocol", coingeckoId: "virtual-protocol",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  AIXBT: {
-    address: "0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825",
-    symbol: "AIXBT", name: "aixbt by Virtuals", coingeckoId: "aixbt",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  // GAME removed — insufficient liquidity on Base DEX pools (failed 5+ consecutive swaps)
-  HIGHER: {
-    address: "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",
-    symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  // CLANKER removed v20.5 — thin liquidity, fallen from highs
-  // === MEME COINS (15%) ===
-  BRETT: {
-    address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
-    symbol: "BRETT", name: "Brett", coingeckoId: "brett",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  DEGEN: {
-    address: "0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed",
-    symbol: "DEGEN", name: "Degen", coingeckoId: "degen-base",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  TOSHI: {
-    address: "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4",
-    symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
-    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
-  // MOCHI, NORMIE, KEYCAT removed v20.5 — dead memes, no volume
-  // === DEFI PROTOCOLS (20%) ===
-  AERO: {
-    address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
-    symbol: "AERO", name: "Aerodrome Finance", coingeckoId: "aerodrome-finance",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  // WELL, SEAM, EXTRA, BAL removed v20.5 — dust positions, negligible volume on Base
-  // v20.5: Added high-conviction DeFi tokens with real market cap and volume
-  AAVE: {
-    address: "0x63706e401c06ac8513145b7687a14804d17f814b",
-    symbol: "AAVE", name: "Aave", coingeckoId: "aave",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  CRV: {
-    address: "0x8Ee73c484A26e0A5df2Ee2a4960B789967dd0415",
-    symbol: "CRV", name: "Curve DAO", coingeckoId: "curve-dao-token",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  ENA: {
-    address: "0x58538e6A46E07434d7E7375Bc268D3cb839C0133",
-    symbol: "ENA", name: "Ethena", coingeckoId: "ethena",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  ETHFI: {
-    address: "0x6c240DDA6b5c336DF09A4D011139beAAA1eA2aa2",
-    symbol: "ETHFI", name: "Ether.fi", coingeckoId: "ether-fi",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  MORPHO: {
-    address: "0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842",
-    symbol: "MORPHO", name: "Morpho", coingeckoId: "morpho",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  // v21.2: PENDLE kept in registry for SELL-ONLY (removed from DEFI sector tokens list so bot won't buy).
-  // Without a registry entry, stop-loss and profit-taking skip the token entirely, trapping the position.
-  PENDLE: {
-    address: "0xA99F6e6785Da0F5d6fB42495Fe424BCE029Eeb3E",
-    symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  RSR: {
-    address: "0xaB36452DbAC151bE02b16Ca17d8919826072f64a",
-    symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
-  },
-  // v20.3.1: Tokenized stocks — Backed Finance bTokens on Base
-  bCOIN: {
-    address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
-    symbol: "bCOIN", name: "Backed Coinbase Stock", coingeckoId: "",
-    sector: "TOKENIZED_STOCKS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
-  },
-  // v21.2: deSPXA — Tokenized S&P 500 via Centrifuge on Base
-  // DeFi wrapper of SPXA (Janus Henderson Anemoy S&P 500 Fund), freely transferable ERC-20.
-  // Trades on Aerodrome. Licensed by S&P Dow Jones Indices.
-  deSPXA: {
-    address: "0x9c5C365e764829876243d0b289733B9D2b729685",
-    symbol: "deSPXA", name: "Centrifuge S&P 500", coingeckoId: "",
-    sector: "TOKENIZED_STOCKS", riskLevel: "LOW", minTradeUSD: 25, decimals: 18,
-  },
-};
-
-// ============================================================================
-// v6.2: CHAINLINK ORACLE PRICE FEEDS — On-chain prices that can never rate-limit
-// ============================================================================
-// AggregatorV3Interface: latestRoundData() → (roundId, answer, startedAt, updatedAt, answeredInRound)
-// answer is price with 8 decimals for USD feeds
-
-const CHAINLINK_FEEDS_BASE: Record<string, { feed: string; decimals: number }> = {
-  ETH:   { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // ETH/USD
-  WETH:  { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Same as ETH
-  cbBTC: { feed: "0x07DA0E54543a844a80ABE69c8A12F22B3aA59f9D", decimals: 8 },  // BTC/USD
-  cbETH: { feed: "0x71041dddad3595F9CEd3DcCFBe3D1F4b0a16Bb70", decimals: 8 },  // Uses ETH feed as proxy
-  LINK:  { feed: "0x17CAb8FE31E32f08326e5E27412894e49B0f9D65", decimals: 8 },  // LINK/USD
-  // v20.3.1: Expanded oracle coverage — stablecoins + additional assets
-  USDC:  { feed: "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B", decimals: 8 },  // USDC/USD — verify stablecoin peg
-  EURC:  { feed: "0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250", decimals: 8 },  // EURC/USD — EUR forex exposure
-};
-
-const CHAINLINK_ABI_FRAGMENT = "0x50d25bcd"; // latestAnswer() → int256
+// CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT — imported from config/chainlink-feeds.ts
 
 /**
  * v6.2: Fetch prices directly from Chainlink oracles on Base via eth_call.
@@ -777,15 +568,7 @@ async function probePoolType(poolAddress: string, dexId: string): Promise<PoolRe
 }
 
 // Token addresses on Base for pool pair detection
-const WETH_ADDRESS = '0x4200000000000000000000000000000000000006'.toLowerCase();
-const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
-const CBBTC_ADDRESS = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf'.toLowerCase();
-const VIRTUAL_ADDRESS = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
-
-// Decimals for quote tokens
-const QUOTE_DECIMALS: Record<string, number> = {
-  WETH: 18, USDC: 6, cbBTC: 8, VIRTUAL: 18,
-};
+// WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS, QUOTE_DECIMALS — imported from config/token-registry.ts
 
 /**
  * Discover pool addresses for all tokens via DexScreener (one-time bootstrap).
