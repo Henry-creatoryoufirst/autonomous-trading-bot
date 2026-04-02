@@ -1,6 +1,30 @@
 # Silo Architecture Refactor Plan
 
-## Status: Phases 1-3 COMPLETE (17,451 → 15,732 lines, -9.9%)
+## Status: Phases 1-3, 5, 7(partial) COMPLETE (17,451 → 14,000 lines, -19.8%)
+
+## Architecture
+```
+agent-v3.2.ts            (14,000 lines — monolith, down from 17,451)
+src/algorithm/           (1,461 lines)  — Pure computation (20 functions)
+src/self-improvement/    (960 lines)    — Pattern analysis, reviews, thresholds (12 functions)
+src/dashboard/           (909 lines)    — Export generators + fallback HTML
+config/                  (1,180+ lines) — Constants, token registry, Chainlink feeds
+types/                   (903 lines)    — All type definitions (0 inline remaining)
+  types/index.ts           Core types
+  types/market-data.ts     Market intelligence + signal types
+  types/state.ts           AgentState, BreakerState, analytics
+  types/services.ts        Pool, price history, on-chain types
+```
+
+## Commit History
+| Phase | Commit | Lines | Description |
+|-------|--------|-------|-------------|
+| 1b | 5ccd075 | -909 | 20 algorithm functions to src/algorithm/ |
+| 2 | f044362 | -217 | Token registry, sectors, Chainlink to config/ |
+| 3a | 1572be2 | -292 | Delete 18 duplicate type definitions |
+| 3b | 7443ca8 | -301 | Extract 25 remaining types to 3 new files |
+| 7p | 1bfbc19 | -878 | Dashboard exports + embedded HTML |
+| 5 | 4175aa7 | -854 | Self-improvement engine (12 functions) |
 
 ## Overview
 Extract the 17,451-line monolith (agent-v3.2.ts) into isolated, testable modules using a silo architecture.
@@ -70,17 +94,17 @@ Phase 3b: Extracted all 25 remaining inline types to 3 new files:
 - types/services.ts (77 lines): PoolRegistryEntry, PoolRegistryFile, PoolLiquidity, PriceHistoryStore, OnChainCapitalFlows, BasescanTransfer
 Zero inline type definitions remain in the monolith.
 
-## Phase 4: Extract execution engine (NEXT)
+## Phase 4: Extract execution engine (PENDING — mapped, not yet extracted)
 - Trade execution functions -> src/execution/
 - DEX swap, TWAP, gas management -> src/execution/
 
-## Phase 5: Extract self-improvement engine
+## Phase 5: Extract self-improvement engine (DONE)
 - Pattern analysis, performance reviews, threshold adaptation -> src/self-improvement/
 
-## Phase 6: Extract data fetchers
+## Phase 6: Extract data fetchers (PENDING — mapped, not yet extracted)
 - On-chain pricing, DeFi intelligence, macro data -> src/data/
 
-## Phase 7: Extract dashboard/API
+## Phase 7: Extract dashboard/API (PARTIAL — exports + HTML done, HTTP server pending)
 - HTTP server, API routes, dashboard HTML -> src/dashboard/
 
 ## Critical Rules
