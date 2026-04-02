@@ -186,6 +186,7 @@ export interface ShadowProposal {
   confirmingReviews: number;
   contradictingReviews: number;
   status: "PENDING" | "PROMOTED" | "REJECTED";
+  regimesSeen?: string[];
 }
 
 // ============================================================================

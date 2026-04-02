@@ -301,7 +301,7 @@ import {
   SYSTEM_PROMPT_STRATEGY,
   estimateTokens,
 } from "./config/constants.js";
-import type { CooldownDecision } from "./types/index.js";
+import type { CooldownDecision, TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, SectorAllocation, TokenCostBasis, MarketRegime } from "./types/index.js";
 // Phase 1b: Extracted algorithm modules
 import {
   calculateRSI as _calculateRSI,
@@ -328,7 +328,7 @@ import {
   calculateInstitutionalPositionSize as _calculateInstitutionalPositionSize,
   computeAtrStopLevels as _computeAtrStopLevels,
 } from "./src/algorithm/index.js";
-import type { TechnicalIndicators as _TechnicalIndicators } from "./src/algorithm/index.js";
+import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence, MarketMomentumSignal } from "./src/algorithm/index.js";
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
 import type { SectorKey } from "./config/token-registry.js";
@@ -2691,60 +2691,7 @@ function initPriceStream() {
 // STATE
 // ============================================================================
 
-interface TradeRecord {
-  timestamp: string;
-  cycle: number;
-  action: "BUY" | "SELL" | "HOLD" | "REBALANCE" | "WITHDRAW";
-  fromToken: string;
-  toToken: string;
-  amountUSD: number;
-  tokenAmount?: number;
-  txHash?: string;
-  success: boolean;
-  error?: string;
-  portfolioValueBefore: number;
-  portfolioValueAfter?: number;
-  reasoning: string;
-  sector?: string;
-  marketConditions: {
-    fearGreed: number;
-    ethPrice: number;
-    btcPrice: number;
-  };
-  // v12.2: Store realized P&L at trade time (not retroactive) for accurate daily scoreboard
-  realizedPnL?: number;
-  // V4.0: Enhanced signal context for self-learning
-  signalContext?: {
-    marketRegime: MarketRegime;
-    confluenceScore: number;             // Score at time of trade
-    rsi: number | null;                  // RSI of traded token
-    macdSignal: string | null;           // MACD signal of traded token
-    btcFundingRate: number | null;       // BTC funding rate at time of trade
-    ethFundingRate: number | null;       // ETH funding rate at time of trade
-    baseTVLChange24h: number | null;     // Base chain TVL change
-    baseDEXVolume24h: number | null;     // Base DEX volume
-    triggeredBy: "AI" | "STOP_LOSS" | "PROFIT_TAKE" | "EXPLORATION" | "FORCED_DEPLOY";  // What initiated the trade
-    isExploration?: boolean;  // V5.0: Whether this was an exploration trade
-    isForced?: boolean;       // v12.2.7: Whether this was a forced deployment trade
-    // v5.1: Enhanced context
-    btcPositioning?: string | null;      // BTC positioning signal
-    ethPositioning?: string | null;      // ETH positioning signal
-    crossAssetSignal?: string | null;    // Cross-asset correlation signal
-    adaptiveSlippage?: number;           // Slippage bps used (MEV protection)
-  };
-}
-
-// V4.0: Trade performance tracking
-interface TradePerformanceStats {
-  totalTrades: number;
-  winRate: number;               // % of trades with positive outcome
-  avgReturnPercent: number;      // Average return per trade
-  bestTrade: { symbol: string; returnPercent: number } | null;
-  worstTrade: { symbol: string; returnPercent: number } | null;
-  avgHoldingPeriod: string;      // Average time between buy and sell
-  profitFactor: number;          // Gross profit / Gross loss
-  winsByRegime: Record<MarketRegime, { wins: number; total: number }>;
-}
+// TradeRecord, TradePerformanceStats — imported from types/index.ts
 
 /**
  * Calculate trade performance stats from history (for AI context)
@@ -2968,84 +2915,7 @@ function calculateWinRateTruth(): WinRateTruthData {
 // PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE
 // ============================================================================
 
-interface StrategyPattern {
-  patternId: string;
-  description: string;
-  conditions: {
-    action: "BUY" | "SELL";
-    regime: MarketRegime;
-    rsiBucket: "OVERSOLD" | "NEUTRAL" | "OVERBOUGHT" | "UNKNOWN";
-    confluenceBucket: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
-  };
-  stats: {
-    wins: number;
-    losses: number;
-    pending: number;           // Trades not yet resolved (no matching sell)
-    avgReturnPercent: number;
-    totalReturnUSD: number;
-    sampleSize: number;
-    lastTriggered: string;
-  };
-  confidence: number;          // 0.2 to 1.0
-}
-
-interface AdaptiveThresholds {
-  rsiOversold: number;              // Default 30
-  rsiOverbought: number;            // Default 70
-  confluenceBuy: number;            // Default 15
-  confluenceSell: number;           // Default -15
-  confluenceStrongBuy: number;      // Default 40
-  confluenceStrongSell: number;     // Default -40
-  profitTakeTarget: number;         // Default 20
-  profitTakeSellPercent: number;    // Default 30
-  stopLossPercent: number;          // Default -25
-  trailingStopPercent: number;      // Default -20
-  // v9.0: ATR-based multiplier tuning
-  atrStopMultiplier: number;        // Default 2.5, tuned 1.5-4.0
-  atrTrailMultiplier: number;       // Default 2.0, tuned 1.5-4.0
-  regimeMultipliers: Record<MarketRegime, number>;  // Position size multiplier per regime
-  history: Array<{
-    timestamp: string;
-    field: string;
-    oldValue: number;
-    newValue: number;
-    reason: string;
-  }>;
-  lastAdapted: string | null;
-  adaptationCount: number;
-}
-
-interface PerformanceReview {
-  timestamp: string;
-  triggerReason: "TRADE_COUNT" | "TIME_ELAPSED";
-  tradesSinceLastReview: number;
-  insights: Array<{
-    category: "REGIME" | "PATTERN" | "THRESHOLD" | "SECTOR" | "ACTIVITY";
-    severity: "INFO" | "WARNING" | "ACTION";
-    message: string;
-  }>;
-  recommendations: Array<{
-    type: "THRESHOLD_CHANGE" | "POSITION_SIZE" | "PATTERN_AVOID" | "PATTERN_FAVOR";
-    description: string;
-    applied: boolean;
-  }>;
-  periodStats: {
-    winRate: number;
-    avgReturn: number;
-    totalTrades: number;
-    bestPattern: string | null;
-    worstPattern: string | null;
-    dominantRegime: MarketRegime | null;
-  };
-}
-
-interface ExplorationState {
-  totalExplorationTrades: number;
-  totalExploitationTrades: number;
-  consecutiveHolds: number;
-  lastTradeTimestamp: string | null;
-  stagnationAlerts: number;
-}
+// StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState — imported from types/index.ts
 
 const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: number }> = {
   rsiOversold:           { min: 20, max: 40, maxStep: 2 },
@@ -3356,16 +3226,7 @@ function runPerformanceReview(reason: "TRADE_COUNT" | "TIME_ELAPSED"): Performan
  * significance checks before being promoted to live. Changes sit in a "shadow" queue
  * and only apply after n=5+ confirming reviews or when p-value proxy drops below 0.10.
  */
-interface ShadowProposal {
-  field: string;
-  proposedDelta: number;
-  reason: string;
-  proposedAt: string;
-  confirmingReviews: number;      // How many subsequent reviews still agree
-  contradictingReviews: number;   // How many subsequent reviews disagree
-  status: "PENDING" | "PROMOTED" | "REJECTED";
-  regimesSeen?: string[];         // v20.0: Market regimes that confirmed this proposal (walk-forward validation)
-}
+// ShadowProposal — imported from types/index.ts
 
 // In-memory shadow proposal queue (persisted via state)
 let shadowProposals: ShadowProposal[] = [];
@@ -3751,34 +3612,7 @@ function getDirectiveThresholdAdjustments(): { confluenceReduction: number; depl
   return { confluenceReduction: 0, deploymentThresholdOverride: null, positionSizeMultiplier: 1.0 };
 }
 
-interface SectorAllocation {
-  name: string;
-  targetPercent: number;
-  currentPercent: number;
-  currentUSD: number;
-  drift: number;
-  tokens: { symbol: string; usdValue: number; percent: number }[];
-}
-
-interface TokenCostBasis {
-  symbol: string;
-  totalInvestedUSD: number;       // Total USD spent buying this token
-  totalTokensAcquired: number;    // Total tokens bought (gross, before sells reduce it)
-  averageCostBasis: number;       // Weighted avg price paid per token
-  currentHolding: number;         // Tokens held right now (synced from on-chain)
-  realizedPnL: number;            // Cumulative profit/loss from sells
-  unrealizedPnL: number;          // (currentPrice - avgCost) * currentHolding
-  peakPrice: number;              // Highest price seen since first purchase
-  peakPriceDate: string;          // When peak occurred
-  firstBuyDate: string;
-  lastTradeDate: string;
-  // v9.0: ATR-based dynamic stops
-  atrStopPercent: number | null;       // Current ATR stop as % (negative, e.g. -12.5)
-  atrTrailPercent: number | null;      // Current ATR trail as % (negative)
-  atrAtEntry: number | null;           // ATR% snapshot at first buy
-  trailActivated: boolean;             // True once position is +1xATR in profit
-  lastAtrUpdate: string | null;        // ISO timestamp of last ATR computation
-}
+// SectorAllocation, TokenCostBasis — imported from types/index.ts
 
 interface AgentState {
   startTime: Date;
@@ -5340,37 +5174,7 @@ function checkStopLoss(
 // DEFI INTELLIGENCE — DefiLlama + Derivatives (Phase 1 Brain Upgrade)
 // ============================================================================
 
-interface DefiLlamaData {
-  baseTVL: number;                    // Total TVL on Base chain in USD
-  baseTVLChange24h: number;           // % change in Base TVL over 24h
-  baseDEXVolume24h: number;           // Total DEX volume on Base in 24h
-  topProtocols: { name: string; tvl: number; change24h: number }[];  // Top Base protocols by TVL
-  protocolTVLByToken: Record<string, { tvl: number; change24h: number }>;  // TVL for tokens we track
-}
-
-interface DerivativesData {
-  btcFundingRate: number;             // BTC perp funding rate (% per 8h)
-  ethFundingRate: number;             // ETH perp funding rate (% per 8h)
-  btcOpenInterest: number;            // BTC total open interest in USD
-  ethOpenInterest: number;            // ETH total open interest in USD
-  btcFundingSignal: "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL";
-  ethFundingSignal: "LONG_CROWDED" | "SHORT_CROWDED" | "NEUTRAL";
-  btcOIChange24h: number;             // % change in BTC OI over 24h
-  ethOIChange24h: number;             // % change in ETH OI over 24h
-  // v5.1: Long/Short Ratio Intelligence
-  btcLongShortRatio: number | null;           // Global long/short account ratio (>1 = more longs)
-  ethLongShortRatio: number | null;           // Global long/short account ratio
-  btcTopTraderLSRatio: number | null;         // Top trader long/short ratio (smart money)
-  ethTopTraderLSRatio: number | null;         // Top trader long/short ratio
-  btcTopTraderPositionRatio: number | null;   // Top trader position long/short ratio
-  ethTopTraderPositionRatio: number | null;   // Top trader position long/short ratio
-  // v5.1: Composite Positioning Signals
-  btcPositioningSignal: "OVERLEVERAGED_LONG" | "OVERLEVERAGED_SHORT" | "SMART_MONEY_LONG" | "SMART_MONEY_SHORT" | "NEUTRAL";
-  ethPositioningSignal: "OVERLEVERAGED_LONG" | "OVERLEVERAGED_SHORT" | "SMART_MONEY_LONG" | "SMART_MONEY_SHORT" | "NEUTRAL";
-  // v5.1: OI + Price Divergence Detection
-  btcOIPriceDivergence: "OI_UP_PRICE_DOWN" | "OI_DOWN_PRICE_UP" | "ALIGNED" | "NEUTRAL";  // Divergence = impending move
-  ethOIPriceDivergence: "OI_UP_PRICE_DOWN" | "OI_DOWN_PRICE_UP" | "ALIGNED" | "NEUTRAL";
-}
+// DefiLlamaData, DerivativesData — imported from src/algorithm/index.ts
 
 interface NewsSentimentData {
   overallSentiment: "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED";
@@ -5406,13 +5210,8 @@ interface MacroData {
   } | null;
 }
 
-type MarketRegime = "TRENDING_UP" | "TRENDING_DOWN" | "RANGING" | "VOLATILE" | "UNKNOWN";
-
-// ============================================================================
-// v10.0: MARKET INTELLIGENCE ENGINE — New Data Types
-// ============================================================================
-
-type AltseasonSignal = "ALTSEASON_ROTATION" | "BTC_DOMINANCE_FLIGHT" | "NEUTRAL";
+// MarketRegime — imported from types/index.ts
+// AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence — imported from src/algorithm/index.ts
 
 interface GlobalMarketData {
   btcDominance: number;
@@ -5424,32 +5223,6 @@ interface GlobalMarketData {
   btcDominanceChange7d: number;
   altseasonSignal: AltseasonSignal;
   lastUpdated: string;
-}
-
-interface SmartRetailDivergence {
-  btcDivergence: number | null;
-  ethDivergence: number | null;
-  btcSignal: "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL";
-  ethSignal: "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL";
-}
-
-interface FundingRateMeanReversion {
-  btcMean: number;
-  btcStdDev: number;
-  btcZScore: number;
-  btcSignal: "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL";
-  ethMean: number;
-  ethStdDev: number;
-  ethZScore: number;
-  ethSignal: "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL";
-}
-
-interface TVLPriceDivergence {
-  divergences: Record<string, {
-    tvlChange: number;
-    priceChange: number;
-    signal: "UNDERVALUED" | "OVERVALUED" | "ALIGNED";
-  }>;
 }
 
 interface StablecoinSupplyData {
@@ -5647,15 +5420,7 @@ let lastKnownPrices: Record<string, { price: number; change24h: number; change7d
 // v9.2: MARKET MOMENTUM OVERLAY — Detects strong market moves to deploy USDC
 // ============================================================================
 
-interface MarketMomentumSignal {
-  score: number;           // -100 to +100 composite momentum score
-  btcChange24h: number;    // BTC 24h % change
-  ethChange24h: number;    // ETH 24h % change
-  fearGreedValue: number;  // 0-100
-  positionMultiplier: number; // 0.5 to 1.5 — applied to position sizing
-  deploymentBias: 'AGGRESSIVE' | 'NORMAL' | 'CAUTIOUS';
-  dataAvailable: boolean;  // false if data sources are down — degrades to NORMAL
-}
+// MarketMomentumSignal — imported from src/algorithm/index.ts
 
 // calculateMarketMomentum — delegated to src/algorithm/market-analysis.ts
 function calculateMarketMomentum(): MarketMomentumSignal {
@@ -7258,64 +7023,7 @@ async function getMarketData(): Promise<MarketData> {
   }
 }
 
-// ============================================================================
-// TECHNICAL INDICATORS ENGINE (Phase 1 Upgrade)
-// ============================================================================
-
-interface TechnicalIndicators {
-  rsi14: number | null;          // Relative Strength Index (14-period)
-  macd: {                        // Moving Average Convergence Divergence
-    macdLine: number;
-    signalLine: number;
-    histogram: number;
-    signal: "BULLISH" | "BEARISH" | "NEUTRAL";
-  } | null;
-  bollingerBands: {              // Bollinger Bands (20-period, 2 std dev)
-    upper: number;
-    middle: number;
-    lower: number;
-    percentB: number;            // 0-1 where price sits in bands (>1 = above upper, <0 = below lower)
-    bandwidth: number;           // Band width as % of middle (volatility measure)
-    signal: "OVERBOUGHT" | "OVERSOLD" | "SQUEEZE" | "NORMAL";
-  } | null;
-  sma20: number | null;         // 20-period Simple Moving Average
-  sma50: number | null;         // 50-period Simple Moving Average (if enough data)
-  volumeChange24h: number | null; // Volume change vs 7-day average
-  // v8.3: ATR + ADX — institutional-grade volatility & trend strength
-  atr14: number | null;          // Average True Range (14-period, dollar value)
-  atrPercent: number | null;     // ATR as % of price (cross-asset comparable)
-  adx14: {                       // Average Directional Index (14-period)
-    adx: number;                 // ADX value 0-100 (trend strength, not direction)
-    plusDI: number;              // +DI (bullish directional indicator)
-    minusDI: number;            // -DI (bearish directional indicator)
-    trend: "STRONG_TREND" | "TRENDING" | "WEAK" | "NO_TREND";
-  } | null;
-  trendDirection: "STRONG_UP" | "UP" | "SIDEWAYS" | "DOWN" | "STRONG_DOWN";
-  overallSignal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
-  confluenceScore: number;       // -100 to +100, aggregated signal strength
-  // v12.3: On-Chain Order Flow Intelligence
-  twapDivergence?: {
-    twapPrice: number;          // 15-min TWAP from pool oracle
-    spotPrice: number;          // Current spot from sqrtPriceX96
-    divergencePct: number;      // (spot - twap) / twap * 100
-    signal: "OVERSOLD" | "OVERBOUGHT" | "NORMAL";
-  } | null;
-  orderFlow?: {
-    netBuyVolumeUSD: number;    // Positive = net buying, negative = net selling
-    buyVolumeUSD: number;       // Total buy-side volume (10 min window)
-    sellVolumeUSD: number;      // Total sell-side volume
-    tradeCount: number;         // Number of swaps in window
-    largeBuyPct: number;        // % of buy volume from trades >$5K (smart money)
-    signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
-  } | null;
-  tickDepth?: {
-    bidDepthUSD: number;        // Total LP capital below current price (support)
-    askDepthUSD: number;        // Total LP capital above current price (resistance)
-    depthRatio: number;         // bid/ask ratio — >1.5 = strong support, <0.67 = strong resistance
-    inRangeLiquidity: number;   // Current liquidity() value in USD terms
-    signal: "STRONG_SUPPORT" | "SUPPORT" | "BALANCED" | "RESISTANCE" | "STRONG_RESISTANCE";
-  } | null;
-}
+// TechnicalIndicators — imported from src/algorithm/index.ts
 
 // v12.0: Price history now comes from the self-accumulating on-chain store
 // No external API calls needed — data accumulates automatically each cycle
