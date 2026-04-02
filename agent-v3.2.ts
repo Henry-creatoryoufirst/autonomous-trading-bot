@@ -340,6 +340,16 @@ import {
   executeChatTool as _executeChatTool, handleChatRequest as _handleChatRequest,
   getDashboardHTML as _getDashboardHTML,
 } from "./src/dashboard/api.js";
+// Phase 4: Extracted execution engine
+import {
+  initRpc, getCurrentRpc as _getCurrentRpc, rotateRpc as _rotateRpc,
+  rpcCall as _rpcCall, getETHBalance as _getETHBalance, getERC20Balance as _getERC20Balance,
+  buildAerodromeExactInputSingleCalldata as _buildAerodromeExactInputSingleCalldata,
+  buildExactInputSingleCalldata as _buildExactInputSingleCalldata,
+  buildExactInputMultihopCalldata as _buildExactInputMultihopCalldata,
+  encodeV3Path as _encodeV3Path,
+  initExecutionHelpers, getTokenAddress as _getTokenAddress, getTokenDecimals as _getTokenDecimals,
+} from "./src/execution/index.js";
 // Phase 1b: Extracted algorithm modules
 import {
   calculateRSI as _calculateRSI,
@@ -6140,67 +6150,12 @@ function formatIndicatorsForPrompt(indicators: Record<string, TechnicalIndicator
 // DIRECT ON-CHAIN BALANCE READING (same as v3.1.1)
 // ============================================================================
 
-// v8.1: Fallback RPC system — rotates through multiple providers on failure
-let currentRpcIndex = 0;
-let rpcFailCounts: number[] = new Array(BASE_RPC_ENDPOINTS.length).fill(0);
-
-function getCurrentRpc(): string {
-  return BASE_RPC_ENDPOINTS[currentRpcIndex] || BASE_RPC_ENDPOINTS[0];
-}
-
-function rotateRpc(failedIndex: number): string {
-  rpcFailCounts[failedIndex]++;
-  // Find the RPC with the fewest recent failures
-  const nextIndex = (failedIndex + 1) % BASE_RPC_ENDPOINTS.length;
-  currentRpcIndex = nextIndex;
-  console.log(`   🔄 RPC rotated: ${BASE_RPC_ENDPOINTS[failedIndex]} → ${BASE_RPC_ENDPOINTS[nextIndex]} (fails: ${rpcFailCounts.join(',')})`);
-  return BASE_RPC_ENDPOINTS[nextIndex];
-}
-
-async function rpcCall(method: string, params: any[]): Promise<any> {
-  // Try current RPC first, then rotate through others
-  for (let rpcAttempt = 0; rpcAttempt < BASE_RPC_ENDPOINTS.length; rpcAttempt++) {
-    const rpcUrl = rpcAttempt === 0 ? getCurrentRpc() : BASE_RPC_ENDPOINTS[(currentRpcIndex + rpcAttempt) % BASE_RPC_ENDPOINTS.length];
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const response = await axios.post(rpcUrl, {
-          jsonrpc: "2.0", id: 1, method, params,
-        }, { timeout: 12000 });
-        if (response.data.error) {
-          throw new Error(`RPC error: ${response.data.error.message}`);
-        }
-        // Success — update current index if we rotated
-        if (rpcAttempt > 0) {
-          currentRpcIndex = (currentRpcIndex + rpcAttempt) % BASE_RPC_ENDPOINTS.length;
-        }
-        return response.data.result;
-      } catch (error: any) {
-        const status = error?.response?.status;
-        const isRetryable = status === 429 || status === 502 || status === 503 ||
-          error?.code === 'ECONNRESET' || error?.code === 'ETIMEDOUT' || error?.code === 'ENOTFOUND';
-        if (isRetryable && attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, attempt * 1500));
-          continue;
-        }
-        // This RPC failed — try next provider
-        break;
-      }
-    }
-  }
-  // All RPCs failed
-  throw new Error(`All ${BASE_RPC_ENDPOINTS.length} RPC endpoints failed for ${method}`);
-}
-
-async function getETHBalance(address: string): Promise<number> {
-  const result = await rpcCall("eth_getBalance", [address, "latest"]);
-  return parseInt(result, 16) / 1e18;
-}
-
-async function getERC20Balance(tokenAddress: string, walletAddress: string, decimals: number = 18): Promise<number> {
-  const data = "0x70a08231" + walletAddress.slice(2).padStart(64, "0");
-  const result = await rpcCall("eth_call", [{ to: tokenAddress, data }, "latest"]);
-  return parseInt(result, 16) / Math.pow(10, decimals);
-}
+// RPC + balance functions — delegated to src/execution/rpc.ts
+const getCurrentRpc = _getCurrentRpc;
+const rotateRpc = _rotateRpc;
+const rpcCall = _rpcCall;
+const getETHBalance = _getETHBalance;
+const getERC20Balance = _getERC20Balance;
 
 // ============================================================================
 // v9.2: AUTO GAS REFUEL — Swap USDC→WETH when ETH gas balance is low
@@ -6946,37 +6901,9 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
 // TRADE EXECUTION - V3.2 via Coinbase CDP SDK
 // ============================================================================
 
-function getTokenAddress(symbol: string): string {
-  // Check static registry first
-  const token = TOKEN_REGISTRY[symbol];
-  if (token) {
-    // For swaps, native ETH should use WETH address
-    if (token.address === "native") {
-      return TOKEN_REGISTRY["WETH"].address;
-    }
-    return token.address;
-  }
-  // v6.1: Check discovered tokens
-  if (tokenDiscoveryEngine) {
-    const discovered = tokenDiscoveryEngine.getDiscoveredTokens().find(
-      t => t.symbol.toUpperCase() === symbol.toUpperCase()
-    );
-    if (discovered) return discovered.address;
-  }
-  throw new Error(`Unknown token: ${symbol}`);
-}
-
-function getTokenDecimals(symbol: string): number {
-  if (TOKEN_REGISTRY[symbol]) return TOKEN_REGISTRY[symbol].decimals;
-  // v6.1: Check discovered tokens
-  if (tokenDiscoveryEngine) {
-    const discovered = tokenDiscoveryEngine.getDiscoveredTokens().find(
-      t => t.symbol.toUpperCase() === symbol.toUpperCase()
-    );
-    if (discovered) return discovered.decimals;
-  }
-  return 18;
-}
+// getTokenAddress, getTokenDecimals — delegated to src/execution/helpers.ts
+const getTokenAddress = _getTokenAddress;
+const getTokenDecimals = _getTokenDecimals;
 
 // v11.4.17: In-flight trade lock — prevents concurrent cycles from executing same trade
 const tradeInFlight = new Set<string>();
@@ -7262,115 +7189,12 @@ const approvalCache = new Set<string>();
 const DEX_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
 const DEX_WETH = "0x4200000000000000000000000000000000000006" as Address;
 
-// exactInputSingle(ExactInputSingleParams) selector: 0x04e45aaf
-// struct ExactInputSingleParams {
-//   address tokenIn, address tokenOut, uint24 fee,
-//   address recipient, uint256 amountIn,
-//   uint256 amountOutMinimum, uint160 sqrtPriceLimitX96
-// }
-const EXACT_INPUT_SINGLE_SELECTOR = "0x04e45aaf";
+// Calldata builders + selectors — delegated to src/execution/calldata.ts
 
-// exactInput(ExactInputParams) selector: 0xb858183f
-// struct ExactInputParams {
-//   bytes path, address recipient, uint256 amountIn,
-//   uint256 amountOutMinimum
-// }
-const EXACT_INPUT_SELECTOR = "0xb858183f";
-
-// v20.4.2: Aerodrome Slipstream selectors — different struct layout (has deadline, uses int24 tickSpacing)
-const AERO_EXACT_INPUT_SINGLE_SELECTOR = "0xa026383e";
-// struct ExactInputSingleParams { address tokenIn, address tokenOut, int24 tickSpacing,
-//   address recipient, uint256 deadline, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96 }
-
-/**
- * v20.4.2: Build Aerodrome Slipstream exactInputSingle calldata.
- * Same concept as Uniswap V3 but with tickSpacing instead of fee, and includes deadline.
- */
-function buildAerodromeExactInputSingleCalldata(
-  tokenIn: Address,
-  tokenOut: Address,
-  tickSpacing: number,
-  recipient: Address,
-  amountIn: bigint,
-  amountOutMin: bigint,
-): `0x${string}` {
-  const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minute deadline
-  const params = [
-    tokenIn.slice(2).toLowerCase().padStart(64, "0"),
-    tokenOut.slice(2).toLowerCase().padStart(64, "0"),
-    (tickSpacing < 0 ? (0x1000000 + tickSpacing) : tickSpacing).toString(16).padStart(64, "0"), // int24 encoding
-    recipient.slice(2).toLowerCase().padStart(64, "0"),
-    deadline.toString(16).padStart(64, "0"),
-    amountIn.toString(16).padStart(64, "0"),
-    amountOutMin.toString(16).padStart(64, "0"),
-    "0".padStart(64, "0"), // sqrtPriceLimitX96 = 0
-  ].join("");
-  return `${AERO_EXACT_INPUT_SINGLE_SELECTOR}${params}` as `0x${string}`;
-}
-
-/**
- * Build Uniswap V3 exactInputSingle calldata.
- * ABI: exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))
- */
-function buildExactInputSingleCalldata(
-  tokenIn: Address,
-  tokenOut: Address,
-  fee: number,
-  recipient: Address,
-  amountIn: bigint,
-  amountOutMin: bigint,
-): `0x${string}` {
-  const params = [
-    tokenIn.slice(2).toLowerCase().padStart(64, "0"),
-    tokenOut.slice(2).toLowerCase().padStart(64, "0"),
-    fee.toString(16).padStart(64, "0"),
-    recipient.slice(2).toLowerCase().padStart(64, "0"),
-    amountIn.toString(16).padStart(64, "0"),
-    amountOutMin.toString(16).padStart(64, "0"),
-    "0".padStart(64, "0"), // sqrtPriceLimitX96 = 0 (no limit)
-  ].join("");
-  return `${EXACT_INPUT_SINGLE_SELECTOR}${params}` as `0x${string}`;
-}
-
-/**
- * Build Uniswap V3 exactInput calldata for multi-hop swaps (token -> WETH -> USDC).
- * Path encoding: tokenIn (20 bytes) + fee (3 bytes) + intermediary (20 bytes) + fee (3 bytes) + tokenOut (20 bytes)
- * ABI: exactInput((bytes,address,uint256,uint256))
- */
-function buildExactInputMultihopCalldata(
-  path: `0x${string}`,
-  recipient: Address,
-  amountIn: bigint,
-  amountOutMin: bigint,
-): `0x${string}` {
-  // ABI encode the tuple: (bytes path, address recipient, uint256 amountIn, uint256 amountOutMin)
-  // Dynamic type (bytes) gets offset pointer first
-  const offsetToPath = "0000000000000000000000000000000000000000000000000000000000000080"; // 128 = 4*32
-  const recipientEncoded = recipient.slice(2).toLowerCase().padStart(64, "0");
-  const amountInEncoded = amountIn.toString(16).padStart(64, "0");
-  const amountOutMinEncoded = amountOutMin.toString(16).padStart(64, "0");
-
-  // bytes path: length (32 bytes) + data (padded to 32-byte boundary)
-  const pathHex = path.startsWith("0x") ? path.slice(2) : path;
-  const pathByteLength = pathHex.length / 2;
-  const pathLengthEncoded = pathByteLength.toString(16).padStart(64, "0");
-  const pathPadded = pathHex.padEnd(Math.ceil(pathHex.length / 64) * 64, "0");
-
-  return `${EXACT_INPUT_SELECTOR}${offsetToPath}${recipientEncoded}${amountInEncoded}${amountOutMinEncoded}${pathLengthEncoded}${pathPadded}` as `0x${string}`;
-}
-
-/**
- * Encode a multi-hop path for Uniswap V3: tokenIn + fee + intermediary + fee + tokenOut
- * Each address is 20 bytes, each fee is 3 bytes.
- */
-function encodeV3Path(tokens: Address[], fees: number[]): `0x${string}` {
-  let path = tokens[0].slice(2).toLowerCase();
-  for (let i = 0; i < fees.length; i++) {
-    path += fees[i].toString(16).padStart(6, "0"); // 3 bytes = 6 hex chars
-    path += tokens[i + 1].slice(2).toLowerCase();
-  }
-  return `0x${path}` as `0x${string}`;
-}
+const buildAerodromeExactInputSingleCalldata = _buildAerodromeExactInputSingleCalldata;
+const buildExactInputSingleCalldata = _buildExactInputSingleCalldata;
+const buildExactInputMultihopCalldata = _buildExactInputMultihopCalldata;
+const encodeV3Path = _encodeV3Path;
 
 /**
  * Execute a direct DEX swap via Uniswap V3 SwapRouter on Base.
@@ -10693,6 +10517,10 @@ function displayBanner() {
 
 async function main() {
   displayBanner();
+
+  // Phase 4: Initialize execution engine
+  initRpc(BASE_RPC_ENDPOINTS);
+  initExecutionHelpers({ TOKEN_REGISTRY, tokenDiscoveryEngine });
 
   // Phase 5: Initialize self-improvement engine with state references
   initSelfImprovement({ state, getActiveDirectives });
