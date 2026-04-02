@@ -302,6 +302,33 @@ import {
   estimateTokens,
 } from "./config/constants.js";
 import type { CooldownDecision } from "./types/index.js";
+// Phase 1b: Extracted algorithm modules
+import {
+  calculateRSI as _calculateRSI,
+  calculateEMA as _calculateEMA,
+  calculateMACD as _calculateMACD,
+  calculateBollingerBands as _calculateBollingerBands,
+  calculateSMA as _calculateSMA,
+  calculateATR as _calculateATR,
+  calculateADX as _calculateADX,
+  determineTrend as _determineTrend,
+  decodeSqrtPriceX96 as _decodeSqrtPriceX96,
+  calculateConfluence as _calculateConfluence,
+  determineMarketRegime as _determineMarketRegime,
+  calculateMarketMomentum as _calculateMarketMomentum,
+  computeSmartRetailDivergence as _computeSmartRetailDivergence,
+  computeFundingMeanReversion as _computeFundingMeanReversion,
+  computeTVLPriceDivergence as _computeTVLPriceDivergence,
+  getAdjustedSectorTargets as _getAdjustedSectorTargets,
+  computeLocalAltseasonSignal as _computeLocalAltseasonSignal,
+  computePriceChange as _computePriceChange,
+  getEffectiveKellyCeiling as _getEffectiveKellyCeiling,
+  calculateKellyPositionSize as _calculateKellyPositionSize,
+  calculateVolatilityMultiplier as _calculateVolatilityMultiplier,
+  calculateInstitutionalPositionSize as _calculateInstitutionalPositionSize,
+  computeAtrStopLevels as _computeAtrStopLevels,
+} from "./src/algorithm/index.js";
+import type { TechnicalIndicators as _TechnicalIndicators } from "./src/algorithm/index.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
 import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
 // v20.0: MEV Protection
@@ -909,31 +936,8 @@ async function discoverPoolAddresses(): Promise<void> {
   }
 }
 
-/**
- * Decode sqrtPriceX96 from Uniswap V3 / Aerodrome V3 slot0 into a human-readable price.
- * price = (sqrtPriceX96 / 2^96)^2 adjusted for token decimal difference.
- * Returns: amount of token1 per 1 token0 (decimal-adjusted).
- * i.e., price of token0 denominated in token1.
- */
-function decodeSqrtPriceX96(sqrtPriceX96Hex: string, token0Decimals: number, token1Decimals: number): number {
-  // sqrtPriceX96 is the first 32 bytes of slot0 return data
-  const sqrtPriceX96 = BigInt('0x' + sqrtPriceX96Hex.slice(0, 64));
-  if (sqrtPriceX96 === 0n) return 0;
-
-  // price = (sqrtPriceX96)^2 / 2^192 * 10^(token0Decimals - token1Decimals)
-  // sqrtPriceX96 is up to 160 bits → squared is up to 320 bits.
-  // We must do BigInt division first to stay within Number precision.
-  const numerator = sqrtPriceX96 * sqrtPriceX96;
-  const Q192 = 2n ** 192n;
-
-  // Split into integer and fractional parts to preserve precision
-  const intPart = numerator / Q192;
-  const remainder = numerator % Q192;
-  const rawPrice = Number(intPart) + Number(remainder) / Number(Q192);
-
-  const decimalAdjustment = 10 ** (token0Decimals - token1Decimals);
-  return rawPrice * decimalAdjustment;
-}
+// decodeSqrtPriceX96 — delegated to src/algorithm/indicators.ts
+const decodeSqrtPriceX96 = _decodeSqrtPriceX96;
 
 /**
  * Read a single token's price from its on-chain DEX pool.
@@ -1704,29 +1708,9 @@ async function fetchAllOnChainIntelligence(
   }
 }
 
-/**
- * Compute percentage price change from history.
- * lookbackMs: how far back to look (e.g., 24h = 86400000)
- */
+// computePriceChange — delegated to src/algorithm/market-analysis.ts
 function computePriceChange(symbol: string, currentPrice: number, lookbackMs: number): number {
-  const entry = priceHistoryStore.tokens[symbol];
-  if (!entry || entry.timestamps.length < 2 || currentPrice <= 0) return 0;
-
-  const target = Date.now() - lookbackMs;
-  let closestIdx = 0;
-  let closestDiff = Infinity;
-
-  for (let i = entry.timestamps.length - 1; i >= 0; i--) {
-    const diff = Math.abs(entry.timestamps[i] - target);
-    if (diff < closestDiff) {
-      closestDiff = diff;
-      closestIdx = i;
-    }
-    if (entry.timestamps[i] < target) break;
-  }
-
-  const oldPrice = entry.prices[closestIdx];
-  return oldPrice > 0 ? ((currentPrice - oldPrice) / oldPrice) * 100 : 0;
+  return _computePriceChange(priceHistoryStore.tokens[symbol], currentPrice, lookbackMs);
 }
 
 // Volume enrichment state
@@ -1786,39 +1770,13 @@ async function enrichVolumeData(): Promise<Map<string, number>> {
   return volumes;
 }
 
-/**
- * Compute local altseason signal from BTC/ETH price ratio tracked in price history.
- * Replaces fetchCoinGeckoGlobal() — no external API needed.
- */
+// computeLocalAltseasonSignal — delegated to src/algorithm/market-analysis.ts
 function computeLocalAltseasonSignal(): AltseasonSignal {
-  const btcHistory = priceHistoryStore.tokens['cbBTC'];
-  const ethHistory = priceHistoryStore.tokens['ETH'] || priceHistoryStore.tokens['WETH'];
-
-  if (!btcHistory || !ethHistory || btcHistory.prices.length < 24 || ethHistory.prices.length < 24) {
-    return 'NEUTRAL'; // Not enough data yet
-  }
-
-  const currentBtc = btcHistory.prices[btcHistory.prices.length - 1];
-  const currentEth = ethHistory.prices[ethHistory.prices.length - 1];
-  if (!currentBtc || !currentEth || currentEth === 0) return 'NEUTRAL';
-
-  const currentRatio = currentBtc / currentEth;
-
-  // Look back ~7 days (168 hourly points) or as far as we have
-  const lookbackIdx = Math.max(0, btcHistory.prices.length - 168);
-  const oldBtc = btcHistory.prices[lookbackIdx];
-  const oldEthIdx = Math.max(0, ethHistory.prices.length - 168);
-  const oldEth = ethHistory.prices[oldEthIdx];
-  if (!oldBtc || !oldEth || oldEth === 0) return 'NEUTRAL';
-
-  const oldRatio = oldBtc / oldEth;
-  if (oldRatio === 0) return 'NEUTRAL';
-
-  const ratioChange = ((currentRatio - oldRatio) / oldRatio) * 100;
-
-  if (ratioChange > BTC_DOMINANCE_CHANGE_THRESHOLD * 2.5) return 'BTC_DOMINANCE_FLIGHT';
-  if (ratioChange < -BTC_DOMINANCE_CHANGE_THRESHOLD * 2.5) return 'ALTSEASON_ROTATION';
-  return 'NEUTRAL';
+  return _computeLocalAltseasonSignal(
+    priceHistoryStore.tokens['cbBTC'],
+    priceHistoryStore.tokens['ETH'] || priceHistoryStore.tokens['WETH'],
+    BTC_DOMINANCE_CHANGE_THRESHOLD,
+  );
 }
 
 /**
@@ -5151,66 +5109,14 @@ function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdVal
 // v9.0: ATR-BASED DYNAMIC STOP LEVELS
 // ============================================================================
 
-/**
- * Pure function: computes ATR-relative stop and trail levels for a position.
- * Returns null if ATR data is unavailable.
- *
- * Logic:
- * - rawStop = -(sectorMultiplier × atrPercent), clamped to [ATR_STOP_FLOOR, ATR_STOP_CEILING]
- * - Only tightens stops: Math.max(newStop, existingStop) — both negative, max = tighter
- * - Trail activates when unrealized gain >= ATR_TRAIL_ACTIVATION_MULTIPLIER × atrPercent
- * - Trail never moves down (ratchet up only)
- */
+// computeAtrStopLevels — delegated to src/algorithm/risk.ts
 function computeAtrStopLevels(
-  symbol: string,
-  sector: string | undefined,
-  atrPercent: number | null,
-  currentPrice: number,
-  costBasis: TokenCostBasis,
+  symbol: string, sector: string | undefined, atrPercent: number | null,
+  currentPrice: number, costBasis: TokenCostBasis,
 ): { stopPercent: number; trailPercent: number; trailActivated: boolean } | null {
-  if (atrPercent === null || atrPercent <= 0) return null;
-
-  const sectorKey = sector || "BLUE_CHIP";
-  const sectorMult = SECTOR_ATR_MULTIPLIERS[sectorKey] || 2.5;
-  const adaptiveStopMult = state.adaptiveThresholds.atrStopMultiplier;
-  const adaptiveTrailMult = state.adaptiveThresholds.atrTrailMultiplier;
-
-  // v10.2: ATR stop includes sector multiplier — riskier sectors get wider stops
-  // e.g. MEME (sectorMult=2.0) with 4% ATR, adaptiveStop=2.5: -(2.0 × 2.5 × 4) = -20%
-  //      BLUE_CHIP (sectorMult=1.5) with 2% ATR, adaptiveStop=2.5: -(1.5 × 2.5 × 2) = -7.5%
-  const computedStop = -(sectorMult * adaptiveStopMult * atrPercent);
-
-  // Clamp to floor/ceiling
-  const clampedStop = Math.max(ATR_STOP_FLOOR_PERCENT, Math.min(ATR_STOP_CEILING_PERCENT, computedStop));
-
-  // Only tighten: use tighter of new ATR stop vs existing ATR stop (both negative, max = tighter)
-  let finalStop = clampedStop;
-  if (costBasis.atrStopPercent !== null) {
-    finalStop = Math.max(clampedStop, costBasis.atrStopPercent);
-  }
-
-  // Compute trailing stop distance
-  const computedTrail = -(adaptiveTrailMult * atrPercent);
-  const clampedTrail = Math.max(ATR_STOP_FLOOR_PERCENT, Math.min(ATR_STOP_CEILING_PERCENT, computedTrail));
-
-  // Trail only ratchets tighter
-  let finalTrail = clampedTrail;
-  if (costBasis.atrTrailPercent !== null) {
-    finalTrail = Math.max(clampedTrail, costBasis.atrTrailPercent);
-  }
-
-  // Check trail activation: gain >= ATR_TRAIL_ACTIVATION_MULTIPLIER × atrPercent
-  const gainPercent = costBasis.averageCostBasis > 0
-    ? ((currentPrice - costBasis.averageCostBasis) / costBasis.averageCostBasis) * 100
-    : 0;
-  const activationThreshold = ATR_TRAIL_ACTIVATION_MULTIPLIER * atrPercent;
-  const trailActivated = costBasis.trailActivated || gainPercent >= activationThreshold;
-
-  return {
-    stopPercent: finalStop,
-    trailPercent: finalTrail,
-    trailActivated,
-  };
+  return _computeAtrStopLevels(symbol, sector, atrPercent, currentPrice, costBasis,
+    state.adaptiveThresholds,
+    { ATR_STOP_FLOOR_PERCENT, ATR_STOP_CEILING_PERCENT, ATR_TRAIL_ACTIVATION_MULTIPLIER, SECTOR_ATR_MULTIPLIERS });
 }
 
 // ============================================================================
@@ -5929,130 +5835,26 @@ let currentAltseasonSignal: AltseasonSignal = "NEUTRAL";
 
 // v12.0: fetchCoinGeckoGlobal() removed — replaced by computeLocalAltseasonSignal() (on-chain BTC/ETH ratio)
 
-/**
- * v10.0: Compute Smart Money vs Retail Divergence Score from existing Binance data
- */
+// computeSmartRetailDivergence — delegated to src/algorithm/market-analysis.ts
 function computeSmartRetailDivergence(derivatives: DerivativesData | null): SmartRetailDivergence | null {
-  if (!derivatives) return null;
-  const toLongPct = (ratio: number | null): number | null => ratio === null ? null : (ratio / (1 + ratio)) * 100;
-
-  const btcRetailLong = toLongPct(derivatives.btcLongShortRatio);
-  const btcSmartLong = toLongPct(derivatives.btcTopTraderLSRatio);
-  const ethRetailLong = toLongPct(derivatives.ethLongShortRatio);
-  const ethSmartLong = toLongPct(derivatives.ethTopTraderLSRatio);
-
-  const btcDiv = (btcSmartLong !== null && btcRetailLong !== null) ? btcSmartLong - btcRetailLong : null;
-  const ethDiv = (ethSmartLong !== null && ethRetailLong !== null) ? ethSmartLong - ethRetailLong : null;
-
-  const classify = (div: number | null): "STRONG_BUY" | "STRONG_SELL" | "NEUTRAL" => {
-    if (div === null) return "NEUTRAL";
-    if (div > SMART_RETAIL_DIVERGENCE_THRESHOLD) return "STRONG_BUY";
-    if (div < -SMART_RETAIL_DIVERGENCE_THRESHOLD) return "STRONG_SELL";
-    return "NEUTRAL";
-  };
-
-  return { btcDivergence: btcDiv, ethDivergence: ethDiv, btcSignal: classify(btcDiv), ethSignal: classify(ethDiv) };
+  return _computeSmartRetailDivergence(derivatives, SMART_RETAIL_DIVERGENCE_THRESHOLD);
 }
 
-/**
- * v10.0: Funding Rate Mean-Reversion Signal — tracks 7 days, detects z-score extremes
- */
+// computeFundingMeanReversion — delegated to src/algorithm/market-analysis.ts (mutates fundingRateHistory)
 function computeFundingMeanReversion(derivatives: DerivativesData | null): FundingRateMeanReversion | null {
-  if (!derivatives) return null;
-  // v10.2: Guard against null funding rates contaminating history
-  if (derivatives.btcFundingRate === null || derivatives.ethFundingRate === null) return null;
-
-  fundingRateHistory.btc.push(derivatives.btcFundingRate);
-  fundingRateHistory.eth.push(derivatives.ethFundingRate);
-  if (fundingRateHistory.btc.length > FUNDING_RATE_HISTORY_LENGTH) fundingRateHistory.btc = fundingRateHistory.btc.slice(-FUNDING_RATE_HISTORY_LENGTH);
-  if (fundingRateHistory.eth.length > FUNDING_RATE_HISTORY_LENGTH) fundingRateHistory.eth = fundingRateHistory.eth.slice(-FUNDING_RATE_HISTORY_LENGTH);
-
-  if (fundingRateHistory.btc.length < 5) return null;
-
-  const stats = (arr: number[]) => {
-    const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-    const variance = arr.reduce((s, x) => s + Math.pow(x - mean, 2), 0) / arr.length;
-    return { mean, stdDev: Math.sqrt(variance) };
-  };
-
-  const btc = stats(fundingRateHistory.btc);
-  const eth = stats(fundingRateHistory.eth);
-  const btcZ = btc.stdDev > 0 && isFinite(btc.mean) ? (derivatives.btcFundingRate! - btc.mean) / btc.stdDev : 0;
-  const ethZ = eth.stdDev > 0 && isFinite(eth.mean) ? (derivatives.ethFundingRate! - eth.mean) / eth.stdDev : 0;
-
-  const classifyZ = (z: number): "CROWDED_LONGS_REVERSAL" | "CROWDED_SHORTS_BOUNCE" | "NEUTRAL" => {
-    if (z > FUNDING_RATE_STD_DEV_THRESHOLD) return "CROWDED_LONGS_REVERSAL";
-    if (z < -FUNDING_RATE_STD_DEV_THRESHOLD) return "CROWDED_SHORTS_BOUNCE";
-    return "NEUTRAL";
-  };
-
-  return {
-    btcMean: btc.mean, btcStdDev: btc.stdDev, btcZScore: btcZ, btcSignal: classifyZ(btcZ),
-    ethMean: eth.mean, ethStdDev: eth.stdDev, ethZScore: ethZ, ethSignal: classifyZ(ethZ),
-  };
+  return _computeFundingMeanReversion(derivatives, fundingRateHistory, FUNDING_RATE_HISTORY_LENGTH, FUNDING_RATE_STD_DEV_THRESHOLD);
 }
 
-/**
- * v10.0: TVL-Price Divergence per Token — uses existing DefiLlama + on-chain price data
- */
+// computeTVLPriceDivergence — delegated to src/algorithm/market-analysis.ts
 function computeTVLPriceDivergence(defi: DefiLlamaData | null, tokens: MarketData["tokens"]): TVLPriceDivergence | null {
-  if (!defi || !defi.protocolTVLByToken || Object.keys(defi.protocolTVLByToken).length === 0) return null;
-
-  const divergences: TVLPriceDivergence["divergences"] = {};
-  for (const [symbol, tvlData] of Object.entries(defi.protocolTVLByToken)) {
-    const tokenData = tokens.find(t => t.symbol === symbol);
-    if (!tokenData) continue;
-    const tvlChange = tvlData.change24h;
-    const priceChange = tokenData.priceChange24h;
-    let signal: "UNDERVALUED" | "OVERVALUED" | "ALIGNED" = "ALIGNED";
-    if (tvlChange > TVL_PRICE_DIVERGENCE_THRESHOLD && priceChange < 0) signal = "UNDERVALUED";
-    else if (tvlChange < -TVL_PRICE_DIVERGENCE_THRESHOLD && priceChange > 0) signal = "OVERVALUED";
-    divergences[symbol] = { tvlChange, priceChange, signal };
-  }
-  return { divergences };
+  return _computeTVLPriceDivergence(defi, tokens, TVL_PRICE_DIVERGENCE_THRESHOLD);
 }
 
 // v12.0: fetchStablecoinSupply() removed — replaced by fetchBaseUSDCSupply() (on-chain totalSupply)
 
-/**
- * v10.0: Dynamic sector targets based on altseason/dominance signal
- */
+// getAdjustedSectorTargets — delegated to src/algorithm/market-analysis.ts
 function getAdjustedSectorTargets(signal: AltseasonSignal): Record<string, number> {
-  const adjusted: Record<string, number> = {};
-  for (const [key, sector] of Object.entries(SECTORS)) {
-    adjusted[key] = sector.targetAllocation;
-  }
-  if (signal === "ALTSEASON_ROTATION") {
-    adjusted.AI_TOKENS = Math.min(0.30, (adjusted.AI_TOKENS || 0) + ALTSEASON_SECTOR_BOOST.AI_TOKENS);
-    adjusted.MEME_COINS = Math.min(0.30, (adjusted.MEME_COINS || 0) + ALTSEASON_SECTOR_BOOST.MEME_COINS);
-    adjusted.BLUE_CHIP = Math.max(0.25, (adjusted.BLUE_CHIP || 0) + ALTSEASON_SECTOR_BOOST.BLUE_CHIP);
-    adjusted.DEFI = (adjusted.DEFI || 0) + ALTSEASON_SECTOR_BOOST.DEFI;
-  } else if (signal === "BTC_DOMINANCE_FLIGHT") {
-    adjusted.BLUE_CHIP = Math.min(0.55, (adjusted.BLUE_CHIP || 0) + BTC_DOMINANCE_SECTOR_BOOST.BLUE_CHIP);
-    adjusted.AI_TOKENS = Math.max(0.15, (adjusted.AI_TOKENS || 0) + BTC_DOMINANCE_SECTOR_BOOST.AI_TOKENS);
-    adjusted.MEME_COINS = Math.max(0.10, (adjusted.MEME_COINS || 0) + BTC_DOMINANCE_SECTOR_BOOST.MEME_COINS);
-    adjusted.DEFI = Math.max(0.15, (adjusted.DEFI || 0) + BTC_DOMINANCE_SECTOR_BOOST.DEFI);
-  }
-
-  // v14.0: Blue Chip Momentum Boost — when BTC is trending up (+2% 24h), temporarily
-  // raise BLUE_CHIP target from base to 50% by reducing MEME_COINS allocation.
-  // This stacks with BTC_DOMINANCE_FLIGHT but also fires independently on BTC uptrends.
-  const btcPrice = lastKnownPrices['cbBTC'] || lastKnownPrices['BTC'];
-  if (btcPrice && btcPrice.change24h >= 2) {
-    const currentBlueChip = adjusted.BLUE_CHIP || 0;
-    const currentMeme = adjusted.MEME_COINS || 0;
-    if (currentBlueChip < 0.50) {
-      const boost = Math.min(0.10, 0.50 - currentBlueChip); // Boost up to 50%
-      adjusted.BLUE_CHIP = currentBlueChip + boost;
-      adjusted.MEME_COINS = Math.max(0.05, currentMeme - boost); // Take from meme allocation
-    }
-  }
-
-  const sum = Object.values(adjusted).reduce((a, b) => a + b, 0);
-  if (sum > 0 && Math.abs(sum - 1.0) > 0.001) {
-    for (const key of Object.keys(adjusted)) adjusted[key] = adjusted[key] / sum;
-  }
-  return adjusted;
+  return _getAdjustedSectorTargets(signal, SECTORS, ALTSEASON_SECTOR_BOOST as any, BTC_DOMINANCE_SECTOR_BOOST as any, lastKnownPrices);
 }
 
 // Last-known prices cache — prevents $0 portfolio between cycles
@@ -6072,84 +5874,9 @@ interface MarketMomentumSignal {
   dataAvailable: boolean;  // false if data sources are down — degrades to NORMAL
 }
 
+// calculateMarketMomentum — delegated to src/algorithm/market-analysis.ts
 function calculateMarketMomentum(): MarketMomentumSignal {
-  const defaultSignal: MarketMomentumSignal = {
-    score: 0, btcChange24h: 0, ethChange24h: 0, fearGreedValue: 50,
-    positionMultiplier: 1.0, deploymentBias: 'NORMAL', dataAvailable: false,
-  };
-
-  // Gather data — each source is optional, missing data degrades gracefully
-  const btcData = lastKnownPrices['ETH'] ? null : null; // placeholder
-  const btc24h = lastKnownPrices['cbBTC']?.change24h ?? lastKnownPrices['BTC']?.change24h ?? null;
-  const eth24h = lastKnownPrices['WETH']?.change24h ?? lastKnownPrices['ETH']?.change24h ?? null;
-  const fg = lastFearGreedValue > 0 ? lastFearGreedValue : null;
-
-  // If we have no price data at all, return default (graceful degradation)
-  if (btc24h === null && eth24h === null && fg === null) {
-    return defaultSignal;
-  }
-
-  let score = 0;
-  let dataPoints = 0;
-
-  // v11.5: Pure price-action momentum — no F&G. BTC 55% weight, ETH 45% weight.
-  // BTC momentum component (weight: 55%)
-  if (btc24h !== null) {
-    // Scale: +5% BTC move = +50 score, -5% = -50 score, capped at ±55
-    score += Math.max(-55, Math.min(55, btc24h * 10)) * 0.55;
-    dataPoints++;
-  }
-
-  // ETH momentum component (weight: 45%)
-  if (eth24h !== null) {
-    score += Math.max(-45, Math.min(45, eth24h * 10)) * 0.45;
-    dataPoints++;
-  }
-
-  // Normalize if we have partial data
-  if (dataPoints > 0 && dataPoints < 2) {
-    score = score * 2 * 0.85; // Scale up but discount for single data point
-  }
-
-  // Clamp to -100 to +100
-  score = Math.max(-100, Math.min(100, score));
-
-  // Calculate position multiplier based on momentum score
-  // v21.1: Momentum-based position scaling — ride the wave hard, sit out when dead
-  // The multiplier controls how much of the deploy budget gets used.
-  // Strong momentum = deploy aggressively. Weak/negative = hold back.
-  let positionMultiplier = 1.0;
-
-  // v21.1: Tiered momentum boost — the bigger the wave, the harder we ride
-  const btcMom = btc24h ?? 0;
-  const ethMom = eth24h ?? 0;
-  const strongestMajor = Math.max(btcMom, ethMom);
-  const btcStrongMomentum = btcMom >= 2;  // v21.1: lowered from 3% to 2% — catch the wave earlier
-  const ethStrongMomentum = ethMom >= 2;
-
-  if (strongestMajor >= 5) {
-    positionMultiplier = 2.0;  // v21.1: Major wave (+5%+) — go 2x, this is the opportunity
-  } else if (strongestMajor >= 3) {
-    positionMultiplier = 1.75; // Strong wave — ride it hard
-  } else if (btcStrongMomentum || ethStrongMomentum) {
-    positionMultiplier = 1.5;  // Wave building — lean in
-  } else if (score > 20) {
-    positionMultiplier = 1.0 + Math.min(0.5, (score - 20) / 160);
-  } else if (score < -30) {
-    positionMultiplier = 1.0 + Math.max(-0.5, (score + 30) / 140); // Cautious in downturn
-  }
-
-  const deploymentBias = strongestMajor >= 3 ? 'WAVE' : (btcStrongMomentum || ethStrongMomentum || score > 20) ? 'AGGRESSIVE' : score < -30 ? 'CAUTIOUS' : 'NORMAL';
-
-  return {
-    score: Math.round(score * 10) / 10,
-    btcChange24h: btc24h ?? 0,
-    ethChange24h: eth24h ?? 0,
-    fearGreedValue: fg ?? 50,
-    positionMultiplier: Math.round(positionMultiplier * 100) / 100,
-    deploymentBias,
-    dataAvailable: dataPoints > 0,
-  };
+  return _calculateMarketMomentum(lastKnownPrices, lastFearGreedValue);
 }
 
 // Store last momentum signal for dashboard access
@@ -6259,169 +5986,40 @@ let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
  * Under $10K, use 12% ceiling (more capital per trade to overcome minimums and fees).
  * Over $10K, use the standard 8% ceiling.
  */
+// ============================================================================
+// POSITION SIZING — delegated to src/algorithm/position-sizing.ts (wrappers pass globals)
+// ============================================================================
+const _kellyConstants = {
+  KELLY_FRACTION, KELLY_MIN_TRADES, KELLY_ROLLING_WINDOW,
+  KELLY_POSITION_FLOOR_USD, KELLY_POSITION_CEILING_PCT,
+  KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_SMALL_PORTFOLIO_THRESHOLD,
+};
+const _volConstants = {
+  VOL_TARGET_DAILY_PCT, VOL_HIGH_THRESHOLD, VOL_HIGH_REDUCTION,
+  VOL_LOW_THRESHOLD, VOL_LOW_BOOST,
+};
+
 function getEffectiveKellyCeiling(portfolioValue: number): number {
-  return portfolioValue < KELLY_SMALL_PORTFOLIO_THRESHOLD
-    ? KELLY_SMALL_PORTFOLIO_CEILING_PCT
-    : KELLY_POSITION_CEILING_PCT;
+  return _getEffectiveKellyCeiling(portfolioValue, KELLY_SMALL_PORTFOLIO_THRESHOLD, KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_CEILING_PCT);
 }
 
-/**
- * Quarter Kelly Position Sizing
- * Uses rolling window of recent trades to calculate mathematically optimal bet size.
- * Returns the dollar amount to trade.
- */
-function calculateKellyPositionSize(portfolioValue: number): { kellyUSD: number; kellyPct: number; rawKelly: number; winRate: number; avgWin: number; avgLoss: number } {
-  const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue); // v10.3: dynamic ceiling
-  const recentTrades = state.tradeHistory.slice(-KELLY_ROLLING_WINDOW);
-  // v12.2.7: Exclude forced/exploration sells from Kelly — they dilute the real win rate.
-  // Kelly should reflect the AI's edge, not mechanical deployment outcomes.
-  const sells = recentTrades.filter(t => {
-    if (t.action !== 'SELL' || !t.success) return false;
-    if (t.signalContext?.isExploration || t.signalContext?.isForced) return false;
-    if (t.signalContext?.triggeredBy === "EXPLORATION" || t.signalContext?.triggeredBy === "FORCED_DEPLOY") return false;
-    return true;
-  });
-
-  // Need minimum sample size for statistical validity
-  // v11.4.22: Increased fallback from FLOOR×3 ($15) to 5% of portfolio (capped at ceiling).
-  // $15 trades don't build meaningful positions. Use 5% to actually deploy capital while
-  // gathering the 20 trades needed for Kelly to kick in.
-  if (sells.length < KELLY_MIN_TRADES) {
-    // v20.3.1: 5%→8%, $50→$75 — build meaningful positions faster while gathering trade history
-    const fallback = Math.min(Math.max(75, portfolioValue * 0.08), portfolioValue * (effectiveCeiling / 100));
-    return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
-  }
-
-  const wins: number[] = [];
-  const losses: number[] = [];
-
-  for (const trade of sells) {
-    const cb = state.costBasis[trade.fromToken];
-    if (!cb || cb.averageCostBasis <= 0) continue;
-    const sellPrice = trade.amountUSD / (trade.tokenAmount || 1);
-    const pnlPct = (sellPrice - cb.averageCostBasis) / cb.averageCostBasis;
-    if (pnlPct >= 0) wins.push(pnlPct);
-    else losses.push(Math.abs(pnlPct));
-  }
-
-  if (wins.length + losses.length < KELLY_MIN_TRADES) {
-    // v20.3.1: 5%→8%, $50→$75 — match above fallback
-    const fallback = Math.min(Math.max(75, portfolioValue * 0.08), portfolioValue * (effectiveCeiling / 100));
-    return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
-  }
-
-  const winRate = wins.length / (wins.length + losses.length);
-  const avgWin = wins.length > 0 ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
-  const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
-
-  // Kelly formula: (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
-  const rawKelly = avgWin > 0 ? (winRate * avgWin - (1 - winRate) * avgLoss) / avgWin : 0;
-
-  // Quarter Kelly for safety, then clamp — v10.3: uses dynamic ceiling for small portfolios
-  const quarterKelly = Math.max(0, rawKelly * KELLY_FRACTION);
-  const kellyPct = Math.min(quarterKelly * 100, effectiveCeiling);
-  const kellyUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(portfolioValue * (kellyPct / 100), portfolioValue * (effectiveCeiling / 100)));
-
-  return { kellyUSD, kellyPct, rawKelly, winRate, avgWin, avgLoss };
+function calculateKellyPositionSize(portfolioValue: number) {
+  return _calculateKellyPositionSize(portfolioValue, state, _kellyConstants);
 }
 
-/**
- * Volatility-Adjusted Position Sizing
- * Scales position size inversely with recent portfolio volatility.
- * Returns a multiplier (0.4 to 1.5) to apply to Kelly size.
- */
-function calculateVolatilityMultiplier(): { multiplier: number; realizedVol: number } {
-  const trades = state.tradeHistory.slice(-100);
-  const portfolioValues = trades
-    .map(t => t.portfolioValueAfter || t.portfolioValueBefore || 0)
-    .filter(v => v > 0);
-
-  if (portfolioValues.length < 5) {
-    return { multiplier: 1.0, realizedVol: VOL_TARGET_DAILY_PCT };
-  }
-
-  // Calculate daily returns from portfolio snapshots
-  const returns: number[] = [];
-  for (let i = 1; i < portfolioValues.length; i++) {
-    if (portfolioValues[i - 1] > 0) {
-      returns.push((portfolioValues[i] - portfolioValues[i - 1]) / portfolioValues[i - 1] * 100);
-    }
-  }
-
-  if (returns.length < 3) {
-    return { multiplier: 1.0, realizedVol: VOL_TARGET_DAILY_PCT };
-  }
-
-  // Standard deviation of returns = realized volatility
-  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-  const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
-  const realizedVol = Math.sqrt(variance);
-
-  let multiplier: number;
-  if (realizedVol > VOL_HIGH_THRESHOLD) {
-    multiplier = VOL_HIGH_REDUCTION; // 0.4 — cut size by 60%
-  } else if (realizedVol < VOL_LOW_THRESHOLD) {
-    multiplier = VOL_LOW_BOOST; // 1.5 — increase size by 50%
-  } else {
-    // Linear scaling: TargetVol / CurrentVol
-    multiplier = Math.max(0.4, Math.min(1.5, VOL_TARGET_DAILY_PCT / realizedVol));
-  }
-
-  return { multiplier, realizedVol };
+function calculateVolatilityMultiplier() {
+  return _calculateVolatilityMultiplier(state, _volConstants);
 }
 
-/**
- * Master position sizer — combines Kelly + Volatility + Breaker state.
- * This replaces the flat $25 maxBuySize.
- */
-function calculateInstitutionalPositionSize(portfolioValue: number): {
-  sizeUSD: number; kellyPct: number; rawKelly: number; volMultiplier: number;
-  realizedVol: number; breakerReduction: boolean; winRate: number;
-  momentumMultiplier: number; momentumBias: string;
-} {
-  const kelly = calculateKellyPositionSize(portfolioValue);
-  const vol = calculateVolatilityMultiplier();
-
-  // v9.2: Market momentum overlay — boost sizing when market is trending strongly
+function calculateInstitutionalPositionSize(portfolioValue: number) {
+  // v9.2: Market momentum overlay
   const momentum = calculateMarketMomentum();
   lastMomentumSignal = momentum;
 
-  let sizeUSD = kelly.kellyUSD * vol.multiplier * momentum.positionMultiplier;
-
-  // Check if breaker size reduction is active
-  // v11.4.8: Skip breaker reduction in cash deployment mode —
-  // losses were mechanical stops, not bad AI decisions
-  let breakerReduction = false;
-  if (breakerState.breakerSizeReductionUntil) {
-    const until = new Date(breakerState.breakerSizeReductionUntil).getTime();
-    if (Date.now() < until) {
-      if (cashDeploymentMode) {
-        console.log(`   ⚡ BREAKER SIZE REDUCTION BYPASSED — cash deployment mode active`);
-      } else {
-        sizeUSD *= BREAKER_SIZE_REDUCTION; // 50% reduction
-        breakerReduction = true;
-      }
-    }
-  }
-
-  // v11.5: Derivatives blind-spot reduction REMOVED — derivatives permanently disabled.
-  // No longer penalizing position sizing for missing derivatives data.
-
-  // Hard floor and ceiling — v10.3: uses dynamic ceiling for small portfolios
-  const effectiveCeiling = getEffectiveKellyCeiling(portfolioValue);
-  sizeUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.min(sizeUSD, portfolioValue * (effectiveCeiling / 100)));
-
-  return {
-    sizeUSD: Math.round(sizeUSD * 100) / 100,
-    kellyPct: kelly.kellyPct,
-    rawKelly: kelly.rawKelly,
-    volMultiplier: vol.multiplier,
-    realizedVol: vol.realizedVol,
-    breakerReduction,
-    winRate: kelly.winRate,
-    momentumMultiplier: momentum.positionMultiplier,
-    momentumBias: momentum.deploymentBias,
-  };
+  return _calculateInstitutionalPositionSize(
+    portfolioValue, state, _kellyConstants, _volConstants,
+    momentum, breakerState, cashDeploymentMode, BREAKER_SIZE_REDUCTION,
+  );
 }
 
 /**
@@ -7383,80 +6981,13 @@ async function fetchMacroData(): Promise<MacroData | null> {
   }
 }
 
-/**
- * Determine overall market regime from multiple factors
- */
+// determineMarketRegime — delegated to src/algorithm/market-analysis.ts (wrapper passes globals)
 function determineMarketRegime(
-  _fearGreed: number, // v11.5: F&G no longer used for regime detection, kept for API compat
+  _fearGreed: number,
   indicators: Record<string, TechnicalIndicators>,
   derivatives: DerivativesData | null
 ): MarketRegime {
-  const indValues = Object.values(indicators);
-  if (indValues.length === 0) return "UNKNOWN";
-
-  // Count directional signals
-  let upSignals = 0;
-  let downSignals = 0;
-  let totalSignals = 0;
-
-  for (const ind of indValues) {
-    totalSignals++;
-    if (ind.trendDirection === "STRONG_UP" || ind.trendDirection === "UP") upSignals++;
-    if (ind.trendDirection === "STRONG_DOWN" || ind.trendDirection === "DOWN") downSignals++;
-  }
-
-  const upRatio = totalSignals > 0 ? upSignals / totalSignals : 0;
-  const downRatio = totalSignals > 0 ? downSignals / totalSignals : 0;
-
-  // Bollinger Band width — volatility proxy
-  const bbIndicators = indValues.filter(i => i.bollingerBands);
-  const avgBandwidth = bbIndicators.length > 0
-    ? bbIndicators.reduce((sum, i) => sum + (i.bollingerBands?.bandwidth || 0), 0) / bbIndicators.length
-    : 0;
-
-  // v8.3: ADX-based trend strength (average across tokens that have ADX data)
-  const adxIndicators = indValues.filter(i => i.adx14 !== null);
-  const avgADX = adxIndicators.length > 0
-    ? adxIndicators.reduce((sum, i) => sum + (i.adx14?.adx || 0), 0) / adxIndicators.length
-    : 0;
-
-  // v8.3: ATR%-based volatility (average across tokens that have ATR data)
-  const atrIndicators = indValues.filter(i => i.atrPercent !== null);
-  const avgATRPct = atrIndicators.length > 0
-    ? atrIndicators.reduce((sum, i) => sum + (i.atrPercent || 0), 0) / atrIndicators.length
-    : 0;
-
-  // v9.2: BTC/ETH momentum overlay — override RANGING when majors are moving
-  const btcMom = lastKnownPrices['cbBTC']?.change24h ?? lastKnownPrices['BTC']?.change24h ?? 0;
-  const ethMom = lastKnownPrices['WETH']?.change24h ?? lastKnownPrices['ETH']?.change24h ?? 0;
-  const majorMomentum = (btcMom + ethMom) / 2;
-
-  // v8.3: Enhanced regime classification — ADX + ATR + BB + directional ratios + F&G + momentum
-  // Priority 1: High volatility (ATR% > 5 OR BB bandwidth > 15)
-  if (avgATRPct > 5 && avgBandwidth > 12) return "VOLATILE";
-  if (avgBandwidth > 15) return "VOLATILE";
-
-  // Priority 2: Strong trending (ADX > 25 confirms directional strength)
-  if (avgADX > 25 && upRatio > 0.5) return "TRENDING_UP";
-  if (avgADX > 25 && downRatio > 0.5) return "TRENDING_DOWN";
-
-  // v11.5: BTC/ETH momentum overrides weak ADX — pure price action, no F&G
-  if (majorMomentum > 4) return "TRENDING_UP";
-  if (majorMomentum < -4) return "TRENDING_DOWN";
-
-  // Priority 3: Weak-signal trending (ADX 15-25, directional ratios as tiebreaker)
-  if (upRatio > 0.55) return "TRENDING_UP";
-  if (downRatio > 0.55) return "TRENDING_DOWN";
-
-  // v11.5: Moderate BTC/ETH momentum — don't sit in RANGING when market is running
-  if (majorMomentum > 2.5) return "TRENDING_UP";
-  if (majorMomentum < -2.5) return "TRENDING_DOWN";
-
-  // Priority 4: ADX < 20 = trendless market → ranging
-  if (avgADX > 0 && avgADX < 20) return "RANGING";
-  if (upRatio < 0.4 && downRatio < 0.4) return "RANGING";
-
-  return "UNKNOWN";
+  return _determineMarketRegime(_fearGreed, indicators, derivatives, lastKnownPrices);
 }
 
 /**
@@ -8018,318 +7549,19 @@ function getCachedPriceHistory(symbol: string): { prices: number[]; volumes: num
   return { prices: entry.prices, volumes: entry.volumes, timestamps: entry.timestamps };
 }
 
-/**
- * Calculate RSI (Relative Strength Index) — 14-period
- * RSI = 100 - (100 / (1 + RS))
- * RS = Average Gain / Average Loss over N periods
- */
-function calculateRSI(prices: number[], period: number = 14): number | null {
-  if (prices.length < period + 1) return null;
+// ============================================================================
+// TECHNICAL INDICATORS — delegated to src/algorithm/indicators.ts
+// ============================================================================
+const calculateRSI = _calculateRSI;
+const calculateEMA = _calculateEMA;
+const calculateMACD = _calculateMACD;
+const calculateBollingerBands = _calculateBollingerBands;
+const calculateSMA = _calculateSMA;
+const calculateATR = _calculateATR;
+const calculateADX = _calculateADX;
+const determineTrend = _determineTrend;
 
-  const changes: number[] = [];
-  for (let i = 1; i < prices.length; i++) {
-    changes.push(prices[i] - prices[i - 1]);
-  }
-
-  // Use the last (period + extra) changes for smoothed calculation
-  const recentChanges = changes.slice(-Math.min(changes.length, period * 3));
-
-  // Initial average gain/loss (first N periods)
-  let avgGain = 0;
-  let avgLoss = 0;
-  for (let i = 0; i < period && i < recentChanges.length; i++) {
-    if (recentChanges[i] > 0) avgGain += recentChanges[i];
-    else avgLoss += Math.abs(recentChanges[i]);
-  }
-  avgGain /= period;
-  avgLoss /= period;
-
-  // Smoothed RSI using Wilder's smoothing
-  for (let i = period; i < recentChanges.length; i++) {
-    const change = recentChanges[i];
-    avgGain = (avgGain * (period - 1) + (change > 0 ? change : 0)) / period;
-    avgLoss = (avgLoss * (period - 1) + (change < 0 ? Math.abs(change) : 0)) / period;
-  }
-
-  if (avgLoss === 0) return 100;
-  const rs = avgGain / avgLoss;
-  return 100 - (100 / (1 + rs));
-}
-
-/**
- * Calculate EMA (Exponential Moving Average)
- */
-function calculateEMA(prices: number[], period: number): number[] {
-  if (prices.length < period) return [];
-
-  const multiplier = 2 / (period + 1);
-  const ema: number[] = [];
-
-  // Start with SMA for the first value
-  let sum = 0;
-  for (let i = 0; i < period; i++) sum += prices[i];
-  ema.push(sum / period);
-
-  // Calculate EMA for remaining values
-  for (let i = period; i < prices.length; i++) {
-    ema.push((prices[i] - ema[ema.length - 1]) * multiplier + ema[ema.length - 1]);
-  }
-
-  return ema;
-}
-
-/**
- * Calculate MACD (Moving Average Convergence Divergence)
- * MACD Line = EMA(12) - EMA(26)
- * Signal Line = EMA(9) of MACD Line
- * Histogram = MACD Line - Signal Line
- */
-function calculateMACD(prices: number[]): { macdLine: number; signalLine: number; histogram: number; signal: "BULLISH" | "BEARISH" | "NEUTRAL" } | null {
-  if (prices.length < 35) return null; // Need at least 26 + 9 periods
-
-  const ema12 = calculateEMA(prices, 12);
-  const ema26 = calculateEMA(prices, 26);
-
-  if (ema12.length === 0 || ema26.length === 0) return null;
-
-  // Align the arrays — EMA26 starts later, so MACD starts at EMA26's start
-  const offset = 26 - 12; // EMA12 has 14 more values at the front
-  const macdValues: number[] = [];
-  for (let i = 0; i < ema26.length; i++) {
-    macdValues.push(ema12[i + offset] - ema26[i]);
-  }
-
-  if (macdValues.length < 9) return null;
-
-  const signalLine = calculateEMA(macdValues, 9);
-  if (signalLine.length === 0) return null;
-
-  const macdLine = macdValues[macdValues.length - 1];
-  const signal = signalLine[signalLine.length - 1];
-  const histogram = macdLine - signal;
-
-  // Determine signal
-  let macdSignal: "BULLISH" | "BEARISH" | "NEUTRAL" = "NEUTRAL";
-  const prevHistogram = macdValues.length >= 2 && signalLine.length >= 2
-    ? macdValues[macdValues.length - 2] - signalLine[signalLine.length - 2]
-    : 0;
-
-  if (histogram > 0 && prevHistogram <= 0) macdSignal = "BULLISH"; // Crossover
-  else if (histogram < 0 && prevHistogram >= 0) macdSignal = "BEARISH"; // Crossunder
-  else if (histogram > 0) macdSignal = "BULLISH";
-  else if (histogram < 0) macdSignal = "BEARISH";
-
-  return { macdLine, signalLine: signal, histogram, signal: macdSignal };
-}
-
-/**
- * Calculate Bollinger Bands (20-period, 2 standard deviations)
- */
-function calculateBollingerBands(prices: number[], period: number = 20, stdDevMultiplier: number = 2): TechnicalIndicators["bollingerBands"] {
-  if (prices.length < period) return null;
-
-  const recentPrices = prices.slice(-period);
-
-  // Simple Moving Average
-  const sma = recentPrices.reduce((sum, p) => sum + p, 0) / period;
-
-  // Standard Deviation
-  const squaredDiffs = recentPrices.map(p => Math.pow(p - sma, 2));
-  const variance = squaredDiffs.reduce((sum, d) => sum + d, 0) / period;
-  const stdDev = Math.sqrt(variance);
-
-  const upper = sma + stdDevMultiplier * stdDev;
-  const lower = sma - stdDevMultiplier * stdDev;
-  const currentPrice = prices[prices.length - 1];
-
-  // %B = (Price - Lower) / (Upper - Lower)
-  const percentB = upper !== lower ? (currentPrice - lower) / (upper - lower) : 0.5;
-
-  // Bandwidth = (Upper - Lower) / Middle * 100
-  const bandwidth = sma !== 0 ? ((upper - lower) / sma) * 100 : 0;
-
-  // Signal
-  let signal: "OVERBOUGHT" | "OVERSOLD" | "SQUEEZE" | "NORMAL" = "NORMAL";
-  if (percentB > 1) signal = "OVERBOUGHT";
-  else if (percentB < 0) signal = "OVERSOLD";
-  else if (bandwidth < 2) signal = "SQUEEZE"; // Tight bands = incoming move
-
-  return { upper, middle: sma, lower, percentB, bandwidth, signal };
-}
-
-/**
- * Calculate Simple Moving Average
- */
-function calculateSMA(prices: number[], period: number): number | null {
-  if (prices.length < period) return null;
-  const recentPrices = prices.slice(-period);
-  return recentPrices.reduce((sum, p) => sum + p, 0) / period;
-}
-
-/**
- * v8.3: Calculate ATR (Average True Range) — close-to-close variant
- * Uses |close[i] - close[i-1]| as True Range since the price history store records close prices.
- * Wilder's smoothing (same as RSI) for the averaging.
- */
-function calculateATR(prices: number[], period: number = 14): { atr: number; atrPercent: number } | null {
-  if (prices.length < period + 1) return null;
-
-  // Calculate True Range series (close-to-close)
-  const tr: number[] = [];
-  for (let i = 1; i < prices.length; i++) {
-    tr.push(Math.abs(prices[i] - prices[i - 1]));
-  }
-
-  // Use last N*3 TRs for smoothed calculation (same approach as RSI)
-  const recentTR = tr.slice(-Math.min(tr.length, period * 3));
-
-  // Initial ATR = simple average of first N periods
-  let atr = 0;
-  for (let i = 0; i < period && i < recentTR.length; i++) {
-    atr += recentTR[i];
-  }
-  atr /= period;
-
-  // Wilder's smoothing for remaining periods
-  for (let i = period; i < recentTR.length; i++) {
-    atr = (atr * (period - 1) + recentTR[i]) / period;
-  }
-
-  const currentPrice = prices[prices.length - 1];
-  const atrPercent = currentPrice > 0 ? (atr / currentPrice) * 100 : 0;
-
-  return { atr, atrPercent };
-}
-
-/**
- * v8.3: Calculate ADX (Average Directional Index) — close-to-close variant
- * Measures trend STRENGTH (0-100), not direction. Uses +DI/-DI for direction.
- *
- * Close-to-close DM approximation:
- *   +DM = max(close[i] - close[i-1], 0)  if up move > down move, else 0
- *   -DM = max(close[i-1] - close[i], 0)  if down move > up move, else 0
- *
- * Then: +DI = 100 * smoothed(+DM) / ATR
- *       -DI = 100 * smoothed(-DM) / ATR
- *       DX  = 100 * |+DI - -DI| / (+DI + -DI)
- *       ADX = smoothed(DX)
- */
-function calculateADX(prices: number[], period: number = 14): TechnicalIndicators["adx14"] {
-  // Need at least 2*period+1 prices for a meaningful ADX
-  if (prices.length < 2 * period + 1) return null;
-
-  // Step 1: Calculate directional movements and TR
-  const plusDM: number[] = [];
-  const minusDM: number[] = [];
-  const tr: number[] = [];
-
-  for (let i = 1; i < prices.length; i++) {
-    const upMove = prices[i] - prices[i - 1];
-    const downMove = prices[i - 1] - prices[i];
-
-    // Only keep the larger directional movement
-    if (upMove > 0 && upMove > downMove) {
-      plusDM.push(upMove);
-      minusDM.push(0);
-    } else if (downMove > 0 && downMove > upMove) {
-      plusDM.push(0);
-      minusDM.push(downMove);
-    } else {
-      plusDM.push(0);
-      minusDM.push(0);
-    }
-
-    tr.push(Math.abs(prices[i] - prices[i - 1]));
-  }
-
-  // Step 2: Wilder's smoothing for +DM, -DM, and TR
-  const smooth = (values: number[], p: number): number[] => {
-    if (values.length < p) return [];
-    const result: number[] = [];
-    let sum = 0;
-    for (let i = 0; i < p; i++) sum += values[i];
-    result.push(sum); // First smoothed value = simple sum
-    for (let i = p; i < values.length; i++) {
-      result.push(result[result.length - 1] - result[result.length - 1] / p + values[i]);
-    }
-    return result;
-  };
-
-  const smoothPlusDM = smooth(plusDM, period);
-  const smoothMinusDM = smooth(minusDM, period);
-  const smoothTR = smooth(tr, period);
-
-  if (smoothPlusDM.length === 0 || smoothTR.length === 0) return null;
-
-  // Step 3: Calculate +DI and -DI series
-  const dx: number[] = [];
-  for (let i = 0; i < smoothPlusDM.length; i++) {
-    const atr = smoothTR[i];
-    if (atr === 0) continue;
-
-    const pDI = (smoothPlusDM[i] / atr) * 100;
-    const mDI = (smoothMinusDM[i] / atr) * 100;
-    const diSum = pDI + mDI;
-
-    if (diSum > 0) {
-      dx.push((Math.abs(pDI - mDI) / diSum) * 100);
-    }
-  }
-
-  if (dx.length < period) return null;
-
-  // Step 4: Smooth DX to get ADX (Wilder's smoothing)
-  let adx = 0;
-  for (let i = 0; i < period; i++) adx += dx[i];
-  adx /= period;
-  for (let i = period; i < dx.length; i++) {
-    adx = (adx * (period - 1) + dx[i]) / period;
-  }
-
-  // Final +DI and -DI (most recent values)
-  const lastIdx = smoothPlusDM.length - 1;
-  const lastATR = smoothTR[lastIdx];
-  const plusDIVal = lastATR > 0 ? (smoothPlusDM[lastIdx] / lastATR) * 100 : 0;
-  const minusDIVal = lastATR > 0 ? (smoothMinusDM[lastIdx] / lastATR) * 100 : 0;
-
-  // Classify trend strength
-  let trend: "STRONG_TREND" | "TRENDING" | "WEAK" | "NO_TREND";
-  if (adx >= 40) trend = "STRONG_TREND";
-  else if (adx >= 25) trend = "TRENDING";
-  else if (adx >= 20) trend = "WEAK";
-  else trend = "NO_TREND";
-
-  return { adx: Math.round(adx * 10) / 10, plusDI: Math.round(plusDIVal * 10) / 10, minusDI: Math.round(minusDIVal * 10) / 10, trend };
-}
-
-/**
- * Determine trend direction from price action and moving averages
- */
-function determineTrend(prices: number[], sma20: number | null, sma50: number | null): TechnicalIndicators["trendDirection"] {
-  if (prices.length < 5) return "SIDEWAYS";
-
-  const currentPrice = prices[prices.length - 1];
-  const priceWeekAgo = prices[Math.max(0, prices.length - 168)]; // ~7 days of hourly data
-  const priceDayAgo = prices[Math.max(0, prices.length - 24)];
-
-  const weeklyChange = ((currentPrice - priceWeekAgo) / priceWeekAgo) * 100;
-  const dailyChange = ((currentPrice - priceDayAgo) / priceDayAgo) * 100;
-
-  // Check moving average alignment
-  const aboveSMA20 = sma20 ? currentPrice > sma20 : null;
-  const aboveSMA50 = sma50 ? currentPrice > sma50 : null;
-
-  if (weeklyChange > 10 && dailyChange > 3 && aboveSMA20 !== false) return "STRONG_UP";
-  if (weeklyChange > 3 && dailyChange > 0 && aboveSMA20 !== false) return "UP";
-  if (weeklyChange < -10 && dailyChange < -3 && aboveSMA20 !== true) return "STRONG_DOWN";
-  if (weeklyChange < -3 && dailyChange < 0 && aboveSMA20 !== true) return "DOWN";
-  return "SIDEWAYS";
-}
-
-/**
- * Calculate overall signal from confluence of indicators
- * Returns a score from -100 (strong sell) to +100 (strong buy)
- */
+// calculateConfluence — delegated to src/algorithm/confluence.ts (wrapper passes globals)
 function calculateConfluence(
   rsi: number | null,
   macd: TechnicalIndicators["macd"],
@@ -8339,162 +7571,21 @@ function calculateConfluence(
   priceChange7d: number,
   adx: TechnicalIndicators["adx14"] = null,
   atr: { atr: number; atrPercent: number } | null = null,
-  // v12.3: On-Chain Order Flow Intelligence
   twapDivergence: TechnicalIndicators["twapDivergence"] = null,
   orderFlow: TechnicalIndicators["orderFlow"] = null,
   tickDepth: TechnicalIndicators["tickDepth"] = null
 ): { score: number; signal: TechnicalIndicators["overallSignal"] } {
-  let score = 0;
-  let signals = 0;
-
-  // RSI (weight: 25) — uses adaptive thresholds
-  if (rsi !== null) {
-    signals++;
-    const oversold = state.adaptiveThresholds.rsiOversold;
-    const overbought = state.adaptiveThresholds.rsiOverbought;
-    if (rsi < oversold) score += 25;       // Oversold — buy signal
-    else if (rsi < oversold + 10) score += 12;
-    else if (rsi > overbought) score -= 25;  // Overbought — sell signal
-    else if (rsi > overbought - 10) score -= 12;
-  }
-
-  // MACD (weight: 25)
-  if (macd) {
-    signals++;
-    if (macd.signal === "BULLISH") score += 25;
-    else if (macd.signal === "BEARISH") score -= 25;
-    // Histogram magnitude adds conviction
-    if (Math.abs(macd.histogram) > Math.abs(macd.macdLine) * 0.3) {
-      score += macd.histogram > 0 ? 5 : -5;
-    }
-  }
-
-  // Bollinger Bands (weight: 20)
-  if (bb) {
-    signals++;
-    if (bb.signal === "OVERSOLD") score += 20;
-    else if (bb.signal === "OVERBOUGHT") score -= 20;
-    else if (bb.signal === "SQUEEZE") score += 5; // Squeeze slightly bullish (potential breakout)
-    // %B nuance
-    if (bb.percentB > 0.8 && bb.percentB <= 1) score -= 5;
-    else if (bb.percentB < 0.2 && bb.percentB >= 0) score += 5;
-  }
-
-  // Trend (weight: 15)
-  signals++;
-  switch (trend) {
-    case "STRONG_UP": score += 15; break;
-    case "UP": score += 8; break;
-    case "STRONG_DOWN": score -= 15; break;
-    case "DOWN": score -= 8; break;
-    default: break; // SIDEWAYS = 0
-  }
-
-  // Price momentum (weight: 15)
-  signals++;
-  if (priceChange24h > 5) score += 8;
-  else if (priceChange24h > 2) score += 4;
-  else if (priceChange24h < -5) score -= 8;
-  else if (priceChange24h < -2) score -= 4;
-
-  if (priceChange7d > 10) score += 7;
-  else if (priceChange7d > 3) score += 3;
-  else if (priceChange7d < -10) score -= 7;
-  else if (priceChange7d < -3) score -= 3;
-
-  // v8.3: ADX trend strength confirmation/dampening (weight: ±10 directional, ±20% dampening)
-  if (adx) {
-    signals++;
-    // Strong trend confirmation: ADX > 30 adds directional conviction
-    if (adx.adx > 30 && adx.plusDI > adx.minusDI) {
-      score += 5;  // Strong uptrend confirmation
-    } else if (adx.adx > 30 && adx.minusDI > adx.plusDI) {
-      score -= 5;  // Strong downtrend confirmation
-    }
-    // No trend dampening: ADX < 15 means signals are unreliable
-    if (adx.adx < 15) {
-      score = Math.round(score * 0.80); // 20% dampening — trendless market, less conviction
-    }
-  }
-
-  // v8.3: ATR volatility adjustment — high vol = less conviction, low vol = breakout potential
-  if (atr) {
-    if (atr.atrPercent > 5) {
-      score = Math.round(score * 0.85); // 15% dampening — high volatility, uncertain
-    } else if (atr.atrPercent < 1) {
-      score = Math.round(score * 1.10); // 10% boost — low volatility, potential breakout
-    }
-  }
-
-  // v11.5: Fear & Greed mechanical adjustment REMOVED — F&G reflects lagging sentiment,
-  // not actionable alpha. Let technical indicators and on-chain data drive confluence.
-
-  // v12.3: TWAP-Spot Divergence (weight: ±15) — manipulation-resistant overbought/oversold
-  if (twapDivergence) {
-    signals++;
-    const div = twapDivergence.divergencePct;
-    if (div < -TWAP_DIVERGENCE_THRESHOLD_PCT) score += 15;           // Spot below TWAP = discount
-    else if (div < -TWAP_MILD_THRESHOLD_PCT) score += 8;             // Mild oversold
-    else if (div > TWAP_DIVERGENCE_THRESHOLD_PCT) score -= 15;       // Spot above TWAP = premium
-    else if (div > TWAP_MILD_THRESHOLD_PCT) score -= 8;              // Mild overbought
-  }
-
-  // v12.3: Order Flow CVD (weight: ±15) — real buy/sell pressure from Swap events
-  if (orderFlow) {
-    signals++;
-    if (orderFlow.signal === "STRONG_BUY") score += 15;
-    else if (orderFlow.signal === "BUY") score += 8;
-    else if (orderFlow.signal === "STRONG_SELL") score -= 15;
-    else if (orderFlow.signal === "SELL") score -= 8;
-    // Smart money confirmation bonus
-    if (orderFlow.largeBuyPct > 50) score += 3;                       // >50% from large trades
-    else if (orderFlow.largeBuyPct < 20 && (orderFlow.signal === "BUY" || orderFlow.signal === "STRONG_BUY")) {
-      score -= 3;                                                      // Retail-only buys less reliable
-    }
-
-    // v14.0: "Catching Fire" signal — DEX buy ratio > 60% with high volume = strong momentum
-    const totalFlowVol = orderFlow.buyVolumeUSD + orderFlow.sellVolumeUSD;
-    const buyRatio = totalFlowVol > 0 ? orderFlow.buyVolumeUSD / totalFlowVol : 0.5;
-    if (buyRatio > 0.60 && orderFlow.tradeCount > 50) {
-      score += 10; // Bonus for catching-fire momentum (volume + buy pressure)
-    }
-
-    // v14.0: Momentum reversal — buy ratio drops below 45% = sellers taking over
-    // This is an exit signal that should push held positions toward SELL
-    if (buyRatio < 0.45) {
-      score -= 12; // Buyers turning into sellers — strong exit pressure
-    }
-  }
-
-  // v14.0: BTC/ETH strong momentum confluence boost — when majors are running +3%, lower the bar by 5pts
-  const btc24hMom = lastMomentumSignal?.btcChange24h ?? 0;
-  const eth24hMom = lastMomentumSignal?.ethChange24h ?? 0;
-  if (btc24hMom >= 3 || eth24hMom >= 3) {
-    score += 5; // Lower effective confluence threshold by boosting score when market is running
-  }
-
-  // v12.3: Tick Liquidity Depth (weight: ±12) — on-chain support/resistance
-  if (tickDepth) {
-    signals++;
-    if (tickDepth.signal === "STRONG_SUPPORT") score += 12;
-    else if (tickDepth.signal === "SUPPORT") score += 6;
-    else if (tickDepth.signal === "STRONG_RESISTANCE") score -= 12;
-    else if (tickDepth.signal === "RESISTANCE") score -= 6;
-  }
-
-  // Normalize to -100 to +100
-  const normalizedScore = Math.max(-100, Math.min(100, score));
-
-  // Determine signal — uses adaptive thresholds
-  const at = state.adaptiveThresholds;
-  let signal: TechnicalIndicators["overallSignal"];
-  if (normalizedScore >= at.confluenceStrongBuy) signal = "STRONG_BUY";
-  else if (normalizedScore >= at.confluenceBuy) signal = "BUY";
-  else if (normalizedScore <= at.confluenceStrongSell) signal = "STRONG_SELL";
-  else if (normalizedScore <= at.confluenceSell) signal = "SELL";
-  else signal = "NEUTRAL";
-
-  return { score: normalizedScore, signal };
+  return _calculateConfluence(
+    rsi, macd, bb, trend, priceChange24h, priceChange7d, adx, atr,
+    twapDivergence, orderFlow, tickDepth,
+    {
+      adaptiveThresholds: state.adaptiveThresholds,
+      btcChange24h: lastMomentumSignal?.btcChange24h ?? 0,
+      ethChange24h: lastMomentumSignal?.ethChange24h ?? 0,
+    },
+    TWAP_DIVERGENCE_THRESHOLD_PCT,
+    TWAP_MILD_THRESHOLD_PCT,
+  );
 }
 
 /**
