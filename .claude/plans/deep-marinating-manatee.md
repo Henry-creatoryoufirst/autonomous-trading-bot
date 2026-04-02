@@ -1,6 +1,6 @@
 # Silo Architecture Refactor Plan
 
-## Status: Phases 1-3, 5, 7 COMPLETE (17,451 → 13,200 lines, -24.4%)
+## Status: ALL PHASES COMPLETE (17,451 → 12,484 lines, -28.5%)
 
 ## Architecture
 ```
@@ -26,6 +26,8 @@ types/                   (903 lines)    — All type definitions (0 inline remai
 | 7p | 1bfbc19 | -878 | Dashboard exports + embedded HTML |
 | 5 | 4175aa7 | -854 | Self-improvement engine (12 functions) |
 | 7r | ef23efc | -800 | Dashboard API (22 functions) |
+| 4 | 2a98d2b | -172 | Execution engine (RPC, calldata, helpers) |
+| 6 | c8d43a0 | -544 | Data fetchers (DeFi, news, macro, CMC) |
 
 ## Overview
 Extract the 17,451-line monolith (agent-v3.2.ts) into isolated, testable modules using a silo architecture.
@@ -95,14 +97,14 @@ Phase 3b: Extracted all 25 remaining inline types to 3 new files:
 - types/services.ts (77 lines): PoolRegistryEntry, PoolRegistryFile, PoolLiquidity, PriceHistoryStore, OnChainCapitalFlows, BasescanTransfer
 Zero inline type definitions remain in the monolith.
 
-## Phase 4: Extract execution engine (PENDING — mapped, not yet extracted)
+## Phase 4: Extract execution engine (DONE — RPC, calldata, helpers extracted)
 - Trade execution functions -> src/execution/
 - DEX swap, TWAP, gas management -> src/execution/
 
 ## Phase 5: Extract self-improvement engine (DONE)
 - Pattern analysis, performance reviews, threshold adaptation -> src/self-improvement/
 
-## Phase 6: Extract data fetchers (PENDING — mapped, not yet extracted)
+## Phase 6: Extract data fetchers (DONE — on-chain, DeFi, news, macro, CMC extracted)
 - On-chain pricing, DeFi intelligence, macro data -> src/data/
 
 ## Phase 7: Extract dashboard/API (DONE — exports + HTML + API functions extracted, HTTP routes stay)
