@@ -302,6 +302,10 @@ import {
   estimateTokens,
 } from "./config/constants.js";
 import type { CooldownDecision, TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, SectorAllocation, TokenCostBasis, MarketRegime } from "./types/index.js";
+// Phase 3b: Extracted market data, state, and service types
+import type { NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData, CMCIntelligence, TradingSignal, SignalPayload, TradeDecision } from "./types/market-data.js";
+import type { AgentState, BreakerState, UserDirective, RoundTripTrade, WinRateTruthData, CashDeploymentResult, SignalHistoryEntry, OpportunityCostEntry, HarvestRecipient } from "./types/state.js";
+import type { PoolRegistryEntry, PoolRegistryFile, PoolLiquidity, PriceHistoryStore, OnChainCapitalFlows, BasescanTransfer } from "./types/services.js";
 // Phase 1b: Extracted algorithm modules
 import {
   calculateRSI as _calculateRSI,
@@ -486,24 +490,7 @@ async function fetchChainlinkPrices(): Promise<Map<string, number>> {
 // v12.0: ON-CHAIN PRICING ENGINE — Direct DEX pool reads, no CoinGecko
 // ============================================================================
 
-interface PoolRegistryEntry {
-  poolAddress: string;
-  poolType: 'uniswapV3' | 'aerodrome' | 'aerodromeV3';
-  quoteToken: 'WETH' | 'USDC' | 'cbBTC' | 'VIRTUAL';
-  token0IsBase: boolean; // true if our traded token is token0 in the pool
-  token0Decimals: number;
-  token1Decimals: number;
-  dexName: string;
-  liquidityUSD: number;
-  consecutiveFailures: number;
-  tickSpacing?: number; // v12.3: Cached tick spacing (immutable per pool, read once)
-}
-
-interface PoolRegistryFile {
-  version: number;
-  discoveredAt: string;
-  pools: Record<string, PoolRegistryEntry>;
-}
+// PoolRegistryEntry, PoolRegistryFile — imported from types/services.ts
 
 const POOL_REGISTRY_VERSION = 6; // v20.5: Bump — force re-discovery for new tokens (AAVE, CRV, ENA, ETHFI)
 
@@ -966,15 +953,7 @@ async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
 // v12.0: SELF-ACCUMULATING PRICE HISTORY STORE
 // ============================================================================
 
-interface PriceHistoryStore {
-  version: 1;
-  lastSaved: string;
-  tokens: Record<string, {
-    timestamps: number[];
-    prices: number[];
-    volumes: number[];
-  }>;
-}
+// PriceHistoryStore — imported from types/services.ts
 
 let priceHistoryStore: PriceHistoryStore = { version: 1, lastSaved: '', tokens: {} };
 let lastPriceHistorySaveTime = 0;
@@ -1635,11 +1614,7 @@ loadPriceHistoryStore();
 // v9.1: MULTI-WALLET PROFIT DISTRIBUTION
 // ============================================================================
 
-interface HarvestRecipient {
-  label: string;        // "Henry", "Brother"
-  wallet: string;       // 0x address
-  percent: number;      // 15 = 15% of harvested profits
-}
+// HarvestRecipient — imported from types/state.ts
 
 function parseHarvestRecipients(): HarvestRecipient[] {
   // TODO: Ambassador Program Integration — read feeRate from referral config
@@ -1830,17 +1805,7 @@ let latestSignals: SignalPayload | null = null;
 let signalCycleNumber = 0;
 
 // === NVR-SPEC-004: Signal Dashboard — History Tracking (capped at 100) ===
-interface SignalHistoryEntry {
-  cycle: number;
-  timestamp: string;
-  buys: number;
-  sells: number;
-  holds: number;
-  strongBuys: number;
-  strongSells: number;
-  regime: string;
-  fearGreed: number;
-}
+// SignalHistoryEntry — imported from types/state.ts
 const signalHistory: SignalHistoryEntry[] = [];
 const SIGNAL_HISTORY_MAX = 100;
 
@@ -1963,16 +1928,7 @@ function updateCapitalPreservationMode(fgValue: number): void {
 // === v20.2: OPPORTUNITY COST TRACKER ===
 // Logs every time a deploy is blocked (fear/momentum/threshold) and scores it 4h later.
 // Feedback loop: shows what the bot missed by holding cash, informs future threshold tuning.
-interface OpportunityCostEntry {
-  timestamp: number;
-  token: string;
-  reason: string;         // 'fear_block' | 'momentum_hard_block' | 'momentum_soft' | 'threshold_inactive'
-  blockedSizeUSD: number;
-  priceAtBlock: number;
-  priceNow?: number;
-  missedPnlUSD?: number;
-  scored: boolean;
-}
+// OpportunityCostEntry — imported from types/state.ts
 
 let opportunityCostLog: OpportunityCostEntry[] = [];
 let cumulativeMissedPnl = 0;
@@ -2109,17 +2065,8 @@ let adaptiveCycleTimer: ReturnType<typeof setTimeout> | null = null;
 let cashDeploymentMode = false;
 let cashDeploymentCycles = 0;
 
+// DeploymentTierLabel, CashDeploymentResult — imported from types/state.ts
 type DeploymentTierLabel = typeof CASH_DEPLOYMENT_TIERS[number]['label'] | 'NONE';
-
-interface CashDeploymentResult {
-  active: boolean;
-  cashPercent: number;
-  excessCash: number;
-  deployBudget: number;
-  confluenceDiscount: number;
-  tier: DeploymentTierLabel;
-  maxEntries: number;
-}
 
 /**
  * v20.8: F&G demoted to info-only. Always returns the base threshold.
@@ -2761,31 +2708,7 @@ function calculateTradePerformance(): TradePerformanceStats {
 // WIN RATE TRUTH DASHBOARD — Honest profitability metrics
 // ============================================================================
 
-interface RoundTripTrade {
-  token: string;
-  buyTimestamp: string;
-  sellTimestamp: string;
-  buyAmountUSD: number;
-  sellAmountUSD: number;
-  pnlUSD: number;
-  returnPercent: number;
-  holdDurationHours: number;
-}
-
-interface WinRateTruthData {
-  executionWinRate: number;
-  realizedWinRate: number;
-  profitFactor: number;
-  dailyWinRates: Array<{ date: string; winRate: number; trades: number; wins: number }>;
-  avgWinUSD: number;
-  avgLossUSD: number;
-  winLossRatio: number;
-  totalRoundTrips: number;
-  profitableRoundTrips: number;
-  grossProfitUSD: number;
-  grossLossUSD: number;
-  roundTrips: RoundTripTrade[];
-}
+// RoundTripTrade, WinRateTruthData — imported from types/state.ts
 
 /**
  * Calculate honest win rate metrics by matching BUY -> SELL round-trips.
@@ -3614,71 +3537,7 @@ function getDirectiveThresholdAdjustments(): { confluenceReduction: number; depl
 
 // SectorAllocation, TokenCostBasis — imported from types/index.ts
 
-interface AgentState {
-  startTime: Date;
-  totalCycles: number;
-  trading: {
-    lastCheck: Date;
-    lastTrade: Date | null;
-    totalTrades: number;
-    successfulTrades: number;
-    balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[];
-    totalPortfolioValue: number;
-    initialValue: number;
-    peakValue: number;
-    sectorAllocations: SectorAllocation[];
-  };
-  tradeHistory: TradeRecord[];
-  costBasis: Record<string, TokenCostBasis>;
-  profitTakeCooldowns: Record<string, string>;  // symbol:tier → ISO date of last trigger
-  stopLossCooldowns: Record<string, string>;     // symbol → ISO date of last trigger
-  // v5.3.3: Consecutive failure tracking per token
-  tradeFailures: Record<string, { count: number; lastFailure: string }>;  // symbol → consecutive fail count + timestamp
-  // v5.1.1: Profit harvesting tracking
-  harvestedProfits?: {
-    totalHarvested: number;
-    harvestCount: number;
-    harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
-  };
-  // v5.3.0: Auto-harvest transfer tracking (top-level state)
-  autoHarvestTransfers: Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>;
-  totalAutoHarvestedUSD: number;
-  totalAutoHarvestedETH: number;
-  lastAutoHarvestTime: string | null;
-  autoHarvestCount: number;
-  // Phase 3: Self-Improvement Engine
-  strategyPatterns: Record<string, StrategyPattern>;
-  adaptiveThresholds: AdaptiveThresholds;
-  performanceReviews: PerformanceReview[];
-  explorationState: ExplorationState;
-  lastReviewTradeIndex: number;
-  lastReviewTimestamp: string | null;
-  // v8.2: Deposit tracking — separate injected capital from trading gains
-  totalDeposited: number;
-  onChainWithdrawn: number; // v19.5.0: On-chain verified total withdrawals
-  lastKnownUSDCBalance: number;
-  depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
-  // v11.4.7: Safety guards
-  sanityAlerts?: Array<{ timestamp: string; symbol: string; type: string; oldCostBasis: number; currentPrice: number; gainPercent: number; action: string }>;
-  tradeDedupLog?: Record<string, string>; // "symbol:action:tier" → ISO timestamp of last execution
-  // v11.4.16: User Directives — chat commands that influence trading decisions
-  userDirectives?: UserDirective[];
-  // NVR-NL: Config directives from natural language strategy instructions
-  configDirectives?: ConfigDirective[];
-}
-
-// v11.4.16: User Directive types — instructions from the dashboard chat that affect bot behavior
-interface UserDirective {
-  id: string;
-  type: 'RESEARCH' | 'WATCHLIST' | 'ALLOCATION' | 'AVOID' | 'GENERAL';
-  instruction: string;       // Human-readable description
-  token?: string;            // Optional token symbol (e.g. "SUI")
-  sector?: string;           // Optional sector
-  value?: number;            // Optional numeric value (e.g. target allocation %)
-  createdAt: string;         // ISO timestamp
-  expiresAt?: string;        // Optional expiry (default: 24h)
-  source: string;            // Chat message that created this
-}
+// AgentState, UserDirective — imported from types/state.ts
 
 let state: AgentState = {
   startTime: new Date(),
@@ -4154,14 +4013,7 @@ const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
 // to external wallets, not trade executions).
 // ============================================================================
 
-interface OnChainCapitalFlows {
-  totalDeposited: number;
-  totalWithdrawn: number;
-  netCapitalIn: number;
-  deposits: Array<{ timestamp: string; amountUSD: number; from: string; txHash: string }>;
-  withdrawals: Array<{ timestamp: string; amountUSD: number; to: string; txHash: string }>;
-  lastUpdated: string;
-}
+// OnChainCapitalFlows — imported from types/services.ts
 
 // Cache to avoid hitting Blockscout every cycle — refresh every 10 minutes
 let cachedCapitalFlows: OnChainCapitalFlows | null = null;
@@ -4264,18 +4116,7 @@ for (const [symbol, reg] of Object.entries(TOKEN_REGISTRY)) {
   }
 }
 
-interface BasescanTransfer {
-  blockNumber: string;
-  timeStamp: string;
-  hash: string;
-  from: string;
-  to: string;
-  contractAddress: string;
-  value: string;
-  tokenName: string;
-  tokenSymbol: string;
-  tokenDecimal: string;
-}
+// BasescanTransfer — imported from types/services.ts
 
 /**
  * Fetch ERC20 token transfers for the bot's wallet from Blockscout (free, no API key).
@@ -5176,125 +5017,13 @@ function checkStopLoss(
 
 // DefiLlamaData, DerivativesData — imported from src/algorithm/index.ts
 
-interface NewsSentimentData {
-  overallSentiment: "BULLISH" | "BEARISH" | "NEUTRAL" | "MIXED";
-  bullishCount: number;                              // Number of bullish news items
-  bearishCount: number;                              // Number of bearish news items
-  totalCount: number;                                // Total news items analyzed
-  sentimentScore: number;                            // -100 to +100 composite score
-  topHeadlines: { title: string; sentiment: string; source: string }[];  // Top 5 headlines
-  tokenMentions: Record<string, { bullish: number; bearish: number; neutral: number }>;  // Per-token sentiment
-  lastUpdated: string;                               // ISO timestamp
-}
-
-interface MacroData {
-  fedFundsRate: { value: number; date: string } | null;           // DFF - Fed Funds Effective Rate
-  treasury10Y: { value: number; date: string } | null;            // DGS10 - 10-Year Treasury Yield
-  yieldCurve: { value: number; date: string } | null;             // T10Y2Y - 10Y minus 2Y spread
-  cpi: { value: number; date: string; yoyChange: number | null } | null;  // CPIAUCSL - Consumer Price Index
-  m2MoneySupply: { value: number; date: string; yoyChange: number | null } | null;  // M2SL - M2 Money Supply
-  dollarIndex: { value: number; date: string } | null;            // DTWEXBGS - Trade Weighted Dollar
-  macroSignal: "RISK_ON" | "RISK_OFF" | "NEUTRAL";               // Composite macro signal
-  rateDirection: "HIKING" | "CUTTING" | "PAUSED";                // Fed rate trajectory
-  // v5.1: Cross-Asset Correlation Signals
-  crossAssets: {
-    goldPrice: number | null;         // Gold price in USD (XAU/USD)
-    goldChange24h: number | null;     // Gold 24h % change
-    oilPrice: number | null;          // Crude oil price (WTI)
-    oilChange24h: number | null;      // Oil 24h % change
-    dxyRealtime: number | null;       // DXY real-time (supplements FRED's lagged data)
-    dxyChange24h: number | null;      // DXY 24h % change
-    sp500Change: number | null;       // S&P 500 daily % change (risk appetite proxy)
-    vixLevel: number | null;          // VIX fear index
-    crossAssetSignal: "RISK_ON" | "RISK_OFF" | "FLIGHT_TO_SAFETY" | "NEUTRAL";
-  } | null;
-}
-
-// MarketRegime — imported from types/index.ts
-// AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence — imported from src/algorithm/index.ts
-
-interface GlobalMarketData {
-  btcDominance: number;
-  ethDominance: number;
-  totalMarketCap: number;
-  totalVolume24h: number;
-  defiMarketCap: number | null;
-  defiVolume24h: number | null;
-  btcDominanceChange7d: number;
-  altseasonSignal: AltseasonSignal;
-  lastUpdated: string;
-}
-
-interface StablecoinSupplyData {
-  usdtMarketCap: number;
-  usdcMarketCap: number;
-  totalStablecoinSupply: number;
-  supplyChange7d: number;
-  signal: "CAPITAL_INFLOW" | "CAPITAL_OUTFLOW" | "STABLE";
-  lastUpdated: string;
-}
-
-interface MarketData {
-  tokens: {
-    symbol: string; name: string; price: number;
-    priceChange24h: number; priceChange7d: number;
-    volume24h: number; marketCap: number; sector: string;
-  }[];
-  fearGreed: { value: number; classification: string };
-  trendingTokens: string[];
-  indicators: Record<string, TechnicalIndicators>;
-  defiLlama: DefiLlamaData | null;
-  derivatives: DerivativesData | null;
-  newsSentiment: NewsSentimentData | null;
-  macroData: MacroData | null;
-  marketRegime: MarketRegime;
-  // v10.0: Market Intelligence Engine
-  globalMarket: GlobalMarketData | null;
-  smartRetailDivergence: SmartRetailDivergence | null;
-  fundingMeanReversion: FundingRateMeanReversion | null;
-  tvlPriceDivergence: TVLPriceDivergence | null;
-  stablecoinSupply: StablecoinSupplyData | null;
-}
+// NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData — imported from types/market-data.ts
 
 // ============================================================================
 // NVR CENTRAL SIGNAL SERVICE — Phase 1 Interfaces
 // ============================================================================
 
-interface TradingSignal {
-  token: string;
-  action: "STRONG_BUY" | "BUY" | "HOLD" | "SELL" | "STRONG_SELL";
-  confluence: number;
-  reasoning: string;
-  indicators: {
-    rsi14: number | null;
-    macdSignal: string | null;
-    macdHistogram: number | null;
-    bollingerSignal: string | null;
-    bollingerPercentB: number | null;
-    volumeChange24h: number | null;
-    buyRatio: number | null;
-    adx: number | null;
-    atrPercent: number | null;
-  };
-  price: number;
-  priceChange24h: number;
-  sector: string;
-}
-
-interface SignalPayload {
-  timestamp: string;
-  cycleNumber: number;
-  marketRegime: string;
-  fearGreedIndex: number;
-  fearGreedClassification: string;
-  signals: TradingSignal[];
-  meta: {
-    version: string;
-    generatedAt: string;
-    nextExpectedAt: string;
-    ttlSeconds: number;
-  };
-}
+// TradingSignal, SignalPayload — imported from types/market-data.ts
 
 /**
  * Fetch Base chain DeFi data from DefiLlama (free, no API key needed)
@@ -5502,16 +5231,7 @@ loadPriceCache();
  * Tracks consecutive losses, daily/weekly drawdown baselines, and breaker events.
  * Persisted in saveTradeHistory / loadTradeHistory.
  */
-interface BreakerState {
-  consecutiveLosses: number;
-  lastBreakerTriggered: string | null;    // ISO timestamp when breaker last fired
-  lastBreakerReason: string | null;
-  breakerSizeReductionUntil: string | null; // ISO timestamp — 30% size reduction expires
-  dailyBaseline: { date: string; value: number };   // Reset at midnight UTC
-  weeklyBaseline: { weekStart: string; value: number }; // Reset Monday midnight UTC
-  // v10.4: Rolling window loss tracker — catches bad streaks even with scattered wins
-  rollingTradeResults: boolean[]; // last N results (true=win, false=loss), capped at BREAKER_ROLLING_WINDOW_SIZE
-}
+// BreakerState — imported from types/state.ts
 
 // v10.4: Rolling window breaker constants
 const BREAKER_ROLLING_WINDOW_SIZE = 8;     // Track last 8 trades
@@ -5705,13 +5425,7 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDet
 
 // ---- VWS Liquidity Filter ----
 
-interface PoolLiquidity {
-  liquidityUSD: number;
-  pairAddress: string;
-  dexName: string;
-  priceUSD: number;
-  fetchedAt: number;
-}
+// PoolLiquidity — imported from types/services.ts
 
 const poolLiquidityCache: Map<string, PoolLiquidity> = new Map();
 const POOL_LIQUIDITY_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
@@ -6283,11 +5997,7 @@ async function fetchCrossAssetData(fredKey: string | undefined): Promise<MacroDa
 // wallets support x402 EIP-712 signing (tracked: github.com/coinbase/x402).
 // ============================================================================
 
-interface CMCIntelligence {
-  trendingCoins: { name: string; symbol: string; change24h: number }[];
-  globalMetrics: { totalMarketCap: number; btcDominance: number; totalVolume24h: number; altcoinMarketCap: number };
-  fetchedAt: number;
-}
+// CMCIntelligence — imported from types/market-data.ts
 
 let cmcCache: { data: CMCIntelligence | null; lastFetch: number } = { data: null, lastFetch: 0 };
 const CMC_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
@@ -7615,18 +7325,7 @@ function calculateSectorAllocations(
 // AI TRADING DECISION - V3.1 with Sector Awareness
 // ============================================================================
 
-interface TradeDecision {
-  action: "BUY" | "SELL" | "HOLD" | "REBALANCE" | "WITHDRAW";
-  fromToken: string;
-  toToken: string;
-  amountUSD: number;
-  tokenAmount?: number;
-  reasoning: string;
-  sector?: string;
-  isExploration?: boolean;
-  isForced?: boolean; // v12.2.7: Tag forced deploy / fallback trades — excluded from self-improvement engine
-  isTWAPSlice?: boolean; // v20.0: Skip trade history recording for individual TWAP slices
-}
+// TradeDecision — imported from types/market-data.ts
 
 // ============================================================================
 // NVR CENTRAL SIGNAL SERVICE — CONSUMER MODE (Phase 2)
