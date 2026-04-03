@@ -340,6 +340,23 @@ import {
   executeChatTool as _executeChatTool, handleChatRequest as _handleChatRequest,
   getDashboardHTML as _getDashboardHTML,
 } from "./src/dashboard/api.js";
+// Phase 13: Extracted HTTP server route handlers
+import {
+  type ServerContext,
+  handleDashboard, handleHealth, handlePersistence, handlePreservation,
+  handleCapitalFlows, handleErrors, handleSignals, handleWeeklyReport,
+  handleDebug, handleAccounts, handleKill, handleResume,
+  handleTrailingStops, handleRiskReview, handleAutoHarvest, handleAutoHarvestTrigger,
+  handleAdaptive, handleDerivatives, handleEquity, handleDiscovery, handleCache,
+  handleYield, handleYieldRates, handleDexIntelligence,
+  handleFamily, handleFamilyMembers, handleFamilyProfiles, handleFamilyWallets,
+  handleHealthAudit, handleWinRateTruth, handleCorrectState,
+  handleChat, handleDirectives, handleDeleteDirective,
+  handleSimulate, handleStrategyVersions, handlePaperPortfolios, handlePaperPortfolioById,
+  handleExportResults, handleVersionBacktest,
+  handleSwarmStatus, handleSignalDashboard, handleSignalsLatest,
+  handleWithdraw, handleStateBackup, handleStateRestore,
+} from "./src/server/index.js";
 // Phase 4: Extracted execution engine
 import {
   initRpc, getCurrentRpc as _getCurrentRpc, rotateRpc as _rotateRpc,
@@ -9637,6 +9654,47 @@ const executeChatTool = _executeChatTool;
 const handleChatRequest = _handleChatRequest;
 const getDashboardHTML = _getDashboardHTML;
 
+const serverCtx: ServerContext = {
+  state, breakerState, CONFIG, cdpClient, CDP_ACCOUNT_NAME,
+  CAPITAL_FLOOR_ABSOLUTE_USD, PRESERVATION_RING_BUFFER_SIZE,
+  PRESERVATION_FG_ACTIVATE, PRESERVATION_FG_DEACTIVATE,
+  PRESERVATION_CYCLE_MULTIPLIER, PRESERVATION_MIN_CONFLUENCE,
+  PRESERVATION_MIN_SWARM_CONSENSUS, PRESERVATION_TARGET_CASH_PCT,
+  BREAKER_CONSECUTIVE_LOSSES, BREAKER_PAUSE_HOURS,
+  KELLY_FRACTION, KELLY_MIN_TRADES, KELLY_POSITION_CEILING_PCT,
+  KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_FLOOR_USD,
+  GAS_REFUEL_THRESHOLD_ETH, ADAPTIVE_MIN_INTERVAL_SEC, ADAPTIVE_MAX_INTERVAL_SEC,
+  EMERGENCY_INTERVAL_SEC, EMERGENCY_DROP_THRESHOLD, PORTFOLIO_SENSITIVITY_TIERS,
+  SIGNAL_ENGINE,
+  capitalPreservationMode, lastFearGreedValue, lastSuccessfulTradeAt,
+  adaptiveCycle, cycleStats, lastSignalHealth, lastMomentumSignal,
+  lastKnownETHBalance, lastGasRefuelTime, lastDerivativesData,
+  lastDexIntelligence, dexIntelFetchCount, lastYieldAction, yieldCycleCount,
+  lastYieldRates, lastFamilyTradeResults, latestSignals, signalCycleNumber,
+  signalHistory, signalMode, pendingConfigChanges, pendingWithdrawals,
+  derivativesEngine, commoditySignalEngine, equityEnabled, equityEngine,
+  tokenDiscoveryEngine, cacheManager, cooldownManager, yieldEnabled, yieldOptimizer,
+  aaveYieldService, morphoYieldService, geckoTerminalService,
+  familyEnabled, familyManager, familyWalletManager, telegramService,
+  sendJSON, isAuthorized, getDashboardHTML,
+  apiPortfolio, apiBalances, apiSectors, apiTrades, apiDailyPnL,
+  apiIndicators, apiIntelligence, apiPatterns, apiReviews, apiThresholds,
+  getActiveDirectives, addUserDirective, removeUserDirective,
+  applyConfigChanges, getActiveConfigDirectives, removeConfigDirective,
+  handleChatRequest, downsample,
+  getEffectiveKellyCeiling, getSignalStats, getLatestReport,
+  getTrailingStopState, calculateWinRateTruth, calculateTradePerformance,
+  getLatestSwarmDecisions, getLastSwarmRunTime,
+  triggerCircuitBreaker, executeDailyPayout, saveTradeHistory, loadTradeHistory,
+  markStateDirty, flushStateIfDirty, logError,
+  detectOnChainCapitalFlows, sendUSDCTransfer, getERC20Balance, TOKEN_REGISTRY,
+  isStrategyInstruction, parseStrategyInstruction, generatePaperExportHTML,
+  loadPriceHistory, DEFAULT_SIM_CONFIG, runSimulation, compareStrategies,
+  STRATEGY_VERSIONS, getAllPaperPortfolios, getPaperPortfolioSummary,
+  getPaperPortfolio, runAllVersionBacktestsFromDisk, summarizeBacktestResults,
+  generateBacktestMultiExportHTML, generateBacktestSingleExportHTML,
+};
+
 const healthServer = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   // v10.2: Restrict CORS to known origins
@@ -9653,135 +9711,23 @@ const healthServer = http.createServer(async (req, res) => {
     switch (url.pathname) {
       case '/':
       case '/dashboard':
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(getDashboardHTML());
+        handleDashboard(res, serverCtx);
         break;
-      case '/health': {
-        // v11.4.22: Healthcheck must return 200 quickly during startup so Railway doesn't kill the deploy.
-        // Grace period: first 5 minutes always healthy. After that, require a recent cycle.
-        const uptimeSec = (Date.now() - state.startTime.getTime()) / 1000;
-        const lastCycleAge = state.trading.lastCheck ? (Date.now() - state.trading.lastCheck.getTime()) / 1000 : Infinity;
-        const inStartupGrace = uptimeSec < 300; // 5 min grace
-        // v21.1: Bumped from 600s to 1200s — 15-min cycles regularly exceed 600s,
-        // causing false "degraded" that locked users out of the dashboard.
-        const isHealthy = inStartupGrace || (lastCycleAge < 1200);
-
-        // v21.3: Include trading status and blockers so health check reveals WHY bot isn't trading
-        const healthBlockers: string[] = [];
-        if (!CONFIG.trading.enabled) healthBlockers.push("TRADING_ENABLED is not 'true' — dry run mode");
-        if (!cdpClient) healthBlockers.push("CDP client not initialized");
-        const healthDrawdown = state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0;
-        if (healthDrawdown >= 20) healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown`);
-        if (state.trading.totalPortfolioValue > 0 && state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD) healthBlockers.push(`Capital floor breach: $${state.trading.totalPortfolioValue.toFixed(2)}`);
-        const timeSinceTradeHealth = Date.now() - lastSuccessfulTradeAt;
-        const recentTradeCount = state.tradeHistory.filter(t => t.success && t.action !== 'HOLD').length;
-
-        sendJSON(res, isHealthy ? 200 : 503, {
-          status: isHealthy ? "ok" : "degraded",
-          version: BOT_VERSION,
-          uptimeSec: Math.round(uptimeSec),
-          lastCycleAgeSec: Math.round(lastCycleAge),
-          inStartupGrace,
-          tradingEnabled: CONFIG.trading.enabled,
-          tradingMode: CONFIG.trading.enabled ? "LIVE" : "DRY_RUN",
-          tradingBlockers: healthBlockers,
-          totalTradesExecuted: recentTradeCount,
-          hoursSinceLastTrade: Math.round(timeSinceTradeHealth / 3600000 * 10) / 10,
-          portfolioValue: Math.round(state.trading.totalPortfolioValue * 100) / 100,
-          drawdownPercent: Math.round(healthDrawdown * 10) / 10,
-        });
+      case '/health':
+        handleHealth(res, serverCtx);
         break;
-      }
-      case '/api/persistence': {
-        // v11.4.21: Diagnostic endpoint — check if state file persists across deploys
-        const stateFileExists = fs.existsSync(CONFIG.logFile);
-        let stateFileSize = 0;
-        let stateFileModified = '';
-        try {
-          if (stateFileExists) {
-            const stat = fs.statSync(CONFIG.logFile);
-            stateFileSize = stat.size;
-            stateFileModified = stat.mtime.toISOString();
-          }
-        } catch {}
-        sendJSON(res, 200, {
-          persistDir: process.env.PERSIST_DIR || '(not set)',
-          stateFilePath: CONFIG.logFile,
-          stateFileExists,
-          stateFileSizeBytes: stateFileSize,
-          stateFileModified,
-          tradeHistoryCount: state.tradeHistory.length,
-          costBasisCount: Object.keys(state.costBasis).length,
-          breakerStateLoaded: breakerState.dailyBaseline.value > 0,
-          version: BOT_VERSION,
-        });
+      case '/api/persistence':
+        handlePersistence(res, serverCtx);
         break;
-      }
-      // === v19.3: CAPITAL PRESERVATION MODE API ===
-      case '/api/preservation': {
-        const _fgReadings = capitalPreservationMode.fearReadings;
-        const _fgAvg6h = _fgReadings.length > 0
-          ? _fgReadings.reduce((sum, v) => sum + v, 0) / _fgReadings.length
-          : null;
-        const _usdcBalPres = state.trading.balances.find(b => b.symbol === 'USDC');
-        const _portfolioTotal = state.trading.totalPortfolioValue || 0;
-        const _cashAllocationPct = _portfolioTotal > 0 && _usdcBalPres
-          ? (_usdcBalPres.usdValue / _portfolioTotal) * 100
-          : 0;
-        sendJSON(res, 200, {
-          isActive: capitalPreservationMode.isActive,
-          activatedAt: capitalPreservationMode.activatedAt
-            ? new Date(capitalPreservationMode.activatedAt).toISOString()
-            : null,
-          durationHours: capitalPreservationMode.activatedAt
-            ? ((Date.now() - capitalPreservationMode.activatedAt) / 3600000).toFixed(1)
-            : null,
-          currentFearGreed: lastFearGreedValue,
-          fearGreedAvg6h: _fgAvg6h !== null ? Math.round(_fgAvg6h * 10) / 10 : null,
-          fearGreedReadings: _fgReadings.length,
-          fearGreedBufferFull: _fgReadings.length >= PRESERVATION_RING_BUFFER_SIZE,
-          tradesBlocked: capitalPreservationMode.tradesBlocked,
-          tradesPassed: capitalPreservationMode.tradesPassed,
-          cashAllocationPct: Math.round(_cashAllocationPct * 10) / 10,
-          cashTargetPct: PRESERVATION_TARGET_CASH_PCT,
-          belowCashTarget: _cashAllocationPct < PRESERVATION_TARGET_CASH_PCT,
-          thresholds: {
-            activateBelow: PRESERVATION_FG_ACTIVATE,
-            deactivateAbove: PRESERVATION_FG_DEACTIVATE,
-            sustainedHours: 6,
-            cycleMultiplier: PRESERVATION_CYCLE_MULTIPLIER,
-            minConfluence: PRESERVATION_MIN_CONFLUENCE,
-            minSwarmConsensus: PRESERVATION_MIN_SWARM_CONSENSUS,
-          },
-          totalDeactivations: capitalPreservationMode.deactivationCount,
-          version: BOT_VERSION,
-        }, req);
+      case '/api/preservation':
+        handlePreservation(req, res, serverCtx);
         break;
-      }
-
       case '/api/portfolio':
         sendJSON(res, 200, apiPortfolio());
         break;
-      // v19.5.0: On-chain capital flows — blockchain source of truth
-      case '/api/capital-flows': {
-        try {
-          const flows = await detectOnChainCapitalFlows(CONFIG.walletAddress);
-          const currentPortfolio = state.trading.totalPortfolioValue;
-          sendJSON(res, 200, {
-            version: BOT_VERSION,
-            wallet: CONFIG.walletAddress,
-            ...flows,
-            currentPortfolio,
-            truePnL: Math.round((currentPortfolio + flows.totalWithdrawn - flows.totalDeposited) * 100) / 100,
-            truePnLPercent: flows.totalDeposited > 0
-              ? Math.round(((currentPortfolio + flows.totalWithdrawn - flows.totalDeposited) / flows.totalDeposited) * 10000) / 100
-              : 0,
-          });
-        } catch (e: any) {
-          sendJSON(res, 500, { error: e.message });
-        }
+      case '/api/capital-flows':
+        await handleCapitalFlows(res, serverCtx);
         break;
-      }
       case '/api/balances':
         sendJSON(res, 200, apiBalances());
         break;
@@ -9794,256 +9740,39 @@ const healthServer = http.createServer(async (req, res) => {
           url.searchParams.get('include_failures') === 'true'
         ));
         break;
-
-      // === v18.1: ERROR LOG + DEBUG ENDPOINTS ===
-      case '/api/errors': {
-        const failedTrades = state.tradeHistory.filter(t => t.success === false);
-        const recentFailures = failedTrades.slice(-20).reverse();
-        const errorsByType: Record<string, number> = {};
-        for (const t of failedTrades) {
-          const errType = t.error?.includes('Unauthorized') || t.error?.includes('401') ? 'AUTH'
-            : t.error?.includes('insufficient') ? 'INSUFFICIENT_FUNDS'
-            : t.error?.includes('liquidity') ? 'LIQUIDITY'
-            : t.error?.includes('timeout') || t.error?.includes('ETIMEDOUT') ? 'TIMEOUT'
-            : t.error?.includes('payment method') ? 'PAYMENT_METHOD'
-            : t.error?.includes('slippage') ? 'SLIPPAGE'
-            : t.error?.includes('allowance') ? 'ALLOWANCE'
-            : t.error?.includes('not supported') || t.error?.includes('Invalid request') ? 'UNSUPPORTED_TOKEN'
-            : 'OTHER';
-          errorsByType[errType] = (errorsByType[errType] || 0) + 1;
-        }
-        sendJSON(res, 200, {
-          version: BOT_VERSION,
-          summary: {
-            totalAttempted: state.trading.totalTrades + failedTrades.length,
-            totalSuccessful: state.trading.totalTrades,
-            totalFailed: failedTrades.length,
-            failureRate: failedTrades.length > 0 ? `${((failedTrades.length / (state.trading.totalTrades + failedTrades.length)) * 100).toFixed(1)}%` : '0%',
-            errorsByType,
-          },
-          circuitBreakers: Object.entries(state.tradeFailures).map(([symbol, data]) => ({
-            symbol,
-            consecutiveFailures: (data as any).count,
-            lastFailure: (data as any).lastFailure,
-            blocked: (data as any).count >= 3,
-          })),
-          recentFailedTrades: recentFailures.map(t => ({
-            timestamp: t.timestamp,
-            action: t.action,
-            from: t.fromToken,
-            to: t.toToken,
-            amountUSD: t.amountUSD,
-            error: t.error,
-          })),
-          errorLog: (state.errorLog || []).slice(-50).reverse(),
-        });
+      case '/api/errors':
+        handleErrors(res, serverCtx);
         break;
-      }
-
-      case '/api/signals': {
-        if (!isAuthorized(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
-        const signalStats = getSignalStats();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          version: BOT_VERSION,
-          ...signalStats,
-        }, null, 2));
+      case '/api/signals':
+        handleSignals(req, res, serverCtx);
         break;
-      }
-
-      case '/api/weekly-report': {
-        if (!isAuthorized(req)) { res.writeHead(401); res.end('Unauthorized'); return; }
-        const report = getLatestReport();
-        if (!report) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ version: BOT_VERSION, message: 'No weekly report generated yet. Reports are generated every Sunday at UTC midnight.' }));
-        } else {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ version: BOT_VERSION, ...report }, null, 2));
-        }
+      case '/api/weekly-report':
+        handleWeeklyReport(req, res, serverCtx);
         break;
-      }
-
-      case '/api/debug': {
-        const apiKeyId = process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME || '';
-        const apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.CDP_API_KEY_PRIVATE_KEY || '';
-        const walletSecret = process.env.CDP_WALLET_SECRET || '';
-        const signalUrl = process.env.SIGNAL_URL || process.env.NVR_SIGNAL_URL || '';
-
-        // Test CDP connection using the same method the bot uses for trading
-        let cdpStatus = 'unknown';
-        let cdpError = '';
-        let walletAddress = '';
-        try {
-          if (cdpClient) {
-            const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
-            cdpStatus = 'connected';
-            walletAddress = (account as any).address || 'account found but no address field';
-          } else {
-            cdpStatus = 'not_initialized';
-          }
-        } catch (e: any) {
-          cdpStatus = 'error';
-          cdpError = e.message || String(e);
-          logError('CDP_CONNECTION_TEST', cdpError);
-        }
-
-        sendJSON(res, 200, {
-          version: BOT_VERSION,
-          cdp: {
-            status: cdpStatus,
-            error: cdpError || undefined,
-            walletAddress: walletAddress || undefined,
-            apiKeyId: apiKeyId ? `${apiKeyId.substring(0, 8)}...${apiKeyId.substring(apiKeyId.length - 4)}` : 'NOT SET',
-            apiKeySecretType: !apiKeySecret ? 'NOT SET'
-              : apiKeySecret.startsWith('-----') ? 'PEM/ECDSA'
-              : apiKeySecret.startsWith('MIGHAgEA') ? 'DER/EC_RAW_BASE64'
-              : apiKeySecret.length === 88 ? 'Ed25519'
-              : `unknown (${apiKeySecret.length} chars, starts: ${apiKeySecret.substring(0, 6)})`,
-            walletSecretPresent: !!walletSecret,
-            walletSecretLength: walletSecret.length || 0,
-          },
-          signalMode,
-          signalUrl: signalUrl || 'not configured',
-          env: {
-            NODE_ENV: process.env.NODE_ENV || 'not set',
-            SIGNAL_MODE: process.env.SIGNAL_MODE || 'not set',
-            ANTHROPIC_KEY_SET: !!process.env.ANTHROPIC_API_KEY,
-            hasPayoutRecipients: !!(CONFIG.autoHarvest?.recipients?.length),
-          },
-          uptime: process.uptime(),
-          totalCycles: state.totalCycles,
-          lastCycleTime: state.lastCycleTime || null,
-          tradingEnabled: CONFIG.trading.enabled,
-          memory: {
-            heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1048576),
-            rssMB: Math.round(process.memoryUsage().rss / 1048576),
-          },
-        });
+      case '/api/debug':
+        await handleDebug(res, serverCtx);
         break;
-      }
-
-      case '/api/accounts': {
-        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized' }); break; }
-        // Temporary endpoint: list ALL CDP accounts to find wallet 0xB7c51b
-        try {
-          if (!cdpClient) { sendJSON(res, 500, { error: 'CDP not initialized' }); break; }
-          const allAccounts: any[] = [];
-          let listResp = await cdpClient.evm.listAccounts();
-          allAccounts.push(...listResp.accounts);
-          while (listResp.nextPageToken) {
-            listResp = await cdpClient.evm.listAccounts({ pageToken: listResp.nextPageToken });
-            allAccounts.push(...listResp.accounts);
-          }
-          sendJSON(res, 200, {
-            total: allAccounts.length,
-            accounts: allAccounts.map((a: any) => ({
-              name: a.name,
-              address: a.address,
-            })),
-          });
-        } catch (e: any) {
-          sendJSON(res, 500, { error: e.message });
-        }
+      case '/api/accounts':
+        await handleAccounts(req, res, serverCtx);
         break;
-      }
-
-      // === v19.6: KILL SWITCH — Immediately halt all trading ===
-      case '/api/kill': {
-        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST required' }); break; }
-        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized' }); break; }
-        CONFIG.trading.enabled = false;
-        triggerCircuitBreaker('KILL SWITCH activated via /api/kill');
-        telegramService.onKillSwitch('API endpoint /api/kill').catch(() => {});
-        console.error('\n🛑 KILL SWITCH ACTIVATED — All trading halted');
-        sendJSON(res, 200, {
-          status: 'killed',
-          message: 'All trading halted immediately. Redeploy to resume.',
-          timestamp: new Date().toISOString(),
-        });
+      case '/api/kill':
+        handleKill(req, res, serverCtx);
         break;
-      }
-
-      // === v19.6: RESUME — Re-enable trading after kill switch ===
-      case '/api/resume': {
-        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST required' }); break; }
-        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized' }); break; }
-        CONFIG.trading.enabled = true;
-        breakerState.lastBreakerTriggered = null;
-        breakerState.lastBreakerReason = null;
-        breakerState.consecutiveLosses = 0;
-        breakerState.rollingTradeResults = [];
-        console.log('\n✅ TRADING RESUMED via /api/resume');
-        telegramService.sendAlert({
-          severity: "INFO",
-          title: "Trading Resumed",
-          message: "Kill switch deactivated via /api/resume. Trading is active again.",
-        }).catch(() => {});
-        sendJSON(res, 200, {
-          status: 'resumed',
-          message: 'Trading re-enabled. Circuit breaker reset.',
-          timestamp: new Date().toISOString(),
-        });
+      case '/api/resume':
+        handleResume(req, res, serverCtx);
         break;
-      }
-
       case '/api/daily-pnl':
         sendJSON(res, 200, apiDailyPnL());
         break;
       case '/api/indicators':
         sendJSON(res, 200, apiIndicators());
         break;
-
-      // === v20.0: ADAPTIVE EXIT TIMING ENGINE — Trailing Stops API ===
-      case '/api/trailing-stops': {
-        const tsState = getTrailingStopState();
-        const balancesForTS = state.trading.balances || [];
-        sendJSON(res, 200, {
-          version: BOT_VERSION,
-          count: tsState.length,
-          stops: tsState.map(ts => {
-            const holding = balancesForTS.find(b => b.symbol === ts.symbol);
-            const currentPrice = holding?.price || 0;
-            const distanceToStop = currentPrice > 0 && ts.currentStopPrice > 0
-              ? ((currentPrice - ts.currentStopPrice) / currentPrice) * 100
-              : null;
-            return {
-              symbol: ts.symbol,
-              entryPrice: ts.entryPrice,
-              highWaterMark: ts.highWaterMark,
-              highWaterMarkDate: ts.highWaterMarkDate,
-              currentStopPrice: ts.currentStopPrice,
-              currentPrice,
-              distanceToStopPct: distanceToStop !== null ? Math.round(distanceToStop * 100) / 100 : null,
-              atrPercentUsed: ts.atrPercentUsed,
-              atrMultiplierUsed: ts.atrMultiplierUsed,
-              zone: ts.zone,
-              stopTriggered: ts.stopTriggered,
-              triggerPrice: ts.triggerPrice,
-              triggerDate: ts.triggerDate,
-              lastUpdated: ts.lastUpdated,
-            };
-          }),
-        });
+      case '/api/trailing-stops':
+        handleTrailingStops(res, serverCtx);
         break;
-      }
-
-      // === v20.0: RISK REVIEWER + DRAWDOWN STATE API ===
-      case '/api/risk-review': {
-        const ddState = (await import('./services/risk-reviewer.js')).getDrawdownState();
-        sendJSON(res, 200, {
-          version: BOT_VERSION,
-          drawdown: ddState,
-          thresholds: {
-            blockSeverity: 20,
-            reduceSeverity: 10,
-            dailyHaltPct: 5,
-            weeklyDefensivePct: 10,
-          },
-        });
+      case '/api/risk-review':
+        await handleRiskReview(res, serverCtx);
         break;
-      }
-
       case '/api/intelligence':
         sendJSON(res, 200, apiIntelligence());
         break;
@@ -10057,1183 +9786,104 @@ const healthServer = http.createServer(async (req, res) => {
         sendJSON(res, 200, apiThresholds());
         break;
       case '/api/auto-harvest':
-        // Compute next payout time (next 8 AM UTC)
-        const nextPayoutDate = new Date();
-        nextPayoutDate.setUTCHours(8, 0, 0, 0);
-        if (nextPayoutDate.getTime() <= Date.now()) nextPayoutDate.setUTCDate(nextPayoutDate.getUTCDate() + 1);
-
-        sendJSON(res, 200, {
-          enabled: CONFIG.autoHarvest.enabled,
-          mode: 'daily',
-          thresholdUSD: CONFIG.autoHarvest.thresholdUSD,
-          cooldownHours: CONFIG.autoHarvest.cooldownHours,
-          minETHReserve: CONFIG.autoHarvest.minETHReserve,
-          totalTransferredUSD: state.totalAutoHarvestedUSD + (state.totalDailyPayoutsUSD || 0),
-          transferCount: (state.autoHarvestCount || 0) + (state.dailyPayoutCount || 0),
-          totalTransfers: (state.autoHarvestTransfers || []).length,
-          recentTransfers: (state.autoHarvestTransfers || []).slice(-5),
-          lastHarvestTime: (state.lastAutoHarvestTime || null),
-          // v9.1: Multi-wallet recipients
-          recipients: (CONFIG.autoHarvest.recipients || []).map((r: HarvestRecipient) => ({
-            label: r.label,
-            wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
-            percent: r.percent,
-            totalTransferred: (state.autoHarvestByRecipient[r.label] || 0) + (state.dailyPayoutByRecipient[r.label] || 0),
-          })),
-          reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
-          // v9.3: Daily Payout info
-          dailyPayout: {
-            lastPayoutDate: state.lastDailyPayoutDate,
-            dailyPayoutCount: state.dailyPayoutCount,
-            totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
-            nextPayoutUTC: nextPayoutDate.toISOString(),
-            recentPayouts: (state.dailyPayouts || []).slice(-7),
-            byRecipient: state.dailyPayoutByRecipient || {},
-          },
-        });
+        handleAutoHarvest(res, serverCtx);
         break;
       case '/api/auto-harvest/trigger':
-        // v10.2: Require auth token for payout trigger — prevents unauthorized wallet drain
-        if (!isAuthorized(req)) {
-          sendJSON(res, 401, { error: 'Unauthorized — set API_AUTH_TOKEN env var and pass Bearer token' }, req);
-          break;
-        }
-        if (CONFIG.autoHarvest.enabled) {
-          sendJSON(res, 200, { message: 'Daily payout triggered manually' }, req);
-          executeDailyPayout().catch((err: any) => console.error(`[Daily Payout] Manual trigger error: ${err?.message}`));
-        } else {
-          sendJSON(res, 400, { error: 'Auto-harvest is not enabled' }, req);
-        }
+        handleAutoHarvestTrigger(req, res, serverCtx);
         break;
-      // === v6.2: ADAPTIVE CYCLE API ENDPOINT ===
       case '/api/adaptive':
-        sendJSON(res, 200, {
-          version: BOT_VERSION,
-          currentIntervalSec: adaptiveCycle.currentIntervalSec,
-          volatilityLevel: adaptiveCycle.volatilityLevel,
-          portfolioTier: adaptiveCycle.portfolioTier,
-          dynamicPriceThreshold: adaptiveCycle.dynamicPriceThreshold,
-          emergencyMode: adaptiveCycle.emergencyMode,
-          emergencyUntil: adaptiveCycle.emergencyMode ? new Date(adaptiveCycle.emergencyUntil).toISOString() : null,
-          priceStreamActive: adaptiveCycle.wsConnected,
-          consecutiveLightCycles: adaptiveCycle.consecutiveLightCycles,
-          cycleStats: {
-            light: cycleStats.totalLight,
-            heavy: cycleStats.totalHeavy,
-            lastHeavyReason: cycleStats.lastHeavyReason,
-          },
-          // v8.0: Institutional breaker state
-          institutionalBreaker: {
-            consecutiveLosses: breakerState.consecutiveLosses,
-            maxConsecutive: BREAKER_CONSECUTIVE_LOSSES,
-            lastTriggered: breakerState.lastBreakerTriggered,
-            lastReason: breakerState.lastBreakerReason,
-            sizeReductionUntil: breakerState.breakerSizeReductionUntil,
-            dailyBaseline: breakerState.dailyBaseline,
-            weeklyBaseline: breakerState.weeklyBaseline,
-            isPaused: breakerState.lastBreakerTriggered ? Date.now() < new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000) : false,
-            isSizeReduced: breakerState.breakerSizeReductionUntil ? Date.now() < new Date(breakerState.breakerSizeReductionUntil).getTime() : false,
-          },
-          // v8.0: Position sizing info
-          positionSizing: {
-            method: 'QUARTER_KELLY',
-            kellyFraction: KELLY_FRACTION,
-            minTrades: KELLY_MIN_TRADES,
-            ceilingPct: getEffectiveKellyCeiling(state.trading.totalPortfolioValue || 0),
-            baseCeilingPct: KELLY_POSITION_CEILING_PCT,
-            smallPortfolioCeilingPct: KELLY_SMALL_PORTFOLIO_CEILING_PCT,
-            floorUSD: KELLY_POSITION_FLOOR_USD,
-          },
-          // v9.2: Signal health — which data feeds are live/stale/down
-          signalHealth: lastSignalHealth,
-          // v9.2: Market momentum overlay
-          momentum: {
-            score: lastMomentumSignal.score,
-            btcChange24h: lastMomentumSignal.btcChange24h,
-            ethChange24h: lastMomentumSignal.ethChange24h,
-            fearGreedValue: lastMomentumSignal.fearGreedValue,
-            positionMultiplier: lastMomentumSignal.positionMultiplier,
-            deploymentBias: lastMomentumSignal.deploymentBias,
-            dataAvailable: lastMomentumSignal.dataAvailable,
-          },
-          // v10.1.1: Wallet status — using native CoinbaseSmartWallet
-          smartAccount: {
-            enabled: true,
-            address: CONFIG.walletAddress,
-            gasless: false, // Wallet is a SmartWallet but uses standard swap() path
-            mode: 'COINBASE_SMART_WALLET',
-          },
-          // v9.2: Gas tank status
-          gasTank: {
-            ethBalance: lastKnownETHBalance,
-            thresholdETH: GAS_REFUEL_THRESHOLD_ETH,
-            lastRefuelTime: lastGasRefuelTime > 0 ? new Date(lastGasRefuelTime).toISOString() : null,
-            autoRefuelEnabled: CONFIG.trading.enabled,
-            status: lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH * 3 ? 'HEALTHY'
-              : lastKnownETHBalance >= GAS_REFUEL_THRESHOLD_ETH ? 'LOW'
-              : 'CRITICAL',
-          },
-          config: {
-            minIntervalSec: ADAPTIVE_MIN_INTERVAL_SEC,
-            maxIntervalSec: ADAPTIVE_MAX_INTERVAL_SEC,
-            emergencyIntervalSec: EMERGENCY_INTERVAL_SEC,
-            emergencyDropThreshold: EMERGENCY_DROP_THRESHOLD,
-            portfolioTiers: PORTFOLIO_SENSITIVITY_TIERS,
-          },
-        });
+        handleAdaptive(res, serverCtx);
         break;
-
-      // === DERIVATIVES API ENDPOINT (v6.0) ===
       case '/api/derivatives':
-        sendJSON(res, 200, {
-          enabled: derivativesEngine?.isEnabled() || false,
-          state: derivativesEngine?.getState() || null,
-          recentTrades: derivativesEngine?.getTradeHistory()?.slice(-20) || [],
-          config: derivativesEngine?.getConfig() || null,
-          commoditySignal: commoditySignalEngine?.getLastSignal() || null,
-          lastCycleData: lastDerivativesData,
-        });
+        handleDerivatives(res, serverCtx);
         break;
-
       case '/api/equity':
-        if (equityEnabled && equityEngine) {
-          const eqDash = await equityEngine.getDashboardData();
-          sendJSON(res, 200, eqDash);
-        } else {
-          sendJSON(res, 200, { enabled: false });
-        }
+        await handleEquity(res, serverCtx);
         break;
-
       case '/api/discovery':
-        if (tokenDiscoveryEngine) {
-          const discoveryState = tokenDiscoveryEngine.getState();
-          sendJSON(res, 200, {
-            ...discoveryState,
-            tradableTokens: tokenDiscoveryEngine.getTradableTokens().length,
-            topByVolume: tokenDiscoveryEngine.getDiscoveredTokens().slice(0, 10).map(t => ({
-              symbol: t.symbol,
-              name: t.name,
-              sector: t.sector,
-              volume24h: t.volume24hUSD,
-              liquidity: t.liquidityUSD,
-              price: t.priceUSD,
-              change24h: t.priceChange24h,
-              dex: t.dexName,
-              hasCoinGecko: !!t.coingeckoId,
-            })),
-          });
-        } else {
-          sendJSON(res, 200, { enabled: false });
-        }
+        handleDiscovery(res, serverCtx);
         break;
-
       case '/api/cache':
-        sendJSON(res, 200, {
-          stats: cacheManager.getStats(),
-          cooldowns: {
-            active: cooldownManager.getActiveCount(),
-            summary: cooldownManager.getSummary(),
-            entries: cooldownManager.getActiveCooldowns().map(e => ({
-              symbol: e.symbol,
-              decision: e.decision,
-              remainingMs: Math.max(0, e.cooldownMs - (Date.now() - e.decidedAt)),
-            })),
-          },
-          cycleStats,
-        });
+        handleCache(res, serverCtx);
         break;
-
-      // === v11.0: AAVE V3 YIELD API ENDPOINT ===
       case '/api/yield':
-        const aaveState = aaveYieldService.getState();
-        const morphoState = morphoYieldService.getState();
-        sendJSON(res, 200, {
-          enabled: yieldEnabled,
-          currentProtocol: yieldOptimizer.getCurrentProtocol(),
-          // Combined yield totals
-          totalDepositedUSDC: aaveState.depositedUSDC + morphoState.depositedUSDC,
-          totalValueUSDC: aaveState.aTokenBalance + morphoState.currentValueUSDC,
-          totalYieldEarned: aaveState.totalYieldEarned + morphoState.totalYieldEarned,
-          // Per-protocol breakdown
-          aave: aaveYieldService.toJSON(),
-          morpho: morphoYieldService.toJSON(),
-          lastAction: lastYieldAction,
-          yieldCycles: yieldCycleCount,
-          optimizer: yieldOptimizer.toJSON(),
-        });
+        handleYield(res, serverCtx);
         break;
       case '/api/yield-rates':
-        sendJSON(res, 200, {
-          enabled: yieldEnabled,
-          currentProtocol: yieldOptimizer.getCurrentProtocol(),
-          rates: lastYieldRates.length > 0 ? lastYieldRates : yieldOptimizer.getRates(),
-          aaveDeposited: aaveYieldService.getState().depositedUSDC,
-          aaveBalance: aaveYieldService.getState().aTokenBalance,
-          morphoDeposited: morphoYieldService.getDepositedUSDC(),
-          morphoValue: morphoYieldService.getState().currentValueUSDC,
-          totalYieldEarned: aaveYieldService.getState().totalYieldEarned + morphoYieldService.getState().totalYieldEarned,
-          lastRateCheck: yieldOptimizer.getState().lastRateCheck,
-          checkCount: yieldOptimizer.getCheckCount(),
-          rebalanceCount: yieldOptimizer.getState().rebalanceCount,
-        });
+        handleYieldRates(res, serverCtx);
         break;
-
-      // === v11.0: DEX INTELLIGENCE API ===
       case '/api/dex-intelligence':
-        if (lastDexIntelligence) {
-          sendJSON(res, 200, {
-            ...lastDexIntelligence,
-            stats: geckoTerminalService.getStats(),
-            fetchCount: dexIntelFetchCount,
-          });
-        } else {
-          sendJSON(res, 200, {
-            message: 'No DEX intelligence data yet — will be available after first heavy cycle',
-            stats: geckoTerminalService.getStats(),
-          });
-        }
+        handleDexIntelligence(res, serverCtx);
         break;
-
-      // === v11.0: FAMILY PLATFORM API ENDPOINTS ===
       case '/api/family':
-        sendJSON(res, 200, {
-          enabled: familyEnabled,
-          ...familyManager.toJSON(),
-          wallets: familyWalletManager?.toJSON() || { totalWallets: 0, familyTotalValue: 0, wallets: [] },
-          recentFamilyTrades: lastFamilyTradeResults.slice(-20),
-        });
+        handleFamily(res, serverCtx);
         break;
-
       case '/api/family/members':
-        sendJSON(res, 200, {
-          members: familyManager.getMembers(),
-          activeCount: familyManager.getActiveMembers().length,
-        });
+        handleFamilyMembers(res, serverCtx);
         break;
-
       case '/api/family/profiles':
-        sendJSON(res, 200, {
-          profiles: familyManager.getRiskProfiles(),
-        });
+        handleFamilyProfiles(res, serverCtx);
         break;
-
       case '/api/family/wallets':
-        sendJSON(res, 200, familyWalletManager?.toJSON() || { totalWallets: 0, familyTotalValue: 0, wallets: [] });
+        handleFamilyWallets(res, serverCtx);
         break;
-
-      // v11.4.7: Admin health audit — cost basis vs market price for all positions
-      case '/api/admin/health-audit': {
-        if (!isAuthorized(req)) {
-          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
-          break;
-        }
-        const balancesForAudit = apiBalances();
-        const auditPositions: Array<{
-          symbol: string;
-          balance: number;
-          usdValue: number;
-          marketPrice: number;
-          costBasis: number | null;
-          unrealizedGainPct: number | null;
-          totalInvested: number;
-          realizedPnL: number;
-          peakPrice: number | null;
-          drawdownFromPeak: number | null;
-          holdingAgeDays: number | null;
-          flags: string[];
-        }> = [];
-
-        for (const b of balancesForAudit.balances) {
-          if (b.symbol === 'USDC' || b.balance <= 0) continue;
-          const cb = state.costBasis[b.symbol];
-          const marketPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
-          const flags: string[] = [];
-
-          let unrealizedGainPct: number | null = null;
-          let drawdownFromPeak: number | null = null;
-          let holdingAgeDays: number | null = null;
-
-          if (cb && cb.averageCostBasis > 0) {
-            unrealizedGainPct = ((marketPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
-
-            // Flag: >500% gain — likely stale cost basis
-            if (unrealizedGainPct > 500) flags.push('STALE_COST_BASIS_LIKELY');
-            // Flag: >200% gain — review recommended
-            else if (unrealizedGainPct > 200) flags.push('EXTREME_GAIN_REVIEW');
-
-            // Flag: cost basis way below market (10x+)
-            if (marketPrice / cb.averageCostBasis > 10) flags.push('COST_10X_BELOW_MARKET');
-
-            // Flag: cost basis way above market (position underwater by 80%+)
-            if (unrealizedGainPct < -80) flags.push('SEVERE_LOSS');
-
-            // Flag: zero or negative cost basis
-            if (cb.averageCostBasis <= 0) flags.push('ZERO_COST_BASIS');
-
-            // Drawdown from peak
-            if (cb.peakPrice && cb.peakPrice > 0) {
-              drawdownFromPeak = ((marketPrice - cb.peakPrice) / cb.peakPrice) * 100;
-              if (drawdownFromPeak < -50) flags.push('PEAK_DRAWDOWN_50PCT');
-            }
-
-            // Holding age
-            if (cb.firstBuyDate) {
-              holdingAgeDays = Math.round((Date.now() - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60 * 24));
-              // Flag: stale position (30+ days held, small value)
-              if (holdingAgeDays > 30 && b.usdValue < 5) flags.push('STALE_DUST_POSITION');
-            }
-
-            // Flag: inconsistent cost basis data
-            if (cb.totalTokensAcquired > 0 && cb.currentHolding > 0) {
-              const impliedCost = cb.totalInvestedUSD / cb.totalTokensAcquired;
-              const costRatio = cb.averageCostBasis / impliedCost;
-              if (costRatio < 0.1 || costRatio > 10) flags.push('COST_BASIS_INCONSISTENT');
-            }
-          } else {
-            flags.push('NO_COST_BASIS');
-          }
-
-          auditPositions.push({
-            symbol: b.symbol,
-            balance: b.balance,
-            usdValue: b.usdValue,
-            marketPrice,
-            costBasis: cb?.averageCostBasis || null,
-            unrealizedGainPct: unrealizedGainPct !== null ? Math.round(unrealizedGainPct * 10) / 10 : null,
-            totalInvested: cb?.totalInvestedUSD || 0,
-            realizedPnL: cb?.realizedPnL || 0,
-            peakPrice: cb?.peakPrice || null,
-            drawdownFromPeak: drawdownFromPeak !== null ? Math.round(drawdownFromPeak * 10) / 10 : null,
-            holdingAgeDays,
-            flags,
-          });
-        }
-
-        // Sort: flagged positions first, then by USD value descending
-        auditPositions.sort((a, b) => {
-          if (a.flags.length > 0 && b.flags.length === 0) return -1;
-          if (a.flags.length === 0 && b.flags.length > 0) return 1;
-          return b.usdValue - a.usdValue;
-        });
-
-        const totalFlags = auditPositions.reduce((sum, p) => sum + p.flags.length, 0);
-
-        sendJSON(res, 200, {
-          timestamp: new Date().toISOString(),
-          portfolioValue: balancesForAudit.totalValue,
-          positionCount: auditPositions.length,
-          flaggedPositions: auditPositions.filter(p => p.flags.length > 0).length,
-          totalFlags,
-          healthStatus: totalFlags === 0 ? 'HEALTHY' : totalFlags <= 2 ? 'REVIEW' : 'CRITICAL',
-          positions: auditPositions,
-          // Recent sanity alerts
-          recentAlerts: (state.sanityAlerts || []).slice(-20),
-          // Active dedup entries
-          activeDedups: Object.entries(state.tradeDedupLog || {}).map(([key, ts]) => ({
-            key,
-            lastExecuted: ts,
-            minutesAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60)),
-          })),
-          // Harvest cooldown state
-          harvestCooldowns: Object.entries(state.profitTakeCooldowns).map(([key, ts]) => ({
-            key,
-            lastTrigger: ts,
-            hoursAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60) * 10) / 10,
-          })),
-          // Stop-loss cooldown state
-          stopLossCooldowns: Object.entries(state.stopLossCooldowns).map(([key, ts]) => ({
-            symbol: key,
-            lastTrigger: ts,
-            hoursAgo: Math.round((Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60) * 10) / 10,
-          })),
-        });
+      case '/api/admin/health-audit':
+        handleHealthAudit(req, res, serverCtx);
         break;
-      }
-
-      // Win Rate Truth Dashboard — honest profitability metrics
-      case '/api/win-rate-truth': {
-        const truth = calculateWinRateTruth();
-        sendJSON(res, 200, {
-          timestamp: new Date().toISOString(),
-          disclaimer: "executionWinRate counts successful API calls. realizedWinRate counts trades where sellPrice > buyPrice. The gap between these two numbers is the honesty gap.",
-          ...truth,
-        });
+      case '/api/win-rate-truth':
+        handleWinRateTruth(res, serverCtx);
         break;
-      }
-
-      // v11.3: Admin endpoint to correct corrupted state values (e.g. false deposit detection)
-      case '/api/admin/correct-state': {
-        if (req.method !== 'POST') {
-          sendJSON(res, 405, { error: 'Method not allowed — use POST' });
-          break;
-        }
-        if (!isAuthorized(req)) {
-          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
-          break;
-        }
-        // Read POST body (v11.4.17: bounded to 10KB to prevent DoS)
-        let body = '';
-        let bodyTooLarge = false;
-        req.on('data', (chunk: Buffer) => {
-          body += chunk.toString();
-          if (body.length > 10_000) { bodyTooLarge = true; req.destroy(); }
-        });
-        req.on('end', () => {
-          if (bodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large (max 10KB)' }); return; }
-          try {
-            const corrections = JSON.parse(body);
-            const applied: string[] = [];
-            const before = {
-              peakValue: state.trading.peakValue,
-              initialValue: state.trading.initialValue,
-              totalDeposited: state.totalDeposited,
-            };
-            if (typeof corrections.peakValue === 'number') {
-              state.trading.peakValue = corrections.peakValue;
-              applied.push(`peakValue: ${before.peakValue.toFixed(2)} → ${corrections.peakValue.toFixed(2)}`);
-            }
-            if (typeof corrections.initialValue === 'number') {
-              state.trading.initialValue = corrections.initialValue;
-              applied.push(`initialValue: ${before.initialValue.toFixed(2)} → ${corrections.initialValue.toFixed(2)}`);
-            }
-            if (typeof corrections.totalDeposited === 'number') {
-              state.totalDeposited = corrections.totalDeposited;
-              applied.push(`totalDeposited: ${before.totalDeposited.toFixed(2)} → ${corrections.totalDeposited.toFixed(2)}`);
-            }
-            if (corrections.removeLastDeposit === true && state.depositHistory.length > 0) {
-              const removed = state.depositHistory.pop();
-              applied.push(`removed last deposit: $${removed?.amountUSD}`);
-            }
-            // v11.4.20: Explicit deposit registration — adjusts totalDeposited, peakValue, breaker baselines.
-            // initialValue is NOT modified — it's the original seed capital. All deposits go into totalDeposited.
-            if (typeof corrections.registerDeposit === 'number' && corrections.registerDeposit > 0) {
-              const amt = corrections.registerDeposit;
-              state.totalDeposited += amt;
-              state.trading.peakValue += amt;
-              if (breakerState.dailyBaseline.value > 0) breakerState.dailyBaseline.value += amt;
-              if (breakerState.weeklyBaseline.value > 0) breakerState.weeklyBaseline.value += amt;
-              state.depositHistory.push({
-                timestamp: new Date().toISOString(),
-                amountUSD: Math.round(amt * 100) / 100,
-                newTotal: Math.round(state.totalDeposited * 100) / 100,
-              });
-              applied.push(`registerDeposit: +$${amt.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)}, initial: $${state.trading.initialValue.toFixed(2)})`);
-            }
-            // v11.4.5: Reset cost basis to current market prices — fixes stale/wrong cost basis
-            // Usage: { "resetCostBasis": true } or { "resetCostBasis": ["ETH", "AERO"] }
-            if (corrections.resetCostBasis) {
-              const balances = apiBalances();
-              const tokensToReset: string[] = Array.isArray(corrections.resetCostBasis)
-                ? corrections.resetCostBasis
-                : Object.keys(state.costBasis);
-              for (const symbol of tokensToReset) {
-                const cb = state.costBasis[symbol];
-                if (!cb) continue;
-                const bal = balances.balances.find((b: any) => b.symbol === symbol);
-                const currentPrice = bal ? (bal.price || (bal.balance > 0 ? bal.usdValue / bal.balance : 0)) : 0;
-                if (currentPrice <= 0) {
-                  applied.push(`resetCostBasis: ${symbol} — skipped (no price data)`);
-                  continue;
-                }
-                const oldCost = cb.averageCostBasis;
-                cb.averageCostBasis = currentPrice;
-                cb.totalInvestedUSD = currentPrice * cb.currentHolding;
-                cb.totalTokensAcquired = cb.currentHolding;
-                cb.realizedPnL = 0;
-                cb.unrealizedPnL = 0;
-                cb.firstBuyDate = new Date().toISOString();
-                cb.lastTradeDate = new Date().toISOString();
-                applied.push(`resetCostBasis: ${symbol} $${oldCost.toFixed(6)} → $${currentPrice.toFixed(6)}`);
-              }
-            }
-            // v11.4.5: Clear all harvest cooldowns to let fresh thresholds apply
-            if (corrections.clearHarvestCooldowns === true) {
-              const count = Object.keys(state.profitTakeCooldowns).length;
-              state.profitTakeCooldowns = {};
-              applied.push(`clearHarvestCooldowns: cleared ${count} cooldown entries`);
-            }
-            // Recalculate derived values
-            const drawdown = Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100);
-            markStateDirty();
-            flushStateIfDirty('admin-correction');
-            console.log(`\n🔧 ADMIN STATE CORRECTION applied:`);
-            applied.forEach(a => console.log(`   ${a}`));
-            sendJSON(res, 200, {
-              message: 'State corrected successfully',
-              applied,
-              current: {
-                peakValue: state.trading.peakValue,
-                initialValue: state.trading.initialValue,
-                totalDeposited: state.totalDeposited,
-                totalPortfolioValue: state.trading.totalPortfolioValue,
-                drawdown: drawdown.toFixed(2) + '%',
-                depositCount: state.depositHistory.length,
-              },
-            });
-          } catch (parseErr: any) {
-            sendJSON(res, 400, { error: 'Invalid JSON body: ' + parseErr.message });
-          }
-        });
-        return; // Don't end response here — it's handled in req.on('end')
-      }
-
-      // v11.4.4: Dashboard AI Chat
-      case '/api/chat': {
-        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
-        // v11.4.17: Bounded POST body (max 50KB for chat with history)
-        let chatBody = '';
-        let chatBodyTooLarge = false;
-        req.on('data', (chunk: Buffer) => {
-          chatBody += chunk.toString();
-          if (chatBody.length > 50_000) { chatBodyTooLarge = true; req.destroy(); }
-        });
-        req.on('end', async () => {
-          if (chatBodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large (max 50KB)' }); return; }
-          try {
-            const { message, history } = JSON.parse(chatBody);
-            if (!message || typeof message !== 'string') {
-              sendJSON(res, 400, { error: 'message required' });
-              return;
-            }
-
-            // NVR-NL: Check for "confirm" — apply pending config change
-            const msgLower = message.toLowerCase().trim();
-            if (msgLower === 'confirm' || msgLower === 'yes' || msgLower === 'apply') {
-              // Find most recent pending config change
-              const entries = [...pendingConfigChanges.entries()];
-              if (entries.length > 0) {
-                const [confId, pending] = entries[entries.length - 1];
-                const directive = applyConfigChanges(pending.parseResult, pending.instruction);
-                pendingConfigChanges.delete(confId);
-                sendJSON(res, 200, {
-                  response: `Applied. ${pending.parseResult.summary}\n\nDirective ID: ${directive.id} (active for 24h). Say "list directives" to see all active changes.`,
-                  configApplied: true,
-                  directiveId: directive.id,
-                });
-                return;
-              }
-            }
-
-            // NVR-NL: Try strategy config parser first (keyword matching, no AI needed)
-            if (isStrategyInstruction(message)) {
-              const parseResult = parseStrategyInstruction(message, {
-                stopLossPercent: Math.abs(CONFIG.trading.stopLoss.percentThreshold),
-                profitTakePercent: CONFIG.trading.profitTaking.targetPercent,
-                tradingEnabled: CONFIG.trading.enabled,
-              });
-
-              if (parseResult.understood && parseResult.summary === 'QUERY') {
-                // Fall through to normal chat handling below
-              } else if (parseResult.understood && parseResult.summary === 'STRATEGY_QUERY') {
-                const activeCfg = getActiveConfigDirectives();
-                const cfgList = activeCfg.length > 0
-                  ? activeCfg.map((d: ConfigDirective, i: number) => `${i + 1}. "${d.instruction}" (${new Date(d.appliedAt).toLocaleString()})`).join('\n')
-                  : 'No active config directives — running default strategy.';
-                sendJSON(res, 200, { response: `Current strategy config directives:\n${cfgList}` });
-                return;
-              } else if (parseResult.understood && parseResult.changes.length > 0) {
-                if (parseResult.requiresConfirmation) {
-                  const confId = `cfgconf-${Date.now()}`;
-                  pendingConfigChanges.set(confId, { parseResult, instruction: message, createdAt: Date.now() });
-                  const changeList = parseResult.changes.map(c => `  ${c.parameter}: ${c.oldValue} -> ${c.newValue}`).join('\n');
-                  sendJSON(res, 200, {
-                    response: `I understand. Here is what I will change:\n\n${parseResult.summary}\n\nDetails:\n${changeList}\n\nReply "confirm" to apply these changes.`,
-                    pendingConfirmation: true,
-                  });
-                  return;
-                } else {
-                  // No confirmation needed (e.g. watchlist adds)
-                  const directive = applyConfigChanges(parseResult, message);
-                  sendJSON(res, 200, {
-                    response: `Done. ${parseResult.summary}\n\nDirective ID: ${directive.id} (active for 24h).`,
-                    configApplied: true,
-                    directiveId: directive.id,
-                  });
-                  return;
-                }
-              }
-            }
-
-            // NVR Central Mode: Chat fallback — no Claude API needed
-            if (signalMode === 'central') {
-              const portfolio = apiPortfolio();
-              const perfStats = calculateTradePerformance();
-              const totalValue = portfolio.totalValue || 0;
-              const pnlPercent = portfolio.pnlPercent || 0;
-              const winRate = portfolio.winRate || 0;
-              const totalTrades = portfolio.totalTrades || 0;
-              const usdcBal = (apiBalances().balances || []).find((b: any) => b.symbol === 'USDC');
-              const usdcBalance = usdcBal?.balance || 0;
-              const cashPct = totalValue > 0 ? ((usdcBalance / totalValue) * 100).toFixed(0) : '0';
-
-              const activeCfgDirectives = getActiveConfigDirectives();
-              const cfgSection = activeCfgDirectives.length > 0
-                ? '\n\nActive strategy directives:\n' + activeCfgDirectives.map((d: ConfigDirective) => `- ${d.instruction}`).join('\n')
-                : '';
-
-              const summary = [
-                `Portfolio: $${totalValue.toFixed(2)} | P&L: ${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`,
-                `Win Rate: ${winRate.toFixed(1)}% | Trades: ${totalTrades}`,
-                `Cash: $${usdcBalance.toFixed(2)} (${cashPct}%)`,
-                `Drawdown: ${portfolio.drawdown.toFixed(1)}% | Peak: $${portfolio.peakValue.toFixed(2)}`,
-                '',
-                'You can configure strategy via chat: "be more aggressive", "set stop loss to 10%", "avoid BRETT", etc.',
-                'AI chat requires local mode for full conversation.',
-              ].join('\n') + cfgSection;
-
-              sendJSON(res, 200, { response: summary });
-              return;
-            }
-
-            const result = await handleChatRequest(message.substring(0, 500), history || []);
-            sendJSON(res, 200, result);
-          } catch (err: any) {
-            console.error('[Chat API Error]', err.message, err.stack?.substring(0, 300));
-            sendJSON(res, 500, { error: 'Chat request failed: ' + (err.message || 'unknown') });
-          }
-        });
-        return; // Don't end response here — it's handled in req.on('end')
-      }
-
-      // v11.4.16: User Directives API
-      case '/api/directives': {
-        const activeUserDir = getActiveDirectives();
-        const activeCfgDir = getActiveConfigDirectives();
-        sendJSON(res, 200, {
-          directives: activeUserDir.map(d => ({
-            id: d.id,
-            type: d.type,
-            instruction: d.instruction,
-            token: d.token,
-            sector: d.sector,
-            value: d.value,
-            createdAt: d.createdAt,
-            expiresAt: d.expiresAt,
-          })),
-          configDirectives: activeCfgDir.map((d: ConfigDirective) => ({
-            id: d.id,
-            instruction: d.instruction,
-            changes: d.changes,
-            appliedAt: d.appliedAt,
-            expiresAt: d.expiresAt,
-            active: d.active,
-          })),
-          count: activeUserDir.length,
-          configCount: activeCfgDir.length,
-        });
+      case '/api/admin/correct-state':
+        if (handleCorrectState(req, res, serverCtx)) return;
         break;
-      }
-
-      // === NVR-SPEC-001: SIMULATION API ===
-      case '/api/simulate': {
-        try {
-          const history = loadPriceHistory();
-          const compare = url.searchParams.get('compare') === 'true';
-          if (compare) {
-            const configB: SimConfig = { ...DEFAULT_SIM_CONFIG };
-            for (const [key, val] of url.searchParams.entries()) {
-              if (key === 'compare') continue;
-              if (key in configB) (configB as any)[key] = parseFloat(val);
-            }
-            const result = compareStrategies(DEFAULT_SIM_CONFIG, configB, history);
-            sendJSON(res, 200, result);
-          } else {
-            const cfg: SimConfig = { ...DEFAULT_SIM_CONFIG };
-            for (const [key, val] of url.searchParams.entries()) {
-              if (key in cfg) (cfg as any)[key] = parseFloat(val);
-            }
-            const result = runSimulation(cfg, history);
-            sendJSON(res, 200, { ...result, trades: result.trades.slice(-100), equityCurve: result.equityCurve.length > 500 ? downsample(result.equityCurve, 500) : result.equityCurve });
-          }
-        } catch (err: any) {
-          sendJSON(res, 500, { error: `Simulation failed: ${err.message}` });
-        }
+      case '/api/chat':
+        if (handleChat(req, res, serverCtx)) return;
         break;
-      }
-
-      // === STRATEGY LAB API ENDPOINTS ===
-      case '/api/strategy-versions': {
-        sendJSON(res, 200, STRATEGY_VERSIONS);
+      case '/api/directives':
+        handleDirectives(res, serverCtx);
         break;
-      }
-
-      case '/api/paper-portfolios': {
-        const portfolios = getAllPaperPortfolios();
-        sendJSON(res, 200, {
-          portfolios: portfolios.map(p => getPaperPortfolioSummary(p)),
-          count: portfolios.length,
-          liveValue: state.trading.totalPortfolioValue,
-          liveReturnPct: state.trading.initialValue > 0
-            ? ((state.trading.totalPortfolioValue - state.trading.initialValue) / state.trading.initialValue) * 100
-            : 0,
-        });
+      case '/api/simulate':
+        handleSimulate(url, res, serverCtx);
         break;
-      }
-
-      // === NVR-SPEC-005: Strategy Lab Marketing Export ===
-      case '/api/export-results': {
-        const exportType = url.searchParams.get('type') || 'backtest';
-        const exportVersion = url.searchParams.get('version');
-
-        try {
-          let html = '';
-
-          if (exportType === 'backtest') {
-            // Multi-version comparison export
-            const capital = parseFloat(url.searchParams.get('capital') || '500');
-            const results = runAllVersionBacktestsFromDisk(capital);
-            const summarized = summarizeBacktestResults(results);
-            html = generateBacktestMultiExportHTML(summarized);
-
-          } else if (exportType === 'single' && exportVersion) {
-            // Single version backtest export
-            const capital = parseFloat(url.searchParams.get('capital') || '500');
-            const results = runAllVersionBacktestsFromDisk(capital);
-            const summarized = summarizeBacktestResults(results);
-            const match = summarized.find((r: any) => r.version === exportVersion);
-            if (!match) {
-              sendJSON(res, 400, {
-                error: `Unknown version: ${exportVersion}`,
-                available: summarized.map((r: any) => r.version),
-              });
-              return;
-            }
-            html = generateBacktestSingleExportHTML(match);
-
-          } else if (exportType === 'paper') {
-            // Paper trading export
-            const portfolioId = url.searchParams.get('id');
-            const allPortfolios = getAllPaperPortfolios();
-
-            if (portfolioId) {
-              const portfolio = getPaperPortfolio(portfolioId);
-              if (!portfolio) {
-                sendJSON(res, 404, {
-                  error: `Paper portfolio "${portfolioId}" not found`,
-                  available: allPortfolios.map((p: any) => p.id),
-                });
-                return;
-              }
-              const summary = getPaperPortfolioSummary(portfolio);
-              const detail = {
-                equityCurve: portfolio.equityCurve.length > 500
-                  ? portfolio.equityCurve.filter((_: any, i: number) => i === 0 || i === portfolio.equityCurve.length - 1 || i % Math.ceil(portfolio.equityCurve.length / 500) === 0)
-                  : portfolio.equityCurve,
-              };
-              html = generatePaperExportHTML(summary, detail);
-            } else {
-              // Default: export first paper portfolio
-              if (allPortfolios.length === 0) {
-                sendJSON(res, 404, { error: 'No paper portfolios available' });
-                return;
-              }
-              const portfolio = allPortfolios[0];
-              const summary = getPaperPortfolioSummary(portfolio);
-              const detail = {
-                equityCurve: portfolio.equityCurve.length > 500
-                  ? portfolio.equityCurve.filter((_: any, i: number) => i === 0 || i === portfolio.equityCurve.length - 1 || i % Math.ceil(portfolio.equityCurve.length / 500) === 0)
-                  : portfolio.equityCurve,
-              };
-              html = generatePaperExportHTML(summary, detail);
-            }
-
-          } else {
-            sendJSON(res, 400, { error: 'Invalid type. Use: backtest, single (with version param), or paper (with optional id param)' });
-            return;
-          }
-
-          res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
-          res.end(html);
-        } catch (err: any) {
-          sendJSON(res, 500, { error: `Export failed: ${err.message}` });
-        }
+      case '/api/strategy-versions':
+        handleStrategyVersions(res, serverCtx);
         break;
-      }
-
-      case '/api/version-backtest': {
-        try {
-          const capital = parseFloat(url.searchParams.get('capital') || '500');
-          const results = runAllVersionBacktestsFromDisk(capital);
-          sendJSON(res, 200, {
-            results: summarizeBacktestResults(results),
-            count: results.length,
-            runAt: new Date().toISOString(),
-          });
-        } catch (err: any) {
-          sendJSON(res, 500, { error: `Version backtest failed: ${err.message}` });
-        }
+      case '/api/paper-portfolios':
+        handlePaperPortfolios(res, serverCtx);
         break;
-      }
-
-      // === v15.0: SWARM STATUS API ===
-      case '/api/swarm-status': {
-        const _swarmDecs = getLatestSwarmDecisions();
-        const _swarmTime = getLastSwarmRunTime();
-        sendJSON(res, 200, {
-          engine: SIGNAL_ENGINE,
-          agents: ['momentum', 'flow', 'risk', 'sentiment', 'trend'],
-          lastRunTime: _swarmTime?.toISOString() || null,
-          lastDecisions: _swarmDecs.map(d => ({
-            token: d.token, finalAction: d.finalAction, totalScore: d.totalScore, consensus: d.consensus,
-            votes: d.votes.map(v => ({ agent: v.agent, action: v.action, confidence: v.confidence, reasoning: v.reasoning, weight: v.weight })),
-          })),
-        }, req);
+      case '/api/export-results':
+        handleExportResults(url, res, serverCtx);
         break;
-      }
-
-      // === NVR-SPEC-004: Signal Dashboard API ===
-      case '/api/signal-dashboard': {
-        const uptimeMs = Date.now() - state.startTime.getTime();
-        const uptimeH = Math.floor(uptimeMs / 3600000);
-        const uptimeM = Math.floor((uptimeMs % 3600000) / 60000);
-
-        const statusMap: Record<string, string> = { producer: 'producing', central: 'consuming', local: 'local' };
-
-        // Build current signal counts
-        const sigs = latestSignals?.signals || [];
-        const counts = { total: sigs.length, buy: 0, sell: 0, hold: 0, strongBuy: 0, strongSell: 0 };
-        for (const s of sigs) {
-          if (s.action === 'BUY') counts.buy++;
-          else if (s.action === 'SELL') counts.sell++;
-          else if (s.action === 'HOLD') counts.hold++;
-          else if (s.action === 'STRONG_BUY') counts.strongBuy++;
-          else if (s.action === 'STRONG_SELL') counts.strongSell++;
-        }
-
-        const lastTime = latestSignals?.timestamp || null;
-        const signalAgeSec = lastTime ? Math.round((Date.now() - new Date(lastTime).getTime()) / 1000) : null;
-
-        // Token signals sorted by action priority
-        const actionOrder: Record<string, number> = { STRONG_BUY: 0, BUY: 1, HOLD: 2, SELL: 3, STRONG_SELL: 4 };
-        const tokenSignals = sigs
-          .map(s => ({
-            token: s.token,
-            action: s.action,
-            confluence: s.confluence,
-            buyRatio: s.indicators?.buyRatio ?? null,
-            rsi: s.indicators?.rsi14 ?? null,
-            sector: s.sector || '',
-            price: s.price,
-            priceChange24h: s.priceChange24h,
-          }))
-          .sort((a, b) => (actionOrder[a.action] ?? 2) - (actionOrder[b.action] ?? 2));
-
-        sendJSON(res, 200, {
-          signalService: {
-            status: statusMap[signalMode] || 'local',
-            mode: signalMode,
-            uptime: `${uptimeH}h ${uptimeM}m`,
-            totalCyclesProduced: signalCycleNumber,
-            lastSignalTime: lastTime,
-            signalAgeSeconds: signalAgeSec,
-          },
-          currentSignals: counts,
-          signalHistory: signalHistory.slice(-100),
-          tokenSignals,
-        });
+      case '/api/version-backtest':
+        handleVersionBacktest(url, res, serverCtx);
         break;
-      }
-
-      // === NVR CENTRAL SIGNAL SERVICE — Signal API Endpoint ===
-      case '/signals/latest': {
-        // Simple API key check
-        const signalKey = req.headers['x-signal-key'];
-        const expectedKey = process.env.SIGNAL_API_KEY;
-        if (expectedKey && signalKey !== expectedKey) {
-          sendJSON(res, 401, { error: 'Invalid signal key' });
-          return;
-        }
-
-        if (!latestSignals) {
-          sendJSON(res, 503, { error: 'No signals produced yet. Service is starting up.' });
-          return;
-        }
-
-        const etag = `"cycle-${latestSignals.cycleNumber}"`;
-        if (req.headers['if-none-match'] === etag) {
-          res.writeHead(304);
-          res.end();
-          return;
-        }
-
-        res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'ETag': etag,
-          'Cache-Control': 'public, max-age=120',
-        });
-        res.end(JSON.stringify(latestSignals));
+      case '/api/swarm-status':
+        handleSwarmStatus(req, res, serverCtx);
+        break;
+      case '/api/signal-dashboard':
+        handleSignalDashboard(res, serverCtx);
+        break;
+      case '/signals/latest':
+        handleSignalsLatest(req, res, serverCtx);
         return;
-      }
-
-      // v14.0: Withdraw funds endpoint — two-step confirmation flow
-      case '/api/withdraw': {
-        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
-        if (!isAuthorized(req)) {
-          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
-          break;
-        }
-        let withdrawBody = '';
-        let withdrawBodyTooLarge = false;
-        req.on('data', (chunk: Buffer) => {
-          withdrawBody += chunk.toString();
-          if (withdrawBody.length > 10_000) { withdrawBodyTooLarge = true; req.destroy(); }
-        });
-        req.on('end', async () => {
-          if (withdrawBodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large' }); return; }
-          try {
-            const body = JSON.parse(withdrawBody);
-            const { toAddress, amountUSD, token: tokenParam, confirmationId, confirm } = body;
-            const token = (tokenParam || 'USDC').toUpperCase();
-
-            // Step 2: Confirm and execute a pending withdrawal
-            if (confirmationId && confirm === true) {
-              const pending = pendingWithdrawals.get(confirmationId);
-              if (!pending) {
-                sendJSON(res, 400, { success: false, error: 'Confirmation expired or invalid. Please start a new withdrawal.' });
-                return;
-              }
-              pendingWithdrawals.delete(confirmationId);
-
-              // Pause trading
-              (state as any).withdrawPaused = true;
-              console.log(`\n💸 [WITHDRAW] Executing: $${pending.amountUSD.toFixed(2)} ${pending.token} → ${pending.toAddress}`);
-
-              try {
-                const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
-                let txHash: string;
-
-                if (pending.token === 'USDC') {
-                  txHash = await sendUSDCTransfer(account, pending.toAddress, pending.amountUSD);
-                } else {
-                  // For other tokens, use USDC transfer (primary use case)
-                  txHash = await sendUSDCTransfer(account, pending.toAddress, pending.amountUSD);
-                }
-
-                console.log(`[WITHDRAW] ✅ TX: ${txHash}`);
-                console.log(`[WITHDRAW] 🔍 https://basescan.org/tx/${txHash}`);
-
-                // Log withdrawal in trade history
-                state.tradeHistory.push({
-                  timestamp: new Date().toISOString(),
-                  cycle: state.totalCycles,
-                  action: 'WITHDRAW' as any,
-                  fromToken: pending.token,
-                  toToken: 'EXTERNAL',
-                  amountUSD: pending.amountUSD,
-                  txHash,
-                  success: true,
-                  portfolioValueBefore: state.trading.totalPortfolioValue,
-                  reasoning: `Manual withdrawal: $${pending.amountUSD.toFixed(2)} ${pending.token} to ${pending.toAddress.slice(0, 6)}...${pending.toAddress.slice(-4)}`,
-                  marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
-                } as TradeRecord);
-                if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
-
-                // Adjust peak value like payouts do (prevent false drawdown triggers)
-                if (state.trading.peakValue > pending.amountUSD) {
-                  state.trading.peakValue -= pending.amountUSD;
-                  if (breakerState.dailyBaseline.value > pending.amountUSD) breakerState.dailyBaseline.value -= pending.amountUSD;
-                  if (breakerState.weeklyBaseline.value > pending.amountUSD) breakerState.weeklyBaseline.value -= pending.amountUSD;
-                }
-
-                saveTradeHistory();
-                (state as any).withdrawPaused = false;
-
-                sendJSON(res, 200, {
-                  success: true,
-                  txHash,
-                  amountSent: pending.amountUSD,
-                  token: pending.token,
-                  toAddress: pending.toAddress,
-                });
-              } catch (err: any) {
-                console.error(`[WITHDRAW] ❌ FAILED: ${err.message}`);
-                (state as any).withdrawPaused = false;
-                sendJSON(res, 500, { success: false, error: err.message || 'Transfer failed' });
-              }
-              return;
-            }
-
-            // Step 1: Validate and create pending confirmation
-            if (!toAddress || typeof toAddress !== 'string') {
-              sendJSON(res, 400, { success: false, error: 'Missing destination address (toAddress)' });
-              return;
-            }
-            if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) {
-              sendJSON(res, 400, { success: false, error: 'Invalid Ethereum address — must start with 0x and be 42 characters' });
-              return;
-            }
-            if (!amountUSD || typeof amountUSD !== 'number' || amountUSD <= 0) {
-              sendJSON(res, 400, { success: false, error: 'Amount must be a positive number' });
-              return;
-            }
-
-            // Check available balance
-            const walletAddr = CONFIG.walletAddress;
-            const usdcBal = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6);
-            const minReserve = 10; // Keep $10 for gas
-            const maxWithdrawable = Math.max(0, usdcBal - minReserve);
-            const portfolioTotal = state.trading.totalPortfolioValue || usdcBal;
-
-            if (amountUSD > maxWithdrawable) {
-              sendJSON(res, 400, {
-                success: false,
-                error: `Insufficient balance. Available: $${maxWithdrawable.toFixed(2)} USDC (keeping $${minReserve} reserve). Current balance: $${usdcBal.toFixed(2)}`,
-                availableBalance: maxWithdrawable,
-              });
-              return;
-            }
-
-            // Safety guard: max 90% of total portfolio
-            if (amountUSD > portfolioTotal * 0.9) {
-              sendJSON(res, 400, {
-                success: false,
-                error: `Safety limit: Cannot withdraw more than 90% of total portfolio ($${(portfolioTotal * 0.9).toFixed(2)}). To withdraw more, contact admin.`,
-                maxAllowed: Math.floor(portfolioTotal * 0.9 * 100) / 100,
-              });
-              return;
-            }
-
-            // Create confirmation
-            const confId = `w-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-            pendingWithdrawals.set(confId, {
-              toAddress,
-              amountUSD,
-              token,
-              createdAt: Date.now(),
-            });
-
-            console.log(`[WITHDRAW] Confirmation created: ${confId} — $${amountUSD.toFixed(2)} ${token} → ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}`);
-
-            sendJSON(res, 200, {
-              success: true,
-              confirmationId: confId,
-              message: `Ready to send $${amountUSD.toFixed(2)} ${token} to ${toAddress}. Confirm within 5 minutes.`,
-              amountUSD,
-              token,
-              toAddress,
-              availableBalance: maxWithdrawable,
-            });
-          } catch (parseErr: any) {
-            sendJSON(res, 400, { success: false, error: 'Invalid JSON body: ' + parseErr.message });
-          }
-        });
-        return; // Don't end response here — it's handled in req.on('end')
-      }
-
-      // ============================================================================
-      // v20.7: STATE BACKUP & RECOVERY — protect against volume/container failures
-      // ============================================================================
-      case '/api/state-backup': {
-        if (!isAuthorized(req)) {
-          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
-          break;
-        }
-        try {
-          // Force a fresh save so the file is up-to-date
-          saveTradeHistory();
-          const stateData = fs.readFileSync(CONFIG.logFile, 'utf-8');
-          sendJSON(res, 200, {
-            state: stateData,
-            timestamp: Date.now(),
-            version: BOT_VERSION,
-            tradeCount: state.tradeHistory.length,
-            costBasisCount: Object.keys(state.costBasis).length,
-            filePath: CONFIG.logFile,
-            fileSizeBytes: Buffer.byteLength(stateData, 'utf-8'),
-          });
-        } catch (e: any) {
-          sendJSON(res, 500, { error: `Failed to export state: ${e.message}` });
-        }
+      case '/api/withdraw':
+        if (handleWithdraw(req, res, serverCtx)) return;
         break;
-      }
-
-      case '/api/state-restore': {
-        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
-        if (!isAuthorized(req)) {
-          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
-          break;
-        }
-        let restoreBody = '';
-        let restoreBodyTooLarge = false;
-        req.on('data', (chunk: Buffer) => {
-          restoreBody += chunk.toString();
-          if (restoreBody.length > 50_000_000) { restoreBodyTooLarge = true; req.destroy(); }
-        });
-        req.on('end', () => {
-          if (restoreBodyTooLarge) { sendJSON(res, 413, { error: 'Request body too large (50MB limit)' }); return; }
-          try {
-            const body = JSON.parse(restoreBody);
-            const parsed = typeof body.state === 'string' ? JSON.parse(body.state) : body.state;
-
-            // Validate required fields
-            if (!parsed.trades || !Array.isArray(parsed.trades)) {
-              sendJSON(res, 400, { error: 'Invalid state: missing "trades" array' });
-              return;
-            }
-            if (!parsed.costBasis || typeof parsed.costBasis !== 'object') {
-              sendJSON(res, 400, { error: 'Invalid state: missing "costBasis" object' });
-              return;
-            }
-
-            // Write to disk first (atomic write)
-            const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf('/'));
-            if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            const tmpFile = CONFIG.logFile + '.tmp';
-            fs.writeFileSync(tmpFile, typeof body.state === 'string' ? body.state : JSON.stringify(parsed, null, 2));
-            fs.renameSync(tmpFile, CONFIG.logFile);
-
-            // Reload into memory
-            const tradesBeforeRestore = state.tradeHistory.length;
-            const positionsBeforeRestore = Object.keys(state.costBasis).length;
-            loadTradeHistory();
-
-            const tradesRestored = state.tradeHistory.length;
-            const positionsRestored = Object.keys(state.costBasis).length;
-            console.log(`[State] Restored from API: ${tradesRestored} trades, ${positionsRestored} positions (was: ${tradesBeforeRestore} trades, ${positionsBeforeRestore} positions)`);
-
-            sendJSON(res, 200, {
-              success: true,
-              tradesRestored,
-              positionsRestored,
-              version: parsed.version || 'unknown',
-              lastUpdated: parsed.lastUpdated || null,
-            });
-          } catch (e: any) {
-            sendJSON(res, 400, { error: `Failed to restore state: ${e.message}` });
-          }
-        });
-        return; // Don't end response here — handled in req.on('end')
-      }
-
+      case '/api/state-backup':
+        handleStateBackup(req, res, serverCtx);
+        break;
+      case '/api/state-restore':
+        if (handleStateRestore(req, res, serverCtx)) return;
+        break;
       default: {
         // NVR-NL: DELETE /api/directives/:id — remove a directive
         if (url.pathname.startsWith('/api/directives/') && req.method === 'DELETE') {
-          const id = url.pathname.replace('/api/directives/', '');
-          const removedUser = removeUserDirective(id);
-          const removedConfig = removeConfigDirective(id);
-          if (removedUser || removedConfig) {
-            sendJSON(res, 200, { success: true, removed: id });
-          } else {
-            sendJSON(res, 404, { success: false, error: `Directive "${id}" not found` });
-          }
+          handleDeleteDirective(url, res, serverCtx);
           break;
         }
-
         // Handle dynamic route: /api/paper-portfolio/:id
         if (url.pathname.startsWith('/api/paper-portfolio/')) {
-          const id = url.pathname.replace('/api/paper-portfolio/', '');
-          const portfolio = getPaperPortfolio(id);
-          if (portfolio) {
-            sendJSON(res, 200, {
-              ...getPaperPortfolioSummary(portfolio),
-              trades: portfolio.trades.slice(-100),
-              equityCurve: portfolio.equityCurve.length > 500
-                ? portfolio.equityCurve.filter((_: any, i: number) => i === 0 || i === portfolio.equityCurve.length - 1 || i % Math.ceil(portfolio.equityCurve.length / 500) === 0)
-                : portfolio.equityCurve,
-            });
-          } else {
-            sendJSON(res, 404, { error: `Paper portfolio "${id}" not found` });
-          }
+          handlePaperPortfolioById(url, res, serverCtx);
           break;
         }
         sendJSON(res, 404, { error: 'Not found' });
