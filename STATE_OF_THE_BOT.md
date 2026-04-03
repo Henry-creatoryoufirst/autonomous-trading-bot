@@ -54,7 +54,7 @@ test, or hand to other developers.
 - **TokenCostBasis**: Added 5 computed/dashboard alias fields
 - **TradeDecision**: Added `signalContext` for trade metadata
 - **tsconfig.json**: Created with Node16 resolution, `noImplicitReturns`, `noFallthroughCasesInSwitch`
-- **TypeScript errors: 387 → 155 (60% reduction)** — remaining are pre-existing `unknown` casts and scope issues (agents are fixing these now)
+- **TypeScript errors: 387 → 84 (78% reduction)** — remaining are dashboard scope issues (globals not yet passed to extracted module)
 
 ### Zero Regressions
 Every extraction uses the "thin wrapper" pattern — the monolith imports the
@@ -129,12 +129,15 @@ together and should stay in one place:
 
 ## What Needs to Happen Next
 
-### Priority 1: Finish Type Error Cleanup (in progress — agents running)
-- [ ] Fix `unknown` casts in `src/dashboard/api.ts` (~40 errors)
-- [ ] Fix `BOT_VERSION` scope issues (~6 errors)
-- [ ] Fix algorithm module import paths (~5 errors)
-- [ ] Fix `marketData`, `dedupTier`, `SECTORS` scope issues (~13 errors)
-- [ ] Fix function signature mismatches (~5 errors)
+### Priority 1: Finish Type Error Cleanup (84 remaining)
+- [x] Fix `unknown` casts in `src/dashboard/api.ts` (30+ fixed)
+- [x] Fix `BOT_VERSION` scope — exported from config/constants.ts
+- [x] Fix algorithm module import paths (4 files corrected)
+- [x] Fix `marketData`, `dedupTier` scope issues (hoisted/added)
+- [x] Fix function signature mismatches (stub params aligned)
+- [ ] Remaining 84 errors are mostly `src/dashboard/api.ts` referencing
+      monolith globals (`SECTORS`, `markStateDirty`, `fs`, `HarvestRecipient`,
+      etc.) — fix by passing these as parameters or creating a shared context
 - [ ] **Target: 0 type errors with `npx tsc --noEmit`**
 
 ### Priority 2: Extract HTTP Server (~1,600 lines)
