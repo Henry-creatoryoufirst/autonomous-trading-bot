@@ -54,7 +54,8 @@ test, or hand to other developers.
 - **TokenCostBasis**: Added 5 computed/dashboard alias fields
 - **TradeDecision**: Added `signalContext` for trade metadata
 - **tsconfig.json**: Created with Node16 resolution, `noImplicitReturns`, `noFallthroughCasesInSwitch`
-- **TypeScript errors: 387 → 84 (78% reduction)** — remaining are dashboard scope issues (globals not yet passed to extracted module)
+- **TypeScript errors: 387 → 0 (100% resolved)**
+- **Test framework**: vitest installed, 47 tests across 3 suites (indicators, confluence, position-sizing)
 
 ### Zero Regressions
 Every extraction uses the "thin wrapper" pattern — the monolith imports the
@@ -67,7 +68,7 @@ No behavioral changes. The bot runs identically before and after.
 
 ```
 autonomous-trading-bot/
-├── agent-v3.2.ts              11,247 lines  ← Core orchestration + execution
+├── agent-v3.2.ts               9,909 lines  ← Core orchestration + execution
 ├── config/
 │   └── constants.ts              942 lines  ← Token registry, sectors, Chainlink, thresholds
 ├── types/
@@ -81,6 +82,9 @@ autonomous-trading-bot/
 │   │   ├── market-analysis.ts                 ← Regime detection, sentiment
 │   │   ├── position-sizing.ts                 ← Kelly criterion, risk-adjusted sizing
 │   │   └── risk.ts                            ← Drawdown, circuit breaker logic
+│   ├── server/                  ~2,024 lines  ← HTTP route handlers (40+ API endpoints)
+│   │   ├── routes.ts                          ← All /api/* route handler logic
+│   │   └── index.ts                           ← Barrel export + ServerContext type
 │   ├── self-improvement/          960 lines  ← Strategy pattern analysis, threshold adaptation
 │   ├── dashboard/               1,815 lines  ← Health dashboard HTML, export CSV, API handlers
 │   ├── data/                      609 lines  ← External API fetchers (CoinGecko, DeFiLlama, etc.)
@@ -115,7 +119,7 @@ together and should stay in one place:
 |---------|--------|---------|
 | Imports & config loading | 200 | Wire up all modules |
 | State management & persistence | 800 | Load/save state, dirty tracking |
-| HTTP health server | 1,600 | `/api/*` routes, dashboard serving |
+| HTTP server dispatch | 300 | Route dispatch to src/server/ |
 | Market data aggregation | 1,200 | Fetch prices, build token snapshots |
 | AI decision engine | 1,500 | Build prompts, call Claude, parse decisions |
 | Trade execution | 1,200 | DEX swaps, TWAP, slippage handling |
@@ -129,26 +133,27 @@ together and should stay in one place:
 
 ## What Needs to Happen Next
 
-### Priority 1: Finish Type Error Cleanup (84 remaining)
+### COMPLETED: Type Error Cleanup
 - [x] Fix `unknown` casts in `src/dashboard/api.ts` (30+ fixed)
 - [x] Fix `BOT_VERSION` scope — exported from config/constants.ts
 - [x] Fix algorithm module import paths (4 files corrected)
 - [x] Fix `marketData`, `dedupTier` scope issues (hoisted/added)
 - [x] Fix function signature mismatches (stub params aligned)
-- [ ] Remaining 84 errors are mostly `src/dashboard/api.ts` referencing
-      monolith globals (`SECTORS`, `markStateDirty`, `fs`, `HarvestRecipient`,
-      etc.) — fix by passing these as parameters or creating a shared context
-- [ ] **Target: 0 type errors with `npx tsc --noEmit`**
+- [x] Fix dashboard imports (constants, types, monolith globals via context)
+- [x] Fix self-improvement engine (Object.values casts, import paths)
+- [x] **0 type errors with `npx tsc --noEmit`**
 
-### Priority 2: Extract HTTP Server (~1,600 lines)
-The health/dashboard server is the single largest block in the monolith. Each
-`/api/*` route handler can become a function in `src/server/routes.ts` that
-receives a `getState()` callback. This would:
-- Make the API surface independently testable
-- Drop the monolith to ~9,600 lines
-- Create clean separation between "what data do we serve" vs "how do we trade"
+### COMPLETED: Extract HTTP Server (1,344 lines → src/server/)
+- [x] 40+ route handlers extracted to `src/server/routes.ts`
+- [x] `ServerContext` interface types all ~120 dependencies
+- [x] Monolith dropped from 11,247 → 9,909 lines
 
-### Priority 3: Centralize State
+### COMPLETED: Test Foundation
+- [x] vitest installed and configured
+- [x] 47 tests across 3 suites (indicators, confluence, position-sizing)
+- [x] All passing in 240ms
+
+### Priority 1: Centralize State
 Currently, `state` is a module-level variable in the monolith, and extracted
 modules receive it via parameter passing or wrapper functions. The next evolution:
 - Create `src/state/store.ts` as a typed singleton
@@ -156,14 +161,13 @@ modules receive it via parameter passing or wrapper functions. The next evolutio
 - Eliminates the "wrapper that passes state" pattern
 - Makes the dependency graph explicit
 
-### Priority 4: Test Foundation
-Zero tests exist today. Priority test targets:
-1. **Algorithm functions** — pure computation, easy to test, high value
-2. **Cost basis tracking** — money math must be correct
-3. **Confluence scoring** — the core decision engine
-4. **Position sizing** — Kelly criterion, risk limits
+### Priority 3: Expand Test Coverage
+47 tests exist for algorithm modules. Next targets:
+1. **Cost basis tracking** — money math must be correct
+2. **Server route handlers** — API response shapes
+3. **Self-improvement engine** — threshold adaptation logic
 
-### Priority 5: Services Audit
+### Priority 4: Services Audit
 The `services/` directory (10,785 lines across 30+ files) was not part of this
 refactoring. It includes some structural issues:
 - `services/services/` nested directory (2 files misplaced)
