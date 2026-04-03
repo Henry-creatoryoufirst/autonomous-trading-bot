@@ -438,7 +438,6 @@ export async function fetchCMCIntelligence(): Promise<CMCIntelligence | null> {
 
 export async function fetchMacroData(): Promise<MacroData | null> {
   // v10.2: Use success TTL for good data, retry TTL for failures
-  const ttl = macroCache.data ? MACRO_CACHE_TTL : MACRO_CACHE_RETRY_TTL;
   if (macroCache.data && Date.now() - macroCache.lastSuccess < MACRO_CACHE_TTL) {
     return macroCache.data;
   }

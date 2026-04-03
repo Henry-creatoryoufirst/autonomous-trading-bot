@@ -554,7 +554,7 @@ export function runPerformanceReview(reason: "TRADE_COUNT" | "TIME_ELAPSED"): Pe
 let shadowProposals: ShadowProposal[] = [];
 
 // v9.0: ATR comparison logging — tracks how many comparison entries we've emitted
-let atrComparisonLogCount = 0;
+// (reserved for future use)
 
 export function adaptThresholds(review: PerformanceReview, currentRegime?: string): void {
   const t = state.adaptiveThresholds;

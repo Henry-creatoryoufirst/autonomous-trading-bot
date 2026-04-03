@@ -12,6 +12,11 @@
     "src/diagnostics/**/*.ts",
     "src/gas/**/*.ts",
     "src/portfolio/**/*.ts",
-    "types/**/*.ts"
+    "types/**/*.ts",
+    "src/self-improvement/**/*.ts",
+    "src/reporting/**/*.ts",
+    "src/execution/**/*.ts",
+    "src/data/**/*.ts",
+    "src/state/**/*.ts"
   ]
 }
