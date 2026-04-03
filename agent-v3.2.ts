@@ -8075,7 +8075,7 @@ async function runTradingCycle() {
             action: decision.action as 'BUY' | 'SELL',
             amountUSD: decision.amountUSD,
             portfolioValue: state.trading.totalPortfolioValue,
-            cashPercent: ((marketData.tokens.find(t => t.symbol === 'USDC')?.balance || 0) / Math.max(1, state.trading.totalPortfolioValue)) * 100,
+            cashPercent: ((balances.find(b => b.symbol === 'USDC')?.balance || 0) / Math.max(1, state.trading.totalPortfolioValue)) * 100,
             rsi: tokenInd?.rsi14 ?? undefined,
             macdSignal: tokenInd?.macd?.signal ?? undefined,
             confluenceScore: tokenInd?.confluenceScore ?? undefined,
