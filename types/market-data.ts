@@ -167,4 +167,17 @@ export interface TradeDecision {
   isExploration?: boolean;
   isForced?: boolean;
   isTWAPSlice?: boolean;
+  signalContext?: {
+    marketRegime: string;
+    confluenceScore: number;
+    rsi: number | null;
+    macdSignal: string | null;
+    btcFundingRate: number | null;
+    ethFundingRate: number | null;
+    baseTVLChange24h: number | null;
+    baseDEXVolume24h: number | null;
+    triggeredBy: string;
+    isExploration?: boolean;
+    isForced?: boolean;
+  };
 }

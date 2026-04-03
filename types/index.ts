@@ -215,11 +215,17 @@ export interface TokenCostBasis {
   firstBuyDate: string;
   lastTradeDate: string;
   // v9.0: ATR-based dynamic stops
-  atrStopPercent: number | null;       // Current ATR stop as % (negative, e.g. -12.5)
-  atrTrailPercent: number | null;      // Current ATR trail as % (negative)
-  atrAtEntry: number | null;           // ATR% snapshot at first buy
-  trailActivated: boolean;             // True once position is +1xATR in profit
-  lastAtrUpdate: string | null;        // ISO timestamp of last ATR computation
+  atrStopPercent: number | null;
+  atrTrailPercent: number | null;
+  atrAtEntry: number | null;
+  trailActivated: boolean;
+  lastAtrUpdate: string | null;
+  // Computed/dashboard aliases (set at runtime)
+  currentPrice?: number;
+  totalCostBasis?: number;             // Alias for totalInvestedUSD
+  avgCostPerUnit?: number;             // Alias for averageCostBasis
+  totalUnits?: number;                 // Alias for totalTokensAcquired
+  unrealizedPnLPercent?: number;       // Computed: (currentPrice - avgCost) / avgCost * 100
 }
 
 export interface BalanceEntry {

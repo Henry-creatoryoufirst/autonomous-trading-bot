@@ -25,6 +25,7 @@ export interface UserDirective {
 export interface AgentState {
   startTime: Date;
   totalCycles: number;
+  lastCycleTime: number | null;
   trading: {
     lastCheck: Date;
     lastTrade: Date | null;
@@ -35,6 +36,7 @@ export interface AgentState {
     initialValue: number;
     peakValue: number;
     sectorAllocations: SectorAllocation[];
+    marketRegime?: string;
   };
   tradeHistory: TradeRecord[];
   costBasis: Record<string, TokenCostBasis>;
@@ -46,23 +48,40 @@ export interface AgentState {
     harvestCount: number;
     harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
   };
+  // Auto-harvest state
   autoHarvestTransfers: Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>;
   totalAutoHarvestedUSD: number;
   totalAutoHarvestedETH: number;
   lastAutoHarvestTime: string | null;
   autoHarvestCount: number;
+  autoHarvestByRecipient: Record<string, number>;
+  // Daily payout state
+  dailyPayouts: Array<{ date: string; payoutDate: string; realizedPnL: number; payoutPercent: number; totalDistributed: number; transfers: any[]; skippedReason?: string }>;
+  totalDailyPayoutsUSD: number;
+  dailyPayoutCount: number;
+  lastDailyPayoutDate: string | null;
+  dailyPayoutByRecipient: Record<string, number>;
+  // Self-improvement engine
   strategyPatterns: Record<string, StrategyPattern>;
   adaptiveThresholds: AdaptiveThresholds;
   performanceReviews: PerformanceReview[];
   explorationState: ExplorationState;
   lastReviewTradeIndex: number;
   lastReviewTimestamp: string | null;
+  // On-chain deposit tracking
   totalDeposited: number;
   onChainWithdrawn: number;
   lastKnownUSDCBalance: number;
   depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
+  // Market intelligence history (persisted for mean-reversion signals)
+  fundingRateHistory: { btc: number[]; eth: number[] };
+  btcDominanceHistory: { values: { timestamp: string; dominance: number }[] };
+  stablecoinSupplyHistory: { values: { timestamp: string; totalSupply: number }[] };
+  // Error tracking & diagnostics
+  errorLog: Array<{ timestamp: string; type: string; message: string; details?: any }>;
   sanityAlerts?: Array<{ timestamp: string; symbol: string; type: string; oldCostBasis: number; currentPrice: number; gainPercent: number; action: string }>;
   tradeDedupLog?: Record<string, string>;
+  // User & config directives
   userDirectives?: UserDirective[];
   configDirectives?: ConfigDirective[];
 }
