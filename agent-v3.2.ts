@@ -3857,6 +3857,10 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDet
 
 // ============================================================================
 // GAS & LIQUIDITY — delegated to src/gas/gas-liquidity.ts
+// lastGasPrice kept in monolith for trade record gas cost estimation
+let lastGasPrice: { gweiL1: number; gweiL2: number; ethPriceUSD: number; fetchedAt: number } = {
+  gweiL1: 0, gweiL2: 0, ethPriceUSD: 0, fetchedAt: 0,
+};
 // ============================================================================
 async function fetchPoolLiquidity(tokenSymbol: string): Promise<PoolLiquidity | null> {
   return _fetchPoolLiquidity(tokenSymbol, TOKEN_REGISTRY);
@@ -3869,7 +3873,9 @@ async function checkLiquidity(tokenSymbol: string, tradeAmountUSD: number) {
   });
 }
 async function fetchGasPrice() {
-  return _fetchGasPrice(rpcCall, lastKnownPrices, GAS_PRICE_HIGH_GWEI);
+  const result = await _fetchGasPrice(rpcCall, lastKnownPrices, GAS_PRICE_HIGH_GWEI);
+  lastGasPrice = { gweiL1: 0, gweiL2: result.gweiL2, ethPriceUSD: lastKnownPrices['ETH']?.price || lastKnownPrices['WETH']?.price || 2000, fetchedAt: Date.now() };
+  return result;
 }
 async function checkGasCost(tradeAmountUSD: number) {
   return _checkGasCost(tradeAmountUSD, rpcCall, lastKnownPrices, { gasHighGwei: GAS_PRICE_HIGH_GWEI, gasMaxPctOfTrade: GAS_COST_MAX_PCT_OF_TRADE });
