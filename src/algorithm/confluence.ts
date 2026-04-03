@@ -7,7 +7,7 @@
  */
 
 import type { TechnicalIndicators } from './indicators.js';
-import type { AdaptiveThresholds } from '../types/index.js';
+import type { AdaptiveThresholds } from '../../types/index.js';
 
 // ============================================================================
 // TYPES

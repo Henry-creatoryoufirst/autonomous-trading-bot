@@ -8,7 +8,9 @@
 
 import http from 'http';
 import type { UserDirective } from '../../types/state.js';
+import type { StrategyPattern, TokenCostBasis, SectorDefinition } from '../../types/index.js';
 import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../../services/strategy-config.js';
+import { BOT_VERSION } from '../../config/constants.js';
 
 // Module-level deps — set by initDashboardAPI()
 let state: any;
@@ -113,7 +115,7 @@ export function calculateRiskRewardMetrics(): {
   }
 
   // Also check realized P&L from cost basis records
-  for (const [, cb] of Object.entries(state.costBasis)) {
+  for (const [, cb] of Object.entries(state.costBasis) as [string, TokenCostBasis][]) {
     if (cb.realizedPnL > 0) wins.push(cb.realizedPnL);
     else if (cb.realizedPnL < 0) losses.push(Math.abs(cb.realizedPnL));
   }
