@@ -391,6 +391,9 @@ import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSign
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module
 import { getOrCreateCostBasis as _getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell as _updateCostBasisAfterSell, updateUnrealizedPnL as _updateUnrealizedPnL, rebuildCostBasisFromTrades as _rebuildCostBasisFromTrades } from "./src/portfolio/index.js";
+// Phase 11: Extracted diagnostics module
+import { logError as _logError, recordTradeFailure as _recordTradeFailure, clearTradeFailures as _clearTradeFailures, isTokenBlocked as _isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/diagnostics/index.js";
+import type { OpportunityCostLog } from "./src/diagnostics/index.js";
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
 import type { SectorKey } from "./config/token-registry.js";
@@ -1983,68 +1986,16 @@ function updateCapitalPreservationMode(fgValue: number): void {
   }
 }
 
-// === v20.2: OPPORTUNITY COST TRACKER ===
-// Logs every time a deploy is blocked (fear/momentum/threshold) and scores it 4h later.
-// Feedback loop: shows what the bot missed by holding cash, informs future threshold tuning.
-// OpportunityCostEntry — imported from types/state.ts
-
-let opportunityCostLog: OpportunityCostEntry[] = [];
-let cumulativeMissedPnl = 0;
-let cumulativeMissedCount = 0;
-
+// === v20.2: OPPORTUNITY COST TRACKER — delegated to src/diagnostics/opportunity-tracking.ts ===
+const opportunityCostState: OpportunityCostLog = { entries: [], cumulativeMissedPnl: 0, cumulativeMissedCount: 0 };
 function logMissedOpportunity(token: string, reason: string, blockedSizeUSD: number, priceAtBlock: number): void {
-  opportunityCostLog.push({
-    timestamp: Date.now(),
-    token,
-    reason,
-    blockedSizeUSD,
-    priceAtBlock,
-    scored: false,
-  });
-  // Cap at 100 entries
-  if (opportunityCostLog.length > 100) opportunityCostLog = opportunityCostLog.slice(-100);
-  cumulativeMissedCount++;
+  _logMissedOpportunity(token, reason, blockedSizeUSD, priceAtBlock, opportunityCostState);
 }
-
-/** Score missed opportunities after 4 hours — check if holding cash was the right call */
 function updateOpportunityCosts(currentPrices: Record<string, number>): void {
-  const SCORING_DELAY_MS = 4 * 60 * 60 * 1000; // 4 hours
-  for (const entry of opportunityCostLog) {
-    if (entry.scored) continue;
-    if (Date.now() - entry.timestamp < SCORING_DELAY_MS) continue;
-    if (entry.priceAtBlock <= 0) { entry.scored = true; continue; } // market-level blocks don't have per-token prices
-    const currentPrice = currentPrices[entry.token];
-    if (!currentPrice || currentPrice <= 0) continue;
-    entry.priceNow = currentPrice;
-    const pnlPct = (currentPrice - entry.priceAtBlock) / entry.priceAtBlock;
-    entry.missedPnlUSD = entry.blockedSizeUSD * pnlPct;
-    cumulativeMissedPnl += entry.missedPnlUSD;
-    entry.scored = true;
-    const sign = entry.missedPnlUSD >= 0 ? '+' : '';
-    console.log(`  📊 OPPORTUNITY COST: ${entry.token} (${entry.reason}) — blocked $${entry.blockedSizeUSD.toFixed(0)} → ${sign}$${entry.missedPnlUSD.toFixed(2)} (${(pnlPct * 100).toFixed(1)}%) after 4h`);
-  }
+  _updateOpportunityCosts(currentPrices, opportunityCostState);
 }
-
 function getOpportunityCostSummary() {
-  const scored = opportunityCostLog.filter(e => e.scored && e.missedPnlUSD !== undefined);
-  const missedGains = scored.filter(e => (e.missedPnlUSD ?? 0) > 0);
-  const avoidedLosses = scored.filter(e => (e.missedPnlUSD ?? 0) <= 0);
-  return {
-    totalMissedPnl: cumulativeMissedPnl,
-    totalBlockedCount: cumulativeMissedCount,
-    scoredCount: scored.length,
-    missedGainsCount: missedGains.length,
-    avoidedLossesCount: avoidedLosses.length,
-    avgMissedPnl: scored.length > 0 ? cumulativeMissedPnl / scored.length : 0,
-    recentMisses: opportunityCostLog.slice(-10).map(e => ({
-      token: e.token,
-      reason: e.reason,
-      blockedUSD: e.blockedSizeUSD,
-      missedPnl: e.missedPnlUSD,
-      scored: e.scored,
-      age: Math.round((Date.now() - e.timestamp) / 3600000) + 'h ago',
-    })),
-  };
+  return _getOpportunityCostSummary(opportunityCostState);
 }
 
 // v17.0: Store previous buy ratios for flow direction tracking
@@ -3504,63 +3455,19 @@ async function recoverOnChainTradeHistory(walletAddress?: string): Promise<{ rec
 }
 
 // ============================================================================
-// v18.1: ERROR LOG — Ring buffer for remote diagnostics via /api/errors
+// DIAGNOSTICS — delegated to src/diagnostics/
 // ============================================================================
-const MAX_ERROR_LOG_SIZE = 100;
-
 function logError(type: string, message: string, details?: any): void {
-  state.errorLog.push({
-    timestamp: new Date().toISOString(),
-    type,
-    message: message.substring(0, 500),
-    details: details ? JSON.parse(JSON.stringify(details, (_, v) => typeof v === 'string' ? v.substring(0, 300) : v)) : undefined,
-  });
-  // Ring buffer — keep last N entries
-  if (state.errorLog.length > MAX_ERROR_LOG_SIZE) {
-    state.errorLog = state.errorLog.slice(-MAX_ERROR_LOG_SIZE);
-  }
+  _logError(type, message, state.errorLog, details);
 }
-
-// ============================================================================
-// v5.3.3: CONSECUTIVE FAILURE CIRCUIT BREAKER
-// ============================================================================
-
-// v20.0: Use centralized constants (were previously shadowed here with identical values)
-// MAX_CONSECUTIVE_FAILURES and FAILURE_COOLDOWN_HOURS imported from config/constants.ts
-
 function recordTradeFailure(symbol: string): void {
-  const existing = state.tradeFailures[symbol];
-  state.tradeFailures[symbol] = {
-    count: (existing?.count || 0) + 1,
-    lastFailure: new Date().toISOString(),
-  };
-  const f = state.tradeFailures[symbol];
-  if (f.count >= MAX_CONSECUTIVE_FAILURES) {
-    console.log(`  🚫 CIRCUIT BREAKER: ${symbol} blocked after ${f.count} consecutive failures (cooldown ${FAILURE_COOLDOWN_HOURS}h)`);
-  }
+  _recordTradeFailure(symbol, state.tradeFailures, MAX_CONSECUTIVE_FAILURES, FAILURE_COOLDOWN_HOURS);
 }
-
 function clearTradeFailures(symbol: string): void {
-  if (state.tradeFailures[symbol]) {
-    delete state.tradeFailures[symbol];
-  }
+  _clearTradeFailures(symbol, state.tradeFailures);
 }
-
 function isTokenBlocked(symbol: string): boolean {
-  const f = state.tradeFailures[symbol];
-  if (!f || f.count < MAX_CONSECUTIVE_FAILURES) return false;
-
-  // Check if cooldown has expired
-  const hoursSinceLastFailure = (Date.now() - new Date(f.lastFailure).getTime()) / (1000 * 60 * 60);
-  if (hoursSinceLastFailure >= FAILURE_COOLDOWN_HOURS) {
-    console.log(`  🔓 CIRCUIT BREAKER: ${symbol} unblocked after ${hoursSinceLastFailure.toFixed(1)}h cooldown`);
-    delete state.tradeFailures[symbol];
-    return false;
-  }
-
-  const remainingHours = (FAILURE_COOLDOWN_HOURS - hoursSinceLastFailure).toFixed(1);
-  console.log(`  🚫 CIRCUIT BREAKER: ${symbol} blocked (${f.count} failures, ${remainingHours}h remaining)`);
-  return true;
+  return _isTokenBlocked(symbol, state.tradeFailures, MAX_CONSECUTIVE_FAILURES, FAILURE_COOLDOWN_HOURS);
 }
 
 // ============================================================================
