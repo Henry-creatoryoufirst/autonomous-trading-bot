@@ -8,8 +8,8 @@
  * Functions that mutate state accept state slices as parameters.
  */
 
-import type { TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, MarketRegime } from '../types/index.js';
-import type { RoundTripTrade, WinRateTruthData, AgentState, UserDirective } from '../types/state.js';
+import type { TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, MarketRegime } from '../../types/index.js';
+import type { RoundTripTrade, WinRateTruthData, AgentState, UserDirective } from '../../types/state.js';
 import type { TechnicalIndicators } from '../algorithm/indicators.js';
 import {
   ATR_STOP_LOSS_MULTIPLIER, ATR_TRAILING_STOP_MULTIPLIER,
@@ -469,7 +469,7 @@ export function runPerformanceReview(reason: "TRADE_COUNT" | "TIME_ELAPSED"): Pe
   const dominantRegime = Object.entries(regimeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as MarketRegime || null;
 
   // Pattern analysis
-  const patternArr = Object.values(state.strategyPatterns)
+  const patternArr = (Object.values(state.strategyPatterns) as StrategyPattern[])
     .filter(p => p.stats.sampleSize >= 2)
     .sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent);
   const bestPattern = patternArr[0] || null;
@@ -815,7 +815,7 @@ export function checkStagnation(
  * Replaces the generic "LEARN FROM HISTORY" instruction with structured analysis
  */
 export function formatSelfImprovementPrompt(): string {
-  const patterns = Object.values(state.strategyPatterns)
+  const patterns = (Object.values(state.strategyPatterns) as StrategyPattern[])
     .filter(p => p.stats.sampleSize >= 1)
     .sort((a, b) => b.confidence - a.confidence);
 
