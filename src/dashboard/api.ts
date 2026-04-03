@@ -7,10 +7,29 @@
  */
 
 import http from 'http';
-import type { UserDirective } from '../../types/state.js';
-import type { StrategyPattern, TokenCostBasis, SectorDefinition } from '../../types/index.js';
+import fs from 'fs';
+import type { UserDirective, HarvestRecipient } from '../../types/state.js';
+import type { StrategyPattern, TokenCostBasis, SectorDefinition, MarketRegime, TradePerformanceStats } from '../../types/index.js';
+import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyData } from '../../types/market-data.js';
+import type { DefiLlamaData, DerivativesData, FundingRateMeanReversion, SmartRetailDivergence, TVLPriceDivergence } from '../algorithm/market-analysis.js';
 import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../../services/strategy-config.js';
-import { BOT_VERSION } from '../../config/constants.js';
+import {
+  BOT_VERSION,
+  AI_MODEL_ROUTINE,
+  THRESHOLD_BOUNDS,
+  ATR_STOP_FLOOR_PERCENT,
+  ATR_STOP_CEILING_PERCENT,
+  ATR_TRAIL_ACTIVATION_MULTIPLIER,
+  CASH_DEPLOYMENT_THRESHOLD_PCT,
+  CASH_DEPLOYMENT_TIERS,
+  CASH_DEPLOYMENT_MIN_RESERVE_USD,
+  CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT,
+  DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
+  DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
+  DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
+} from '../../config/constants.js';
+import { SECTORS, TOKEN_REGISTRY } from '../../config/token-registry.js';
+import { EMBEDDED_DASHBOARD } from './embedded-html.js';
 
 // Module-level deps — set by initDashboardAPI()
 let state: any;
@@ -33,6 +52,14 @@ let tokenDiscoveryEngine: any;
 let yieldOptimizer: any;
 let DEFAULT_ADAPTIVE_THRESHOLDS: any;
 let formatSelfImprovementPrompt: any;
+let ALLOWED_ORIGINS: Set<string>;
+let markStateDirty: (critical?: boolean) => void;
+let getOpportunityCostSummary: () => any;
+let getCashDeploymentMode: () => boolean;
+let getCashDeploymentCycles: () => number;
+let getCrashBuyingOverrideActive: () => boolean;
+let getCrashBuyingOverrideCycles: () => number;
+let getCurrentAltseasonSignal: () => any;
 
 export function initDashboardAPI(deps: Record<string, any>) {
   state = deps.state;
@@ -55,6 +82,14 @@ export function initDashboardAPI(deps: Record<string, any>) {
   yieldOptimizer = deps.yieldOptimizer;
   DEFAULT_ADAPTIVE_THRESHOLDS = deps.DEFAULT_ADAPTIVE_THRESHOLDS;
   formatSelfImprovementPrompt = deps.formatSelfImprovementPrompt;
+  ALLOWED_ORIGINS = deps.ALLOWED_ORIGINS;
+  markStateDirty = deps.markStateDirty;
+  getOpportunityCostSummary = deps.getOpportunityCostSummary;
+  getCashDeploymentMode = deps.getCashDeploymentMode;
+  getCashDeploymentCycles = deps.getCashDeploymentCycles;
+  getCrashBuyingOverrideActive = deps.getCrashBuyingOverrideActive;
+  getCrashBuyingOverrideCycles = deps.getCrashBuyingOverrideCycles;
+  getCurrentAltseasonSignal = deps.getCurrentAltseasonSignal;
 }
 
 export function sendJSON(res: http.ServerResponse, status: number, data: any, req?: http.IncomingMessage) {
@@ -246,8 +281,8 @@ export function apiPortfolio() {
       },
     // v11.1: Cash deployment engine status
     cashDeployment: {
-      active: cashDeploymentMode,
-      cyclesActive: cashDeploymentCycles,
+      active: getCashDeploymentMode(),
+      cyclesActive: getCashDeploymentCycles(),
       thresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT, // v21.0: always 20%, F&G is info-only
       baseThresholdPercent: CASH_DEPLOYMENT_THRESHOLD_PCT,
       tiers: CASH_DEPLOYMENT_TIERS,
@@ -256,15 +291,15 @@ export function apiPortfolio() {
     },
     // v17.0: Breaker override status (flow-based, not F&G-based)
     crashBuyingOverride: {
-      active: crashBuyingOverrideActive,
-      cyclesActive: crashBuyingOverrideCycles,
+      active: getCrashBuyingOverrideActive(),
+      cyclesActive: getCrashBuyingOverrideCycles(),
       cashThresholdPct: DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
       sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
       maxEntriesPerCycle: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
       note: 'v17.0: Flow-based — activates on cash level, requires positive buy ratio per token',
     },
     // v20.2: Opportunity cost tracker — shows what the bot missed by holding cash
-    opportunityCost: getOpportunityCostSummary(),
+    opportunityCost: getOpportunityCostSummary ? getOpportunityCostSummary() : null,
     // v11.4.22: On-chain recovery diagnostic
     _recovery: (state as any)._recoveryStatus || 'not run',
     _recoveryWallet: (state as any)._recoveryWallet || 'unknown',
@@ -607,7 +642,7 @@ export async function handleChatRequest(userMessage: string, history: { role: st
     ? `\nACTIVE USER DIRECTIVES:\n${activeDirectives.map(d => `- [${d.type}] ${d.instruction}`).join('\n')}`
     : '';
 
-  const sectorInfo = (Object.entries(SECTORS) as [string, SectorDefinition][]).map(([key, s]) =>
+  const sectorInfo = (Object.entries(SECTORS) as unknown as [string, SectorDefinition][]).map(([key, s]) =>
     `${s.name} (${key}): target ${(s.targetAllocation * 100).toFixed(0)}% | tokens: ${s.tokens.join(', ')}`
   ).join('\n');
 
@@ -829,7 +864,7 @@ export function apiIntelligence() {
     fundingMeanReversion: lastIntelligenceData?.fundingMeanReversion || null,
     tvlPriceDivergence: lastIntelligenceData?.tvlPriceDivergence || null,
     stablecoinSupply: lastIntelligenceData?.stablecoinSupply || null,
-    altseasonSignal: currentAltseasonSignal,
+    altseasonSignal: getCurrentAltseasonSignal ? getCurrentAltseasonSignal() : null,
     dataSources: [
       "On-Chain DEX Pool Reads (Uniswap V3 / Aerodrome — Base RPC)",
       "Chainlink Oracles (ETH/USD, BTC/USD — Base)",
