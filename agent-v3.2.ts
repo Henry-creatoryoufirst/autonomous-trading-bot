@@ -406,10 +406,10 @@ import {
 import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence, MarketMomentumSignal } from "./src/algorithm/index.js";
 // Phase 9: Extracted reporting/formatting module
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/reporting/index.js";
-// Phase 10: Extracted portfolio cost basis module
-import { getOrCreateCostBasis as _getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell as _updateCostBasisAfterSell, updateUnrealizedPnL as _updateUnrealizedPnL, rebuildCostBasisFromTrades as _rebuildCostBasisFromTrades } from "./src/portfolio/index.js";
-// Phase 11: Extracted diagnostics module
-import { logError as _logError, recordTradeFailure as _recordTradeFailure, clearTradeFailures as _clearTradeFailures, isTokenBlocked as _isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/diagnostics/index.js";
+// Phase 10: Extracted portfolio cost basis module — now imports state directly
+import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/portfolio/index.js";
+// Phase 11: Extracted diagnostics module — error-tracking now imports state directly
+import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/diagnostics/index.js";
 // Phase 12: Extracted capital deployment module
 import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from "./src/capital/index.js";
@@ -3004,13 +3004,7 @@ async function fetchBlockscoutTransfers(walletAddress: string): Promise<Basescan
 function pairTransfersIntoTrades(transfers: BasescanTransfer[], walletAddress: string): TradeRecord[] {
   return _pairTransfersIntoTrades(transfers, walletAddress, USDC_ADDRESS, ADDRESS_TO_SYMBOL, TOKEN_REGISTRY);
 }
-/**
- * Rebuild cost basis from a complete trade history.
- * Resets all cost basis entries and replays trades chronologically.
- */
-function rebuildCostBasisFromTrades(trades: TradeRecord[]): void {
-  _rebuildCostBasisFromTrades(trades, state.costBasis);
-}
+// rebuildCostBasisFromTrades is now imported directly from src/portfolio/ (accesses state via getState())
 
 /**
  * Main startup function: recover trade history from Blockscout and merge with state.
@@ -3060,38 +3054,18 @@ async function recoverOnChainTradeHistory(walletAddress?: string): Promise<{ rec
 }
 
 // ============================================================================
-// DIAGNOSTICS — delegated to src/diagnostics/
+// DIAGNOSTICS — logError, recordTradeFailure, clearTradeFailures, isTokenBlocked
+// are now imported directly from src/diagnostics/ (they access state via getState())
 // ============================================================================
-function logError(type: string, message: string, details?: any): void {
-  _logError(type, message, state.errorLog, details);
-}
-function recordTradeFailure(symbol: string): void {
-  _recordTradeFailure(symbol, state.tradeFailures, MAX_CONSECUTIVE_FAILURES, FAILURE_COOLDOWN_HOURS);
-}
-function clearTradeFailures(symbol: string): void {
-  _clearTradeFailures(symbol, state.tradeFailures);
-}
-function isTokenBlocked(symbol: string): boolean {
-  return _isTokenBlocked(symbol, state.tradeFailures, MAX_CONSECUTIVE_FAILURES, FAILURE_COOLDOWN_HOURS);
-}
 
 // ============================================================================
-// COST BASIS TRACKING — delegated to src/portfolio/cost-basis.ts
+// COST BASIS TRACKING — getOrCreateCostBasis, updateCostBasisAfterSell,
+// updateUnrealizedPnL, rebuildCostBasisFromTrades are now imported directly
+// from src/portfolio/ (they access state.costBasis via getState()).
+// updateCostBasisAfterBuy still needs a thin wrapper to pass lastKnownPrices.
 // ============================================================================
-function getOrCreateCostBasis(symbol: string): TokenCostBasis {
-  return _getOrCreateCostBasis(symbol, state.costBasis);
-}
-
 function updateCostBasisAfterBuy(symbol: string, amountUSD: number, tokensReceived: number): void {
-  _updateCostBasisAfterBuy(symbol, amountUSD, tokensReceived, state.costBasis, lastKnownPrices);
-}
-
-function updateCostBasisAfterSell(symbol: string, amountUSD: number, tokensSold: number): number {
-  return _updateCostBasisAfterSell(symbol, amountUSD, tokensSold, state.costBasis);
-}
-
-function updateUnrealizedPnL(balances: { symbol: string; balance: number; usdValue: number; price?: number }[]): void {
-  _updateUnrealizedPnL(balances, state.costBasis);
+  _updateCostBasisAfterBuy(symbol, amountUSD, tokensReceived, lastKnownPrices);
 }
 
 // ============================================================================

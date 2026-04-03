@@ -2,19 +2,19 @@
  * Never Rest Capital — Cost Basis Tracking
  * Extracted from agent-v3.2.ts (Phase 10 refactor)
  *
- * All functions take `costBasisMap` (state.costBasis) and `lastKnownPrices` as parameters
- * to avoid direct state dependency.
+ * Now imports state directly from src/state/store.ts for costBasisMap access.
+ * lastKnownPrices is still passed as a parameter (it lives outside AgentState).
  */
 
 import type { TokenCostBasis, TradeRecord } from "../../types/index.js";
+import { getState } from '../state/index.js';
 
-type CostBasisMap = Record<string, TokenCostBasis>;
 type PriceMap = Record<string, { price: number; [key: string]: any }>;
 
 export function getOrCreateCostBasis(
   symbol: string,
-  costBasisMap: CostBasisMap = {} as any,
 ): TokenCostBasis {
+  const costBasisMap = getState().costBasis;
   if (!costBasisMap[symbol]) {
     costBasisMap[symbol] = {
       symbol,
@@ -43,10 +43,10 @@ export function updateCostBasisAfterBuy(
   symbol: string,
   amountUSD: number,
   tokensReceived: number,
-  costBasisMap: CostBasisMap,
   lastKnownPrices: PriceMap,
 ): void {
-  const cb = getOrCreateCostBasis(symbol, costBasisMap);
+  const costBasisMap = getState().costBasis;
+  const cb = getOrCreateCostBasis(symbol);
   if (cb.totalTokensAcquired === 0) cb.firstBuyDate = new Date().toISOString();
 
   // v21.2: Reset peakPrice on re-entry after full/near-full exit.
@@ -92,9 +92,8 @@ export function updateCostBasisAfterSell(
   symbol: string,
   amountUSD: number,
   tokensSold: number,
-  costBasisMap: CostBasisMap,
 ): number {
-  const cb = getOrCreateCostBasis(symbol, costBasisMap);
+  const cb = getOrCreateCostBasis(symbol);
 
   // If we have no cost basis for this token (lost on restart), treat as pure profit
   if (cb.averageCostBasis <= 0 || cb.totalTokensAcquired <= 0) {
@@ -118,8 +117,8 @@ export function updateCostBasisAfterSell(
 
 export function updateUnrealizedPnL(
   balances: { symbol: string; balance: number; usdValue: number; price?: number }[],
-  costBasisMap: CostBasisMap,
 ): void {
+  const costBasisMap = getState().costBasis;
   for (const b of balances) {
     if (b.symbol === "USDC" || !costBasisMap[b.symbol]) continue;
     const cb = costBasisMap[b.symbol];
@@ -149,8 +148,8 @@ export function updateUnrealizedPnL(
 
 export function rebuildCostBasisFromTrades(
   trades: TradeRecord[],
-  costBasisMap: CostBasisMap,
 ): void {
+  const costBasisMap = getState().costBasis;
   // Preserve accumulated realizedPnL before rebuilding
   const preservedPnL: Record<string, number> = {};
   for (const [sym, cb] of Object.entries(costBasisMap)) {
@@ -166,7 +165,7 @@ export function rebuildCostBasisFromTrades(
 
   for (const trade of sorted) {
     if (trade.action === 'BUY' && trade.toToken !== 'USDC') {
-      const cb = getOrCreateCostBasis(trade.toToken, costBasisMap);
+      const cb = getOrCreateCostBasis(trade.toToken);
       const tokens = trade.tokenAmount || (trade.amountUSD / 1);
       if (tokens > 0) {
         if (cb.totalTokensAcquired === 0) cb.firstBuyDate = trade.timestamp;
@@ -176,7 +175,7 @@ export function rebuildCostBasisFromTrades(
         cb.lastTradeDate = trade.timestamp;
       }
     } else if (trade.action === 'SELL' && trade.fromToken !== 'USDC') {
-      const cb = getOrCreateCostBasis(trade.fromToken, costBasisMap);
+      const cb = getOrCreateCostBasis(trade.fromToken);
       const tokens = trade.tokenAmount || 0;
       if (tokens > 0 && cb.totalTokensAcquired > 0) {
         const sellPrice = trade.amountUSD / tokens;
