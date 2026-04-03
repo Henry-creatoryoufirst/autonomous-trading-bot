@@ -394,6 +394,8 @@ import { getOrCreateCostBasis as _getOrCreateCostBasis, updateCostBasisAfterBuy 
 // Phase 11: Extracted diagnostics module
 import { logError as _logError, recordTradeFailure as _recordTradeFailure, clearTradeFailures as _clearTradeFailures, isTokenBlocked as _isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/diagnostics/index.js";
+// Phase 12: Extracted capital deployment module
+import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from "./src/capital/index.js";
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
 import type { SectorKey } from "./config/token-registry.js";
@@ -2077,217 +2079,38 @@ let cashDeploymentCycles = 0;
 // DeploymentTierLabel, CashDeploymentResult — imported from types/state.ts
 type DeploymentTierLabel = typeof CASH_DEPLOYMENT_TIERS[number]['label'] | 'NONE';
 
-/**
- * v20.8: F&G demoted to info-only. Always returns the base threshold.
- * The bot follows price physics (momentum, volume, capital flows), not sentiment surveys.
- */
+// ============================================================================
+// CAPITAL DEPLOYMENT — delegated to src/capital/deployment.ts
+// ============================================================================
 function getFearAdjustedDeployThreshold(_fearGreedValue: number): number {
-  return CASH_DEPLOYMENT_THRESHOLD_PCT; // Always 20% — physics-based, not sentiment-based
+  return CASH_DEPLOYMENT_THRESHOLD_PCT;
 }
-
-/**
- * v20.2: Graduated Cash Deployment Detection
- * Replaces binary 40% threshold with 4 tiers that increase deployment pressure as cash grows.
- * Fixes the "dead zone" where 25-39% cash sat idle doing nothing.
- *
- * Tiers: LIGHT (>25%) → MODERATE (>35%) → AGGRESSIVE (>50%) → URGENT (>65%)
- * Each tier has its own deploy %, confluence discount, and max entries.
- * v20.7: Tiers shift up during fear — bot holds cash comfortably in bearish markets.
- */
 function checkCashDeploymentMode(
-  usdcBalance: number,
-  totalPortfolioValue: number,
-  _fearGreedValue: number = 50, // v20.8: F&G info-only, no longer gates deployment
+  usdcBalance: number, totalPortfolioValue: number, _fearGreedValue: number = 50,
 ): CashDeploymentResult {
-  const noDeployResult: CashDeploymentResult = { active: false, cashPercent: 0, excessCash: 0, deployBudget: 0, confluenceDiscount: 0, tier: 'NONE', maxEntries: 0 };
-  if (totalPortfolioValue <= 0) return noDeployResult;
-
-  const cashPercent = (usdcBalance / totalPortfolioValue) * 100;
-
-  // v11.4.19: Directive-aware threshold — aggressive directives lower the trigger
-  const directiveAdj = getDirectiveThresholdAdjustments();
-
-  // v21.2: F&G RESTORED as deployment gate — v20.8 removed it which caused the bot to
-  // force-deploy into crashing markets at F&G=8, losing hundreds in buy-sell-buy-sell churn.
-  // When fear is extreme, the bot should sit in cash, not force-deploy.
-  if (_fearGreedValue < 15) {
-    if (cashDeploymentMode) {
-      console.log(`  🛑 Cash deployment SUSPENDED — F&G ${_fearGreedValue} (extreme fear). Holding cash.`);
-      cashDeploymentMode = false;
-    }
-    return { ...noDeployResult, cashPercent };
-  }
-  // F&G 15-25: Only allow URGENT tier (>65% cash) — severely limit forced buys in fear
-  const fearDampened = _fearGreedValue < 25;
-
-  // v20.2: Find highest matching tier (iterate descending)
-  let matchedTier = null;
-  for (let i = CASH_DEPLOYMENT_TIERS.length - 1; i >= 0; i--) {
-    const tier = CASH_DEPLOYMENT_TIERS[i];
-    // v21.2: In fear markets, only URGENT tier activates
-    if (fearDampened && tier.label !== 'URGENT') continue;
-    const effectiveThreshold = directiveAdj.deploymentThresholdOverride ?? tier.cashPct;
-    if (cashPercent > effectiveThreshold) {
-      matchedTier = tier;
-      break;
-    }
-  }
-
-  if (!matchedTier) {
-    if (cashDeploymentMode) {
-      console.log(`  ✅ Cash deployment mode OFF — USDC at ${cashPercent.toFixed(1)}% (below ${CASH_DEPLOYMENT_TIERS[0].cashPct}% lowest tier${directiveAdj.deploymentThresholdOverride ? ' [directive override]' : ''})`);
-      cashDeploymentMode = false;
-    }
-    return { ...noDeployResult, cashPercent };
-  }
-
-  // Calculate excess: how much USDC is above the matched tier's threshold
-  const targetCash = totalPortfolioValue * (matchedTier.cashPct / 100);
-  const excessCash = Math.max(0, usdcBalance - Math.max(targetCash, CASH_DEPLOYMENT_MIN_RESERVE_USD));
-
-  if (excessCash < 10) {
-    return { ...noDeployResult, cashPercent };
-  }
-
-  // Deploy the tier's percentage of excess per cycle
-  const deployBudget = excessCash * (matchedTier.deployPct / 100);
-
-  cashDeploymentMode = true;
-  cashDeploymentCycles++;
-
-  // v11.4.19: Stack directive confluence reduction on top of tier's discount
-  const totalConfluenceDiscount = matchedTier.confluenceDiscount + directiveAdj.confluenceReduction;
-
-  console.log(`  💰 CASH DEPLOYMENT [${matchedTier.label}]: ${cashPercent.toFixed(1)}% cash | budget $${deployBudget.toFixed(0)} | confluence -${totalConfluenceDiscount}pts | max ${matchedTier.maxEntries} entries`);
-
-  return {
-    active: true,
-    cashPercent,
-    excessCash,
-    deployBudget,
-    confluenceDiscount: totalConfluenceDiscount,
-    tier: matchedTier.label,
-    maxEntries: matchedTier.maxEntries,
-  };
+  return _checkCashDeploymentMode(usdcBalance, totalPortfolioValue, _fearGreedValue,
+    CASH_DEPLOYMENT_TIERS, CASH_DEPLOYMENT_MIN_RESERVE_USD, getDirectiveThresholdAdjustments(),
+    { cashDeploymentMode, cashDeploymentCycles });
 }
 
 // === v11.2: CRASH-BUYING BREAKER OVERRIDE STATE ===
 let crashBuyingOverrideActive = false;
 let crashBuyingOverrideCycles = 0;
-
-/**
- * v17.0: Crash-Buying Breaker Override — Flow-Based
- * When the breaker is active but cash is heavy, allow deployment buys through
- * IF on-chain flow confirms real buying is happening.
- *
- * v17.0: Removed F&G as the gate. Now uses cash level as the trigger.
- * The bot is willing to buy in any sentiment environment IF flow confirms it.
- * Buy ratio requirements ensure we're not buying into a vacuum.
- *
- * Conditions (ALL must be true):
- * 1. Cash > 40% of portfolio (significant idle capital)
- * 2. NOT blocked by capital floor (portfolio above safety minimum)
- * 3. Some USDC available
- *
- * When active:
- * - BUY actions are allowed despite breaker being active
- * - Position sizes are reduced to 60% of normal (cautious accumulation)
- * - Max entries per cycle capped
- * - Must have positive buy ratio (>50%) — flow must confirm the opportunity
- */
 function checkCrashBuyingOverride(
   deploymentCheck: { active: boolean; cashPercent: number; excessCash: number; deployBudget: number; confluenceDiscount: number },
-  fearGreedValue: number,
-  belowCapitalFloor: boolean,
-): {
-  active: boolean;
-  reason: string;
-  sizeMultiplier: number;
-  maxEntries: number;
-  blueChipOnly: boolean;
-  maxPositionPct: number;
-  requirePositiveBuyRatio: boolean;
-} {
-  const inactive = { active: false, reason: '', sizeMultiplier: 1, maxEntries: CASH_DEPLOYMENT_MAX_ENTRIES, blueChipOnly: false, maxPositionPct: 100, requirePositiveBuyRatio: false };
-
-  // v20.8: F&G demoted to info-only. No fear gates on crash buying.
-  // The bot follows capital flows and momentum, not sentiment surveys.
-  const crashFearMult = 1.0;
-  const crashBlueChipOnly = false;
-
-  // v17.0: Gate on cash level, not F&G. Need significant idle capital to override breaker.
-  if (deploymentCheck.cashPercent < DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT) {
-    return { ...inactive, reason: `Cash ${deploymentCheck.cashPercent.toFixed(1)}% below override threshold ${DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT}%` };
-  }
-
-  // Capital floor still blocks everything — non-negotiable safety
-  if (belowCapitalFloor) {
-    return { ...inactive, reason: 'Capital floor active — override blocked' };
-  }
-
-  // Need at least some USDC
-  if (deploymentCheck.cashPercent < 1) {
-    return { ...inactive, reason: `No USDC available for crash buying (${deploymentCheck.cashPercent.toFixed(1)}%)` };
-  }
-
-  crashBuyingOverrideActive = true;
-  crashBuyingOverrideCycles++;
-
-  return {
-    active: true,
-    reason: `Cash heavy (${deploymentCheck.cashPercent.toFixed(1)}%) + breaker active → deployment override (F&G=${fearGreedValue}, fear mult: ${(crashFearMult * 100).toFixed(0)}%)`,
-    sizeMultiplier: DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT * crashFearMult, // v20.2: fear reduces crash buy size
-    maxEntries: DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
-    blueChipOnly: crashBlueChipOnly, // v20.2: extreme fear restricts to blue chips
-    maxPositionPct: 5,
-    requirePositiveBuyRatio: true, // v17.0: always require flow confirmation for breaker override
-  };
+  fearGreedValue: number, belowCapitalFloor: boolean,
+) {
+  return _checkCrashBuyingOverride(deploymentCheck, fearGreedValue, belowCapitalFloor,
+    DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT, DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
+    DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES, CASH_DEPLOYMENT_MAX_ENTRIES,
+    { crashBuyingOverrideActive, crashBuyingOverrideCycles });
 }
 
-/**
- * v6.2: Determine the portfolio sensitivity tier based on current value.
- * Higher portfolio = lower threshold = more sensitive to price moves.
- */
-function getPortfolioSensitivity(portfolioUSD: number): { threshold: number; tier: string } {
-  let matched = PORTFOLIO_SENSITIVITY_TIERS[0];
-  for (const tier of PORTFOLIO_SENSITIVITY_TIERS) {
-    if (portfolioUSD >= tier.minUSD) matched = tier;
-  }
-  return { threshold: matched.priceChangeThreshold, tier: matched.label };
+function getPortfolioSensitivity(portfolioUSD: number) {
+  return _getPortfolioSensitivity(portfolioUSD, PORTFOLIO_SENSITIVITY_TIERS);
 }
-
-/**
- * v6.2: Calculate volatility level from recent price movements.
- * Looks at max price change across all tracked tokens in the last snapshot.
- */
-function assessVolatility(currentPrices: Map<string, number>, previousPrices: Map<string, number>): {
-  level: string;
-  maxChange: number;
-  fastestMover: string;
-} {
-  let maxChange = 0;
-  let fastestMover = '';
-
-  for (const [symbol, price] of currentPrices) {
-    const prev = previousPrices.get(symbol);
-    if (prev && prev > 0) {
-      const change = Math.abs(price - prev) / prev;
-      if (change > maxChange) {
-        maxChange = change;
-        fastestMover = symbol;
-      }
-    }
-  }
-
-  let level: string;
-  if (maxChange > 0.08) level = 'EXTREME';
-  else if (maxChange > 0.05) level = 'HIGH';
-  else if (maxChange > 0.03) level = 'ELEVATED';
-  else if (maxChange > 0.01) level = 'NORMAL';
-  else if (maxChange > 0.003) level = 'LOW';
-  else level = 'DEAD';
-
-  return { level, maxChange, fastestMover };
+function assessVolatility(currentPrices: Map<string, number>, previousPrices: Map<string, number>) {
+  return _assessVolatility(currentPrices, previousPrices);
 }
 
 /**
