@@ -398,6 +398,8 @@ import type { OpportunityCostLog } from "./src/diagnostics/index.js";
 import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from "./src/capital/index.js";
 // Phase 13: Extracted gas & liquidity module
 import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from "./src/gas/index.js";
+// Phase 14: Extracted on-chain capital flows module
+import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/chain/index.js";
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
 import type { SectorKey } from "./config/token-registry.js";
@@ -2960,270 +2962,25 @@ function flushStateIfDirty(reason: string = 'periodic'): void {
 // or file loss. Runs on startup to backfill trades missing from persisted state.
 // ============================================================================
 
-// v11.4.22: Blockscout (free, no API key) replaces deprecated Basescan V1 API
-const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
-// USDC_ADDRESS declared in v12.0 on-chain pricing block (line ~536)
 
 // ============================================================================
-// v19.5.0: ON-CHAIN DEPOSIT & WITHDRAWAL DETECTION
-// The blockchain is the source of truth for capital flows. This replaces the
-// flaky heuristic that tried to detect deposits from portfolio value jumps.
-// Queries Blockscout for all USDC transfers, identifies which are real deposits
-// (from external wallets, not DEX swaps) and real withdrawals (harvests/payouts
-// to external wallets, not trade executions).
+// ON-CHAIN CAPITAL FLOWS — delegated to src/chain/capital-flows.ts
 // ============================================================================
-
-// OnChainCapitalFlows — imported from types/services.ts
-
-// Cache to avoid hitting Blockscout every cycle — refresh every 10 minutes
-let cachedCapitalFlows: OnChainCapitalFlows | null = null;
-let capitalFlowsLastFetched = 0;
-const CAPITAL_FLOWS_CACHE_MS = 10 * 60 * 1000; // 10 minutes
-
-/**
- * v19.5.0: Query Blockscout for all USDC transfers and separate real deposits/withdrawals
- * from DEX swap legs. A deposit = USDC arriving from an external wallet in a transaction
- * that has NO outgoing leg (not a swap). A withdrawal = USDC leaving to an external wallet
- * in a transaction that has NO incoming non-USDC leg (not a swap).
- */
-async function detectOnChainCapitalFlows(walletAddress: string, forceRefresh = false): Promise<OnChainCapitalFlows> {
-  // Return cache if fresh
-  if (!forceRefresh && cachedCapitalFlows && (Date.now() - capitalFlowsLastFetched) < CAPITAL_FLOWS_CACHE_MS) {
-    return cachedCapitalFlows;
-  }
-
-  const wallet = walletAddress.toLowerCase();
-  const transfers = await fetchBlockscoutTransfers(walletAddress);
-
-  // Group all transfers by transaction hash
-  const txGroups = new Map<string, BasescanTransfer[]>();
-  for (const t of transfers) {
-    const group = txGroups.get(t.hash) || [];
-    group.push(t);
-    txGroups.set(t.hash, group);
-  }
-
-  // Identify DEX/router addresses: any address that appears in a paired (swap) transaction
-  const dexRouters = new Set<string>();
-  for (const [, group] of txGroups) {
-    const hasIn = group.some(t => t.to.toLowerCase() === wallet);
-    const hasOut = group.some(t => t.from.toLowerCase() === wallet);
-    if (hasIn && hasOut) {
-      // This is a swap — mark all counterparty addresses as routers
-      for (const t of group) {
-        if (t.to.toLowerCase() !== wallet) dexRouters.add(t.to.toLowerCase());
-        if (t.from.toLowerCase() !== wallet) dexRouters.add(t.from.toLowerCase());
-      }
-    }
-  }
-
-  const deposits: OnChainCapitalFlows['deposits'] = [];
-  const withdrawals: OnChainCapitalFlows['withdrawals'] = [];
-
-  for (const t of transfers) {
-    if (t.contractAddress.toLowerCase() !== USDC_ADDRESS) continue;
-    const value = parseFloat(t.value) / Math.pow(10, parseInt(t.tokenDecimal));
-    if (value < 1) continue; // Skip dust
-
-    const txGroup = txGroups.get(t.hash) || [];
-    const timestamp = new Date(parseInt(t.timeStamp) * 1000).toISOString();
-
-    if (t.to.toLowerCase() === wallet) {
-      // Incoming USDC — is this a deposit or a swap return?
-      const hasOutgoing = txGroup.some(g => g.from.toLowerCase() === wallet);
-      const fromAddr = t.from.toLowerCase();
-      if (!hasOutgoing && !dexRouters.has(fromAddr)) {
-        // No outgoing leg + not from a known router = real deposit
-        deposits.push({ timestamp, amountUSD: value, from: fromAddr, txHash: t.hash });
-      }
-    } else if (t.from.toLowerCase() === wallet) {
-      // Outgoing USDC — is this a withdrawal/harvest or a swap buy?
-      const hasIncomingNonUSDC = txGroup.some(g =>
-        g.to.toLowerCase() === wallet && g.contractAddress.toLowerCase() !== USDC_ADDRESS
-      );
-      const toAddr = t.to.toLowerCase();
-      if (!hasIncomingNonUSDC && !dexRouters.has(toAddr)) {
-        // No incoming non-USDC leg + not to a known router = real withdrawal
-        withdrawals.push({ timestamp, amountUSD: value, to: toAddr, txHash: t.hash });
-      }
-    }
-  }
-
-  const totalDeposited = deposits.reduce((s, d) => s + d.amountUSD, 0);
-  const totalWithdrawn = withdrawals.reduce((s, w) => s + w.amountUSD, 0);
-
-  const result: OnChainCapitalFlows = {
-    totalDeposited: Math.round(totalDeposited * 100) / 100,
-    totalWithdrawn: Math.round(totalWithdrawn * 100) / 100,
-    netCapitalIn: Math.round((totalDeposited - totalWithdrawn) * 100) / 100,
-    deposits,
-    withdrawals,
-    lastUpdated: new Date().toISOString(),
-  };
-
-  cachedCapitalFlows = result;
-  capitalFlowsLastFetched = Date.now();
-  console.log(`  💰 [ON-CHAIN] Deposits: $${result.totalDeposited.toFixed(2)} (${deposits.length} txs) | Withdrawals: $${result.totalWithdrawn.toFixed(2)} (${withdrawals.length} txs) | Net: $${result.netCapitalIn.toFixed(2)}`);
-
-  return result;
-}
-
-// Reverse lookup: contract address → symbol
 const ADDRESS_TO_SYMBOL: Record<string, string> = {};
 for (const [symbol, reg] of Object.entries(TOKEN_REGISTRY)) {
   if (reg.address && reg.address !== 'native') {
     ADDRESS_TO_SYMBOL[reg.address.toLowerCase()] = symbol;
   }
 }
-
-// BasescanTransfer — imported from types/services.ts
-
-/**
- * Fetch ERC20 token transfers for the bot's wallet from Blockscout (free, no API key).
- * Returns raw transfer records sorted by timestamp ascending.
- */
+async function detectOnChainCapitalFlows(walletAddress: string, forceRefresh = false): Promise<OnChainCapitalFlows> {
+  return _detectOnChainCapitalFlows(walletAddress, USDC_ADDRESS, forceRefresh);
+}
 async function fetchBlockscoutTransfers(walletAddress: string): Promise<BasescanTransfer[]> {
-  const allTransfers: BasescanTransfer[] = [];
-  let page = 1;
-  // Blockscout times out (524) on large offsets — use 100 per page for reliability.
-  // Max 30 pages = 3000 transfers which covers all our history.
-  const pageSize = 100;
-  const maxPages = 30;
-
-  while (page <= maxPages) {
-    try {
-      const url = `${BLOCKSCOUT_API_URL}?module=account&action=tokentx&address=${walletAddress}&page=${page}&offset=${pageSize}&sort=asc`;
-      const response = await axios.get(url, { timeout: 15000 });
-      if (response.data.status !== '1' || !Array.isArray(response.data.result)) {
-        if (response.data.message === 'No transactions found' || response.data.message === 'No token transfers found') break;
-        console.log(`  ⚠️ Blockscout API page ${page}: ${response.data.message || 'Unknown error'}`);
-        break;
-      }
-      allTransfers.push(...response.data.result);
-      if (response.data.result.length < pageSize) break;
-      page++;
-      // Small delay between pages
-      await new Promise(r => setTimeout(r, 200));
-    } catch (err: any) {
-      // If a page fails (timeout, 524, etc.), stop and use what we have
-      console.log(`  ⚠️ Blockscout fetch stopped at page ${page}: ${err.message?.substring(0, 80)}`);
-      break;
-    }
-  }
-  return allTransfers;
+  return _fetchBlockscoutTransfers(walletAddress);
 }
-
-/**
- * Pair ERC20 transfers within the same transaction into BUY/SELL trade records.
- * A BUY = USDC leaves wallet + another token enters wallet (same tx hash).
- * A SELL = another token leaves wallet + USDC enters wallet (same tx hash).
- */
-function pairTransfersIntoTrades(
-  transfers: BasescanTransfer[],
-  walletAddress: string
-): TradeRecord[] {
-  const wallet = walletAddress.toLowerCase();
-  const trades: TradeRecord[] = [];
-
-  // Group transfers by transaction hash
-  const txGroups = new Map<string, BasescanTransfer[]>();
-  for (const t of transfers) {
-    const group = txGroups.get(t.hash) || [];
-    group.push(t);
-    txGroups.set(t.hash, group);
-  }
-
-  for (const [txHash, group] of txGroups) {
-    // Classify each transfer as incoming/outgoing relative to our wallet
-    const outgoing: BasescanTransfer[] = [];
-    const incoming: BasescanTransfer[] = [];
-    for (const t of group) {
-      if (t.from.toLowerCase() === wallet) outgoing.push(t);
-      if (t.to.toLowerCase() === wallet) incoming.push(t);
-    }
-
-    // Skip if no paired transfer (approvals, wraps, etc.)
-    if (outgoing.length === 0 || incoming.length === 0) continue;
-
-    const timestamp = new Date(parseInt(group[0].timeStamp) * 1000).toISOString();
-
-    // Find USDC leg and token leg
-    const usdcOut = outgoing.find(t => t.contractAddress.toLowerCase() === USDC_ADDRESS);
-    const usdcIn = incoming.find(t => t.contractAddress.toLowerCase() === USDC_ADDRESS);
-    const tokenIn = incoming.find(t => t.contractAddress.toLowerCase() !== USDC_ADDRESS);
-    const tokenOut = outgoing.find(t => t.contractAddress.toLowerCase() !== USDC_ADDRESS);
-
-    if (usdcOut && tokenIn) {
-      // BUY: USDC out, token in
-      const usdcAmount = parseFloat(usdcOut.value) / Math.pow(10, parseInt(usdcOut.tokenDecimal));
-      const tokenAmount = parseFloat(tokenIn.value) / Math.pow(10, parseInt(tokenIn.tokenDecimal));
-      const tokenSymbol = ADDRESS_TO_SYMBOL[tokenIn.contractAddress.toLowerCase()] || tokenIn.tokenSymbol;
-
-      trades.push({
-        timestamp,
-        cycle: 0,
-        action: 'BUY',
-        fromToken: 'USDC',
-        toToken: tokenSymbol,
-        amountUSD: usdcAmount,
-        tokenAmount,
-        txHash,
-        success: true,
-        portfolioValueBefore: 0, // Unknown from chain data
-        reasoning: `On-chain recovery: bought ${tokenAmount.toFixed(6)} ${tokenSymbol} for $${usdcAmount.toFixed(2)}`,
-        sector: TOKEN_REGISTRY[tokenSymbol]?.sector || undefined,
-        marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
-        signalContext: {
-          marketRegime: 'UNKNOWN',
-          confluenceScore: 0,
-          rsi: null,
-          macdSignal: null,
-          btcFundingRate: null,
-          ethFundingRate: null,
-          baseTVLChange24h: null,
-          baseDEXVolume24h: null,
-          triggeredBy: 'AI',
-        },
-      });
-    } else if (tokenOut && usdcIn) {
-      // SELL: token out, USDC in
-      const usdcAmount = parseFloat(usdcIn.value) / Math.pow(10, parseInt(usdcIn.tokenDecimal));
-      const tokenAmount = parseFloat(tokenOut.value) / Math.pow(10, parseInt(tokenOut.tokenDecimal));
-      const tokenSymbol = ADDRESS_TO_SYMBOL[tokenOut.contractAddress.toLowerCase()] || tokenOut.tokenSymbol;
-
-      trades.push({
-        timestamp,
-        cycle: 0,
-        action: 'SELL',
-        fromToken: tokenSymbol,
-        toToken: 'USDC',
-        amountUSD: usdcAmount,
-        tokenAmount,
-        txHash,
-        success: true,
-        portfolioValueBefore: 0,
-        reasoning: `On-chain recovery: sold ${tokenAmount.toFixed(6)} ${tokenSymbol} for $${usdcAmount.toFixed(2)}`,
-        sector: TOKEN_REGISTRY[tokenSymbol]?.sector || undefined,
-        marketConditions: { fearGreed: 0, ethPrice: 0, btcPrice: 0 },
-        signalContext: {
-          marketRegime: 'UNKNOWN',
-          confluenceScore: 0,
-          rsi: null,
-          macdSignal: null,
-          btcFundingRate: null,
-          ethFundingRate: null,
-          baseTVLChange24h: null,
-          baseDEXVolume24h: null,
-          triggeredBy: 'AI',
-        },
-      });
-    }
-    // Skip token-to-token swaps (non-USDC pairs) — these are rare and hard to value
-  }
-
-  return trades;
+function pairTransfersIntoTrades(transfers: BasescanTransfer[], walletAddress: string): TradeRecord[] {
+  return _pairTransfersIntoTrades(transfers, walletAddress, USDC_ADDRESS, ADDRESS_TO_SYMBOL, TOKEN_REGISTRY);
 }
-
 /**
  * Rebuild cost basis from a complete trade history.
  * Resets all cost basis entries and replays trades chronologically.
