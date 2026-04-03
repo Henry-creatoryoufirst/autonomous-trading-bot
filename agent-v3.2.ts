@@ -427,11 +427,11 @@ const morphoYieldService = {
   getDepositedUSDC() { return 0; },
   restoreState(_s: any) {}, toJSON() { return {}; },
   refreshBalance(_w: string) { return Promise.resolve(); },
-  calculateDepositAmount() { return 0; }, calculateWithdrawAmount() { return 0; },
+  calculateDepositAmount(_usdcBalance: number, _regime: string, _fearGreedVal: number) { return 0; }, calculateWithdrawAmount(_usdcBalance: number, _regime: string, _fearGreedVal: number, _aiNeedsCapital?: boolean) { return 0; },
   buildDepositCalldata(_a: number, _w: string) { return { to: '', data: '', approvalNeeded: false, approvalTo: '', approvalData: '' }; },
   buildWithdrawCalldata(_a: number, _w: string) { return { to: '', data: '' }; },
   getAllowance(_w: string) { return Promise.resolve(0n); },
-  recordSupply() {}, recordWithdraw() {},
+  recordSupply(_amountUSDC: number, _txHash?: string, _reason?: string) {}, recordWithdraw(_amountUSDC: number, _txHash?: string, _reason?: string) {},
 };
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
@@ -2004,6 +2004,9 @@ function getOpportunityCostSummary() {
   return _getOpportunityCostSummary(opportunityCostState);
 }
 
+// V4.5: Intelligence data for API endpoint
+let lastIntelligenceData: any = null;
+
 // v17.0: Store previous buy ratios for flow direction tracking
 let previousBuyRatios: Map<string, number> = new Map();
 let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
@@ -2271,7 +2274,7 @@ function scheduleNextCycle() {
         console.warn(`\n🚨 TRADE DROUGHT: No trades in ${droughtHours} hours!`);
         blockers.forEach(b => console.warn(`   ❌ ${b}`));
         await telegramService.sendAlert({
-          severity: "WARNING",
+          severity: "HIGH",
           title: `Trade Drought — ${droughtHours}h with zero trades`,
           message: `Bot has been running but hasn't executed a trade in ${droughtHours} hours.\n\nPossible causes:\n${blockers.map(b => `• ${b}`).join('\n')}\n\nPortfolio: $${state.trading.totalPortfolioValue.toFixed(2)}\nCycles completed: ${state.totalCycles}`,
         });
@@ -3571,7 +3574,7 @@ function computeTVLPriceDivergence(defi: DefiLlamaData | null, tokens: MarketDat
 
 // getAdjustedSectorTargets — delegated to src/algorithm/market-analysis.ts
 function getAdjustedSectorTargets(signal: AltseasonSignal): Record<string, number> {
-  return _getAdjustedSectorTargets(signal, SECTORS, ALTSEASON_SECTOR_BOOST as any, BTC_DOMINANCE_SECTOR_BOOST as any, lastKnownPrices);
+  return _getAdjustedSectorTargets(signal, SECTORS as any, ALTSEASON_SECTOR_BOOST as any, BTC_DOMINANCE_SECTOR_BOOST as any, lastKnownPrices);
 }
 
 // Last-known prices cache — prevents $0 portfolio between cycles
@@ -4413,8 +4416,8 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     const fromAmount = parseUnits(GAS_REFUEL_AMOUNT_USDC.toFixed(6), 6); // USDC has 6 decimals
     await account.swap({
       network: "base",
-      fromToken: TOKEN_REGISTRY.USDC.address, // USDC
-      toToken: "0x4200000000000000000000000000000000000006",   // WETH on Base
+      fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`, // USDC
+      toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`,   // WETH on Base
       fromAmount,
       slippageBps: 100, // 1% slippage — not critical, just need gas
     });
@@ -4510,8 +4513,8 @@ async function bootstrapGas(): Promise<void> {
     const fromAmount = parseUnits(GAS_BOOTSTRAP_SWAP_USD.toFixed(6), 6);
     await account.swap({
       network: "base",
-      fromToken: TOKEN_REGISTRY.USDC.address,
-      toToken: "0x4200000000000000000000000000000000000006", // WETH on Base
+      fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`,
+      toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`, // WETH on Base
       fromAmount,
       slippageBps: 100, // 1% slippage
     });
@@ -4632,7 +4635,7 @@ function calculateSectorAllocations(
   const allocations: SectorAllocation[] = [];
   for (const [sectorKey, sectorInfo] of Object.entries(SECTORS)) {
     const sectorTokens = balances.filter(b =>
-      sectorInfo.tokens.includes(b.symbol) && b.usdValue > 0
+      (sectorInfo.tokens as readonly string[]).includes(b.symbol) && b.usdValue > 0
     );
     const sectorValue = sectorTokens.reduce((sum, t) => sum + t.usdValue, 0);
     const currentPercent = totalValue > 0 ? (sectorValue / totalValue) * 100 : 0;
@@ -5421,6 +5424,7 @@ async function executeDirectDexSwap(
   decision: TradeDecision,
   marketData: MarketData,
 ): Promise<{ success: boolean; txHash?: string; error?: string; actualTokens?: number }> {
+  const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
   const portfolioValueBefore = state.trading.totalPortfolioValue;
 
   try {
@@ -5546,7 +5550,7 @@ async function executeDirectDexSwap(
     // Step 3: Calculate minimum output with slippage protection
     // v20.0: MEV-aware adaptive slippage based on trade size and market conditions
     // v20.1: Wire actual pool liquidity from poolRegistry instead of hardcoded 0
-    const volatilityLevel = marketData.marketRegime === 'volatile' ? 'HIGH' : marketData.marketRegime === 'trending' ? 'NORMAL' : 'NORMAL';
+    const volatilityLevel = marketData.marketRegime === 'VOLATILE' ? 'HIGH' : (marketData.marketRegime === 'TRENDING_UP' || marketData.marketRegime === 'TRENDING_DOWN') ? 'NORMAL' : 'NORMAL';
     const poolEntry = poolRegistry[tokenSymbol];
     const slippageBps = calculateAdaptiveSlippage({
       tradeAmountUSD: decision.amountUSD,
@@ -6838,6 +6842,7 @@ async function runTradingCycle() {
 
   // v14.2: Track exploration trades per cycle for RANGING market cap
   let explorationsThisCycle = 0;
+  let marketData: MarketData | null = null;
 
   try {
     // v9.2.1: Gas bootstrap retry — if startup bootstrap failed, retry each heavy cycle
@@ -6863,7 +6868,7 @@ async function runTradingCycle() {
     let balances = await getBalances();
 
     console.log("📈 Fetching market data for all tracked tokens...");
-    const marketData = await getMarketData();
+    marketData = await getMarketData();
 
     // v6.0: Update light/heavy cycle state
     lastHeavyCycleAt = Date.now();
@@ -7815,6 +7820,7 @@ async function runTradingCycle() {
 
     for (let di = 0; di < decisions.length; di++) {
       const decision = decisions[di];
+      const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
       if (decisions.length > 1) console.log(`\n   --- Trade ${di + 1}/${decisions.length} ---`);
 
       console.log(`\n   Decision: ${decision.action}`);
@@ -8735,7 +8741,7 @@ async function main() {
   displayBanner();
 
   // Phase 4: Initialize execution engine
-  initRpc(BASE_RPC_ENDPOINTS);
+  initRpc([...BASE_RPC_ENDPOINTS]);
   initExecutionHelpers({ TOKEN_REGISTRY, tokenDiscoveryEngine });
 
   // Phase 6: Initialize intelligence fetchers
@@ -8748,7 +8754,7 @@ async function main() {
   initDashboardAPI({
     state, breakerState, lastMomentumSignal, lastSignalHealth, lastMarketRegime,
     CONFIG, calculateTradePerformance, calculateWinRateTruth,
-    signalHistory, opportunityCostLog, cumulativeMissedPnl, cumulativeMissedCount,
+    signalHistory, opportunityCostLog: opportunityCostState.entries, cumulativeMissedPnl: opportunityCostState.cumulativeMissedPnl, cumulativeMissedCount: opportunityCostState.cumulativeMissedCount,
     shadowProposals, anthropic, SYSTEM_PROMPT_CORE, SYSTEM_PROMPT_STRATEGY,
     tokenDiscoveryEngine, yieldOptimizer, DEFAULT_ADAPTIVE_THRESHOLDS, formatSelfImprovementPrompt,
   });

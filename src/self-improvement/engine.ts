@@ -500,9 +500,9 @@ export function runPerformanceReview(reason: "TRADE_COUNT" | "TIME_ELAPSED"): Pe
 
   // Regime-specific insights
   for (const [regime, count] of Object.entries(regimeCounts)) {
-    const regimePatterns = Object.values(state.strategyPatterns).filter(p => p.conditions.regime === regime && p.stats.sampleSize >= 2);
+    const regimePatterns = Object.values(state.strategyPatterns).filter((p: any) => p.conditions.regime === regime && p.stats.sampleSize >= 2);
     const regimeWinRate = regimePatterns.length > 0
-      ? regimePatterns.reduce((s, p) => s + p.stats.wins, 0) / Math.max(1, regimePatterns.reduce((s, p) => s + p.stats.sampleSize, 0))
+      ? (regimePatterns as any[]).reduce((s: number, p: any) => s + p.stats.wins, 0) / Math.max(1, (regimePatterns as any[]).reduce((s: number, p: any) => s + p.stats.sampleSize, 0))
       : 0;
     if (regimeWinRate < 0.3 && count >= 3) {
       insights.push({ category: "REGIME", severity: "ACTION",

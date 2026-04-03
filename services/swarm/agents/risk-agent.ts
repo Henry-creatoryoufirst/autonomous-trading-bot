@@ -34,7 +34,7 @@ export function riskAgent(input: MicroAgentInput): MicroAgentVote {
         reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% from cost basis — approaching max loss${buyRatio !== undefined ? ` (buy ratio ${buyRatio.toFixed(0)}% not confirming reversal yet)` : ''}`);
       }
     }
-    if (portfolio.positionGainPct < -4 && action !== 'SELL' && action !== 'STRONG_SELL') {
+    if (portfolio.positionGainPct < -4 && action !== 'SELL' && (action as SwarmAction) !== 'STRONG_SELL') {
       action = 'SELL';
       confidence = 75;
       reasons.push(`Position down ${portfolio.positionGainPct.toFixed(1)}% — approaching stop-loss`);
