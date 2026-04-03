@@ -117,7 +117,7 @@ describe('calculateKellyPositionSize', () => {
       },
     };
 
-    const state: PositionSizingState = { tradeHistory: trades, costBasis };
+    const state = { tradeHistory: trades, costBasis } as unknown as PositionSizingState;
     const result = calculateKellyPositionSize(1000, state, kc);
     expect(result.winRate).toBeGreaterThan(0);
     expect(result.kellyUSD).toBeGreaterThan(0);
@@ -148,7 +148,7 @@ describe('calculateVolatilityMultiplier', () => {
       marketConditions: { btcPrice: 60000, ethPrice: 3000, fearGreedIndex: 50 },
     }));
 
-    const state: PositionSizingState = { tradeHistory: trades, costBasis: {} };
+    const state = { tradeHistory: trades, costBasis: {} } as unknown as PositionSizingState;
     const result = calculateVolatilityMultiplier(state, vc);
     expect(result.multiplier).toBeLessThanOrEqual(1.0);
   });
@@ -169,7 +169,7 @@ describe('calculateVolatilityMultiplier', () => {
       marketConditions: { btcPrice: 60000, ethPrice: 3000, fearGreedIndex: 50 },
     }));
 
-    const state: PositionSizingState = { tradeHistory: trades, costBasis: {} };
+    const state = { tradeHistory: trades, costBasis: {} } as unknown as PositionSizingState;
     const result = calculateVolatilityMultiplier(state, vc);
     expect(result.multiplier).toBeGreaterThanOrEqual(1.0);
   });

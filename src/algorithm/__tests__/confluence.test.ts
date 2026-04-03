@@ -21,8 +21,10 @@ function defaultCtx(overrides: Partial<ConfluenceContext['adaptiveThresholds']> 
       atrTrailMultiplier: 2.0,
       regimeMultipliers: {} as any,
       history: [] as any,
+      lastAdapted: null,
+      adaptationCount: 0,
       ...overrides,
-    },
+    } as any,
     btcChange24h: 0,
     ethChange24h: 0,
   };
