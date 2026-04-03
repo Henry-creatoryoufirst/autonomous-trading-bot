@@ -45,7 +45,6 @@ export function updateCostBasisAfterBuy(
   tokensReceived: number,
   lastKnownPrices: PriceMap,
 ): void {
-  const costBasisMap = getState().costBasis;
   const cb = getOrCreateCostBasis(symbol);
   if (cb.totalTokensAcquired === 0) cb.firstBuyDate = new Date().toISOString();
 
