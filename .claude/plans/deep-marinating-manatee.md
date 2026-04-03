@@ -1,19 +1,23 @@
 # Silo Architecture Refactor Plan
 
-## Status: ALL PHASES COMPLETE (17,451 → 12,484 lines, -28.5%)
+## Status: 14 PHASES COMPLETE (17,451 → 11,241 lines, -35.6%)
 
 ## Architecture
 ```
-agent-v3.2.ts            (14,000 lines — monolith, down from 17,451)
+agent-v3.2.ts            (11,241 lines — monolith, down from 17,451)
 src/algorithm/           (1,461 lines)  — Pure computation (20 functions)
 src/self-improvement/    (960 lines)    — Pattern analysis, reviews, thresholds (12 functions)
 src/dashboard/           (909 lines)    — Export generators + fallback HTML
+src/reporting/           (405 lines)    — Prompt formatting (sf, formatIntelligence, formatIndicators)
+src/portfolio/           (203 lines)    — Cost basis tracking (5 functions)
+src/diagnostics/         (164 lines)    — Error logging, token failure breaker, opportunity tracking
+src/capital/             (168 lines)    — Cash deployment, crash-buying, portfolio sensitivity
+src/gas/                 (148 lines)    — Gas price checks, pool liquidity validation
+src/chain/               (194 lines)    — On-chain capital flows, Blockscout integration
+src/execution/           (varies)       — RPC, calldata, trade helpers
+src/data/                (varies)       — DeFi, news, macro, CMC fetchers
 config/                  (1,180+ lines) — Constants, token registry, Chainlink feeds
 types/                   (903 lines)    — All type definitions (0 inline remaining)
-  types/index.ts           Core types
-  types/market-data.ts     Market intelligence + signal types
-  types/state.ts           AgentState, BreakerState, analytics
-  types/services.ts        Pool, price history, on-chain types
 ```
 
 ## Commit History
@@ -28,6 +32,12 @@ types/                   (903 lines)    — All type definitions (0 inline remai
 | 7r | ef23efc | -800 | Dashboard API (22 functions) |
 | 4 | 2a98d2b | -172 | Execution engine (RPC, calldata, helpers) |
 | 6 | c8d43a0 | -544 | Data fetchers (DeFi, news, macro, CMC) |
+| 9 | 2347fae | -388 | Reporting/formatting (3 functions) |
+| 10 | e15b777 | -163 | Portfolio cost basis (5 functions) |
+| 11 | 200b840 | -93 | Diagnostics (error log, failure breaker, opportunity tracking) |
+| 12 | 62075fa | -177 | Capital deployment (4 functions) |
+| 13 | 8e3cf15 | -179 | Gas & liquidity (4 functions) |
+| 14 | 9266368 | -243 | On-chain capital flows (3 functions) |
 
 ## Overview
 Extract the 17,451-line monolith (agent-v3.2.ts) into isolated, testable modules using a silo architecture.
