@@ -396,6 +396,8 @@ import { logError as _logError, recordTradeFailure as _recordTradeFailure, clear
 import type { OpportunityCostLog } from "./src/diagnostics/index.js";
 // Phase 12: Extracted capital deployment module
 import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from "./src/capital/index.js";
+// Phase 13: Extracted gas & liquidity module
+import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from "./src/gas/index.js";
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
 import type { SectorKey } from "./config/token-registry.js";
@@ -4096,206 +4098,25 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDet
 // v8.1: PHASE 2 — EXECUTION QUALITY ENGINE
 // ============================================================================
 
-// ---- VWS Liquidity Filter ----
-
-// PoolLiquidity — imported from types/services.ts
-
-const poolLiquidityCache: Map<string, PoolLiquidity> = new Map();
-const POOL_LIQUIDITY_CACHE_TTL = 3 * 60 * 1000; // 3 minutes
-
-/**
- * Fetch pool liquidity for a token from DexScreener.
- * Returns the deepest Base pool for the token.
- */
+// ============================================================================
+// GAS & LIQUIDITY — delegated to src/gas/gas-liquidity.ts
+// ============================================================================
 async function fetchPoolLiquidity(tokenSymbol: string): Promise<PoolLiquidity | null> {
-  // Check cache first
-  const cached = poolLiquidityCache.get(tokenSymbol);
-  if (cached && Date.now() - cached.fetchedAt < POOL_LIQUIDITY_CACHE_TTL) {
-    return cached;
-  }
-
-  try {
-    const reg = TOKEN_REGISTRY[tokenSymbol];
-    if (!reg || reg.address === 'native') return null;
-
-    const res = await axios.get(
-      `https://api.dexscreener.com/tokens/v1/base/${reg.address}`,
-      { timeout: 8000 }
-    );
-
-    if (!res.data || !Array.isArray(res.data) || res.data.length === 0) return null;
-
-    // Find the deepest liquidity pool on Base
-    const basePools = res.data
-      .filter((p: any) => p.chainId === 'base' && p.liquidity?.usd > 0)
-      .sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
-
-    if (basePools.length === 0) return null;
-
-    const best = basePools[0];
-    const result: PoolLiquidity = {
-      liquidityUSD: best.liquidity?.usd || 0,
-      pairAddress: best.pairAddress || '',
-      dexName: best.dexId || 'unknown',
-      priceUSD: parseFloat(best.priceUsd || '0'),
-      fetchedAt: Date.now(),
-    };
-
-    poolLiquidityCache.set(tokenSymbol, result);
-    return result;
-  } catch (e: any) {
-    console.warn(`   ⚠️ Pool liquidity fetch failed for ${tokenSymbol}: ${e.message?.substring(0, 80)}`);
-    return cached || null; // Return stale cache if available
-  }
+  return _fetchPoolLiquidity(tokenSymbol, TOKEN_REGISTRY);
 }
-
-/**
- * VWS Pre-Trade Liquidity Check
- * Returns { allowed, adjustedSize, reason } — call before every trade.
- */
-async function checkLiquidity(tokenSymbol: string, tradeAmountUSD: number): Promise<{
-  allowed: boolean;
-  adjustedSize: number;
-  liquidityUSD: number;
-  tradeAsPoolPct: number;
-  reason: string;
-}> {
-  const pool = await fetchPoolLiquidity(tokenSymbol);
-
-  if (!pool || pool.liquidityUSD <= 0) {
-    // No liquidity data available — allow trade but at minimum size
-    return {
-      allowed: true,
-      adjustedSize: Math.min(tradeAmountUSD, 25), // Cap at $25 without liquidity data
-      liquidityUSD: 0,
-      tradeAsPoolPct: 0,
-      reason: 'No pool data — capped at $25',
-    };
-  }
-
-  const tradeAsPoolPct = (tradeAmountUSD / pool.liquidityUSD) * 100;
-
-  // Hard block: pool too small
-  if (pool.liquidityUSD < VWS_MIN_LIQUIDITY_USD) {
-    return {
-      allowed: false,
-      adjustedSize: 0,
-      liquidityUSD: pool.liquidityUSD,
-      tradeAsPoolPct,
-      reason: `Pool liquidity $${(pool.liquidityUSD / 1000).toFixed(1)}K < minimum $${(VWS_MIN_LIQUIDITY_USD / 1000).toFixed(0)}K`,
-    };
-  }
-
-  // Hard block: trade too large relative to pool
-  if (tradeAsPoolPct > VWS_TRADE_AS_POOL_PCT_MAX) {
-    const maxAllowed = pool.liquidityUSD * (VWS_TRADE_AS_POOL_PCT_MAX / 100);
-    return {
-      allowed: true,
-      adjustedSize: Math.max(5, Math.min(maxAllowed, tradeAmountUSD)),
-      liquidityUSD: pool.liquidityUSD,
-      tradeAsPoolPct,
-      reason: `Trade ${tradeAsPoolPct.toFixed(1)}% of pool — capped to ${VWS_TRADE_AS_POOL_PCT_MAX}% ($${maxAllowed.toFixed(2)})`,
-    };
-  }
-
-  // Warn zone: trade moderately large relative to pool
-  let adjustedSize = tradeAmountUSD;
-  let reason = 'OK';
-
-  if (pool.liquidityUSD < VWS_PREFERRED_LIQUIDITY_USD) {
-    adjustedSize = Math.max(5, tradeAmountUSD * VWS_THIN_POOL_SIZE_REDUCTION);
-    reason = `Thin pool $${(pool.liquidityUSD / 1000).toFixed(1)}K — size reduced ${((1 - VWS_THIN_POOL_SIZE_REDUCTION) * 100).toFixed(0)}%`;
-  } else if (tradeAsPoolPct > VWS_TRADE_AS_POOL_PCT_WARN) {
-    reason = `Warning: trade is ${tradeAsPoolPct.toFixed(1)}% of pool — expect elevated slippage`;
-  }
-
-  return {
-    allowed: true,
-    adjustedSize: Math.round(adjustedSize * 100) / 100,
-    liquidityUSD: pool.liquidityUSD,
-    tradeAsPoolPct,
-    reason,
-  };
+async function checkLiquidity(tokenSymbol: string, tradeAmountUSD: number) {
+  return _checkLiquidity(tokenSymbol, tradeAmountUSD, TOKEN_REGISTRY, {
+    minLiquidityUSD: VWS_MIN_LIQUIDITY_USD, preferredLiquidityUSD: VWS_PREFERRED_LIQUIDITY_USD,
+    maxPoolPct: VWS_TRADE_AS_POOL_PCT_MAX, warnPoolPct: VWS_TRADE_AS_POOL_PCT_WARN,
+    thinPoolReduction: VWS_THIN_POOL_SIZE_REDUCTION,
+  });
 }
-
-// ---- Gas Price Monitor ----
-
-let lastGasPrice: { gweiL1: number; gweiL2: number; ethPriceUSD: number; fetchedAt: number } = {
-  gweiL1: 0, gweiL2: 0, ethPriceUSD: 0, fetchedAt: 0,
-};
-
-/**
- * Fetch current Base L2 gas price from RPC.
- * Returns gas cost estimate in USD for a typical swap (~150K gas).
- */
-async function fetchGasPrice(): Promise<{ gasCostUSD: number; gweiL2: number; isHigh: boolean }> {
-  try {
-    const gasPriceHex = await rpcCall('eth_gasPrice', []);
-    const gasPriceWei = parseInt(gasPriceHex, 16);
-    const gweiL2 = gasPriceWei / 1e9;
-
-    // Get ETH price from last known prices
-    const ethPrice = lastKnownPrices['ETH']?.price || lastKnownPrices['WETH']?.price || 2000;
-
-    // Typical DEX swap on Base: ~150K gas units
-    const gasUnits = 150_000;
-    const gasCostETH = (gasPriceWei * gasUnits) / 1e18;
-    const gasCostUSD = gasCostETH * ethPrice;
-
-    lastGasPrice = { gweiL1: 0, gweiL2: gweiL2, ethPriceUSD: ethPrice, fetchedAt: Date.now() };
-
-    return {
-      gasCostUSD: Math.round(gasCostUSD * 10000) / 10000, // 4 decimal places
-      gweiL2,
-      isHigh: gweiL2 > GAS_PRICE_HIGH_GWEI,
-    };
-  } catch (e: any) {
-    // Return a conservative estimate if gas fetch fails
-    return { gasCostUSD: 0.15, gweiL2: 0.1, isHigh: false };
-  }
+async function fetchGasPrice() {
+  return _fetchGasPrice(rpcCall, lastKnownPrices, GAS_PRICE_HIGH_GWEI);
 }
-
-/**
- * Pre-trade gas check. Returns { proceed, gasCostUSD, reason }.
- */
-async function checkGasCost(tradeAmountUSD: number): Promise<{
-  proceed: boolean;
-  gasCostUSD: number;
-  gasPctOfTrade: number;
-  reason: string;
-}> {
-  if (tradeAmountUSD <= 0) {
-    return { proceed: false, gasCostUSD: 0, gasPctOfTrade: 0, reason: 'Trade amount is zero' };
-  }
-  const gas = await fetchGasPrice();
-  const gasPctOfTrade = (gas.gasCostUSD / tradeAmountUSD) * 100;
-
-  if (gasPctOfTrade > GAS_COST_MAX_PCT_OF_TRADE) {
-    return {
-      proceed: false,
-      gasCostUSD: gas.gasCostUSD,
-      gasPctOfTrade,
-      reason: `Gas $${gas.gasCostUSD.toFixed(4)} = ${gasPctOfTrade.toFixed(1)}% of $${tradeAmountUSD.toFixed(2)} trade (max ${GAS_COST_MAX_PCT_OF_TRADE}%)`,
-    };
-  }
-
-  if (gas.isHigh) {
-    return {
-      proceed: true,
-      gasCostUSD: gas.gasCostUSD,
-      gasPctOfTrade,
-      reason: `Gas elevated (${gas.gweiL2.toFixed(3)} gwei, $${gas.gasCostUSD.toFixed(4)}) — proceeding but noting cost`,
-    };
-  }
-
-  return {
-    proceed: true,
-    gasCostUSD: gas.gasCostUSD,
-    gasPctOfTrade,
-    reason: `Gas OK: $${gas.gasCostUSD.toFixed(4)} (${gasPctOfTrade.toFixed(2)}% of trade)`,
-  };
+async function checkGasCost(tradeAmountUSD: number) {
+  return _checkGasCost(tradeAmountUSD, rpcCall, lastKnownPrices, { gasHighGwei: GAS_PRICE_HIGH_GWEI, gasMaxPctOfTrade: GAS_COST_MAX_PCT_OF_TRADE });
 }
-
 // ---- TWAP Execution Engine ----
 
 /**
