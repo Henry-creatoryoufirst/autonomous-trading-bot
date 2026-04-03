@@ -100,8 +100,8 @@ autonomous-trading-bot/
 │   ├── token-discovery.ts                     ← New token scanning
 │   ├── gecko-terminal.ts                      ← DEX data provider
 │   ├── swarm/                                 ← Multi-agent swarm intelligence
-│   ├── services/derivatives-strategy.ts       ← Derivatives & hedging
-│   ├── services/coinbase-advanced-trade.ts    ← CEX integration
+│   ├── derivatives-strategy.ts                ← Derivatives & hedging
+│   ├── coinbase-advanced-trade.ts             ← CEX integration
 │   └── ... (30+ service files)
 └── tsconfig.json                              ← NEW: Project-wide TypeScript config
 ```
@@ -168,11 +168,12 @@ modules receive it via parameter passing or wrapper functions. The next evolutio
 3. **Self-improvement engine** — threshold adaptation logic
 
 ### Priority 4: Services Audit
-The `services/` directory (10,785 lines across 30+ files) was not part of this
-refactoring. It includes some structural issues:
-- `services/services/` nested directory (2 files misplaced)
-- Some services are tightly coupled to the monolith's global state
-- `swarm/` multi-agent system needs its own state management review
+The `services/` directory (10,785 lines across 37 files) was audited on 2026-04-03.
+See the "Services Audit" section below for full details. Key findings:
+- Zero inter-service coupling (no service imports another service)
+- 1 unused service (`trade-queue.ts`) identified
+- `services/services/` misplaced directory cleaned up (md file moved to root)
+- `swarm/` module is cleanly self-contained
 
 ---
 
@@ -240,3 +241,110 @@ ties everything together. The goal is to make that orchestration layer thin,
 clear, and surrounded by well-typed, well-tested modules.
 
 **Never Rest. Never Settle. Build it right.**
+
+---
+
+## Services Audit
+
+> Audited 2026-04-03 on branch `claude/review-handoff-refactor-HRwth`
+> 37 files, 10,785 total lines, zero TypeScript errors
+
+### Summary
+
+The `services/` directory is in surprisingly good shape. Every service is a
+self-contained module with zero inter-service imports. No service imports from
+another service -- they all depend only on external packages (`viem`, etc.)
+and are consumed by the monolith (`agent-v3.2.ts`) or other top-level files.
+
+### Quick Fixes Applied
+
+1. **Moved `services/services/DERIVATIVES-INTEGRATION.md`** to project root.
+   The nested `services/services/` directory was a misplaced artifact. Removed
+   the empty directory after moving the file.
+2. **Fixed stale architecture diagram** in STATE_OF_THE_BOT.md that still
+   referenced `services/services/derivatives-strategy.ts`.
+3. **Flagged `trade-queue.ts` as unused** -- nothing in the codebase imports it.
+
+### Service Inventory
+
+| Service | Lines | Status | Purpose | Imported By |
+|---------|-------|--------|---------|-------------|
+| `derivatives-strategy.ts` | 926 | Active | Derivatives position management & hedging engine | agent-v3.2 |
+| `coinbase-advanced-trade.ts` | 704 | Active | Coinbase Advanced Trade REST/WS API client | agent-v3.2, derivatives-strategy, macro-commodity |
+| `gecko-terminal.ts` | 650 | Active | GeckoTerminal DEX intelligence (free API, 30 calls/min) | agent-v3.2 |
+| `token-discovery.ts` | 612 | Active | DexScreener-based token scanning & ranking | agent-v3.2 |
+| `risk-reviewer.ts` | 451 | Active | Adversarial trade review ("devil's advocate") | agent-v3.2, routes |
+| `simulator.ts` | 436 | Active | Backtesting engine (replays price history) | agent-v3.2, strategy-versions, scripts |
+| `macro-commodity-signals.ts` | 429 | Active | Gold/Silver macro signals from commodity futures | agent-v3.2 |
+| `startup-checks.ts` | 414 | Active | Pre-flight validation before trading loop | agent-v3.2 |
+| `morpho-yield.ts` | 399 | Active | Morpho Blue yield (ERC-4626 MetaMorpho vaults) | yield-optimizer |
+| `aave-yield.ts` | 384 | Active | Aave V3 yield farming for idle USDC | agent-v3.2, morpho-yield, yield-optimizer |
+| `polymarket.ts` | 371 | Active (secondary) | Polymarket CLOB API for prediction markets | polymarket-arb strategy, scripts |
+| `telegram.ts` | 364 | Active | Telegram alerts & command interface | agent-v3.2, routes |
+| `alpaca-client.ts` | 356 | Active (secondary) | Alpaca stock/ETF trading API client | equity-integration, stock-data, equity-strategy |
+| `paper-trader.ts` | 331 | Active | Virtual portfolio engine for strategy testing | agent-v3.2 |
+| `yield-optimizer.ts` | 317 | Active | Multi-protocol yield comparison & rebalancing | agent-v3.2 |
+| `stock-data.ts` | 293 | Active (secondary) | Stock technical indicators (RSI, MACD, Bollinger) | equity-integration, equity-strategy |
+| `cooldown-manager.ts` | 273 | Active | Per-token cooldown with signal-weighted re-entry | agent-v3.2, config |
+| `trailing-stops.ts` | 269 | Active | ATR-based adaptive trailing stop engine | agent-v3.2, routes |
+| `strategy-config.ts` | 256 | Active | Natural language -> config change parser | agent-v3.2, routes, dashboard |
+| `dex-aggregator.ts` | 237 | Active | DEX aggregator routing for better execution | agent-v3.2 |
+| `weekly-report.ts` | 196 | Active | Weekly performance report generation | agent-v3.2, routes |
+| `strategy-versions.ts` | 193 | Active | Historical strategy config registry | agent-v3.2, routes, paper-trader, backtester |
+| `market-hours.ts` | 186 | Active (secondary) | US market session awareness | equity-integration, equity-strategy |
+| `cache-manager.ts` | 179 | Active | Layered TTL cache to prevent API rate limits | agent-v3.2 |
+| `trade-queue.ts` | 168 | **UNUSED** | Parallel trade evaluation / serial execution queue | **nothing** |
+| `deceleration-detector.ts` | 147 | Active | Momentum deceleration for smart trim signals | agent-v3.2 |
+| `flow-timeframes.ts` | 110 | Active | Multi-timeframe buy ratio aggregation (5m/1h/4h) | agent-v3.2 |
+| `version-backtester.ts` | 100 | Active | Multi-version strategy comparison runner | agent-v3.2 |
+| `signal-tracker.ts` | 98 | Active | Signal generated vs executed vs filtered tracking | agent-v3.2 |
+| `mev-protection.ts` | 57 | Active | Sandwich attack protection (Flashbots, slippage) | agent-v3.2 |
+
+#### Swarm Module (`services/swarm/`)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `orchestrator.ts` | 211 | Builds inputs, runs agents, returns consensus | 
+| `agent-framework.ts` | 123 | Runs micro-agents in parallel, aggregates votes |
+| `agents/flow-agent.ts` | 142 | DEX buy/sell ratio analysis |
+| `agents/momentum-agent.ts` | 117 | RSI, MACD, Bollinger momentum scoring |
+| `agents/risk-agent.ts` | 113 | Position size, drawdown, exposure checking |
+| `agents/trend-agent.ts` | 91 | ADX, price change, market regime scoring |
+| `agents/sentiment-agent.ts` | 82 | BTC/ETH broad market momentum |
+
+The swarm module is cleanly layered: orchestrator -> framework -> agents.
+No coupling to the rest of `services/`. Imported only by agent-v3.2.ts.
+
+### Coupling Analysis
+
+**Inter-service coupling: ZERO.** No service file imports from another service
+file. All services are leaf nodes that depend only on external packages.
+
+**Monolith coupling:** All 30 active services are imported by `agent-v3.2.ts`.
+A few are also imported by:
+- `equity-integration.ts` (alpaca-client, stock-data, market-hours)
+- `src/server/routes.ts` (strategy-config, risk-reviewer, trailing-stops, telegram, weekly-report, strategy-versions)
+- `src/dashboard/api.ts` (strategy-config)
+- `strategies/` and `scripts/` (polymarket, simulator)
+
+This coupling pattern is healthy -- services are consumed from above, never
+from each other.
+
+### Recommended Next Steps
+
+1. **Decide on `trade-queue.ts`** -- it is 168 lines of code that nothing imports.
+   Either integrate it into the execution pipeline or remove it. Do not leave
+   dead code in the repo long-term.
+2. **`derivatives-strategy.ts` (926 lines)** is the largest service by far.
+   If it keeps growing, consider splitting into strategy logic vs. position
+   management.
+3. **`coinbase-advanced-trade.ts` (704 lines)** handles both REST and WebSocket.
+   Could split into separate files if WebSocket features grow.
+4. **Equity services** (`alpaca-client`, `stock-data`, `market-hours`) are only
+   used by `equity-integration.ts` and `strategies/equity-strategy.ts` -- not
+   by the main crypto bot. Consider grouping them under `services/equity/`.
+5. **Yield services** (`aave-yield`, `morpho-yield`, `yield-optimizer`) form a
+   natural group. Could move to `services/yield/`.
+6. **No immediate refactoring needed.** The zero-coupling architecture is clean.
+   Focus on stabilizing the core (Priority 1: Centralize State) before
+   restructuring services.
