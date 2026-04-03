@@ -417,6 +417,8 @@ import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility a
 import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from "./src/gas/index.js";
 // Phase 14: Extracted on-chain capital flows module
 import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/chain/index.js";
+// Phase 3c: Centralized state store
+import { setState as _storeSetState, setBreakerState as _storeSetBreakerState, markStateDirty as _storeMarkStateDirty, isStateDirty as _storeIsStateDirty, isCriticalPending as _storeIsCriticalPending, clearDirtyFlag as _storeClearDirtyFlag } from "./src/state/index.js";
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
 import type { SectorKey } from "./config/token-registry.js";
@@ -2944,14 +2946,15 @@ function saveTradeHistory() {
 // Non-critical saves (HOLD, status updates) batch into 30s windows.
 // Shutdown handlers still save immediately for data safety.
 // ============================================================================
-let stateDirty = false;
+// Phase 3c: Dirty-flag state now delegates to src/state/store.ts.
+// Local variables kept only for the critical-timer and flush-interval logic.
 let lastSaveAt = Date.now();
 let criticalSaveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_INTERVAL_MS = 30_000;          // Flush every 30s if dirty
 const SAVE_CRITICAL_INTERVAL_MS = 5_000;  // Flush within 5s after trade execution
 
 function markStateDirty(critical?: boolean): void {
-  stateDirty = true;
+  _storeMarkStateDirty(critical);
   if (critical && !criticalSaveTimer) {
     criticalSaveTimer = setTimeout(() => {
       criticalSaveTimer = null;
@@ -2961,12 +2964,12 @@ function markStateDirty(critical?: boolean): void {
 }
 
 function flushStateIfDirty(reason: string = 'periodic'): void {
-  if (!stateDirty) return;
+  if (!_storeIsStateDirty()) return;
   const elapsed = Date.now() - lastSaveAt;
   // For periodic flushes, respect the interval; for explicit calls, always flush
   if (reason === 'periodic' && elapsed < SAVE_INTERVAL_MS) return;
   saveTradeHistory();
-  stateDirty = false;
+  _storeClearDirtyFlag();
   lastSaveAt = Date.now();
   if (criticalSaveTimer) {
     clearTimeout(criticalSaveTimer);
@@ -8756,6 +8759,10 @@ function displayBanner() {
 
 async function main() {
   displayBanner();
+
+  // Phase 3c: Wire module-level state into the centralized store
+  _storeSetState(state);
+  _storeSetBreakerState(breakerState);
 
   // Phase 4: Initialize execution engine
   initRpc([...BASE_RPC_ENDPOINTS]);
