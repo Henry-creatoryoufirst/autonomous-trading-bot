@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "src/algorithm/**/*.ts",
+    "src/capital/**/*.ts",
+    "src/chain/**/*.ts",
+    "src/diagnostics/**/*.ts",
+    "src/gas/**/*.ts",
+    "src/portfolio/**/*.ts",
+    "types/**/*.ts"
+  ]
+}

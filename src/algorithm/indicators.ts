@@ -346,7 +346,9 @@ export function determineTrend(prices: number[], sma20: number | null, sma50: nu
   const dailyChange = ((currentPrice - priceDayAgo) / priceDayAgo) * 100;
 
   const aboveSMA20 = sma20 ? currentPrice > sma20 : null;
-  const aboveSMA50 = sma50 ? currentPrice > sma50 : null;
+  // aboveSMA50 available for future multi-timeframe confirmation
+  const _aboveSMA50 = sma50 ? currentPrice > sma50 : null;
+  void _aboveSMA50;
 
   if (weeklyChange > 10 && dailyChange > 3 && aboveSMA20 !== false) return "STRONG_UP";
   if (weeklyChange > 3 && dailyChange > 0 && aboveSMA20 !== false) return "UP";

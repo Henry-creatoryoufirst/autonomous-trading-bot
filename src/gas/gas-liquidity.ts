@@ -10,9 +10,12 @@ import type { PoolLiquidity } from "../../types/services.js";
 const poolLiquidityCache = new Map<string, PoolLiquidity>();
 const POOL_LIQUIDITY_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
+// Cached gas price snapshot (available for gas-aware routing)
+// eslint-disable-next-line prefer-const
 let lastGasPrice: { gweiL1: number; gweiL2: number; ethPriceUSD: number; fetchedAt: number } = {
   gweiL1: 0, gweiL2: 0, ethPriceUSD: 0, fetchedAt: 0,
 };
+export { lastGasPrice };
 
 export async function fetchPoolLiquidity(
   tokenSymbol: string,

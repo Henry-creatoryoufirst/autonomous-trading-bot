@@ -3,7 +3,6 @@
  * Extracted from agent-v3.2.ts (Phase 3b refactor)
  */
 
-import type { TechnicalIndicators } from '../src/algorithm/indicators.js';
 
 // ============================================================================
 // DEX POOL REGISTRY
