@@ -142,8 +142,9 @@ export function calculateRiskRewardMetrics(): {
 export function apiPortfolio() {
   try {
   const uptime = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
-  const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
-  const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
+  const costBasisValues = Object.values(state.costBasis) as TokenCostBasis[];
+  const totalRealized = costBasisValues.reduce((s, cb) => s + cb.realizedPnL, 0);
+  const totalUnrealized = costBasisValues.reduce((s, cb) => s + cb.unrealizedPnL, 0);
   let riskReward: ReturnType<typeof calculateRiskRewardMetrics>;
   let perfStats: ReturnType<typeof calculateTradePerformance>;
   try {
@@ -606,7 +607,7 @@ export async function handleChatRequest(userMessage: string, history: { role: st
     ? `\nACTIVE USER DIRECTIVES:\n${activeDirectives.map(d => `- [${d.type}] ${d.instruction}`).join('\n')}`
     : '';
 
-  const sectorInfo = Object.entries(SECTORS).map(([key, s]) =>
+  const sectorInfo = (Object.entries(SECTORS) as [string, SectorDefinition][]).map(([key, s]) =>
     `${s.name} (${key}): target ${(s.targetAllocation * 100).toFixed(0)}% | tokens: ${s.tokens.join(', ')}`
   ).join('\n');
 
@@ -761,7 +762,7 @@ export function apiDailyPnL() {
     .slice(0, 30);
 
   // Today's unrealized (current holdings minus cost basis)
-  const totalUnrealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.unrealizedPnL, 0);
+  const totalUnrealized = (Object.values(state.costBasis) as TokenCostBasis[]).reduce((s, cb) => s + cb.unrealizedPnL, 0);
 
   return { days, unrealized: Math.round(totalUnrealized * 100) / 100 };
 }
@@ -774,7 +775,7 @@ export function apiIndicators() {
   }
 
   return {
-    costBasis: Object.values(state.costBasis)
+    costBasis: (Object.values(state.costBasis) as TokenCostBasis[])
       .filter(cb => cb.currentHolding > 0)
       .map(cb => ({
         ...cb,
@@ -848,7 +849,7 @@ export function apiIntelligence() {
 
 // === PHASE 3 API ENDPOINTS ===
 export function apiPatterns() {
-  const patterns = Object.values(state.strategyPatterns);
+  const patterns = Object.values(state.strategyPatterns) as StrategyPattern[];
   const sorted = patterns.sort((a, b) => b.stats.sampleSize - a.stats.sampleSize);
   const topPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => b.stats.avgReturnPercent - a.stats.avgReturnPercent).slice(0, 5);
   const worstPerformers = sorted.filter(p => p.stats.sampleSize >= 3).sort((a, b) => a.stats.avgReturnPercent - b.stats.avgReturnPercent).slice(0, 5);
