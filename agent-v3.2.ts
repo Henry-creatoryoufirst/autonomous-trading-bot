@@ -95,9 +95,9 @@ const _require = createRequire(import.meta.url);
 const BOT_VERSION: string = _require("./package.json").version;
 
 // === DERIVATIVES MODULE IMPORTS (v6.0) ===
-import { CoinbaseAdvancedTradeClient } from "./services/services/coinbase-advanced-trade.js";
-import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/services/derivatives-strategy.js";
-import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/services/macro-commodity-signals.js";
+import { CoinbaseAdvancedTradeClient } from "./services/coinbase-advanced-trade.js";
+import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/derivatives-strategy.js";
+import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/macro-commodity-signals.js";
 
 // === v6.0: EQUITY INTEGRATION ===
 import { EquityIntegration } from './equity-integration.js';
@@ -8757,6 +8757,12 @@ async function main() {
     signalHistory, opportunityCostLog: opportunityCostState.entries, cumulativeMissedPnl: opportunityCostState.cumulativeMissedPnl, cumulativeMissedCount: opportunityCostState.cumulativeMissedCount,
     shadowProposals, anthropic, SYSTEM_PROMPT_CORE, SYSTEM_PROMPT_STRATEGY,
     tokenDiscoveryEngine, yieldOptimizer, DEFAULT_ADAPTIVE_THRESHOLDS, formatSelfImprovementPrompt,
+    ALLOWED_ORIGINS, markStateDirty, getOpportunityCostSummary,
+    getCashDeploymentMode: () => cashDeploymentMode,
+    getCashDeploymentCycles: () => cashDeploymentCycles,
+    getCrashBuyingOverrideActive: () => crashBuyingOverrideActive,
+    getCrashBuyingOverrideCycles: () => crashBuyingOverrideCycles,
+    getCurrentAltseasonSignal: () => currentAltseasonSignal,
   });
 
   // === NVR SIGNAL SERVICE: Mode Detection ===
