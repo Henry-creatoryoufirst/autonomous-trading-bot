@@ -100,26 +100,26 @@ import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type Derivatives
 import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./src/core/services/macro-commodity-signals.js";
 
 // === v6.0: EQUITY INTEGRATION ===
-import { EquityIntegration } from "./src/core/equity-integration.js';
+import { EquityIntegration } from "./src/core/equity-integration.js";
 
 // === v6.1: TOKEN DISCOVERY ENGINE ===
-import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from "./src/core/services/token-discovery.js';
+import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from "./src/core/services/token-discovery.js";
 
 // === NVR-SPEC-NL: NATURAL LANGUAGE STRATEGY CONFIG ===
-import { parseStrategyInstruction, isStrategyInstruction, type ConfigChange, type ParseResult, type ConfigDirective } from "./src/simulation/strategy-config.js';
+import { parseStrategyInstruction, isStrategyInstruction, type ConfigChange, type ParseResult, type ConfigDirective } from "./src/simulation/strategy-config.js";
 
 // === NVR-SPEC-001: BACKTESTING & SIMULATION ENGINE ===
-import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from "./src/simulation/simulator.js';
+import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from "./src/simulation/simulator.js";
 
 // === STRATEGY LAB: Paper Trading + Version Registry + Multi-Version Backtester ===
-import { STRATEGY_VERSIONS, getVersion, type StrategyVersion } from "./src/simulation/strategy-versions.js';
+import { STRATEGY_VERSIONS, getVersion, type StrategyVersion } from "./src/simulation/strategy-versions.js";
 import {
   createPaperPortfolio, getPaperPortfolio, getAllPaperPortfolios,
   evaluatePaperTrade, updatePaperPortfolio, getPaperPortfolioSummary,
   savePaperPortfolios, loadPaperPortfolios,
   type PaperPortfolio, type TokenSignal,
-} from "./src/simulation/paper-trader.js';
-import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from "./src/simulation/version-backtester.js';
+} from "./src/simulation/paper-trader.js";
+import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from "./src/simulation/version-backtester.js";
 
 // =============================================================================
 // PAPER TRADE GATE — route trades through paper-trader for simulation/validation
@@ -433,20 +433,20 @@ import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE
 import type { SectorKey } from "./src/core/config/token-registry.js";
 import { CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT } from "./src/core/config/chainlink-feeds.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
-import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from "./src/core/services/trailing-stops.js';
+import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from "./src/core/services/trailing-stops.js";
 // v20.0: MEV Protection
-import { calculateAdaptiveSlippage, needsMevProtection } from "./src/core/services/mev-protection.js';
+import { calculateAdaptiveSlippage, needsMevProtection } from "./src/core/services/mev-protection.js";
 // v20.0: DEX Aggregator for better execution prices
-import { getBestAggregatorQuote, shouldUseAggregator } from "./src/core/services/dex-aggregator.js';
+import { getBestAggregatorQuote, shouldUseAggregator } from "./src/core/services/dex-aggregator.js";
 // v20.0: Adversarial Risk Reviewer + Enhanced Drawdown Controls
-import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, type RiskReviewInput } from "./src/core/services/risk-reviewer.js';
+import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, type RiskReviewInput } from "./src/core/services/risk-reviewer.js";
 
 // === v11.0: FAMILY PLATFORM MODULE ===
-import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from "./src/fleet/family/index.js';
-import type { FamilyTradeDecision, FamilyTradeResult } from "./src/fleet/types/family.js';
+import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from "./src/fleet/family/index.js";
+import type { FamilyTradeDecision, FamilyTradeResult } from "./src/fleet/types/family.js";
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
-import { aaveYieldService } from "./src/core/services/aave-yield.js';
+import { aaveYieldService } from "./src/core/services/aave-yield.js";
 // v21.2: Morpho yield — DISABLED for now (was crashing Railway deploys)
 // TODO: Re-enable once import issue is resolved
 const morphoYieldService = {
@@ -463,30 +463,30 @@ const morphoYieldService = {
 };
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
-import { yieldOptimizer } from "./src/core/services/yield-optimizer.js';
-import type { ProtocolYield } from "./src/core/services/yield-optimizer.js';
+import { yieldOptimizer } from "./src/core/services/yield-optimizer.js";
+import type { ProtocolYield } from "./src/core/services/yield-optimizer.js";
 
 // === v14.1: MOMENTUM DECELERATION DETECTOR (Smart Trim) ===
-import { createDecelState, updateBuyRatioHistory, detectDeceleration } from "./src/core/services/deceleration-detector.js';
-import type { DecelState } from "./src/core/services/deceleration-detector.js';
+import { createDecelState, updateBuyRatioHistory, detectDeceleration } from "./src/core/services/deceleration-detector.js";
+import type { DecelState } from "./src/core/services/deceleration-detector.js";
 
 // === v19.0: MULTI-TIMEFRAME FLOW AGGREGATION ===
-import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from "./src/core/services/flow-timeframes.js';
-import type { FlowTimeframeState } from "./src/core/services/flow-timeframes.js';
+import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from "./src/core/services/flow-timeframes.js";
+import type { FlowTimeframeState } from "./src/core/services/flow-timeframes.js";
 
 // === v19.0: SIGNAL QUALITY TRACKER ===
-import { recordExecuted, recordFiltered, getSignalStats } from "./src/core/services/signal-tracker.js';
-import { generateWeeklyReport, shouldGenerateReport, getLatestReport } from "./src/core/services/weekly-report.js';
-import type { YieldState } from "./src/core/services/aave-yield.js';
+import { recordExecuted, recordFiltered, getSignalStats } from "./src/core/services/signal-tracker.js";
+import { generateWeeklyReport, shouldGenerateReport, getLatestReport } from "./src/core/services/weekly-report.js";
+import type { YieldState } from "./src/core/services/aave-yield.js";
 
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
-import { geckoTerminalService } from "./src/core/services/gecko-terminal.js';
-import type { DexIntelligence } from "./src/core/services/gecko-terminal.js';
+import { geckoTerminalService } from "./src/core/services/gecko-terminal.js";
+import type { DexIntelligence } from "./src/core/services/gecko-terminal.js";
 
 // === v15.0: MULTI-AGENT SWARM ARCHITECTURE ===
-import { runSwarm, formatSwarmForPrompt, setLatestSwarmDecisions, getLatestSwarmDecisions, getLastSwarmRunTime } from "./src/core/services/swarm/orchestrator.js';
-import type { SwarmDecision } from "./src/core/services/swarm/agent-framework.js';
-import { SIGNAL_ENGINE } from "./src/core/config/constants.js';
+import { runSwarm, formatSwarmForPrompt, setLatestSwarmDecisions, getLatestSwarmDecisions, getLastSwarmRunTime } from "./src/core/services/swarm/orchestrator.js";
+import type { SwarmDecision } from "./src/core/services/swarm/agent-framework.js";
+import { SIGNAL_ENGINE } from "./src/core/config/constants.js";
 
 dotenv.config();
 
