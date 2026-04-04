@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Never Rest Capital — Full Project Breakdown</title>
+<style>
+  @page { size: A4; margin: 0.6in; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1a1a2e; line-height: 1.5; background: #fff; max-width: 8.5in; margin: 0 auto; padding: 0.6in; font-size: 11px; }
+  .header { text-align: center; border-bottom: 3px solid #0f3460; padding-bottom: 20px; margin-bottom: 28px; }
+  .header h1 { font-size: 26px; font-weight: 800; color: #0f3460; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 13px; color: #666; margin-top: 4px; }
+  .header .version { display: inline-block; background: #0f3460; color: #fff; padding: 3px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-top: 10px; }
+  h2 { font-size: 16px; font-weight: 700; color: #0f3460; border-bottom: 2px solid #e0e0e0; padding-bottom: 5px; margin: 24px 0 12px; }
+  h3 { font-size: 13px; font-weight: 700; color: #16213e; margin: 14px 0 6px; }
+  p, li { font-size: 11px; }
+  p { margin-bottom: 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 10.5px; }
+  th { background: #0f3460; color: #fff; padding: 6px 8px; text-align: left; font-weight: 600; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e8e8e8; }
+  tr:nth-child(even) { background: #f8f9fa; }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0; }
+  .metric { background: #f0f4ff; border: 1px solid #d0d8f0; border-radius: 8px; padding: 12px; text-align: center; }
+  .metric .value { font-size: 22px; font-weight: 800; color: #0f3460; }
+  .metric .label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .metric.green { background: #f0fdf4; border-color: #bbf7d0; }
+  .metric.green .value { color: #166534; }
+  .tree { font-family: 'Courier New', monospace; font-size: 10px; background: #f8f9fa; padding: 14px; border-radius: 8px; border: 1px solid #e0e0e0; white-space: pre; line-height: 1.35; }
+  ul { margin: 4px 0 10px 18px; }
+  li { margin-bottom: 3px; }
+  .checklist { list-style: none; margin-left: 0; }
+  .checklist li { padding: 3px 0; }
+  .checklist li::before { content: "\2713  "; color: #166534; font-weight: 700; }
+  .checklist li.pending::before { content: "\25CB  "; color: #9ca3af; }
+  .page-break { page-break-before: always; }
+  .footer { text-align: center; margin-top: 36px; padding-top: 14px; border-top: 1px solid #e0e0e0; font-size: 9px; color: #999; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 9px; font-weight: 600; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-yellow { background: #fef9c3; color: #854d0e; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1: COVER + EXECUTIVE SUMMARY -->
+<div class="header">
+  <h1>NEVER REST CAPITAL</h1>
+  <div class="subtitle">Autonomous On-Chain Trading Agent &mdash; Full Project Breakdown</div>
+  <div class="version">v21.0.0 &bull; Base L2 &bull; April 2026</div>
+</div>
+
+<h2>Executive Summary</h2>
+<p>Never Rest Capital (NVR) is an autonomous trading agent operating 24/7 on Base L2. It manages real capital &mdash; analyzing markets, executing trades via DEX aggregators, harvesting profits, and continuously self-improving its own strategy thresholds based on realized performance.</p>
+<p>Over the course of this refactoring initiative, the codebase has been transformed from a single 17,451-line monolith into a modular, type-safe, tested architecture ready for multi-user deployment.</p>
+
+<div class="metrics">
+  <div class="metric green">
+    <div class="value">9,890</div>
+    <div class="label">Monolith Lines<br>(from 17,451)</div>
+  </div>
+  <div class="metric green">
+    <div class="value">0</div>
+    <div class="label">TypeScript Errors<br>(from 387)</div>
+  </div>
+  <div class="metric green">
+    <div class="value">90</div>
+    <div class="label">Tests Passing<br>(from 0)</div>
+  </div>
+  <div class="metric">
+    <div class="value">34,737</div>
+    <div class="label">Total Lines<br>(99 files)</div>
+  </div>
+</div>
+
+<h2>Key Achievements</h2>
+<div class="two-col">
+<div>
+<h3>Architecture</h3>
+<ul class="checklist">
+  <li>14 modules extracted from monolith</li>
+  <li>Centralized state store (typed singleton)</li>
+  <li>HTTP server extracted (40+ API routes)</li>
+  <li>Zero inter-service coupling</li>
+  <li>Clean directory structure</li>
+</ul>
+</div>
+<div>
+<h3>Quality &amp; Safety</h3>
+<ul class="checklist">
+  <li>0 TypeScript errors (standard + strict)</li>
+  <li>12 modules under strict: true</li>
+  <li>90 tests across 6 suites (all passing)</li>
+  <li>CI pipeline (GitHub Actions)</li>
+  <li>Full services audit (37 files documented)</li>
+</ul>
+</div>
+</div>
+
+<h2>Refactoring Timeline</h2>
+<table>
+  <tr><th>Phase</th><th>What</th><th>Lines Moved</th><th>Destination</th></tr>
+  <tr><td>1</td><td>Token registry, sectors, Chainlink feeds</td><td>240</td><td>config/</td></tr>
+  <tr><td>1b</td><td>20 algorithm functions (RSI, MACD, Bollinger, etc.)</td><td>909</td><td>src/algorithm/</td></tr>
+  <tr><td>3a</td><td>Delete 18 duplicate inline type definitions</td><td>-300</td><td>&mdash;</td></tr>
+  <tr><td>3b</td><td>25 remaining inline types</td><td>641</td><td>types/</td></tr>
+  <tr><td>4</td><td>Execution engine (RPC, calldata)</td><td>255</td><td>src/execution/</td></tr>
+  <tr><td>5</td><td>Self-improvement engine</td><td>960</td><td>src/self-improvement/</td></tr>
+  <tr><td>6</td><td>External data fetchers</td><td>609</td><td>src/data/</td></tr>
+  <tr><td>7</td><td>Dashboard (HTML, exports, API)</td><td>1,815</td><td>src/dashboard/</td></tr>
+  <tr><td>9</td><td>Reporting / prompt formatting</td><td>411</td><td>src/reporting/</td></tr>
+  <tr><td>10</td><td>Portfolio cost basis</td><td>211</td><td>src/portfolio/</td></tr>
+  <tr><td>11</td><td>Diagnostics &amp; error tracking</td><td>174</td><td>src/diagnostics/</td></tr>
+  <tr><td>12</td><td>Capital deployment logic</td><td>176</td><td>src/capital/</td></tr>
+  <tr><td>13</td><td>Gas &amp; liquidity</td><td>156</td><td>src/gas/</td></tr>
+  <tr><td>14</td><td>On-chain capital flows</td><td>202</td><td>src/chain/</td></tr>
+  <tr><td>15</td><td>HTTP server route handlers</td><td>1,948</td><td>src/server/</td></tr>
+  <tr><td>16</td><td>Centralized state store</td><td>85</td><td>src/state/</td></tr>
+</table>
+
+<!-- PAGE 2: ARCHITECTURE -->
+<div class="page-break"></div>
+<h2>Current Architecture</h2>
+<div class="tree">autonomous-trading-bot/
+|-- agent-v3.2.ts               9,890 lines   Core orchestration + execution
+|-- config/                       1,188 lines   Configuration
+|   |-- constants.ts                948          Thresholds, feature flags, constants
+|   |-- token-registry.ts          218          Token addresses, sectors, risk levels
+|   +-- chainlink-feeds.ts          22          Oracle feed addresses
+|-- types/                          716 lines   Type definitions
+|   |-- index.ts                    279          Trade, Strategy, Portfolio types
+|   |-- state.ts                    178          AgentState, BreakerState
+|   |-- market-data.ts             183          Market intel, TradeDecision
+|   |-- family.ts                   224          Family account types
+|   +-- services.ts                  76          Service interface types
+|-- src/
+|   |-- algorithm/                1,461 lines   Pure computation (strict)
+|   |   |-- indicators.ts          382          RSI, MACD, Bollinger, ATR, ADX, SMA, EMA
+|   |   |-- market-analysis.ts     492          Regime detection, sentiment scoring
+|   |   |-- position-sizing.ts     254          Kelly criterion, risk-adjusted sizing
+|   |   |-- confluence.ts          194          Multi-signal scoring engine
+|   |   +-- risk.ts                 73          Drawdown, circuit breaker logic
+|   |-- server/                   2,024 lines   HTTP API
+|   |   |-- routes.ts            1,948          40+ /api/* route handlers
+|   |   +-- index.ts                76          ServerContext type + barrel
+|   |-- self-improvement/           960 lines   Strategy adaptation (strict)
+|   |   +-- engine.ts              935          Pattern analysis, threshold tuning
+|   |-- dashboard/                1,838 lines   Web UI
+|   |   |-- api.ts                 944          Dashboard data endpoints
+|   |   |-- embedded-html.ts       535          HTML template
+|   |   +-- exports.ts             359          CSV/JSON exports
+|   |-- data/                       608 lines   External APIs (strict)
+|   |   +-- intelligence.ts        594          CoinGecko, FRED, DeFiLlama, CMC
+|   |-- reporting/                  411 lines   Prompt formatting (strict)
+|   |   +-- formatting.ts          405          AI prompt data formatting
+|   |-- execution/                  255 lines   On-chain execution (strict)
+|   |   |-- rpc.ts                  84          RPC call management
+|   |   |-- calldata.ts           120          Swap calldata building
+|   |   +-- helpers.ts              43          Execution utilities
+|   |-- portfolio/                  201 lines   P&amp;L tracking (strict)
+|   |   +-- cost-basis.ts          201          Cost basis, realized gains
+|   |-- chain/                      202 lines   On-chain analysis (strict)
+|   |   +-- capital-flows.ts       194          Blockscout deposit/withdraw tracking
+|   |-- capital/                    176 lines   Cash deployment (strict)
+|   |   +-- deployment.ts          168          Deployment tiers, reserve logic
+|   |-- diagnostics/                167 lines   Error tracking (strict)
+|   |   |-- error-tracking.ts       72          Error log, token failure breaker
+|   |   +-- opportunity-tracking.ts  85          Missed trade tracking
+|   |-- gas/                        159 lines   Gas monitoring (strict)
+|   |   +-- gas-liquidity.ts       151          Gas price, liquidity checks
+|   +-- state/                       98 lines   State management (strict)
+|       +-- store.ts                 85          Typed singleton store
+|-- services/                    10,785 lines   Domain services (30 active)
+|   |-- gecko-terminal.ts          650          DEX data provider
+|   |-- token-discovery.ts         612          New token scanning
+|   |-- derivatives-strategy.ts    926          Derivatives &amp; hedging
+|   |-- coinbase-advanced-trade.ts 704          CEX integration
+|   |-- risk-reviewer.ts           451          Risk analysis
+|   |-- telegram.ts                364          Alert service (Phase 1)
+|   |-- swarm/                     879          Multi-agent intelligence
+|   +-- ... (23 more services)
+|-- .github/workflows/
+|   |-- ci.yml                              Type check + test on every push
+|   +-- docker-publish.yml                  Container build + deploy
++-- tsconfig.json / tsconfig.strict.json    TypeScript configuration</div>
+
+<h2>What's in the Monolith (9,890 lines) &mdash; And Why</h2>
+<p>The remaining code is <strong>application orchestration</strong> &mdash; it ties modules together. This is the right place for it.</p>
+<table>
+  <tr><th>Section</th><th>~Lines</th><th>Purpose</th></tr>
+  <tr><td>Imports &amp; config loading</td><td>200</td><td>Wire up all modules, env vars</td></tr>
+  <tr><td>State management &amp; persistence</td><td>800</td><td>Load/save state JSON, dirty tracking</td></tr>
+  <tr><td>HTTP server dispatch</td><td>300</td><td>Route dispatch to src/server/</td></tr>
+  <tr><td>Market data aggregation</td><td>1,200</td><td>Fetch prices, build token snapshots</td></tr>
+  <tr><td>AI decision engine</td><td>1,500</td><td>Build prompts, call Claude, parse decisions</td></tr>
+  <tr><td>Trade execution</td><td>1,200</td><td>DEX swaps, TWAP, slippage handling</td></tr>
+  <tr><td>Profit taking &amp; stop loss</td><td>800</td><td>Position monitoring, trigger sells</td></tr>
+  <tr><td>Auto-harvest &amp; payouts</td><td>600</td><td>Distribute profits to wallets</td></tr>
+  <tr><td>Main loop &amp; startup</td><td>400</td><td>runTradingCycle(), main()</td></tr>
+  <tr><td>Telegram alerts</td><td>200</td><td>Fire-and-forget alert calls</td></tr>
+  <tr><td>Misc utilities</td><td>~2,700</td><td>Helpers, formatters, edge cases</td></tr>
+</table>
+
+<!-- PAGE 3: QUALITY + TEST COVERAGE -->
+<div class="page-break"></div>
+<h2>Type Safety</h2>
+<div class="two-col">
+<div>
+<h3>Standard Mode (all files)</h3>
+<p><span class="badge badge-green">0 ERRORS</span> &mdash; Full codebase compiles clean.</p>
+<p>Was 387 errors before refactoring. Every error resolved through proper typing, not suppression.</p>
+</div>
+<div>
+<h3>Strict Mode (12 modules)</h3>
+<p><span class="badge badge-green">0 ERRORS</span> &mdash; Core modules pass strict: true.</p>
+<p>Covers: algorithm, capital, chain, diagnostics, gas, portfolio, types, self-improvement, reporting, execution, data, state.</p>
+</div>
+</div>
+
+<h2>Test Coverage</h2>
+<table>
+  <tr><th>Suite</th><th>Module</th><th>Tests</th><th>What's Tested</th></tr>
+  <tr><td>indicators.test.ts</td><td>src/algorithm/</td><td>26</td><td>RSI, EMA, MACD, Bollinger, SMA, ATR, ADX, trends</td></tr>
+  <tr><td>confluence.test.ts</td><td>src/algorithm/</td><td>7</td><td>Multi-signal scoring, dampening, clamping</td></tr>
+  <tr><td>position-sizing.test.ts</td><td>src/algorithm/</td><td>14</td><td>Kelly criterion, volatility, institutional sizing</td></tr>
+  <tr><td>cost-basis.test.ts</td><td>src/portfolio/</td><td>10</td><td>Buy/sell P&amp;L, averaging in, full exit</td></tr>
+  <tr><td>deployment.test.ts</td><td>src/capital/</td><td>14</td><td>Cash deployment tiers, reserves, crash buying</td></tr>
+  <tr><td>engine.test.ts</td><td>src/self-improvement/</td><td>19</td><td>Pattern classification, win rates, threshold adaptation</td></tr>
+  <tr><td colspan="2"><strong>TOTAL</strong></td><td><strong>90</strong></td><td><strong>All passing &mdash; 532ms runtime</strong></td></tr>
+</table>
+
+<h2>CI/CD Pipeline</h2>
+<p>GitHub Actions runs on every push to <code>main</code> and <code>claude/**</code> branches:</p>
+<ul>
+  <li><strong>Step 1:</strong> <code>npm ci</code> &mdash; clean install</li>
+  <li><strong>Step 2:</strong> <code>tsc --noEmit</code> &mdash; full type check</li>
+  <li><strong>Step 3:</strong> <code>tsc --noEmit -p tsconfig.strict.json</code> &mdash; strict check on core modules</li>
+  <li><strong>Step 4:</strong> <code>vitest run</code> &mdash; 90 tests</li>
+</ul>
+
+<h2>Services Inventory (30 Active)</h2>
+<table>
+  <tr><th>Service</th><th>Lines</th><th>Purpose</th></tr>
+  <tr><td>derivatives-strategy.ts</td><td>926</td><td>Derivatives &amp; hedging strategies</td></tr>
+  <tr><td>coinbase-advanced-trade.ts</td><td>704</td><td>Coinbase CEX integration</td></tr>
+  <tr><td>gecko-terminal.ts</td><td>650</td><td>DEX data provider (GeckoTerminal API)</td></tr>
+  <tr><td>token-discovery.ts</td><td>612</td><td>New token scanning &amp; evaluation</td></tr>
+  <tr><td>risk-reviewer.ts</td><td>451</td><td>Risk analysis &amp; position review</td></tr>
+  <tr><td>simulator.ts</td><td>436</td><td>Trade simulation engine</td></tr>
+  <tr><td>macro-commodity-signals.ts</td><td>429</td><td>FRED macro data, commodities</td></tr>
+  <tr><td>startup-checks.ts</td><td>414</td><td>Health checks on boot</td></tr>
+  <tr><td>morpho-yield.ts</td><td>399</td><td>Morpho Blue yield vault</td></tr>
+  <tr><td>aave-yield.ts</td><td>384</td><td>Aave yield deposits</td></tr>
+  <tr><td>polymarket.ts</td><td>371</td><td>Prediction market signals</td></tr>
+  <tr><td>telegram.ts</td><td>364</td><td>Alert service (one-way)</td></tr>
+  <tr><td>alpaca-client.ts</td><td>356</td><td>Equity market access</td></tr>
+  <tr><td>paper-trader.ts</td><td>331</td><td>Paper trading simulation</td></tr>
+  <tr><td>yield-optimizer.ts</td><td>317</td><td>Cross-protocol yield optimization</td></tr>
+  <tr><td>stock-data.ts</td><td>293</td><td>Stock market data feeds</td></tr>
+  <tr><td>cooldown-manager.ts</td><td>273</td><td>Trade cooldown logic</td></tr>
+  <tr><td>trailing-stops.ts</td><td>269</td><td>ATR-based trailing stops</td></tr>
+  <tr><td>strategy-config.ts</td><td>256</td><td>Runtime strategy configuration</td></tr>
+  <tr><td>dex-aggregator.ts</td><td>237</td><td>Multi-DEX routing</td></tr>
+  <tr><td>swarm/ (7 files)</td><td>879</td><td>Multi-agent intelligence system</td></tr>
+  <tr><td>Others (9 files)</td><td>~1,400</td><td>Various utilities &amp; integrations</td></tr>
+</table>
+
+<!-- PAGE 4: REMAINING STEPS -->
+<div class="page-break"></div>
+<h2>Remaining Steps to Production Scale</h2>
+
+<h3>Priority 1: Merge &amp; Deploy <span class="badge badge-red">BLOCKING</span></h3>
+<p>The refactoring branch has 40+ commits of pure architectural improvement with zero behavioral changes. Merge to main and redeploy. The bot trades identically &mdash; just with a vastly better codebase underneath.</p>
+
+<h3>Priority 2: Centralize State Fully <span class="badge badge-yellow">HIGH VALUE</span></h3>
+<p>The state store exists at <code>src/state/store.ts</code>. Two modules (diagnostics, portfolio) already import directly. Next: migrate <code>src/server/</code> and <code>src/dashboard/</code> to use the store instead of context injection. This eliminates the 120+ field <code>ServerContext</code> interface.</p>
+
+<h3>Priority 3: Telegram Phase 2 &mdash; Command Handlers <span class="badge badge-yellow">HIGH VALUE</span></h3>
+<p>Currently Telegram is alert-only (one-way). Adding command handlers enables users to:</p>
+<ul>
+  <li>Check portfolio status: <code>/status</code>, <code>/portfolio</code>, <code>/pnl</code></li>
+  <li>Manage positions: <code>/sell TOKEN</code>, <code>/harvest</code></li>
+  <li>Monitor health: <code>/health</code>, <code>/errors</code></li>
+  <li>Control the bot: <code>/pause</code>, <code>/resume</code></li>
+</ul>
+<p>This is critical for scaling &mdash; users need to interact with their bot without a dashboard.</p>
+
+<h3>Priority 4: Expand Test Coverage <span class="badge badge-blue">ONGOING</span></h3>
+<p>90 tests cover algorithm, portfolio, capital, and self-improvement. Next targets:</p>
+<ul>
+  <li>Server route handlers (API response shapes)</li>
+  <li>Trade execution (mock RPC, verify calldata)</li>
+  <li>State persistence (save/load cycle integrity)</li>
+  <li>Integration tests (full trading cycle with mocked market data)</li>
+</ul>
+
+<h3>Priority 5: Move Toward strict: true Everywhere <span class="badge badge-blue">ONGOING</span></h3>
+<p>12 of 15 <code>src/</code> modules already pass strict. Remaining:</p>
+<ul>
+  <li><code>src/server/</code> &mdash; complex context types need refactoring</li>
+  <li><code>src/dashboard/</code> &mdash; similar context pattern</li>
+  <li><code>agent-v3.2.ts</code> &mdash; long-term goal, requires incremental cleanup</li>
+</ul>
+
+<h3>Priority 6: Services Cleanup <span class="badge badge-blue">ONGOING</span></h3>
+<ul>
+  <li>Remove unused <code>trade-queue.ts</code> (168 lines, nothing imports it)</li>
+  <li>Consider splitting <code>derivatives-strategy.ts</code> (926 lines) if it grows</li>
+  <li>Group equity services (<code>alpaca-client</code>, <code>stock-data</code>, <code>equity-strategy</code>)</li>
+  <li>Group yield services (<code>aave-yield</code>, <code>morpho-yield</code>, <code>yield-optimizer</code>)</li>
+</ul>
+
+<h3>Priority 7: Multi-User Infrastructure <span class="badge badge-yellow">SCALING</span></h3>
+<p>For hundreds of users, each running their own bot instance:</p>
+<ul>
+  <li>Dockerized deployment with env-based configuration</li>
+  <li>Per-user state isolation (separate state.json per instance)</li>
+  <li>Centralized monitoring dashboard (aggregate health across fleet)</li>
+  <li>Onboarding flow: wallet setup, initial deposit, risk profile</li>
+  <li>Rate limiting on shared API keys (CoinGecko, FRED, etc.)</li>
+</ul>
+
+<h2>Technical Stack</h2>
+<table>
+  <tr><th>Component</th><th>Technology</th></tr>
+  <tr><td>Runtime</td><td>Node.js + tsx (ESM)</td></tr>
+  <tr><td>Language</td><td>TypeScript (strict on core modules)</td></tr>
+  <tr><td>Chain</td><td>Base L2 (Chain ID 8453)</td></tr>
+  <tr><td>AI Engine</td><td>Claude (Anthropic SDK) for trade decisions</td></tr>
+  <tr><td>DEX Routing</td><td>Aerodrome Slipstream, Uniswap V3, aggregators</td></tr>
+  <tr><td>On-Chain SDK</td><td>Coinbase CDP SDK + viem</td></tr>
+  <tr><td>Yield</td><td>Aave, Morpho Blue</td></tr>
+  <tr><td>Alerts</td><td>Telegram (one-way alerts)</td></tr>
+  <tr><td>Dashboard</td><td>Embedded HTML served on health port</td></tr>
+  <tr><td>State</td><td>JSON file persistence (state.json)</td></tr>
+  <tr><td>Cycle</td><td>15-minute trading intervals</td></tr>
+  <tr><td>Testing</td><td>vitest (90 tests, 532ms)</td></tr>
+  <tr><td>CI/CD</td><td>GitHub Actions + Docker + Railway</td></tr>
+</table>
+
+<div class="footer">
+  <strong>Never Rest Capital</strong> &mdash; Never Rest. Never Settle. Build it right.<br>
+  Generated April 2026 &bull; Branch: claude/review-handoff-refactor-HRwth &bull; 40+ refactoring commits
+</div>
+
+</body>
+</html>
