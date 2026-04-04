@@ -8,9 +8,9 @@
 
 import http from 'http';
 import fs from 'fs';
-import type { HarvestRecipient } from '../../types/state.js';
-import type { ConfigDirective } from '../../services/strategy-config.js';
-import { BOT_VERSION } from '../../config/constants.js';
+import type { HarvestRecipient } from '../../core/types/state.js';
+import type { ConfigDirective } from '../../core/services/strategy-config.js';
+import { BOT_VERSION } from '../../core/config/constants.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts

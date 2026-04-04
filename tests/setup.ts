@@ -2,9 +2,9 @@
  * Shared test helpers and mock state objects for the trading bot test suite.
  */
 
-import type { TokenCostBasis, TradeRecord, StopLossConfig } from '../services/testable/stop-loss.js';
-import type { AdaptiveThresholds } from '../services/testable/adaptive-thresholds.js';
-import { DEFAULT_ADAPTIVE_THRESHOLDS } from '../services/testable/adaptive-thresholds.js';
+import type { TokenCostBasis, TradeRecord, StopLossConfig } from '../src/core/services/testable/stop-loss.js';
+import type { AdaptiveThresholds } from '../src/core/services/testable/adaptive-thresholds.js';
+import { DEFAULT_ADAPTIVE_THRESHOLDS } from '../src/core/services/testable/adaptive-thresholds.js';
 
 /**
  * Create a mock TokenCostBasis with sensible defaults.

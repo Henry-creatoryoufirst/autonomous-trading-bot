@@ -8,12 +8,12 @@
  * Functions that mutate state accept state slices as parameters.
  */
 
-import type { TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, MarketRegime } from '../../types/index.js';
-import type { RoundTripTrade, WinRateTruthData, AgentState, UserDirective } from '../../types/state.js';
-import type { TechnicalIndicators } from '../algorithm/indicators.js';
+import type { TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, MarketRegime } from '../types/index.js';
+import type { RoundTripTrade, WinRateTruthData, AgentState, UserDirective } from '../types/state.js';
+import type { TechnicalIndicators } from '../../algorithm/indicators.js';
 import {
   ATR_STOP_LOSS_MULTIPLIER, ATR_TRAILING_STOP_MULTIPLIER,
-} from '../../config/constants.js';
+} from '../config/constants.js';
 
 // Exploration constants (defined inline — not yet in constants.ts)
 const EXPLORATION_MIN_CONFLUENCE = 0;

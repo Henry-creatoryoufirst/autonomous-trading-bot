@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkCashDeploymentMode, DEFAULT_TIERS } from '../services/testable/cash-deployment.js';
+import { checkCashDeploymentMode, DEFAULT_TIERS } from '../src/core/services/testable/cash-deployment.js';
 
 describe('F&G = 8 (extreme fear) -> deployment BLOCKED', () => {
   it('should block all deployment at F&G=8 regardless of cash level', () => {

@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NVR Capital — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ===== CSS Variables / Theme ===== */
+:root {
+  --bg-primary: #060a14;
+  --bg-surface: #0a0e1a;
+  --bg-card: #0f1629;
+  --bg-card-hover: #151d35;
+  --bg-elevated: #1c2541;
+  --border: rgba(255,255,255,0.06);
+  --border-accent: rgba(96,165,250,0.2);
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-dim: #475569;
+  --accent-blue: #60a5fa;
+  --accent-sky: #38bdf8;
+  --accent-green: #10b981;
+  --accent-emerald: #22c55e;
+  --accent-red: #ef4444;
+  --accent-gold: #f0b429;
+  --accent-amber: #f59e0b;
+  --accent-purple: #a78bfa;
+  --glass-bg: rgba(15,22,41,0.6);
+  --glass-border: rgba(255,255,255,0.06);
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+}
+
+/* ===== Reset & Base ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(76,110,245,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(16,185,129,0.05) 0%, transparent 50%),
+    linear-gradient(180deg, #060a14 0%, #0a0e1a 100%);
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: var(--font-mono); }
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 4px; }
+
+/* ===== Animations ===== */
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+.fade-in { animation: fade-in 0.3s ease-out; }
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-elevated) 50%, var(--bg-card) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ===== Layout ===== */
+.container { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 640px) { .container { padding: 0 24px; } }
+
+/* ===== Glass Card ===== */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+}
+
+/* ===== Header ===== */
+.header {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(6,10,20,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-name {
+  font-size: 15px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-sky));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 1.5px;
+}
+.brand-version {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.status-group { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent-green);
+}
+.status-text { font-size: 11px; color: var(--accent-green); font-weight: 600; }
+.last-update { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
+
+/* ===== Tab Navigation ===== */
+.tab-nav {
+  display: flex;
+  gap: 2px;
+  padding: 12px 0 0;
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 8px 18px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text-secondary); }
+.tab-btn.active {
+  color: var(--accent-blue);
+}
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-blue);
+  border-radius: 2px 2px 0 0;
+}
+@media (max-width: 480px) {
+  .tab-btn { padding: 8px 12px; font-size: 11px; }
+}
+
+/* ===== Tab Content ===== */
+.tab-content { display: none; padding: 16px 0; }
+.tab-content.active { display: block; }
+
+/* ===== Metric Cards ===== */
+.metrics-grid {
+  display: grid;
+  gap: 8px;
+}
+.metrics-grid-4 { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 640px) { .metrics-grid-4 { grid-template-columns: repeat(4, 1fr); } }
+.metrics-grid-6 { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 640px) { .metrics-grid-6 { grid-template-columns: repeat(6, 1fr); } }
+
+.metric-card {
+  padding: 12px;
+}
+.metric-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.metric-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.metric-value-sm {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+.metric-sub {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.positive { color: var(--accent-emerald); }
+.negative { color: var(--accent-red); }
+.neutral { color: var(--text-secondary); }
+.gold { color: var(--accent-gold); }
+
+/* ===== Section ===== */
+.section { margin-top: 12px; }
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.section-subtitle {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
+/* ===== Tables ===== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.data-table thead tr {
+  border-bottom: 1px solid var(--border);
+}
+.data-table th {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 6px 8px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+}
+.data-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.data-table th.right, .data-table td.right { text-align: right; }
+.data-table th.center, .data-table td.center { text-align: center; }
+.table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 260px;
+}
+
+/* ===== Grid Layouts ===== */
+.grid-2 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 768px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+.grid-3 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 768px) { .grid-3 { grid-template-columns: 1fr 1fr 1fr; } }
+.grid-2-1 { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 768px) { .grid-2-1 { grid-template-columns: 2fr 1fr; } }
+
+/* ===== Bot Card (Fleet) ===== */
+.bot-card { padding: 14px; }
+.bot-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.bot-name { font-size: 13px; font-weight: 700; }
+.bot-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+.badge-green { background: rgba(16,185,129,0.15); color: var(--accent-green); border: 1px solid rgba(16,185,129,0.3); }
+.badge-yellow { background: rgba(245,158,11,0.15); color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.3); }
+.badge-red { background: rgba(239,68,68,0.15); color: var(--accent-red); border: 1px solid rgba(239,68,68,0.3); }
+.badge-blue { background: rgba(96,165,250,0.15); color: var(--accent-blue); border: 1px solid rgba(96,165,250,0.3); }
+.bot-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bot-stat-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.bot-stat-value { font-size: 12px; font-weight: 600; font-family: var(--font-mono); margin-top: 2px; }
+.bot-controls { display: flex; gap: 6px; margin-top: 10px; }
+.btn {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-accent);
+  background: rgba(96,165,250,0.08);
+  color: var(--accent-blue);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn:hover { background: rgba(96,165,250,0.15); }
+.btn-danger { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); color: var(--accent-red); }
+.btn-danger:hover { background: rgba(239,68,68,0.15); }
+
+/* ===== Alert Row ===== */
+.alert-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  font-size: 11px;
+}
+.alert-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.alert-time { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); white-space: nowrap; }
+.alert-msg { color: var(--text-secondary); flex: 1; }
+
+/* ===== Chart Container ===== */
+.chart-container {
+  padding: 16px;
+  position: relative;
+}
+.chart-container svg { width: 100%; height: auto; display: block; }
+
+/* ===== Confidence Bar ===== */
+.confidence-bar {
+  height: 6px;
+  background: var(--bg-elevated);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+/* ===== Sim Card ===== */
+.sim-card { padding: 14px; }
+.sim-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sim-name { font-size: 13px; font-weight: 700; }
+.sim-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+
+/* ===== Footer ===== */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  margin-top: 24px;
+  text-align: center;
+}
+.footer-text { font-size: 10px; color: var(--text-dim); }
+.footer-tagline {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ===== Responsive helpers ===== */
+.hide-mobile { display: none; }
+@media (min-width: 640px) { .hide-mobile { display: table-cell; } }
+
+/* ===== Refresh indicator ===== */
+.refresh-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent-blue);
+  transition: width 0.3s ease;
+  z-index: 200;
+  opacity: 0;
+}
+.refresh-bar.active { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="refresh-bar" id="refresh-bar"></div>
+
+<!-- ===== Header ===== -->
+<header class="header">
+  <div class="container header-inner">
+    <div class="brand">
+      <span class="brand-name">NVR CAPITAL</span>
+      <span class="brand-version" id="bot-version">--</span>
+    </div>
+    <div class="status-group">
+      <div class="status-dot pulse-dot" id="status-dot"></div>
+      <span class="status-text" id="status-text">Connecting...</span>
+      <span class="last-update" id="last-update"></span>
+    </div>
+  </div>
+</header>
+
+<!-- ===== Tab Navigation ===== -->
+<nav class="container">
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="wallet">Wallet</button>
+    <button class="tab-btn" data-tab="fleet">Fleet Command</button>
+    <button class="tab-btn" data-tab="simulations">Simulations</button>
+  </div>
+</nav>
+
+<!-- ============================================================ -->
+<!-- TAB 1: WALLET                                                -->
+<!-- ============================================================ -->
+<div class="tab-content active" id="tab-wallet">
+  <div class="container">
+
+    <!-- Hero Metrics -->
+    <div class="metrics-grid metrics-grid-4 section">
+      <div class="glass metric-card">
+        <div class="metric-label">Portfolio Value</div>
+        <div class="metric-value" id="w-portfolio">--</div>
+        <div class="metric-sub" id="w-deposited"></div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Total P&amp;L</div>
+        <div class="metric-value" id="w-pnl">--</div>
+        <div class="metric-sub" id="w-pnl-pct"></div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Daily P&amp;L</div>
+        <div class="metric-value" id="w-daily-pnl">--</div>
+        <div class="metric-sub" id="w-daily-pct"></div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Harvested</div>
+        <div class="metric-value gold" id="w-harvested">--</div>
+        <div class="metric-sub" id="w-harvest-count"></div>
+      </div>
+    </div>
+
+    <!-- Secondary Metrics -->
+    <div class="metrics-grid metrics-grid-6 section">
+      <div class="glass metric-card">
+        <div class="metric-label">Trades</div>
+        <div class="metric-value-sm" id="w-trades">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Win Rate</div>
+        <div class="metric-value-sm positive" id="w-winrate">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Cycles</div>
+        <div class="metric-value-sm" id="w-cycles">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Uptime</div>
+        <div class="metric-value-sm" id="w-uptime">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Peak</div>
+        <div class="metric-value-sm gold" id="w-peak">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Drawdown</div>
+        <div class="metric-value-sm" id="w-drawdown">--</div>
+      </div>
+    </div>
+
+    <!-- Equity Curve -->
+    <div class="section">
+      <div class="glass chart-container">
+        <div class="section-title">Equity Curve</div>
+        <div id="w-equity-chart" style="min-height:140px;">
+          <div class="skeleton" style="width:100%;height:140px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Holdings + Sectors -->
+    <div class="grid-2-1 section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Positions</div>
+        <div class="table-scroll" style="max-height:300px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Token</th>
+                <th class="right">Value</th>
+                <th class="right hide-mobile">Entry</th>
+                <th class="right hide-mobile">Price</th>
+                <th class="right">Unrlzd P&amp;L</th>
+                <th class="right hide-mobile">Stop</th>
+              </tr>
+            </thead>
+            <tbody id="w-positions-table"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Sector Allocation</div>
+        <div id="w-sector-chart" style="min-height:160px;display:flex;align-items:center;justify-content:center;">
+          <div class="skeleton" style="width:140px;height:140px;border-radius:50%;"></div>
+        </div>
+        <div id="w-sector-legend" style="margin-top:10px;"></div>
+      </div>
+    </div>
+
+    <!-- Recent Trades -->
+    <div class="section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Recent Trades</div>
+        <div class="table-scroll" style="max-height:220px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Action</th>
+                <th>Pair</th>
+                <th class="right">Amount</th>
+                <th class="center">Status</th>
+                <th class="hide-mobile">Reason</th>
+              </tr>
+            </thead>
+            <tbody id="w-trades-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 2: FLEET COMMAND                                         -->
+<!-- ============================================================ -->
+<div class="tab-content" id="tab-fleet">
+  <div class="container">
+
+    <!-- Fleet Overview -->
+    <div class="metrics-grid metrics-grid-4 section">
+      <div class="glass metric-card">
+        <div class="metric-label">Active Bots</div>
+        <div class="metric-value" id="f-active-bots">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Fleet Value</div>
+        <div class="metric-value" id="f-fleet-value">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Fleet P&amp;L</div>
+        <div class="metric-value" id="f-fleet-pnl">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Total Trades</div>
+        <div class="metric-value" id="f-fleet-trades">--</div>
+      </div>
+    </div>
+
+    <!-- Bot Cards -->
+    <div class="grid-2 section" id="f-bot-cards">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Alert History -->
+    <div class="section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Alert History</div>
+        <div id="f-alerts" style="max-height:200px;overflow-y:auto;">
+          <div style="font-size:11px;color:var(--text-dim);">Loading alerts...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- TAB 3: SIMULATIONS                                           -->
+<!-- ============================================================ -->
+<div class="tab-content" id="tab-simulations">
+  <div class="container">
+
+    <!-- Sim Overview -->
+    <div class="metrics-grid metrics-grid-4 section">
+      <div class="glass metric-card">
+        <div class="metric-label">Strategy Versions</div>
+        <div class="metric-value" id="s-versions">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Paper Portfolios</div>
+        <div class="metric-value" id="s-paper-count">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Best Return</div>
+        <div class="metric-value positive" id="s-best-return">--</div>
+      </div>
+      <div class="glass metric-card">
+        <div class="metric-label">Best Win Rate</div>
+        <div class="metric-value" id="s-best-winrate">--</div>
+      </div>
+    </div>
+
+    <!-- Backtest Results -->
+    <div class="section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Backtest Results</div>
+        <div class="section-subtitle">Strategy version comparison (last 30 days)</div>
+        <div class="table-scroll" style="max-height:280px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Version</th>
+                <th>Name</th>
+                <th class="right">Return</th>
+                <th class="right">Max DD</th>
+                <th class="right">Win Rate</th>
+                <th class="right hide-mobile">P. Factor</th>
+                <th class="right hide-mobile">vs HOLD</th>
+              </tr>
+            </thead>
+            <tbody id="s-backtest-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paper vs Live -->
+    <div class="grid-2 section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Paper Trading Portfolios</div>
+        <div class="section-subtitle">Running alongside live bot</div>
+        <div id="s-paper-list">
+          <div style="font-size:11px;color:var(--text-dim);">Loading paper portfolios...</div>
+        </div>
+      </div>
+      <div class="glass chart-container">
+        <div class="section-title">Market Condition Breakdown</div>
+        <div id="s-market-chart" style="min-height:180px;">
+          <div class="skeleton" style="width:100%;height:180px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Strategy Lab -->
+    <div class="section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Strategy Lab</div>
+        <div class="section-subtitle">Run a backtest simulation</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px;">Strategy Version</label>
+            <select id="s-sim-version" style="width:100%;padding:6px 8px;background:var(--bg-elevated);border:1px solid var(--border-accent);border-radius:var(--radius-sm);color:var(--text-primary);font-family:var(--font-mono);font-size:11px;">
+              <option value="">Select version...</option>
+            </select>
+          </div>
+          <div style="min-width:100px;">
+            <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px;">Days</label>
+            <input type="number" id="s-sim-days" value="30" min="7" max="90" style="width:100%;padding:6px 8px;background:var(--bg-elevated);border:1px solid var(--border-accent);border-radius:var(--radius-sm);color:var(--text-primary);font-family:var(--font-mono);font-size:11px;">
+          </div>
+          <button class="btn" id="s-run-sim" style="padding:6px 16px;">Run Backtest</button>
+        </div>
+        <div id="s-sim-result" style="margin-top:12px;"></div>
+      </div>
+    </div>
+
+    <!-- Confidence Scores -->
+    <div class="section">
+      <div class="glass" style="padding:14px;">
+        <div class="section-title">Pattern Confidence Scores</div>
+        <div id="s-confidence-bars">
+          <div style="font-size:11px;color:var(--text-dim);">Loading patterns...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===== Footer ===== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-text">NVR Capital &mdash; Autonomous Trading Engine</div>
+    <div class="footer-tagline">&ldquo;Your money should never rest.&rdquo;</div>
+  </div>
+</footer>
+
+<!-- ============================================================ -->
+<!-- JAVASCRIPT                                                    -->
+<!-- ============================================================ -->
+<script>
+(function() {
+  'use strict';
+
+  // ===== Tab Switching =====
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-content');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + target).classList.add('active');
+    });
+  });
+
+  // ===== Utility Functions =====
+  function $(id) { return document.getElementById(id); }
+  function fmt(n, dec) { return (typeof n === 'number') ? n.toFixed(dec === undefined ? 2 : dec) : '--'; }
+  function fmtUSD(n) { return (typeof n === 'number') ? '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'; }
+  function fmtPct(n) { return (typeof n === 'number') ? (n >= 0 ? '+' : '') + n.toFixed(2) + '%' : '--'; }
+  function pnlClass(n) { return n >= 0 ? 'positive' : 'negative'; }
+  function timeAgo(iso) {
+    if (!iso) return '--';
+    const d = new Date(iso);
+    const s = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
+  function shortTime(iso) {
+    if (!iso) return '--';
+    const d = new Date(iso);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+
+  // ===== API Fetching =====
+  const API_BASE = ''; // Same origin
+  let refreshTimer = null;
+  let refreshCount = 0;
+
+  async function apiFetch(path) {
+    try {
+      const res = await fetch(API_BASE + path);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      console.warn('API fetch failed:', path, e.message);
+      return null;
+    }
+  }
+
+  function showRefreshBar() {
+    const bar = $('refresh-bar');
+    bar.style.width = '0%';
+    bar.classList.add('active');
+    bar.style.width = '60%';
+    setTimeout(() => { bar.style.width = '100%'; }, 200);
+    setTimeout(() => { bar.classList.remove('active'); bar.style.width = '0%'; }, 600);
+  }
+
+  // ===== SVG Chart Generators =====
+
+  function generateEquitySVG(curve, width, height) {
+    if (!curve || curve.length < 2) return '<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:40px 0;">No equity data yet</div>';
+    width = width || 800;
+    height = height || 160;
+    const pad = { top: 10, right: 20, bottom: 24, left: 50 };
+    const w = width - pad.left - pad.right;
+    const h = height - pad.top - pad.bottom;
+    const min = Math.min(...curve) * 0.995;
+    const max = Math.max(...curve) * 1.005;
+    const range = max - min || 1;
+    const positive = curve[curve.length - 1] >= curve[0];
+    const lineColor = positive ? '#22C55E' : '#EF4444';
+    const fillColor = positive ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+
+    let points = curve.map((v, i) => {
+      const x = pad.left + (i / (curve.length - 1)) * w;
+      const y = pad.top + (1 - (v - min) / range) * h;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+
+    const firstX = pad.left;
+    const lastX = pad.left + w;
+    const bottomY = pad.top + h;
+    const fillPoints = firstX + ',' + bottomY + ' ' + points + ' ' + lastX + ',' + bottomY;
+
+    // Y-axis labels
+    let yLabels = '';
+    for (let i = 0; i <= 4; i++) {
+      const frac = i / 4;
+      const val = max - frac * range;
+      const y = pad.top + frac * h;
+      yLabels += '<text x="' + (pad.left - 4) + '" y="' + (y + 3) + '" text-anchor="end" fill="#64748B" font-size="9" font-family="JetBrains Mono,monospace">$' + val.toFixed(0) + '</text>';
+      yLabels += '<line x1="' + pad.left + '" y1="' + y + '" x2="' + (width - pad.right) + '" y2="' + y + '" stroke="#1c2541" stroke-width="0.5" stroke-dasharray="3,3"/>';
+    }
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '">' +
+      yLabels +
+      '<polygon points="' + fillPoints + '" fill="' + fillColor + '"/>' +
+      '<polyline points="' + points + '" fill="none" stroke="' + lineColor + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+
+  function generateDonutSVG(sectors, size) {
+    size = size || 140;
+    const cx = size / 2, cy = size / 2, r = size * 0.38, strokeW = size * 0.13;
+    const colors = ['#60A5FA', '#10B981', '#F59E0B', '#A78BFA', '#EF4444', '#38BDF8', '#F472B6', '#34D399'];
+    const total = sectors.reduce((s, sec) => s + (sec.value || 0), 0);
+    if (total <= 0) return '<div style="font-size:11px;color:var(--text-dim);text-align:center;">No allocation data</div>';
+
+    let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + size + ' ' + size + '" style="width:' + size + 'px;height:' + size + 'px;">';
+    let cumAngle = -90;
+    const circum = 2 * Math.PI * r;
+
+    sectors.forEach((sec, i) => {
+      const pct = sec.value / total;
+      const dashLen = pct * circum;
+      const dashGap = circum - dashLen;
+      const offset = -((cumAngle + 90) / 360) * circum;
+      svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + colors[i % colors.length] + '" stroke-width="' + strokeW + '" stroke-dasharray="' + dashLen.toFixed(2) + ' ' + dashGap.toFixed(2) + '" stroke-dashoffset="' + offset.toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
+      cumAngle += pct * 360;
+    });
+
+    // Center text
+    svg += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700" font-family="JetBrains Mono,monospace">' + fmtUSD(total) + '</text>';
+    svg += '<text x="' + cx + '" y="' + (cy + 10) + '" text-anchor="middle" fill="#64748B" font-size="8" font-family="Inter,sans-serif">TOTAL</text>';
+    svg += '</svg>';
+    return svg;
+  }
+
+  function generateBarSVG(data, width, height) {
+    // Simple horizontal bar chart for market conditions
+    if (!data || data.length === 0) return '<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:40px 0;">No data</div>';
+    width = width || 400;
+    height = height || 180;
+    const pad = { top: 10, right: 16, bottom: 10, left: 80 };
+    const barH = Math.min(20, (height - pad.top - pad.bottom) / data.length - 4);
+    const maxVal = Math.max(...data.map(d => Math.abs(d.value)), 1);
+    const colors = { bullish: '#22C55E', bearish: '#EF4444', neutral: '#94A3B8', volatile: '#F59E0B', recovery: '#60A5FA' };
+
+    let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '">';
+    data.forEach((d, i) => {
+      const y = pad.top + i * (barH + 6);
+      const bw = (Math.abs(d.value) / maxVal) * (width - pad.left - pad.right);
+      const color = colors[d.label.toLowerCase()] || '#60A5FA';
+      svg += '<text x="' + (pad.left - 6) + '" y="' + (y + barH / 2 + 3) + '" text-anchor="end" fill="#94A3B8" font-size="10" font-family="Inter,sans-serif">' + d.label + '</text>';
+      svg += '<rect x="' + pad.left + '" y="' + y + '" width="' + bw.toFixed(1) + '" height="' + barH + '" rx="3" fill="' + color + '" opacity="0.7"/>';
+      svg += '<text x="' + (pad.left + bw + 6) + '" y="' + (y + barH / 2 + 3) + '" fill="#E2E8F0" font-size="10" font-family="JetBrains Mono,monospace">' + d.value.toFixed(1) + '%</text>';
+    });
+    svg += '</svg>';
+    return svg;
+  }
+
+  // ===== WALLET TAB: Data Load =====
+
+  async function loadWalletTab() {
+    const [portfolio, balances, sectors, trades, equity] = await Promise.all([
+      apiFetch('/api/portfolio'),
+      apiFetch('/api/balances'),
+      apiFetch('/api/sectors'),
+      apiFetch('/api/trades?limit=30'),
+      apiFetch('/api/equity'),
+    ]);
+
+    if (portfolio) {
+      $('bot-version').textContent = portfolio.version || '--';
+      $('status-text').textContent = portfolio.tradingEnabled ? 'Online' : 'Paused';
+      $('status-dot').style.background = portfolio.tradingEnabled ? 'var(--accent-green)' : 'var(--accent-amber)';
+      $('status-text').style.color = portfolio.tradingEnabled ? 'var(--accent-green)' : 'var(--accent-amber)';
+      $('last-update').textContent = timeAgo(portfolio.lastCycle);
+
+      $('w-portfolio').textContent = fmtUSD(portfolio.totalValue);
+      $('w-deposited').textContent = 'Deposited: ' + fmtUSD(portfolio.totalDeposited);
+      $('w-pnl').textContent = (portfolio.truePnL >= 0 ? '+' : '') + fmtUSD(portfolio.truePnL);
+      $('w-pnl').className = 'metric-value ' + pnlClass(portfolio.truePnL);
+      $('w-pnl-pct').textContent = fmtPct(portfolio.truePnLPercent);
+      $('w-daily-pnl').textContent = (portfolio.dailyPnl >= 0 ? '+' : '') + fmtUSD(portfolio.dailyPnl);
+      $('w-daily-pnl').className = 'metric-value ' + pnlClass(portfolio.dailyPnl);
+      $('w-daily-pct').textContent = fmtPct(portfolio.dailyPnlPercent);
+      $('w-harvested').textContent = fmtUSD(portfolio.harvestedProfits);
+      $('w-harvest-count').textContent = (portfolio.harvestCount || 0) + ' harvests';
+
+      $('w-trades').textContent = portfolio.totalTrades || '0';
+      $('w-winrate').textContent = (typeof portfolio.winRate === 'number') ? (portfolio.winRate * 100).toFixed(1) + '%' : '--';
+      $('w-cycles').textContent = portfolio.totalCycles || '0';
+      $('w-uptime').textContent = portfolio.uptime || '--';
+      $('w-peak').textContent = fmtUSD(portfolio.peakValue);
+      $('w-drawdown').textContent = fmt(portfolio.drawdown, 2) + '%';
+      $('w-drawdown').className = 'metric-value-sm ' + (portfolio.drawdown > 5 ? 'negative' : 'neutral');
+    }
+
+    // Equity curve
+    if (equity && equity.curve && equity.curve.length > 1) {
+      $('w-equity-chart').innerHTML = generateEquitySVG(equity.curve);
+    } else if (equity === null) {
+      $('w-equity-chart').innerHTML = '<div style="font-size:11px;color:var(--text-dim);text-align:center;padding:40px 0;">Equity data unavailable</div>';
+    }
+
+    // Positions table
+    if (balances && balances.balances) {
+      const tbl = $('w-positions-table');
+      const tokens = balances.balances.filter(b => b.usdValue > 0.5 && b.symbol !== 'USDC');
+      if (tokens.length === 0) {
+        tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:20px;">No open positions</td></tr>';
+      } else {
+        tbl.innerHTML = tokens.sort((a, b) => b.usdValue - a.usdValue).map(b => {
+          const entry = b.costBasis ? fmtUSD(b.costBasis) : '--';
+          const price = b.price ? fmtUSD(b.price) : '--';
+          const upnl = b.unrealizedPnL || 0;
+          const stopPct = b.atrStopPercent ? '-' + fmt(b.atrStopPercent, 1) + '%' : '--';
+          return '<tr>' +
+            '<td style="color:var(--text-primary);font-weight:600;">' + b.symbol + '</td>' +
+            '<td class="right">' + fmtUSD(b.usdValue) + '</td>' +
+            '<td class="right hide-mobile">' + entry + '</td>' +
+            '<td class="right hide-mobile">' + price + '</td>' +
+            '<td class="right ' + pnlClass(upnl) + '">' + (upnl >= 0 ? '+' : '') + fmtUSD(upnl) + '</td>' +
+            '<td class="right hide-mobile" style="color:var(--accent-amber);">' + stopPct + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+
+      // USDC balance row at bottom
+      const usdc = balances.balances.find(b => b.symbol === 'USDC');
+      if (usdc && usdc.usdValue > 0.01) {
+        tbl.innerHTML += '<tr style="border-top:1px solid var(--border-accent);">' +
+          '<td style="color:var(--accent-blue);font-weight:600;">USDC (Cash)</td>' +
+          '<td class="right">' + fmtUSD(usdc.usdValue) + '</td>' +
+          '<td class="right hide-mobile">--</td><td class="right hide-mobile">$1.00</td><td class="right">--</td><td class="right hide-mobile">--</td></tr>';
+      }
+    }
+
+    // Sector donut
+    if (sectors && sectors.allocations) {
+      const sectorColors = ['#60A5FA', '#10B981', '#F59E0B', '#A78BFA', '#EF4444', '#38BDF8', '#F472B6'];
+      const sectorData = Object.entries(sectors.allocations)
+        .map(([name, val]) => ({ name: name, value: val }))
+        .filter(s => s.value > 0)
+        .sort((a, b) => b.value - a.value);
+
+      $('w-sector-chart').innerHTML = generateDonutSVG(sectorData, 150);
+
+      $('w-sector-legend').innerHTML = sectorData.map((s, i) => {
+        const pct = sectors.totalValue > 0 ? ((s.value / sectors.totalValue) * 100).toFixed(1) : '0';
+        return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+          '<div style="width:8px;height:8px;border-radius:2px;background:' + sectorColors[i % sectorColors.length] + ';flex-shrink:0;"></div>' +
+          '<span style="font-size:10px;color:var(--text-secondary);flex:1;">' + s.name + '</span>' +
+          '<span style="font-size:10px;font-family:var(--font-mono);color:var(--text-primary);">' + pct + '%</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    // Trades table
+    if (trades && trades.trades) {
+      const tbl = $('w-trades-table');
+      if (trades.trades.length === 0) {
+        tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:20px;">No trades yet</td></tr>';
+      } else {
+        tbl.innerHTML = trades.trades.slice(0, 20).map(t => {
+          const actionColor = t.action === 'BUY' ? 'var(--accent-green)' : t.action === 'SELL' ? 'var(--accent-red)' : 'var(--text-muted)';
+          const statusIcon = t.success ? '<span style="color:var(--accent-green);">&#10003;</span>' : '<span style="color:var(--accent-red);">&#10007;</span>';
+          return '<tr>' +
+            '<td style="white-space:nowrap;">' + shortTime(t.timestamp) + '</td>' +
+            '<td style="color:' + actionColor + ';font-weight:600;">' + (t.action || '--') + '</td>' +
+            '<td>' + (t.pair || t.fromToken + '/' + t.toToken || '--') + '</td>' +
+            '<td class="right">' + fmtUSD(t.amountUSD) + '</td>' +
+            '<td class="center">' + statusIcon + '</td>' +
+            '<td class="hide-mobile" style="color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-sans);font-size:10px;">' + (t.reasoning || t.reason || '--') + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+    }
+  }
+
+  // ===== FLEET COMMAND TAB: Data Load =====
+
+  const FLEET_BOTS = [
+    { id: 'henry', name: "Henry's Bot", service: 'efficient-peace', color: 'var(--accent-blue)' },
+    { id: 'signal', name: 'Signal Service', service: 'nvr-signal-service', color: 'var(--accent-sky)' },
+    { id: 'kathy', name: 'Kathy & Howard', service: 'stc-kathy-howard', color: 'var(--accent-purple)' },
+    { id: 'zack', name: 'Zachary Closky', service: 'nvr-zachary-closky', color: 'var(--accent-gold)' },
+  ];
+
+  async function loadFleetTab() {
+    // Try to get fleet data — the /api/family endpoint returns data for all bots
+    const [family, swarm, signals] = await Promise.all([
+      apiFetch('/api/family'),
+      apiFetch('/api/swarm-status'),
+      apiFetch('/api/signal-dashboard'),
+    ]);
+
+    // If family endpoint returns data, use it; otherwise show self-only
+    const selfPortfolio = await apiFetch('/api/portfolio');
+
+    let totalValue = 0;
+    let totalPnl = 0;
+    let totalTrades = 0;
+    let activeBots = 0;
+    let botCards = '';
+
+    // Build bot data from family API or fallback
+    const familyMembers = (family && family.members) ? family.members : [];
+
+    FLEET_BOTS.forEach((bot, idx) => {
+      const member = familyMembers.find(m => m.id === bot.id || m.name === bot.name) || null;
+
+      // Use self data for the primary bot
+      let data = null;
+      if (idx === 0 && selfPortfolio) {
+        data = {
+          value: selfPortfolio.totalValue,
+          pnl: selfPortfolio.truePnL,
+          pnlPct: selfPortfolio.truePnLPercent,
+          trades: selfPortfolio.totalTrades,
+          uptime: selfPortfolio.uptime,
+          cycles: selfPortfolio.totalCycles,
+          online: selfPortfolio.tradingEnabled !== false,
+          lastCycle: selfPortfolio.lastCycle,
+          version: selfPortfolio.version,
+        };
+      } else if (member) {
+        data = {
+          value: member.totalValue || 0,
+          pnl: member.pnl || 0,
+          pnlPct: member.pnlPercent || 0,
+          trades: member.trades || 0,
+          uptime: member.uptime || '--',
+          cycles: member.cycles || 0,
+          online: member.online !== false,
+          lastCycle: member.lastCycle,
+          version: member.version || '--',
+        };
+      }
+
+      const isOnline = data ? data.online : false;
+      const healthClass = isOnline ? 'badge-green' : 'badge-red';
+      const healthText = isOnline ? 'ONLINE' : 'OFFLINE';
+
+      if (isOnline) activeBots++;
+      if (data) {
+        totalValue += data.value || 0;
+        totalPnl += data.pnl || 0;
+        totalTrades += data.trades || 0;
+      }
+
+      botCards += '<div class="glass bot-card fade-in">' +
+        '<div class="bot-header">' +
+          '<div>' +
+            '<div class="bot-name" style="color:' + bot.color + ';">' + bot.name + '</div>' +
+            '<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);margin-top:2px;">' + (data ? data.version : '--') + '</div>' +
+          '</div>' +
+          '<span class="bot-badge ' + healthClass + '">' + healthText + '</span>' +
+        '</div>' +
+        '<div class="bot-stats">' +
+          '<div><div class="bot-stat-label">Portfolio</div><div class="bot-stat-value">' + (data ? fmtUSD(data.value) : '--') + '</div></div>' +
+          '<div><div class="bot-stat-label">P&amp;L</div><div class="bot-stat-value ' + (data ? pnlClass(data.pnl) : '') + '">' + (data ? (data.pnl >= 0 ? '+' : '') + fmtUSD(data.pnl) : '--') + '</div></div>' +
+          '<div><div class="bot-stat-label">Trades</div><div class="bot-stat-value">' + (data ? data.trades : '--') + '</div></div>' +
+        '</div>' +
+        '<div class="bot-stats" style="margin-top:6px;">' +
+          '<div><div class="bot-stat-label">Uptime</div><div class="bot-stat-value">' + (data ? data.uptime : '--') + '</div></div>' +
+          '<div><div class="bot-stat-label">Cycles</div><div class="bot-stat-value">' + (data ? data.cycles : '--') + '</div></div>' +
+          '<div><div class="bot-stat-label">Last Cycle</div><div class="bot-stat-value" style="font-size:10px;">' + (data ? timeAgo(data.lastCycle) : '--') + '</div></div>' +
+        '</div>' +
+        '<div class="bot-controls">' +
+          '<button class="btn" onclick="toggleBot(\'' + bot.id + '\', true)">Resume</button>' +
+          '<button class="btn btn-danger" onclick="toggleBot(\'' + bot.id + '\', false)">Pause</button>' +
+        '</div>' +
+      '</div>';
+    });
+
+    $('f-active-bots').textContent = activeBots + ' / ' + FLEET_BOTS.length;
+    $('f-active-bots').className = 'metric-value ' + (activeBots === FLEET_BOTS.length ? 'positive' : 'gold');
+    $('f-fleet-value').textContent = fmtUSD(totalValue);
+    $('f-fleet-pnl').textContent = (totalPnl >= 0 ? '+' : '') + fmtUSD(totalPnl);
+    $('f-fleet-pnl').className = 'metric-value ' + pnlClass(totalPnl);
+    $('f-fleet-trades').textContent = totalTrades.toString();
+
+    $('f-bot-cards').innerHTML = botCards;
+
+    // Alert history from signal dashboard or trade history
+    const alerts = [];
+    if (signals && signals.recentSignals) {
+      signals.recentSignals.slice(0, 12).forEach(sig => {
+        alerts.push({
+          time: sig.timestamp,
+          msg: sig.message || sig.signal || (sig.type + ': ' + (sig.symbol || '')),
+          level: sig.level || (sig.type === 'error' ? 'red' : sig.type === 'warning' ? 'yellow' : 'green'),
+        });
+      });
+    }
+    // Fallback: show recent trades as "alerts"
+    if (alerts.length === 0 && selfPortfolio) {
+      const recentTrades = await apiFetch('/api/trades?limit=10');
+      if (recentTrades && recentTrades.trades) {
+        recentTrades.trades.slice(0, 8).forEach(t => {
+          alerts.push({
+            time: t.timestamp,
+            msg: (t.action || 'TRADE') + ' ' + (t.pair || t.fromToken || '') + ' — ' + fmtUSD(t.amountUSD),
+            level: t.action === 'BUY' ? 'green' : t.action === 'SELL' ? 'amber' : 'blue',
+          });
+        });
+      }
+    }
+
+    const dotColors = { green: 'var(--accent-green)', yellow: 'var(--accent-amber)', red: 'var(--accent-red)', amber: 'var(--accent-amber)', blue: 'var(--accent-blue)' };
+    $('f-alerts').innerHTML = alerts.length > 0
+      ? alerts.map(a =>
+          '<div class="alert-row">' +
+            '<div class="alert-dot" style="background:' + (dotColors[a.level] || dotColors.blue) + ';"></div>' +
+            '<span class="alert-time">' + shortTime(a.time) + '</span>' +
+            '<span class="alert-msg">' + a.msg + '</span>' +
+          '</div>'
+        ).join('')
+      : '<div style="font-size:11px;color:var(--text-dim);padding:12px 0;">No recent alerts</div>';
+  }
+
+  // Expose toggle for bot controls
+  window.toggleBot = async function(botId, resume) {
+    const endpoint = resume ? '/api/resume' : '/api/kill';
+    try {
+      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      if (res.ok) {
+        loadFleetTab();
+      } else {
+        console.warn('Toggle failed:', res.status);
+      }
+    } catch (e) {
+      console.warn('Toggle error:', e.message);
+    }
+  };
+
+  // ===== SIMULATIONS TAB: Data Load =====
+
+  async function loadSimulationsTab() {
+    const [versions, papers, patterns, intelligence] = await Promise.all([
+      apiFetch('/api/strategy-versions'),
+      apiFetch('/api/paper-portfolios'),
+      apiFetch('/api/patterns'),
+      apiFetch('/api/intelligence'),
+    ]);
+
+    // Overview metrics
+    if (versions) {
+      $('s-versions').textContent = (versions.versions ? versions.versions.length : versions.length || 0).toString();
+
+      // Populate version dropdown
+      const select = $('s-sim-version');
+      const vlist = versions.versions || versions || [];
+      if (Array.isArray(vlist)) {
+        // Clear existing
+        select.innerHTML = '<option value="">Select version...</option>';
+        vlist.forEach(v => {
+          const name = typeof v === 'string' ? v : (v.version || v.id || v.name || 'Unknown');
+          select.innerHTML += '<option value="' + name + '">' + name + '</option>';
+        });
+      }
+
+      // Backtest table
+      const results = versions.results || versions.backtests || vlist.filter(v => v.returnPct !== undefined);
+      if (results && results.length > 0) {
+        const sorted = [...results].sort((a, b) => (b.returnPct || 0) - (a.returnPct || 0));
+        $('s-best-return').textContent = fmtPct(sorted[0].returnPct);
+        const bestWR = sorted.reduce((best, r) => (r.winRate || 0) > best ? (r.winRate || 0) : best, 0);
+        $('s-best-winrate').textContent = fmt(bestWR * 100, 1) + '%';
+
+        $('s-backtest-table').innerHTML = sorted.slice(0, 10).map((r, i) => {
+          const retClass = (r.returnPct || 0) >= 0 ? 'positive' : 'negative';
+          const vsClass = (r.vsHold || 0) >= 0 ? 'positive' : 'negative';
+          return '<tr>' +
+            '<td style="color:var(--text-dim);">' + (i + 1) + '</td>' +
+            '<td style="color:var(--text-primary);font-weight:600;">' + (r.version || '--') + '</td>' +
+            '<td style="color:var(--text-secondary);">' + (r.name || '--') + '</td>' +
+            '<td class="right ' + retClass + '">' + fmtPct(r.returnPct) + '</td>' +
+            '<td class="right negative">-' + fmt(Math.abs(r.maxDrawdownPct || 0), 1) + '%</td>' +
+            '<td class="right">' + fmt((r.winRate || 0) * 100, 0) + '%</td>' +
+            '<td class="right hide-mobile">' + fmt(r.profitFactor || 0, 2) + '</td>' +
+            '<td class="right hide-mobile ' + vsClass + '">' + fmtPct(r.vsHold) + '</td>' +
+            '</tr>';
+        }).join('');
+      } else {
+        $('s-backtest-table').innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:20px;">No backtest results available</td></tr>';
+      }
+    }
+
+    // Paper portfolios
+    if (papers) {
+      const plist = papers.portfolios || papers || [];
+      $('s-paper-count').textContent = (Array.isArray(plist) ? plist.length : 0).toString();
+
+      if (Array.isArray(plist) && plist.length > 0) {
+        $('s-paper-list').innerHTML = plist.map(p => {
+          const metrics = p.metrics || {};
+          const retClass = (metrics.totalReturnPct || 0) >= 0 ? 'positive' : 'negative';
+          return '<div class="glass sim-card" style="margin-bottom:8px;">' +
+            '<div class="sim-header">' +
+              '<div class="sim-name">' + (p.id || p.name || 'Paper') + '</div>' +
+              '<span class="bot-badge badge-blue">' + (p.strategyVersion || '--') + '</span>' +
+            '</div>' +
+            '<div class="sim-kpis">' +
+              '<div><div class="metric-label">Value</div><div class="metric-value-sm">' + fmtUSD(metrics.totalValue) + '</div></div>' +
+              '<div><div class="metric-label">Return</div><div class="metric-value-sm ' + retClass + '">' + fmtPct(metrics.totalReturnPct) + '</div></div>' +
+              '<div><div class="metric-label">Win Rate</div><div class="metric-value-sm">' + fmt(metrics.winRate || 0, 0) + '%</div></div>' +
+              '<div><div class="metric-label">Trades</div><div class="metric-value-sm">' + (metrics.totalTrades || p.tradeCount || 0) + '</div></div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      } else {
+        $('s-paper-list').innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:12px 0;">No paper portfolios running</div>';
+      }
+    }
+
+    // Market condition breakdown
+    if (intelligence) {
+      const regime = intelligence.marketRegime || 'UNKNOWN';
+      const conditions = [
+        { label: 'Bullish', value: regime === 'BULLISH' ? 70 : regime === 'RECOVERY' ? 40 : 15 },
+        { label: 'Bearish', value: regime === 'BEARISH' ? 65 : regime === 'CRISIS' ? 55 : 10 },
+        { label: 'Neutral', value: regime === 'NEUTRAL' || regime === 'UNKNOWN' ? 60 : 20 },
+        { label: 'Volatile', value: regime === 'VOLATILE' || regime === 'CRISIS' ? 70 : 25 },
+        { label: 'Recovery', value: regime === 'RECOVERY' ? 65 : 15 },
+      ];
+      $('s-market-chart').innerHTML = generateBarSVG(conditions);
+    }
+
+    // Confidence bars from patterns
+    if (patterns && patterns.topPerformers) {
+      const bars = patterns.topPerformers.slice(0, 6).map(p => {
+        const conf = Math.min(100, Math.max(0, (p.stats.avgReturnPercent || 0) * 10 + 50));
+        const confColor = conf > 70 ? 'var(--accent-green)' : conf > 40 ? 'var(--accent-amber)' : 'var(--accent-red)';
+        return '<div style="margin-bottom:8px;">' +
+          '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px;">' +
+            '<span style="color:var(--text-secondary);">' + (p.pattern || p.key || 'Pattern') + '</span>' +
+            '<span style="font-family:var(--font-mono);color:var(--text-primary);">' + conf.toFixed(0) + '%</span>' +
+          '</div>' +
+          '<div class="confidence-bar">' +
+            '<div class="confidence-fill" style="width:' + conf + '%;background:' + confColor + ';"></div>' +
+          '</div>' +
+          '<div style="font-size:9px;color:var(--text-dim);margin-top:2px;">' +
+            'Avg return: ' + fmtPct(p.stats.avgReturnPercent) + ' | Samples: ' + (p.stats.sampleSize || 0) +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      $('s-confidence-bars').innerHTML = bars || '<div style="font-size:11px;color:var(--text-dim);">No patterns with enough data</div>';
+    }
+  }
+
+  // Strategy lab: run backtest
+  $('s-run-sim').addEventListener('click', async function() {
+    const version = $('s-sim-version').value;
+    const days = parseInt($('s-sim-days').value) || 30;
+    if (!version) {
+      $('s-sim-result').innerHTML = '<div style="color:var(--accent-amber);font-size:11px;">Select a strategy version first</div>';
+      return;
+    }
+    $('s-sim-result').innerHTML = '<div style="font-size:11px;color:var(--text-muted);">Running backtest for ' + version + ' over ' + days + ' days...</div>';
+
+    const result = await apiFetch('/api/version-backtest?version=' + encodeURIComponent(version) + '&days=' + days);
+    if (result && result.returnPct !== undefined) {
+      const retClass = result.returnPct >= 0 ? 'positive' : 'negative';
+      $('s-sim-result').innerHTML =
+        '<div class="glass sim-card">' +
+          '<div class="sim-header">' +
+            '<div class="sim-name">' + version + '</div>' +
+            '<span class="bot-badge ' + (result.returnPct >= 0 ? 'badge-green' : 'badge-red') + '">' + fmtPct(result.returnPct) + '</span>' +
+          '</div>' +
+          '<div class="sim-kpis">' +
+            '<div><div class="metric-label">Return</div><div class="metric-value-sm ' + retClass + '">' + fmtPct(result.returnPct) + '</div></div>' +
+            '<div><div class="metric-label">Max DD</div><div class="metric-value-sm negative">-' + fmt(Math.abs(result.maxDrawdownPct || 0), 1) + '%</div></div>' +
+            '<div><div class="metric-label">Win Rate</div><div class="metric-value-sm">' + fmt((result.winRate || 0) * 100, 0) + '%</div></div>' +
+            '<div><div class="metric-label">P. Factor</div><div class="metric-value-sm">' + fmt(result.profitFactor || 0, 2) + '</div></div>' +
+          '</div>' +
+        '</div>';
+    } else {
+      $('s-sim-result').innerHTML = '<div style="color:var(--accent-red);font-size:11px;">Backtest failed or no data returned</div>';
+    }
+  });
+
+  // ===== Auto-refresh logic =====
+
+  async function refreshAll() {
+    showRefreshBar();
+    refreshCount++;
+
+    const activeTab = document.querySelector('.tab-btn.active');
+    const tabName = activeTab ? activeTab.dataset.tab : 'wallet';
+
+    try {
+      if (tabName === 'wallet') await loadWalletTab();
+      else if (tabName === 'fleet') await loadFleetTab();
+      else if (tabName === 'simulations') await loadSimulationsTab();
+    } catch (e) {
+      console.error('Refresh error:', e);
+    }
+  }
+
+  // Initial load
+  refreshAll();
+
+  // Refresh on tab switch
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      setTimeout(refreshAll, 50);
+    });
+  });
+
+  // Auto-refresh every 30 seconds
+  setInterval(refreshAll, 30000);
+
+})();
+</script>
+</body>
+</html>

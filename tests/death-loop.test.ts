@@ -12,7 +12,7 @@ import {
   isForcedDeployCooldownActive,
   computeTrailingLoss,
   checkStopTrigger,
-} from '../services/testable/stop-loss.js';
+} from '../src/core/services/testable/stop-loss.js';
 import { mockCostBasis, mockTradeRecord, mockStopLossConfig, hoursAgo } from './setup.js';
 
 describe('peakPrice reset on re-entry', () => {
