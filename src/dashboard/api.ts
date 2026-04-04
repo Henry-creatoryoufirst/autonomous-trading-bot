@@ -8,11 +8,11 @@
 
 import http from 'http';
 import fs from 'fs';
-import type { UserDirective, HarvestRecipient } from '../../types/state.js';
-import type { StrategyPattern, TokenCostBasis, SectorDefinition, MarketRegime, TradePerformanceStats } from '../../types/index.js';
-import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyData } from '../../types/market-data.js';
+import type { UserDirective, HarvestRecipient } from '../core/types/state.js';
+import type { StrategyPattern, TokenCostBasis, SectorDefinition, MarketRegime, TradePerformanceStats } from '../core/types/index.js';
+import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyData } from '../core/types/market-data.js';
 import type { DefiLlamaData, DerivativesData, FundingRateMeanReversion, SmartRetailDivergence, TVLPriceDivergence } from '../algorithm/market-analysis.js';
-import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../../services/strategy-config.js';
+import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../core/services/strategy-config.js';
 import {
   BOT_VERSION,
   AI_MODEL_ROUTINE,
@@ -27,8 +27,8 @@ import {
   DEPLOYMENT_BREAKER_OVERRIDE_SIZE_MULT,
   DEPLOYMENT_BREAKER_OVERRIDE_MIN_CASH_PCT,
   DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES,
-} from '../../config/constants.js';
-import { SECTORS, TOKEN_REGISTRY } from '../../config/token-registry.js';
+} from '../core/config/constants.js';
+import { SECTORS, TOKEN_REGISTRY } from '../core/config/token-registry.js';
 import { EMBEDDED_DASHBOARD } from './embedded-html.js';
 
 // Module-level deps — set by initDashboardAPI()

@@ -21,5 +21,5 @@ export type {
   MemberBalance,
   FamilyTradeDecision,
   FamilyTradeResult,
-} from '../types/family.js';
-export { DEFAULT_RISK_PROFILES } from '../types/family.js';
+} from '../../core/types/family.js';
+export { DEFAULT_RISK_PROFILES } from '../../core/types/family.js';

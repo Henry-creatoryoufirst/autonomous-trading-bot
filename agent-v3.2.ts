@@ -95,31 +95,31 @@ const _require = createRequire(import.meta.url);
 const BOT_VERSION: string = _require("./package.json").version;
 
 // === DERIVATIVES MODULE IMPORTS (v6.0) ===
-import { CoinbaseAdvancedTradeClient } from "./services/coinbase-advanced-trade.js";
-import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./services/derivatives-strategy.js";
-import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./services/macro-commodity-signals.js";
+import { CoinbaseAdvancedTradeClient } from './src/core/services/coinbase-advanced-trade.js";
+import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from './src/core/services/derivatives-strategy.js";
+import { MacroCommoditySignalEngine, discoverCommodityContracts } from './src/core/services/macro-commodity-signals.js";
 
 // === v6.0: EQUITY INTEGRATION ===
-import { EquityIntegration } from './equity-integration.js';
+import { EquityIntegration } from './src/core/equity-integration.js';
 
 // === v6.1: TOKEN DISCOVERY ENGINE ===
-import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from './services/token-discovery.js';
+import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from './src/core/services/token-discovery.js';
 
 // === NVR-SPEC-NL: NATURAL LANGUAGE STRATEGY CONFIG ===
-import { parseStrategyInstruction, isStrategyInstruction, type ConfigChange, type ParseResult, type ConfigDirective } from './services/strategy-config.js';
+import { parseStrategyInstruction, isStrategyInstruction, type ConfigChange, type ParseResult, type ConfigDirective } from './src/simulation/strategy-config.js';
 
 // === NVR-SPEC-001: BACKTESTING & SIMULATION ENGINE ===
-import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from './services/simulator.js';
+import { runSimulation, compareStrategies, loadPriceHistory, DEFAULT_SIM_CONFIG, type SimConfig } from './src/simulation/simulator.js';
 
 // === STRATEGY LAB: Paper Trading + Version Registry + Multi-Version Backtester ===
-import { STRATEGY_VERSIONS, getVersion, type StrategyVersion } from './services/strategy-versions.js';
+import { STRATEGY_VERSIONS, getVersion, type StrategyVersion } from './src/simulation/strategy-versions.js';
 import {
   createPaperPortfolio, getPaperPortfolio, getAllPaperPortfolios,
   evaluatePaperTrade, updatePaperPortfolio, getPaperPortfolioSummary,
   savePaperPortfolios, loadPaperPortfolios,
   type PaperPortfolio, type TokenSignal,
-} from './services/paper-trader.js';
-import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from './services/version-backtester.js';
+} from './src/simulation/paper-trader.js';
+import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from './src/simulation/version-backtester.js';
 
 // =============================================================================
 // PAPER TRADE GATE — route trades through paper-trader for simulation/validation
@@ -131,13 +131,13 @@ const PAPER_VALIDATE_FIRST = process.env.PAPER_VALIDATE_FIRST === 'true';
 const PAPER_GATE_PORTFOLIO_ID = 'paper-gate-shadow';
 
 // === v19.6: STARTUP VALIDATION + TELEGRAM ALERTS ===
-import { runPreFlightChecks } from "./services/startup-checks.js";
-import { telegramService } from "./services/telegram.js";
+import { runPreFlightChecks } from './src/core/services/startup-checks.js";
+import { telegramService } from './src/core/services/telegram.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
-import { cacheManager, CacheKeys } from "./services/cache-manager.js";
-import { CACHE_TTL } from "./config/constants.js";
-import { cooldownManager } from "./services/cooldown-manager.js";
+import { cacheManager, CacheKeys } from './src/core/services/cache-manager.js";
+import { CACHE_TTL } from './src/core/config/constants.js";
+import { cooldownManager } from './src/core/services/cooldown-manager.js";
 import {
   HEAVY_CYCLE_FORCED_INTERVAL_MS,
   AI_MODEL_HEAVY,
@@ -309,12 +309,12 @@ import {
   SYSTEM_PROMPT_CORE,
   SYSTEM_PROMPT_STRATEGY,
   estimateTokens,
-} from "./config/constants.js";
-import type { CooldownDecision, TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, SectorAllocation, TokenCostBasis, MarketRegime } from "./types/index.js";
+} from './src/core/config/constants.js";
+import type { CooldownDecision, TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, SectorAllocation, TokenCostBasis, MarketRegime } from './src/core/types/index.js";
 // Phase 3b: Extracted market data, state, and service types
-import type { NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData, CMCIntelligence, TradingSignal, SignalPayload, TradeDecision } from "./types/market-data.js";
-import type { AgentState, BreakerState, UserDirective, RoundTripTrade, WinRateTruthData, CashDeploymentResult, SignalHistoryEntry, OpportunityCostEntry, HarvestRecipient } from "./types/state.js";
-import type { PoolRegistryEntry, PoolRegistryFile, PoolLiquidity, PriceHistoryStore, OnChainCapitalFlows, BasescanTransfer } from "./types/services.js";
+import type { NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData, CMCIntelligence, TradingSignal, SignalPayload, TradeDecision } from './src/core/types/market-data.js";
+import type { AgentState, BreakerState, UserDirective, RoundTripTrade, WinRateTruthData, CashDeploymentResult, SignalHistoryEntry, OpportunityCostEntry, HarvestRecipient } from './src/core/types/state.js";
+import type { PoolRegistryEntry, PoolRegistryFile, PoolLiquidity, PriceHistoryStore, OnChainCapitalFlows, BasescanTransfer } from './src/core/types/services.js";
 // Phase 7: Extracted dashboard modules
 import { EMBEDDED_DASHBOARD, escapeHtml, fmtExport, generateEquityCurveSVG, nvrExportBaseStyles, generateBacktestMultiExportHTML, generateBacktestSingleExportHTML, generatePaperExportHTML as _generatePaperExportHTML } from "./src/dashboard/index.js";
 // Phase 5: Extracted self-improvement engine
@@ -333,7 +333,7 @@ import {
   formatUserDirectivesPrompt as _formatUserDirectivesPrompt,
   getDirectiveThresholdAdjustments as _getDirectiveThresholdAdjustments,
   THRESHOLD_BOUNDS, DEFAULT_ADAPTIVE_THRESHOLDS, DEFAULT_EXPLORATION_STATE,
-} from "./src/self-improvement/index.js";
+} from './src/core/self-improvement/index.js";
 // Phase 7r: Extracted dashboard API functions
 import {
   initDashboardAPI,
@@ -365,7 +365,7 @@ import {
   handleExportResults, handleVersionBacktest,
   handleSwarmStatus, handleSignalDashboard, handleSignalsLatest,
   handleWithdraw, handleStateBackup, handleStateRestore,
-} from "./src/server/index.js";
+} from './src/dashboard/server/index.js";
 // Phase 4: Extracted execution engine
 import {
   initRpc, getCurrentRpc as _getCurrentRpc, rotateRpc as _rotateRpc,
@@ -375,7 +375,7 @@ import {
   buildExactInputMultihopCalldata as _buildExactInputMultihopCalldata,
   encodeV3Path as _encodeV3Path,
   initExecutionHelpers, getTokenAddress as _getTokenAddress, getTokenDecimals as _getTokenDecimals,
-} from "./src/execution/index.js";
+} from './src/core/execution/index.js";
 // Phase 6: Extracted data fetchers
 import {
   initIntelligenceFetchers,
@@ -385,7 +385,7 @@ import {
   fetchCrossAssetData as _fetchCrossAssetData,
   fetchCMCIntelligence as _fetchCMCIntelligence,
   fetchMacroData as _fetchMacroData,
-} from "./src/data/index.js";
+} from './src/core/data/index.js";
 // Phase 1b: Extracted algorithm modules
 import {
   calculateRSI as _calculateRSI,
@@ -414,39 +414,39 @@ import {
 } from "./src/algorithm/index.js";
 import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence, MarketMomentumSignal } from "./src/algorithm/index.js";
 // Phase 9: Extracted reporting/formatting module
-import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/reporting/index.js";
+import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from './src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
-import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/portfolio/index.js";
+import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from './src/core/portfolio/index.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
-import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/diagnostics/index.js";
-import type { OpportunityCostLog } from "./src/diagnostics/index.js";
+import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from './src/core/diagnostics/index.js";
+import type { OpportunityCostLog } from './src/core/diagnostics/index.js";
 // Phase 12: Extracted capital deployment module
-import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from "./src/capital/index.js";
+import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from './src/core/capital/index.js";
 // Phase 13: Extracted gas & liquidity module
-import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from "./src/gas/index.js";
+import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from './src/core/gas/index.js";
 // Phase 14: Extracted on-chain capital flows module
-import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/chain/index.js";
+import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from './src/core/chain/index.js";
 // Phase 3c: Centralized state store
-import { setState as _storeSetState, setBreakerState as _storeSetBreakerState, markStateDirty as _storeMarkStateDirty, isStateDirty as _storeIsStateDirty, isCriticalPending as _storeIsCriticalPending, clearDirtyFlag as _storeClearDirtyFlag } from "./src/state/index.js";
+import { setState as _storeSetState, setBreakerState as _storeSetBreakerState, markStateDirty as _storeMarkStateDirty, isStateDirty as _storeIsStateDirty, isCriticalPending as _storeIsCriticalPending, clearDirtyFlag as _storeClearDirtyFlag } from './src/core/state/index.js";
 // Phase 2: Extracted config modules
-import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./config/token-registry.js";
-import type { SectorKey } from "./config/token-registry.js";
-import { CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT } from "./config/chainlink-feeds.js";
+import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from './src/core/config/token-registry.js";
+import type { SectorKey } from './src/core/config/token-registry.js";
+import { CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT } from './src/core/config/chainlink-feeds.js";
 // v20.0: Adaptive Exit Timing Engine — ATR-based trailing stops
-import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './services/trailing-stops.js';
+import { updateTrailingStop, checkTrailingStopHit, getTrailingStopState, getTrailingStop, removeTrailingStop, resetTrailingStopTrigger, saveTrailingStops, loadTrailingStops } from './src/core/services/trailing-stops.js';
 // v20.0: MEV Protection
-import { calculateAdaptiveSlippage, needsMevProtection } from './services/mev-protection.js';
+import { calculateAdaptiveSlippage, needsMevProtection } from './src/core/services/mev-protection.js';
 // v20.0: DEX Aggregator for better execution prices
-import { getBestAggregatorQuote, shouldUseAggregator } from './services/dex-aggregator.js';
+import { getBestAggregatorQuote, shouldUseAggregator } from './src/core/services/dex-aggregator.js';
 // v20.0: Adversarial Risk Reviewer + Enhanced Drawdown Controls
-import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, type RiskReviewInput } from './services/risk-reviewer.js';
+import { reviewTrade, updateDrawdownTracking, isTradeAllowedByDrawdown, type RiskReviewInput } from './src/core/services/risk-reviewer.js';
 
 // === v11.0: FAMILY PLATFORM MODULE ===
-import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './family/index.js';
-import type { FamilyTradeDecision, FamilyTradeResult } from './types/family.js';
+import { familyManager, WalletManager, fanOutDecision, executeFamilyTrades } from './src/fleet/family/index.js';
+import type { FamilyTradeDecision, FamilyTradeResult } from './src/fleet/types/family.js';
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
-import { aaveYieldService } from './services/aave-yield.js';
+import { aaveYieldService } from './src/core/services/aave-yield.js';
 // v21.2: Morpho yield — DISABLED for now (was crashing Railway deploys)
 // TODO: Re-enable once import issue is resolved
 const morphoYieldService = {
@@ -463,30 +463,30 @@ const morphoYieldService = {
 };
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
-import { yieldOptimizer } from './services/yield-optimizer.js';
-import type { ProtocolYield } from './services/yield-optimizer.js';
+import { yieldOptimizer } from './src/core/services/yield-optimizer.js';
+import type { ProtocolYield } from './src/core/services/yield-optimizer.js';
 
 // === v14.1: MOMENTUM DECELERATION DETECTOR (Smart Trim) ===
-import { createDecelState, updateBuyRatioHistory, detectDeceleration } from './services/deceleration-detector.js';
-import type { DecelState } from './services/deceleration-detector.js';
+import { createDecelState, updateBuyRatioHistory, detectDeceleration } from './src/core/services/deceleration-detector.js';
+import type { DecelState } from './src/core/services/deceleration-detector.js';
 
 // === v19.0: MULTI-TIMEFRAME FLOW AGGREGATION ===
-import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from './services/flow-timeframes.js';
-import type { FlowTimeframeState } from './services/flow-timeframes.js';
+import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from './src/core/services/flow-timeframes.js';
+import type { FlowTimeframeState } from './src/core/services/flow-timeframes.js';
 
 // === v19.0: SIGNAL QUALITY TRACKER ===
-import { recordExecuted, recordFiltered, getSignalStats } from './services/signal-tracker.js';
-import { generateWeeklyReport, shouldGenerateReport, getLatestReport } from './services/weekly-report.js';
-import type { YieldState } from './services/aave-yield.js';
+import { recordExecuted, recordFiltered, getSignalStats } from './src/core/services/signal-tracker.js';
+import { generateWeeklyReport, shouldGenerateReport, getLatestReport } from './src/core/services/weekly-report.js';
+import type { YieldState } from './src/core/services/aave-yield.js';
 
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
-import { geckoTerminalService } from './services/gecko-terminal.js';
-import type { DexIntelligence } from './services/gecko-terminal.js';
+import { geckoTerminalService } from './src/core/services/gecko-terminal.js';
+import type { DexIntelligence } from './src/core/services/gecko-terminal.js';
 
 // === v15.0: MULTI-AGENT SWARM ARCHITECTURE ===
-import { runSwarm, formatSwarmForPrompt, setLatestSwarmDecisions, getLatestSwarmDecisions, getLastSwarmRunTime } from './services/swarm/orchestrator.js';
-import type { SwarmDecision } from './services/swarm/agent-framework.js';
-import { SIGNAL_ENGINE } from './config/constants.js';
+import { runSwarm, formatSwarmForPrompt, setLatestSwarmDecisions, getLatestSwarmDecisions, getLastSwarmRunTime } from './src/core/services/swarm/orchestrator.js';
+import type { SwarmDecision } from './src/core/services/swarm/agent-framework.js';
+import { SIGNAL_ENGINE } from './src/core/config/constants.js';
 
 dotenv.config();
 

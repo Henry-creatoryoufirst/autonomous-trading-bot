@@ -13,7 +13,7 @@ import type {
   FamilyMember,
   MemberPortfolioState,
   MemberBalance,
-} from '../types/family.js';
+} from '../../core/types/family.js';
 
 // ============================================================================
 // TYPES

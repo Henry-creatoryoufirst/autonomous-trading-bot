@@ -17,7 +17,7 @@ import {
   SURGE_DEDUP_WINDOW_MINUTES,
   MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES,
   DECEL_TRIM_DEDUP_WINDOW_MINUTES,
-} from '../services/testable/dedup-guard.js';
+} from '../src/core/services/testable/dedup-guard.js';
 
 describe('buildDedupKey', () => {
   it('should extract tier from reasoning prefix', () => {

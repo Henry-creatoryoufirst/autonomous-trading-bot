@@ -14,7 +14,7 @@ import {
   decayThresholdsTowardDefaults,
   shouldCircuitBreakerReset,
   resetThresholdsToDefaults,
-} from '../services/testable/adaptive-thresholds.js';
+} from '../src/core/services/testable/adaptive-thresholds.js';
 import { mockThresholds } from './setup.js';
 
 describe('confluenceBuy max bound', () => {
