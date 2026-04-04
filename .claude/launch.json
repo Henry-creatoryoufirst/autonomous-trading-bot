@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "verify",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "/Users/henryschertzinger/Desktop/autonomous-trading-bot/verify-v19.6.ts"],
+      "port": 3000,
+      "cwd": "/Users/henryschertzinger/Desktop/autonomous-trading-bot"
+    }
+  ]
+}
