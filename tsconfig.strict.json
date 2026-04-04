@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "src/algorithm/**/*.ts",
+    "src/capital/**/*.ts",
+    "src/chain/**/*.ts",
+    "src/diagnostics/**/*.ts",
+    "src/gas/**/*.ts",
+    "src/portfolio/**/*.ts",
+    "types/**/*.ts",
+    "src/self-improvement/**/*.ts",
+    "src/reporting/**/*.ts",
+    "src/execution/**/*.ts",
+    "src/data/**/*.ts",
+    "src/state/**/*.ts"
+  ]
+}

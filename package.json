@@ -8,7 +8,9 @@
     "start": "npx tsx agent-v3.2.ts",
     "dev": "npx tsx watch agent-v3.2.ts",
     "arb": "npx tsx scripts/scan-arbitrage.ts",
-    "status": "npx tsx scripts/status.ts"
+    "status": "npx tsx scripts/status.ts",
+    "test": "vitest run",
+    "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -28,6 +30,7 @@
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",
     "@types/ws": "^8.5.10",
-    "tsx": "^4.7.1"
+    "tsx": "^4.7.1",
+    "vitest": "^4.1.2"
   }
 }

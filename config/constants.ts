@@ -3,6 +3,12 @@
  * Extracted from agent-v3.2.ts for v6.0 modular architecture
  */
 
+import { createRequire } from 'module';
+const _require = createRequire(import.meta.url);
+
+/** Bot version from package.json */
+export const BOT_VERSION: string = _require('../package.json').version;
+
 // ============================================================================
 // BASE CHAIN ADDRESSES & IDS
 // ============================================================================

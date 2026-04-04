@@ -44,7 +44,7 @@ export interface SectorDefinition {
 export interface TradeRecord {
   timestamp: string;
   cycle: number;
-  action: TradeAction;
+  action: "BUY" | "SELL" | "HOLD" | "REBALANCE" | "WITHDRAW";
   fromToken: string;
   toToken: string;
   amountUSD: number;
@@ -61,6 +61,8 @@ export interface TradeRecord {
     ethPrice: number;
     btcPrice: number;
   };
+  // v12.2: Store realized P&L at trade time
+  realizedPnL?: number;
   signalContext?: SignalContext;
 }
 
@@ -73,8 +75,9 @@ export interface SignalContext {
   ethFundingRate: number | null;
   baseTVLChange24h: number | null;
   baseDEXVolume24h: number | null;
-  triggeredBy: TriggerSource;
+  triggeredBy: "AI" | "STOP_LOSS" | "PROFIT_TAKE" | "EXPLORATION" | "FORCED_DEPLOY";
   isExploration?: boolean;
+  isForced?: boolean;
   btcPositioning?: string | null;
   ethPositioning?: string | null;
   crossAssetSignal?: string | null;
@@ -128,6 +131,9 @@ export interface AdaptiveThresholds {
   profitTakeSellPercent: number;
   stopLossPercent: number;
   trailingStopPercent: number;
+  // v9.0: ATR-based multiplier tuning
+  atrStopMultiplier: number;        // Default 2.5, tuned 1.5-4.0
+  atrTrailMultiplier: number;       // Default 2.0, tuned 1.5-4.0
   regimeMultipliers: Record<MarketRegime, number>;
   history: Array<{
     timestamp: string;
@@ -180,6 +186,7 @@ export interface ShadowProposal {
   confirmingReviews: number;
   contradictingReviews: number;
   status: "PENDING" | "PROMOTED" | "REJECTED";
+  regimesSeen?: string[];
 }
 
 // ============================================================================
@@ -207,6 +214,18 @@ export interface TokenCostBasis {
   peakPriceDate: string;
   firstBuyDate: string;
   lastTradeDate: string;
+  // v9.0: ATR-based dynamic stops
+  atrStopPercent: number | null;
+  atrTrailPercent: number | null;
+  atrAtEntry: number | null;
+  trailActivated: boolean;
+  lastAtrUpdate: string | null;
+  // Computed/dashboard aliases (set at runtime)
+  currentPrice?: number;
+  totalCostBasis?: number;             // Alias for totalInvestedUSD
+  avgCostPerUnit?: number;             // Alias for averageCostBasis
+  totalUnits?: number;                 // Alias for totalTokensAcquired
+  unrealizedPnLPercent?: number;       // Computed: (currentPrice - avgCost) / avgCost * 100
 }
 
 export interface BalanceEntry {
