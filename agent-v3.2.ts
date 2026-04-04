@@ -121,6 +121,15 @@ import {
 } from './services/paper-trader.js';
 import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from './services/version-backtester.js';
 
+// =============================================================================
+// PAPER TRADE GATE — route trades through paper-trader for simulation/validation
+// PAPER_TRADE_MODE=true  → ALL trades simulated, NO live execution
+// PAPER_VALIDATE_FIRST=true → log simulation THEN proceed with live execution
+// =============================================================================
+const PAPER_TRADE_MODE = process.env.PAPER_TRADE_MODE === 'true';
+const PAPER_VALIDATE_FIRST = process.env.PAPER_VALIDATE_FIRST === 'true';
+const PAPER_GATE_PORTFOLIO_ID = 'paper-gate-shadow';
+
 // === v19.6: STARTUP VALIDATION + TELEGRAM ALERTS ===
 import { runPreFlightChecks } from "./services/startup-checks.js";
 import { telegramService } from "./services/telegram.js";
