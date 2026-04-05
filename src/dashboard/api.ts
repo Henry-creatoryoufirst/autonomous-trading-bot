@@ -130,7 +130,7 @@ export function calculateRiskRewardMetrics(): {
   expectancy: number;
   profitFactor: number;
 } {
-  const trades = state.trading.trades || [];
+  const trades = state.tradeHistory || [];
   const sells = trades.filter(t => t.action === "SELL" && t.success);
 
   const wins: number[] = [];
@@ -228,6 +228,7 @@ export function apiPortfolio() {
     dailyBaseline,
     dailyBaselineStale: !baselineValidated,
     drawdown: state.trading.peakValue > 0 ? Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100) : 0,
+    maxDrawdownPercent: state.trading.maxDrawdownPercent || 0, // v21.4: Lifetime max drawdown
     realizedPnL: totalRealized,
     unrealizedPnL: totalUnrealized,
     totalTrades: state.trading.totalTrades,

@@ -885,7 +885,7 @@ body {
       $('w-harvest-count').textContent = (portfolio.harvestCount || 0) + ' harvests';
 
       $('w-trades').textContent = portfolio.totalTrades || '0';
-      $('w-winrate').textContent = (typeof portfolio.winRate === 'number') ? (portfolio.winRate * 100).toFixed(1) + '%' : '--';
+      $('w-winrate').textContent = (typeof portfolio.winRate === 'number') ? portfolio.winRate.toFixed(1) + '%' : '--';
       $('w-cycles').textContent = portfolio.totalCycles || '0';
       $('w-uptime').textContent = portfolio.uptime || '--';
       $('w-peak').textContent = fmtUSD(portfolio.peakValue);

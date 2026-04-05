@@ -2545,6 +2545,7 @@ let state: AgentState = {
     totalPortfolioValue: 0,
     initialValue: 0, // v13.0: Start at $0 — actual value detected on first balance fetch. No hardcoded seed capital.
     peakValue: 0, // v13.0: Start at $0 — peak tracks actual portfolio, not hardcoded values
+    maxDrawdownPercent: 0, // v21.4: Lifetime max drawdown tracking
     sectorAllocations: [],
   },
   tradeHistory: [],
@@ -2629,6 +2630,7 @@ function loadTradeHistory() {
         // initialValue is set on first deposit detection or from persisted state.
         state.trading.initialValue = parsed.initialValue || 0;
         state.trading.peakValue = parsed.peakValue || 0;
+        state.trading.maxDrawdownPercent = parsed.maxDrawdownPercent || 0; // v21.4: Restore lifetime max drawdown
         state.trading.totalTrades = parsed.totalTrades || 0;
         state.trading.successfulTrades = parsed.successfulTrades || 0;
         // v11.4.24: Restore lifetime trade counters (persisted separately from capped trade array)
@@ -2871,6 +2873,7 @@ function saveTradeHistory() {
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
+      maxDrawdownPercent: state.trading.maxDrawdownPercent || 0, // v21.4: Persist lifetime max drawdown
       currentValue: state.trading.totalPortfolioValue,
       totalTrades: state.trading.totalTrades,
       successfulTrades: state.trading.successfulTrades,
@@ -7301,6 +7304,12 @@ async function runTradingCycle() {
 
     const drawdown = Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100);
 
+    // v21.4: Track lifetime max drawdown
+    if (drawdown > (state.trading.maxDrawdownPercent || 0)) {
+      state.trading.maxDrawdownPercent = drawdown;
+      markStateDirty();
+    }
+
     // === v6.2: CAPITAL FLOOR ENFORCEMENT ===
     // v10.3: Skip floor checks when portfolio value is 0 — this is always a cold-start artifact
     // (balance hasn't been fetched yet after a redeploy), never a real scenario.
@@ -8939,9 +8948,9 @@ async function main() {
       if (startupValue > 0) {
         state.trading.totalPortfolioValue = startupValue;
         state.trading.balances = startupBalances;
-        if (startupValue > state.trading.peakValue) {
-          state.trading.peakValue = startupValue;
-        }
+        // v21.4: Never clobber persisted peakValue — startup warmup only prices USDC,
+        // so startupValue is always lower than the real peak. Only raise peak, never lower.
+        state.trading.peakValue = Math.max(state.trading.peakValue || 0, startupValue);
         // v13.0: If initialValue is $0 (fresh bot, no state file), set it to first detected balance.
         // This ensures "Capital in" displays correctly from the very first startup.
         if (state.trading.initialValue === 0 && startupValue > 0) {

@@ -277,7 +277,7 @@ async function fetchData() {
 function renderPortfolio(p) {
   $('portfolio-value').textContent = fmt(p.totalValue);
   const pnlEl = $('total-pnl');
-  pnlEl.textContent = 'Today: ' + pnlSign(p.pnl) + fmt(p.pnl) + ' (' + pnlSign(p.pnlPercent) + p.pnlPercent.toFixed(2) + '%)';
+  pnlEl.textContent = 'Total P&L: ' + pnlSign(p.pnl) + fmt(p.pnl) + ' (' + pnlSign(p.pnlPercent) + p.pnlPercent.toFixed(2) + '%)';
   pnlEl.className = 'text-lg font-bold mono ' + pnlColor(p.pnl);
 
   const rEl = $('realized-pnl');

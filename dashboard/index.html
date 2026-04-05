@@ -3136,14 +3136,14 @@ function renderOverview() {
   $('kpi-return').className = 'card-value ' + clsPnl(tradingPnl);
   $('kpi-return-sub').textContent = fmtPct(tradingPnlPct) + ' | Realized: ' + fmtUSD(p.realizedPnL || 0);
 
-  const wr = p.totalTrades > 0 ? (p.successfulTrades / p.totalTrades * 100) : 0;
+  const wr = p.winRate || 0;
   AV.winrate.set(wr);
-  $('kpi-winrate-sub').textContent = (p.successfulTrades||0) + '/' + (p.totalTrades||0) + ' trades';
+  $('kpi-winrate-sub').textContent = (p.totalTrades||0) + ' trades (P&L-based)';
 
   const dd = p.drawdown || 0;
   AV.drawdown.set(dd);
   $('kpi-drawdown').className = 'card-value' + (dd > 12 ? ' negative' : dd > 5 ? ' warn' : '');
-  $('kpi-drawdown-sub').textContent = 'From peak ' + fmtUSD(p.peakValue);
+  $('kpi-drawdown-sub').textContent = 'From peak ' + fmtUSD(p.peakValue) + ' | Max: ' + fmt(p.maxDrawdownPercent || 0, 1) + '%';
 
   $('kpi-trades').textContent = (p.totalTrades || 0).toLocaleString();
   $('kpi-trades-sub').textContent = (p.successfulTrades || 0) + ' successful | ' + fmtUSD(p.realizedPnL || 0) + ' realized';
@@ -3458,7 +3458,7 @@ function renderIntelligence() {
 function renderTrades() {
   const p = Store.data.portfolio || Store.data.health || {};
   const rr = p.riskReward || {};
-  const wr = p.totalTrades > 0 ? (p.successfulTrades / p.totalTrades * 100) : 0;
+  const wr = p.winRate || 0;
 
   $('tr-total').textContent = p.totalTrades || '--';
   $('tr-winrate').textContent = fmt(wr, 1) + '%';
@@ -4879,7 +4879,7 @@ function hideModal(id) {
     var trades = (p.totalTrades || 0);
     var fg = (p.marketConditions || {}).fearGreed || 50;
     var pnl = p.pnlPercent || 0;
-    var wr = p.totalTrades > 0 ? ((p.successfulTrades || 0) / p.totalTrades * 100) : 0;
+    var wr = p.winRate || 0;
     var totalVal = p.totalValue || 0;
     var idle = totalVal > 0 ? Math.round(((totalVal - (p.initialValue || 0)) / totalVal) * 100) : 0;
     var deployedPct = Math.max(0, 100 - idle);
@@ -5016,8 +5016,8 @@ function hideModal(id) {
     { type: 'trades_500', label: '500th Trade', check: function(p) { return (p.totalTrades || 0) >= 500; } },
     { type: 'trades_1000', label: '1,000th Trade', check: function(p) { return (p.totalTrades || 0) >= 1000; } },
     { type: 'first_payout', label: 'First Payout Received', check: function(p, ah) { return (ah.transferCount || 0) >= 1; } },
-    { type: 'winrate_50', label: 'Win Rate Crosses 50%', check: function(p) { return p.totalTrades > 0 && ((p.successfulTrades || 0) / p.totalTrades * 100) >= 50; } },
-    { type: 'winrate_60', label: 'Win Rate Crosses 60%', check: function(p) { return p.totalTrades > 0 && ((p.successfulTrades || 0) / p.totalTrades * 100) >= 60; } },
+    { type: 'winrate_50', label: 'Win Rate Crosses 50%', check: function(p) { return (p.winRate || 0) >= 50; } },
+    { type: 'winrate_60', label: 'Win Rate Crosses 60%', check: function(p) { return (p.winRate || 0) >= 60; } },
     { type: 'portfolio_up_5', label: 'Portfolio Up 5%', check: function(p) { return (p.pnlPercent || 0) >= 5; } },
     { type: 'portfolio_up_10', label: 'Portfolio Up 10%', check: function(p) { return (p.pnlPercent || 0) >= 10; } },
     { type: 'first_profit_day', label: 'First Profitable Day', check: function(p) { return (p.pnl || 0) > 0; } }
@@ -5071,7 +5071,7 @@ function hideModal(id) {
     if (def.type.indexOf('trades_') === 0 || def.type === 'first_trade') {
       stat = (p.totalTrades || 0) + ' total trades executed';
     } else if (def.type.indexOf('winrate_') === 0) {
-      var wr = p.totalTrades > 0 ? ((p.successfulTrades || 0) / p.totalTrades * 100) : 0;
+      var wr = p.winRate || 0;
       stat = fmt(wr, 1) + '% win rate';
     } else if (def.type.indexOf('portfolio_up') === 0) {
       stat = fmtPct(p.pnlPercent || 0) + ' portfolio growth';
