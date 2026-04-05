@@ -17,7 +17,7 @@
 import { AlpacaClient, type AlpacaPosition } from './services/alpaca-client.js';
 import { StockDataEngine, type StockIndicators } from './services/stock-data.js';
 import { MarketHoursEngine, type SessionInfo } from './services/market-hours.js';
-import { EquityStrategyEngine, ALL_EQUITY_SYMBOLS, type EquitySignal } from './strategies/equity-strategy.js';
+import { EquityStrategyEngine, ALL_EQUITY_SYMBOLS, type EquitySignal } from '../../strategies/equity-strategy.js';
 
 // ============================================================================
 // TYPES
