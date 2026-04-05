@@ -16,7 +16,7 @@ import type {
   FamilyTradeDecision,
   FamilyTradeResult,
   RiskProfile,
-} from '../../core/types/family.js';
+} from '../types/family.js';
 
 // ============================================================================
 // DECISION SCALING

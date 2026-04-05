@@ -15,7 +15,7 @@ import {
   RiskProfileName,
   MemberStatus,
   DEFAULT_RISK_PROFILES,
-} from '../../core/types/family.js';
+} from '../types/family.js';
 
 const CONFIG_FILE = process.env.PERSIST_DIR
   ? `${process.env.PERSIST_DIR}/family-config.json`

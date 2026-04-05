@@ -9,7 +9,7 @@
 import http from 'http';
 import fs from 'fs';
 import type { HarvestRecipient } from '../../core/types/state.js';
-import type { ConfigDirective } from '../../core/services/strategy-config.js';
+import type { ConfigDirective } from '../../simulation/strategy-config.js';
 import { BOT_VERSION } from '../../core/config/constants.js';
 
 // ============================================================================

@@ -7,7 +7,7 @@
  */
 
 import type { MarketMomentumSignal } from './market-analysis.js';
-import type { TradeRecord, TokenCostBasis } from '../../types/index.js';
+import type { TradeRecord, TokenCostBasis } from '../core/types/index.js';
 
 // ============================================================================
 // TYPES

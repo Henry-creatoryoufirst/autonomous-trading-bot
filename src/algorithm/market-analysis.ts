@@ -7,7 +7,7 @@
  */
 
 import type { TechnicalIndicators } from './indicators.js';
-import type { MarketRegime, SectorDefinition } from '../../types/index.js';
+import type { MarketRegime, SectorDefinition } from '../core/types/index.js';
 
 // ============================================================================
 // TYPES (previously inline in monolith)

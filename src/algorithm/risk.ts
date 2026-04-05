@@ -5,7 +5,7 @@
  * ATR-based stop levels and risk computations.
  */
 
-import type { TokenCostBasis, AdaptiveThresholds } from '../../types/index.js';
+import type { TokenCostBasis, AdaptiveThresholds } from '../core/types/index.js';
 
 // ============================================================================
 // ATR STOP LEVELS
