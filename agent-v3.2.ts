@@ -117,6 +117,7 @@ import {
   createPaperPortfolio, getPaperPortfolio, getAllPaperPortfolios,
   evaluatePaperTrade, updatePaperPortfolio, getPaperPortfolioSummary,
   savePaperPortfolios, loadPaperPortfolios,
+  createPaperPortfolio, getPaperPortfolio,
   type PaperPortfolio, type TokenSignal,
 } from "./src/simulation/paper-trader.js";
 import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from "./src/simulation/version-backtester.js";
@@ -127,7 +128,7 @@ import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from "./src/
 // PAPER_VALIDATE_FIRST=true → log simulation THEN proceed with live execution
 // =============================================================================
 const PAPER_TRADE_MODE = process.env.PAPER_TRADE_MODE === 'true';
-const PAPER_VALIDATE_FIRST = process.env.PAPER_VALIDATE_FIRST === 'true';
+const PAPER_VALIDATE_FIRST = process.env.PAPER_VALIDATE_FIRST !== 'false'; // default ON — audit trail before every live trade
 const PAPER_GATE_PORTFOLIO_ID = 'paper-gate-shadow';
 
 // === v19.6: STARTUP VALIDATION + TELEGRAM ALERTS ===
@@ -5324,6 +5325,44 @@ async function executeTrade(
       } else if (liqCheck.liquidityUSD > 0) {
         console.log(`  💧 VWS OK: Pool $${(liqCheck.liquidityUSD / 1000).toFixed(1)}K | Trade ${liqCheck.tradeAsPoolPct.toFixed(1)}% of pool`);
       }
+    }
+
+    // PAPER VALIDATE GATE — shadow-simulate trade for audit trail before live execution
+    if (PAPER_VALIDATE_FIRST && !PAPER_TRADE_MODE) {
+      try {
+        let shadowPortfolio = getPaperPortfolio(PAPER_GATE_PORTFOLIO_ID);
+        if (!shadowPortfolio) {
+          shadowPortfolio = createPaperPortfolio(PAPER_GATE_PORTFOLIO_ID, 'paper-gate', state.trading.totalPortfolioValue || 1000);
+        }
+        const tradeTokenSymbol = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+        const tokenPrice = marketData.tokens.find(t => t.symbol === tradeTokenSymbol)?.price || 0;
+        const paperLog = {
+          timestamp: new Date().toISOString(),
+          action: decision.action,
+          token: tradeTokenSymbol,
+          amountUSD: decision.amountUSD,
+          price: tokenPrice,
+          reasoning: decision.reasoning?.slice(0, 120) || '',
+          portfolioValue: state.trading.totalPortfolioValue,
+        };
+        console.log(`  📝 PAPER GATE: shadow-logged ${decision.action} $${decision.amountUSD.toFixed(2)} ${tradeTokenSymbol} @ $${tokenPrice.toFixed(4)} — proceeding to live execution`);
+        // Persist to state for audit trail
+        if (!(state as any).paperGateLog) (state as any).paperGateLog = [];
+        (state as any).paperGateLog.push(paperLog);
+        // Keep last 500 entries
+        if ((state as any).paperGateLog.length > 500) {
+          (state as any).paperGateLog = (state as any).paperGateLog.slice(-500);
+        }
+        markStateDirty(true);
+      } catch (e: any) {
+        console.warn(`  ⚠️ PAPER GATE: Simulation failed (${e.message}) — proceeding with live trade`);
+      }
+    }
+
+    // PAPER TRADE MODE — block all live execution, only simulate
+    if (PAPER_TRADE_MODE) {
+      console.log(`  📄 PAPER TRADE MODE: Simulated ${decision.action} $${decision.amountUSD.toFixed(2)} ${decision.action === 'BUY' ? decision.toToken : decision.fromToken} — NO live execution`);
+      return { success: true, txHash: `paper-${Date.now()}` };
     }
 
     // v8.1: TWAP routing for large orders
