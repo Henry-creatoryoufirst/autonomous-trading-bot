@@ -871,9 +871,16 @@ body {
       $('w-pnl').textContent = (portfolio.truePnL >= 0 ? '+' : '') + fmtUSD(portfolio.truePnL);
       $('w-pnl').className = 'metric-value ' + pnlClass(portfolio.truePnL);
       $('w-pnl-pct').textContent = fmtPct(portfolio.truePnLPercent);
-      $('w-daily-pnl').textContent = (portfolio.dailyPnl >= 0 ? '+' : '') + fmtUSD(portfolio.dailyPnl);
-      $('w-daily-pnl').className = 'metric-value ' + pnlClass(portfolio.dailyPnl);
-      $('w-daily-pct').textContent = fmtPct(portfolio.dailyPnlPercent);
+      // v21.3: Show N/A when daily baseline is stale (bot just restarted, no validated baseline yet)
+      if (portfolio.dailyBaselineStale) {
+        $('w-daily-pnl').textContent = 'N/A';
+        $('w-daily-pnl').className = 'metric-value neutral';
+        $('w-daily-pct').textContent = '(awaiting cycle)';
+      } else {
+        $('w-daily-pnl').textContent = (portfolio.dailyPnl >= 0 ? '+' : '') + fmtUSD(portfolio.dailyPnl);
+        $('w-daily-pnl').className = 'metric-value ' + pnlClass(portfolio.dailyPnl);
+        $('w-daily-pct').textContent = fmtPct(portfolio.dailyPnlPercent);
+      }
       $('w-harvested').textContent = fmtUSD(portfolio.harvestedProfits);
       $('w-harvest-count').textContent = (portfolio.harvestCount || 0) + ' harvests';
 

@@ -96,6 +96,9 @@ export interface BreakerState {
   lastBreakerReason: string | null;
   breakerSizeReductionUntil: string | null;
   dailyBaseline: { date: string; value: number };
+  /** v21.3: true once a full cycle with real market prices has validated the baseline.
+   *  Prevents showing fake daily P&L from stale/warmup-only baselines after restart. */
+  dailyBaselineValidated: boolean;
   weeklyBaseline: { weekStart: string; value: number };
   rollingTradeResults: boolean[];
 }

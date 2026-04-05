@@ -191,9 +191,14 @@ export function apiPortfolio() {
     perfStats = { winRate: 0, avgWinPercent: 0, avgLossPercent: 0, avgHoldTimeMinutes: 0, totalRealizedPnL: totalRealized, profitableTrades: 0, unprofitableTrades: 0 } as any;
   }
   // v11.4.20: Daily P&L — use start-of-day baseline
+  // v21.3: Only show daily P&L when the baseline has been validated by a full cycle with real
+  // market prices. On restart, the baseline may be stale (from a previous day or from startup
+  // warmup that only prices USDC), producing completely wrong numbers like +$2,225 when
+  // actually down -$493. Show $0 until the first full cycle validates the baseline.
   const dailyBaseline = breakerState.dailyBaseline.value;
-  const dailyPnl = dailyBaseline > 0 ? state.trading.totalPortfolioValue - dailyBaseline : 0;
-  const dailyPnlPercent = dailyBaseline > 0 ? (dailyPnl / dailyBaseline) * 100 : 0;
+  const baselineValidated = breakerState.dailyBaselineValidated !== false; // backwards-compat: treat undefined as true
+  const dailyPnl = (dailyBaseline > 0 && baselineValidated) ? state.trading.totalPortfolioValue - dailyBaseline : 0;
+  const dailyPnlPercent = (dailyBaseline > 0 && baselineValidated) ? (dailyPnl / dailyBaseline) * 100 : 0;
   // v20.3: Use on-chain deposits as source of truth for P&L (not stale initialValue)
   // v21.0: Fallback to INITIAL_DEPOSIT_USD env var for CDP-provisioned wallets
   // CDP deposits don't show as standard ERC-20 transfers on Blockscout,
@@ -221,6 +226,7 @@ export function apiPortfolio() {
     dailyPnl,
     dailyPnlPercent,
     dailyBaseline,
+    dailyBaselineStale: !baselineValidated,
     drawdown: state.trading.peakValue > 0 ? Math.max(0, ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100) : 0,
     realizedPnL: totalRealized,
     unrealizedPnL: totalUnrealized,

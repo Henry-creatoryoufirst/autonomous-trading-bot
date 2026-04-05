@@ -3682,6 +3682,7 @@ const DEFAULT_BREAKER_STATE: BreakerState = {
   lastBreakerReason: null,
   breakerSizeReductionUntil: null,
   dailyBaseline: { date: '', value: 0 },
+  dailyBaselineValidated: false,
   weeklyBaseline: { weekStart: '', value: 0 },
   rollingTradeResults: [],
 };
@@ -3739,6 +3740,14 @@ function updateDrawdownBaselines(portfolioValue: number) {
   // Daily reset
   if (breakerState.dailyBaseline.date !== todayStr) {
     breakerState.dailyBaseline = { date: todayStr, value: portfolioValue };
+    // v21.3: Mark baseline as validated — this function is only called from real cycles
+    // with fully-priced balances (not from startup warmup which only prices USDC).
+    breakerState.dailyBaselineValidated = true;
+  }
+  // v21.3: If baseline exists for today but wasn't validated yet, validate it now
+  // (happens when baseline was set by startup warmup, then first real cycle runs)
+  if (!breakerState.dailyBaselineValidated) {
+    breakerState.dailyBaselineValidated = true;
   }
 
   // Weekly reset (Monday)
@@ -8965,6 +8974,10 @@ async function main() {
             console.log(`  ✅ Daily baseline initialized: $${persistedValue.toFixed(2)} (${todayStr})`);
           }
         }
+        // v21.3: Mark baseline as NOT validated on startup — startup warmup only prices USDC,
+        // so the baseline is unreliable until a full cycle with real market prices runs.
+        // This prevents showing fake daily P&L (e.g. +$2,225 when actually down).
+        breakerState.dailyBaselineValidated = false;
 
         console.log(`  ✅ Portfolio hydrated: $${startupValue.toFixed(2)} (peak: $${state.trading.peakValue.toFixed(2)})`);
       } else {
@@ -9460,8 +9473,10 @@ async function main() {
       try {
         const pv = state.trading.totalPortfolioValue || 0;
         const dailyBase = breakerState.dailyBaseline.value || pv;
-        const dailyPnL = pv - dailyBase;
-        const dailyPnLPct = dailyBase > 0 ? (dailyPnL / dailyBase) * 100 : 0;
+        // v21.3: Only report daily P&L when baseline is validated by a real cycle
+        const baselineOk = breakerState.dailyBaselineValidated !== false;
+        const dailyPnL = baselineOk ? (pv - dailyBase) : 0;
+        const dailyPnLPct = (baselineOk && dailyBase > 0) ? (dailyPnL / dailyBase) * 100 : 0;
 
         // Find today's trades
         const todayStr = new Date().toISOString().split('T')[0];
