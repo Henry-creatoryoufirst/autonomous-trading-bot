@@ -9589,6 +9589,31 @@ async function gracefulShutdown(signal: string): Promise<void> {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+// === Dashboard API aliases — must be before main() to avoid TDZ errors ===
+const sendJSON = _sendJSON;
+const downsample = _downsample;
+const isAuthorized = _isAuthorized;
+const calculateRiskRewardMetrics = _calculateRiskRewardMetrics;
+const apiPortfolio = _apiPortfolio;
+const apiBalances = _apiBalances;
+const apiSectors = _apiSectors;
+const apiTrades = _apiTrades;
+const apiDailyPnL = _apiDailyPnL;
+const apiIndicators = _apiIndicators;
+const apiIntelligence = _apiIntelligence;
+const apiPatterns = _apiPatterns;
+const apiReviews = _apiReviews;
+const apiThresholds = _apiThresholds;
+const getActiveDirectives = _getActiveDirectives;
+const addUserDirective = _addUserDirective;
+const removeUserDirective = _removeUserDirective;
+const applyConfigChanges = _applyConfigChanges;
+const getActiveConfigDirectives = _getActiveConfigDirectives;
+const removeConfigDirective = _removeConfigDirective;
+const executeChatTool = _executeChatTool;
+const handleChatRequest = _handleChatRequest;
+const getDashboardHTML = _getDashboardHTML;
+
 main().catch((err) => {
   console.error("Fatal error:", err?.message || String(err));
   if (err?.stack) console.error(err.stack.split('\n').slice(0, 5).join('\n'));
@@ -9620,29 +9645,6 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000", "http://localhost:3001", "http://localhost:5173",
   "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:5173",
 ]);
-const sendJSON = _sendJSON;
-const downsample = _downsample;
-const isAuthorized = _isAuthorized;
-const calculateRiskRewardMetrics = _calculateRiskRewardMetrics;
-const apiPortfolio = _apiPortfolio;
-const apiBalances = _apiBalances;
-const apiSectors = _apiSectors;
-const apiTrades = _apiTrades;
-const apiDailyPnL = _apiDailyPnL;
-const apiIndicators = _apiIndicators;
-const apiIntelligence = _apiIntelligence;
-const apiPatterns = _apiPatterns;
-const apiReviews = _apiReviews;
-const apiThresholds = _apiThresholds;
-const getActiveDirectives = _getActiveDirectives;
-const addUserDirective = _addUserDirective;
-const removeUserDirective = _removeUserDirective;
-const applyConfigChanges = _applyConfigChanges;
-const getActiveConfigDirectives = _getActiveConfigDirectives;
-const removeConfigDirective = _removeConfigDirective;
-const executeChatTool = _executeChatTool;
-const handleChatRequest = _handleChatRequest;
-const getDashboardHTML = _getDashboardHTML;
 
 const serverCtx: ServerContext = {
   state, breakerState, CONFIG, cdpClient, CDP_ACCOUNT_NAME,
