@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NVR Capital — Trading Logic Quality Report</title>
+<style>
+  @page { size: A4; margin: 0.6in; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1a1a2e; line-height: 1.5; background: #fff; max-width: 8.5in; margin: 0 auto; padding: 0.6in; font-size: 11px; }
+
+  .header { text-align: center; border-bottom: 3px solid #0f3460; padding-bottom: 20px; margin-bottom: 24px; }
+  .header h1 { font-size: 24px; font-weight: 800; color: #0f3460; letter-spacing: -0.5px; }
+  .header .subtitle { font-size: 13px; color: #666; margin-top: 4px; }
+  .header .badge { display: inline-block; background: #0f3460; color: #fff; padding: 3px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-top: 10px; }
+
+  h2 { font-size: 16px; font-weight: 700; color: #0f3460; border-bottom: 2px solid #e0e0e0; padding-bottom: 5px; margin: 24px 0 12px; }
+  h3 { font-size: 13px; font-weight: 700; color: #16213e; margin: 16px 0 6px; }
+  h4 { font-size: 11px; font-weight: 700; color: #333; margin: 10px 0 4px; }
+  p { font-size: 11px; margin-bottom: 6px; }
+  ul { margin: 4px 0 10px 18px; font-size: 11px; }
+  li { margin-bottom: 3px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; font-size: 10.5px; }
+  th { background: #0f3460; color: #fff; padding: 6px 8px; text-align: left; font-weight: 600; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e8e8e8; }
+  tr:nth-child(even) { background: #f8f9fa; }
+
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
+  .metric { border: 1px solid #d0d8f0; border-radius: 8px; padding: 12px; text-align: center; }
+  .metric .value { font-size: 20px; font-weight: 800; }
+  .metric .label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  .metric.excellent { background: #f0fdf4; border-color: #bbf7d0; }
+  .metric.excellent .value { color: #166534; }
+  .metric.good { background: #f0f4ff; border-color: #bfdbfe; }
+  .metric.good .value { color: #1e40af; }
+  .metric.warn { background: #fefce8; border-color: #fde68a; }
+  .metric.warn .value { color: #92400e; }
+
+  .card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin: 10px 0; }
+  .card.green { border-left: 4px solid #22c55e; background: #f0fdf4; }
+  .card.yellow { border-left: 4px solid #eab308; background: #fefce8; }
+  .card.red { border-left: 4px solid #ef4444; background: #fef2f2; }
+  .card h4 { margin-top: 0; }
+
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 9px; font-weight: 600; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-yellow { background: #fef9c3; color: #854d0e; }
+  .tag-red { background: #fee2e2; color: #991b1b; }
+  .tag-blue { background: #dbeafe; color: #1e40af; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .page-break { page-break-before: always; }
+
+  code { font-family: 'Courier New', monospace; font-size: 10px; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; }
+  pre { font-family: 'Courier New', monospace; font-size: 9.5px; background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #e0e0e0; margin: 6px 0 10px; white-space: pre-wrap; line-height: 1.4; }
+
+  .footer { text-align: center; margin-top: 36px; padding-top: 14px; border-top: 1px solid #e0e0e0; font-size: 9px; color: #999; }
+  .score-bar { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .score-bar .bar { height: 8px; border-radius: 4px; background: #e0e0e0; flex: 1; position: relative; }
+  .score-bar .fill { height: 100%; border-radius: 4px; position: absolute; left: 0; top: 0; }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1: EXECUTIVE SUMMARY -->
+<div class="header">
+  <h1>NEVER REST CAPITAL</h1>
+  <div class="subtitle">Trading Logic Quality Report &amp; Improvement Roadmap</div>
+  <div class="badge">Deep Analysis &bull; April 2026 &bull; v21.0.0</div>
+</div>
+
+<h2>Purpose</h2>
+<p>This report evaluates the quality of NVR Capital's autonomous trading logic after a major architectural refactoring (17,451 &rarr; 9,890 lines, 0 TypeScript errors, 90 tests). The goal: identify where the new clean architecture enables <strong>trading quality improvements</strong> &mdash; not more features, but better execution of existing capabilities.</p>
+<p>Every recommendation is designed for <strong>multi-user deployment</strong> &mdash; protecting hundreds of users managing real capital.</p>
+
+<h2>Quality Scorecard</h2>
+
+<table>
+  <tr><th>Trading Component</th><th>Rating</th><th>Assessment</th></tr>
+  <tr><td><strong>AI Prompt Design</strong></td><td><span class="tag tag-green">9/10</span></td><td>Physics-based (capital flow &gt; price action &gt; sentiment). Minimal bloat. Actively refined through real losses.</td></tr>
+  <tr><td><strong>Confluence Scoring</strong></td><td><span class="tag tag-green">9/10</span></td><td>Well-weighted across 7 signal types. ADX/ATR dampening. Low redundancy between indicators.</td></tr>
+  <tr><td><strong>Market Regime Detection</strong></td><td><span class="tag tag-green">8/10</span></td><td>Multi-factor, conservative (falls back to UNKNOWN). Regime multipliers calibrated.</td></tr>
+  <tr><td><strong>Position Sizing (Kelly)</strong></td><td><span class="tag tag-yellow">7/10</span></td><td>Proper math, but fallback is aggressive for untested bots. Can undersample in trending markets.</td></tr>
+  <tr><td><strong>Risk Management</strong></td><td><span class="tag tag-yellow">7/10</span></td><td>Deterministic reviewer good but misses correlation and cascade risks.</td></tr>
+  <tr><td><strong>Cost Basis / P&amp;L</strong></td><td><span class="tag tag-yellow">7/10</span></td><td>Guards against corruption, but sanity reset could orphan realized profit history.</td></tr>
+  <tr><td><strong>Trailing Stops</strong></td><td><span class="tag tag-yellow">6/10</span></td><td>4-cycle hold lock prevents churn but lets meme coins bleed 15-20% in flash events.</td></tr>
+  <tr><td><strong>Self-Improvement</strong></td><td><span class="tag tag-yellow">6/10</span></td><td>Has guards but can overfit to single regime. Bot already broke itself once (tuned to 30, froze).</td></tr>
+  <tr><td><strong>MEV Protection</strong></td><td><span class="tag tag-yellow">6/10</span></td><td>Flashbots configured but incomplete enforcement. TWAP can slippage-stack across slices.</td></tr>
+</table>
+
+<h2>Architecture Health (Post-Refactoring)</h2>
+<div class="metrics">
+  <div class="metric excellent">
+    <div class="value">9,890</div>
+    <div class="label">Monolith Lines<br>(from 17,451)</div>
+  </div>
+  <div class="metric excellent">
+    <div class="value">0</div>
+    <div class="label">TypeScript Errors<br>(from 387)</div>
+  </div>
+  <div class="metric excellent">
+    <div class="value">90</div>
+    <div class="label">Tests Passing<br>(6 suites)</div>
+  </div>
+</div>
+<div class="metrics">
+  <div class="metric good">
+    <div class="value">14</div>
+    <div class="label">Extracted Modules</div>
+  </div>
+  <div class="metric good">
+    <div class="value">12</div>
+    <div class="label">Strict-Mode Modules</div>
+  </div>
+  <div class="metric good">
+    <div class="value">30</div>
+    <div class="label">Active Services</div>
+  </div>
+</div>
+
+<!-- PAGE 2: WHAT'S EXCELLENT -->
+<div class="page-break"></div>
+<h2>What's Excellent</h2>
+
+<div class="card green">
+  <h4>AI Decision Prompt &mdash; Physics-Based, Not Sentiment-Based</h4>
+  <p>The system prompt follows a clear hierarchy: <strong>Capital Flow &rarr; Price Action &rarr; On-Chain Flow &rarr; Technical Indicators</strong>. Fear &amp; Greed index was intentionally demoted to info-only (v20.8), showing active refinement from real trading experience. The prompt is ~450 tokens (core) + ~800 tokens (strategy) &mdash; not bloated. Output is strict JSON, no prose parsing needed.</p>
+</div>
+
+<div class="card green">
+  <h4>Confluence Scoring &mdash; Multi-Signal, Well-Dampened</h4>
+  <p>Seven independent signal types contribute to a -100 to +100 score:</p>
+  <table>
+    <tr><th>Signal</th><th>Weight</th><th>Source</th></tr>
+    <tr><td>RSI (14-period)</td><td>25 pts</td><td>Momentum oscillator</td></tr>
+    <tr><td>MACD (12/26/9)</td><td>25 pts</td><td>Trend confirmation</td></tr>
+    <tr><td>Bollinger Bands</td><td>20 pts</td><td>Mean-reversion</td></tr>
+    <tr><td>Order Flow (buy ratio)</td><td>15 pts + bonus</td><td>On-chain DEX data</td></tr>
+    <tr><td>TWAP Divergence</td><td>15 pts</td><td>Price deviation</td></tr>
+    <tr><td>Tick Depth</td><td>12 pts</td><td>Liquidity analysis</td></tr>
+    <tr><td>Trend + Momentum</td><td>30 pts</td><td>Directional confidence</td></tr>
+  </table>
+  <p><strong>Smart adjustments:</strong> ADX &lt; 15 dampens score 20% (weak trends). ATR &gt; 5% dampens 15% (high vol noise). BTC/ETH &gt; +3% adds 5 flat points (macro momentum). These prevent false signals without adding complexity.</p>
+</div>
+
+<div class="card green">
+  <h4>Swarm Intelligence &mdash; Fast, Math-Only Consensus</h4>
+  <p>Five micro-agents (momentum, trend, flow, risk, sentiment) evaluate tokens using pure math &mdash; no Claude API calls. Weighted vote aggregation produces consensus + confidence in &lt;100ms for 20+ tokens. Optional activation means zero cost when markets are calm.</p>
+</div>
+
+<div class="card green">
+  <h4>Data Pipeline &mdash; 8+ Sources, Parallel, Fault-Tolerant</h4>
+  <p>Market data from CoinGecko, DeFiLlama, FRED, Binance, GeckoTerminal, DexScreener, CryptoPanic, and on-chain RPC &mdash; all fetched in parallel with fallback chains. Phantom spike detection catches bad price data. On-chain P&amp;L uses Blockscout as source of truth.</p>
+</div>
+
+<!-- PAGE 3: THREE PRIORITY IMPROVEMENTS -->
+<div class="page-break"></div>
+<h2>Three Priority Improvements</h2>
+<p>These are the highest-impact quality improvements that fit cleanly into the new architecture. Each is a targeted change, not a new feature. Together they protect against the worst-case scenarios when scaling to hundreds of users.</p>
+
+<div class="card red">
+  <h4>1. Trailing Stop Hold Lock &mdash; The Meme Coin Bleeder <span class="tag tag-red">HIGH PRIORITY</span></h4>
+  <p><strong>The Problem:</strong> <code>MIN_HOLD_CYCLES = 4</code> locks every position for 1 hour before any stop-loss can fire. This prevents buy-then-sell churn (good), but on meme/AI tokens, a flash crash can eat 15-20% before the stop is even <em>allowed</em> to trigger.</p>
+  <p><strong>Real Scenario:</strong> Buy $100 of a meme token. It crashes 15% in 2 cycles (30 min). Stop-loss is calculated at -8%, but the hold lock prevents it from firing for 2 more cycles. By then, position is -20%. The stop finally triggers, but the damage is done.</p>
+  <p><strong>Evidence:</strong> Sector stop-loss overrides exist for memes (-4% max, -3% trailing), but they only tighten the <em>calculation</em>, not the hold-time lock.</p>
+  <p><strong>The Fix (3 lines in config/constants.ts):</strong></p>
+  <pre>// Reduce hold lock for high-risk sectors
+SECTOR_MIN_HOLD_CYCLES: { 'Meme': 2, 'AI': 2, default: 4 }
+
+// Emergency override: bypass hold lock if loss exceeds threshold
+EMERGENCY_STOP_LOSS_OVERRIDE_PCT: 5  // If down >5%, stop fires immediately</pre>
+  <p><strong>Impact:</strong> Prevents the single biggest loss scenario for new users. Meme positions can still be held for conviction, but won't silently bleed to -20%.</p>
+  <p><strong>Effort:</strong> <span class="tag tag-green">LOW</span> &mdash; Config change + 5-line check in stop-loss evaluation</p>
+</div>
+
+<div class="card red">
+  <h4>2. Self-Improvement Overfitting Guard &mdash; The Bot That Broke Itself <span class="tag tag-red">HIGH PRIORITY</span></h4>
+  <p><strong>The Problem:</strong> The self-improvement engine adapts confluence thresholds based on recent trade performance. If all recent trades happen in one market regime (e.g., trending up), it over-optimizes for that regime and gets crushed when markets flip.</p>
+  <p><strong>Evidence (from the codebase):</strong></p>
+  <pre>// v21.2: capped at 28 (was 30) — bot tuned itself to 30
+// and stopped trading entirely</pre>
+  <p>This comment proves the bot already broke itself once. The cap at 28 is a band-aid. The lower bound of 5 means the bot could also make entries absurdly easy in a winning streak, then hemorrhage when regime changes.</p>
+  <p><strong>Current Guards (insufficient):</strong></p>
+  <ul>
+    <li><code>MIN_REGIME_DIVERSITY = 2</code> &mdash; exists but only checked at promotion, not during confirmation queue</li>
+    <li><code>MAX_CONTRADICTION_RATIO = 0.3</code> &mdash; needs 30% failures to reject, which takes 10+ trades</li>
+    <li>Bounds [5, 28] prevent extremes but allow wide oscillation within bounds</li>
+  </ul>
+  <p><strong>The Fix (in src/self-improvement/engine.ts):</strong></p>
+  <pre>// 1. Lock adaptation velocity
+MAX_ADAPTATIONS_PER_24H = 2  // Prevent spiral (was unlimited)
+
+// 2. Require regime diversity in confirmation queue
+// Shadow proposals must see 2+ distinct regimes BEFORE promotion
+// (Currently only checked at final promotion step)
+
+// 3. Tighter bounds per regime awareness
+// confluenceBuy range: [8, 20] (was [5, 28])</pre>
+  <p><strong>Impact:</strong> Prevents the bot from paralyzing itself or becoming recklessly aggressive. Critical for user trust.</p>
+  <p><strong>Effort:</strong> <span class="tag tag-yellow">MEDIUM</span> &mdash; 15-20 lines in self-improvement engine + config constants</p>
+</div>
+
+<div class="card yellow">
+  <h4>3. Kelly Fallback Ramp &mdash; Protect New Users <span class="tag tag-yellow">MEDIUM PRIORITY</span></h4>
+  <p><strong>The Problem:</strong> Before 20 trades, Kelly criterion has no data and falls back to 8% of portfolio per trade. On a $1,000 account, that's $80 per trade. If the first 5 trades all lose, that's $400 gone (40% of capital) before Kelly even has enough data to calculate properly.</p>
+  <p><strong>Why This Matters for Scaling:</strong> New users deploying their first bot will experience 5-10 trades with zero historical performance data. These early trades determine whether they trust the system or abandon it. Aggressive sizing in this window is the #1 onboarding risk.</p>
+  <p><strong>The Fix (1 line in src/algorithm/position-sizing.ts):</strong></p>
+  <pre>// Ramp up from conservative to full size as history builds
+const successfulTrades = state.tradeHistory.filter(t => t.success).length;
+const ramp = Math.min(1.0, successfulTrades / 20);
+fallbackSize = fallbackSize * Math.max(0.15, ramp);
+// Trade 1: ~$12 (15% of $80)
+// Trade 5: ~$20 (25% of $80)
+// Trade 10: ~$40 (50% of $80)
+// Trade 20: $80 (full size)</pre>
+  <p><strong>Impact:</strong> A new $1,000 bot that loses its first 5 trades loses ~$75 instead of ~$400. User retains capital and confidence while the bot calibrates.</p>
+  <p><strong>Effort:</strong> <span class="tag tag-green">LOW</span> &mdash; 3 lines in position sizing module</p>
+</div>
+
+<!-- PAGE 4: SECONDARY FINDINGS + DATA PIPELINE -->
+<div class="page-break"></div>
+<h2>Secondary Findings</h2>
+<p>These are real issues but lower priority than the three above. Documented for future sessions.</p>
+
+<div class="two-col">
+<div>
+<div class="card yellow">
+  <h4>Cost Basis Sanity Reset</h4>
+  <p>When cost basis exceeds 20x current price, it resets to market price. This can orphan realized P&amp;L history. Fix: preserve <code>realizedPnL</code> separately before any reset, require 2 consecutive cycles of bad data before resetting.</p>
+  <p><span class="tag tag-blue">EFFORT: LOW</span></p>
+</div>
+
+<div class="card yellow">
+  <h4>Kelly Undersample in Trends</h4>
+  <p>If last 50 trades are all BUYs (trending market, no exits yet), Kelly sees 0 sells in its rolling window and falls back to aggressive default. Fix: extend sell lookup to include sells related to buys within the window.</p>
+  <p><span class="tag tag-yellow">EFFORT: MEDIUM</span></p>
+</div>
+</div>
+
+<div>
+<div class="card yellow">
+  <h4>TWAP Slippage Stacking</h4>
+  <p>Orders &gt;$100 split into 5 TWAP slices with 12s delays. In high volatility, later slices can hit dramatically different prices. Fix: adjust slice count dynamically based on current ATR (fewer slices in calm, more in volatile).</p>
+  <p><span class="tag tag-yellow">EFFORT: MEDIUM</span></p>
+</div>
+
+<div class="card yellow">
+  <h4>Risk Reviewer Misses Correlation</h4>
+  <p>Checks single-position limits and sector balance, but doesn't detect when 5 positions are all "AI tokens" (high correlation). Fix: add deterministic sector-overlap detection that warns when 3+ positions share a sector.</p>
+  <p><span class="tag tag-blue">EFFORT: LOW</span></p>
+</div>
+</div>
+</div>
+
+<h2>What NOT to Change</h2>
+<table>
+  <tr><th>Area</th><th>Why Leave It</th></tr>
+  <tr><td>Order flow 300-block window</td><td>10 minutes on Base L2 (2s blocks) is the right timeframe. Exponential weighting adds complexity for marginal gain.</td></tr>
+  <tr><td>Regime-specific thresholds</td><td>Would require restructuring AdaptiveThresholds. The overfitting guard (fix #2) addresses the root cause.</td></tr>
+  <tr><td>MEV protection on Base L2</td><td>MEV risk on L2 is low vs L1. Flashbots is configured. Not the bottleneck.</td></tr>
+  <tr><td>AI model routing (Haiku/Sonnet)</td><td>Cost-optimized already. Haiku for calm, Sonnet for difficult. Working well.</td></tr>
+  <tr><td>15-minute cycle interval</td><td>Matches the bot's data refresh rate and API rate limits. Shorter would increase costs without better signals.</td></tr>
+</table>
+
+<h2>Data Pipeline Overview</h2>
+<table>
+  <tr><th>Source</th><th>Data</th><th>Refresh</th><th>Fallback</th></tr>
+  <tr><td>CoinGecko</td><td>Token prices, 30-day history</td><td>Every cycle / 2h cache</td><td>On-chain RPC</td></tr>
+  <tr><td>GeckoTerminal</td><td>DEX buy/sell pressure, volume</td><td>Every cycle</td><td>DexScreener</td></tr>
+  <tr><td>DeFiLlama</td><td>Base TVL, protocol metrics</td><td>Every cycle</td><td>Cached last value</td></tr>
+  <tr><td>FRED</td><td>Fed rate, CPI, yield curve, M2</td><td>Hourly</td><td>Cached</td></tr>
+  <tr><td>Binance</td><td>BTC/ETH funding rates, derivatives</td><td>Real-time</td><td>Skip</td></tr>
+  <tr><td>CryptoPanic</td><td>News sentiment per token</td><td>10 min</td><td>Neutral default</td></tr>
+  <tr><td>Chainlink</td><td>Oracle price feeds</td><td>On-chain</td><td>CoinGecko</td></tr>
+  <tr><td>Base RPC (x3)</td><td>Wallet balances, contract calls</td><td>Every cycle</td><td>Rotate endpoints</td></tr>
+  <tr><td>Blockscout</td><td>Deposit/withdraw detection</td><td>On P&amp;L calc</td><td>Manual deposit tracking</td></tr>
+</table>
+
+<h2>Implementation Priority Matrix</h2>
+<table>
+  <tr><th>Fix</th><th>Impact</th><th>Effort</th><th>Risk If Skipped</th><th>When</th></tr>
+  <tr><td><strong>1. Trailing stop hold lock</strong></td><td>HIGH</td><td>LOW</td><td>15-20% meme coin losses on flash events</td><td>Before scaling</td></tr>
+  <tr><td><strong>2. Self-improvement guard</strong></td><td>HIGH</td><td>MEDIUM</td><td>Bot freezes or becomes reckless (proven failure)</td><td>Before scaling</td></tr>
+  <tr><td><strong>3. Kelly fallback ramp</strong></td><td>MEDIUM</td><td>LOW</td><td>New users lose 40% capital in first 5 trades</td><td>Before scaling</td></tr>
+  <tr><td>Cost basis sanity</td><td>LOW</td><td>LOW</td><td>P&amp;L history corruption (rare edge case)</td><td>Next session</td></tr>
+  <tr><td>Risk correlation check</td><td>LOW</td><td>LOW</td><td>Hidden sector concentration</td><td>Next session</td></tr>
+  <tr><td>TWAP dynamic sizing</td><td>LOW</td><td>MEDIUM</td><td>Slippage on large orders in volatile markets</td><td>Future</td></tr>
+</table>
+
+<div class="footer">
+  <strong>Never Rest Capital</strong> &mdash; Never Rest. Never Settle. Build it right.<br>
+  Trading Logic Quality Report &bull; April 2026 &bull; Prepared for multi-user deployment readiness
+</div>
+
+</body>
+</html>
