@@ -366,6 +366,7 @@ import {
   handleExportResults, handleVersionBacktest,
   handleSwarmStatus, handleSignalDashboard, handleSignalsLatest,
   handleWithdraw, handleStateBackup, handleStateRestore,
+  handleConfidence,
 } from "./src/dashboard/server/index.js";
 // Phase 4: Extracted execution engine
 import {
@@ -9888,6 +9889,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/directives':
         handleDirectives(res, serverCtx);
+        break;
+      case '/api/confidence':
+        handleConfidence(res, serverCtx);
         break;
       case '/api/simulate':
         handleSimulate(url, res, serverCtx);

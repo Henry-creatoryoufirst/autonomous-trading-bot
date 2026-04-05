@@ -21,3 +21,7 @@ jobs:
         run: npx tsc --noEmit -p tsconfig.strict.json
       - name: Tests
         run: npx vitest run
+      - name: Confidence gate
+        run: npm run confidence-gate
+        env:
+          CONFIDENCE_MIN: 60

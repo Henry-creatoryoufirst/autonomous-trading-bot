@@ -10,7 +10,8 @@
     "arb": "npx tsx scripts/scan-arbitrage.ts",
     "status": "npx tsx scripts/status.ts",
     "test": "vitest run",
-    "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json"
+    "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
+    "confidence-gate": "tsx scripts/confidence-gate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

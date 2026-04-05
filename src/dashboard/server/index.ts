@@ -73,4 +73,7 @@ export {
   // State management
   handleStateBackup,
   handleStateRestore,
+
+  // Confidence gate
+  handleConfidence,
 } from './routes.js';

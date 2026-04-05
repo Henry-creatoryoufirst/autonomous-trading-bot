@@ -47,6 +47,16 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Confidence gate
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run confidence-gate
+        env:
+          CONFIDENCE_MIN: 60
+
       - name: Redeploy all bots via webhook
         if: github.ref == 'refs/heads/main'
         run: |

@@ -11,6 +11,8 @@ import fs from 'fs';
 import type { HarvestRecipient } from '../../core/types/state.js';
 import type { ConfigDirective } from '../../simulation/strategy-config.js';
 import { BOT_VERSION } from '../../core/config/constants.js';
+import type { ConfidenceScore } from '../../simulation/types.js';
+import { runConfidenceGate } from '../../../scripts/confidence-gate.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1945,4 +1947,41 @@ export function handleStateRestore(
     }
   });
   return true; // Don't end response here — handled in req.on('end')
+}
+
+// ============================================================================
+// Route handler: /api/confidence
+// ============================================================================
+
+let cachedConfidence: { score: ConfidenceScore; timestamp: number } | null = null;
+const CONFIDENCE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function handleConfidence(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    // Return cached result if still fresh
+    if (cachedConfidence && (Date.now() - cachedConfidence.timestamp) < CONFIDENCE_CACHE_TTL_MS) {
+      ctx.sendJSON(res, 200, {
+        ...cachedConfidence.score,
+        cached: true,
+        cachedAt: new Date(cachedConfidence.timestamp).toISOString(),
+      });
+      return;
+    }
+
+    const threshold = parseInt(process.env.CONFIDENCE_MIN || '60', 10);
+    const gate = runConfidenceGate(threshold);
+
+    cachedConfidence = { score: gate.score, timestamp: Date.now() };
+
+    ctx.sendJSON(res, 200, {
+      ...gate.score,
+      cached: false,
+      cachedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    ctx.sendJSON(res, 500, { error: `Confidence gate failed: ${err.message}` });
+  }
 }
