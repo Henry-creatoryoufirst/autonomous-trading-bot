@@ -3,7 +3,7 @@
  * Extracted from agent-v3.2.ts (Phase 12 refactor)
  */
 
-import type { CashDeploymentResult } from "../../types/state.js";
+import type { CashDeploymentResult } from "../types/state.js";
 
 type PortfolioSensitivityTier = { minUSD: number; priceChangeThreshold: number; label: string };
 type CashDeploymentTier = { cashPct: number; deployPct: number; confluenceDiscount: number; maxEntries: number; label: string };

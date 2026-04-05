@@ -6,10 +6,10 @@
  * human-readable text for Claude AI prompts.
  */
 
-import type { DerivativesData, DefiLlamaData, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence } from '../../algorithm/index.js";
-import type { TechnicalIndicators } from '../../algorithm/index.js";
-import type { MarketRegime } from "../../types/index.js";
-import type { NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData } from "../../types/market-data.js";
+import type { DerivativesData, DefiLlamaData, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence } from "../../algorithm/index.js";
+import type { TechnicalIndicators } from "../../algorithm/index.js";
+import type { MarketRegime } from "../types/index.js";
+import type { NewsSentimentData, MacroData, GlobalMarketData, StablecoinSupplyData, MarketData } from "../types/market-data.js";
 
 export function sf(val: number | null | undefined, digits: number): string {
   if (val === null || val === undefined || isNaN(val)) return "N/A";

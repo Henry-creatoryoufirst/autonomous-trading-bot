@@ -13,7 +13,7 @@
  * to direct imports in a future step.
  */
 
-import type { AgentState, BreakerState } from '../../types/state.js';
+import type { AgentState, BreakerState } from "../types/state.js";
 
 // ---------------------------------------------------------------------------
 // Internal singleton references — set once at startup via setState / setBreakerState

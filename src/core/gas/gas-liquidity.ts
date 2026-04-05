@@ -4,7 +4,7 @@
  */
 
 import axios from "axios";
-import type { PoolLiquidity } from "../../types/services.js";
+import type { PoolLiquidity } from "../types/services.js";
 
 // Module-level caches (owned by this module)
 const poolLiquidityCache = new Map<string, PoolLiquidity>();

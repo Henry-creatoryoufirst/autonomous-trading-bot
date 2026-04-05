@@ -7,8 +7,8 @@
  */
 
 import axios from "axios";
-import type { TradeRecord } from "../../types/index.js";
-import type { OnChainCapitalFlows, BasescanTransfer } from "../../types/services.js";
+import type { TradeRecord } from "../types/index.js";
+import type { OnChainCapitalFlows, BasescanTransfer } from "../types/services.js";
 
 const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
 

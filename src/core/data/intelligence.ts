@@ -7,8 +7,8 @@
  */
 
 import axios from 'axios';
-import type { DefiLlamaData, DerivativesData } from '../../algorithm/market-analysis.js';
-import type { NewsSentimentData, MacroData, CMCIntelligence } from '../../types/market-data.js';
+import type { DefiLlamaData, DerivativesData } from "../../algorithm/market-analysis.js";
+import type { NewsSentimentData, MacroData, CMCIntelligence } from "../types/market-data.js";
 
 // Module-level dep
 let TOKEN_REGISTRY: Record<string, any> = {};

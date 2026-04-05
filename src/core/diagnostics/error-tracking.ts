@@ -6,8 +6,8 @@
  * from config/constants.ts — no more parameter-passing for state access.
  */
 
-import { getState } from '../state/index.js';
-import { MAX_CONSECUTIVE_FAILURES, FAILURE_COOLDOWN_HOURS } from '../../config/constants.js';
+import { getState } from "../state/index.js";
+import { MAX_CONSECUTIVE_FAILURES, FAILURE_COOLDOWN_HOURS } from "../config/constants.js";
 
 const MAX_ERROR_LOG_SIZE = 100;
 

@@ -6,7 +6,7 @@
  * lastKnownPrices is still passed as a parameter (it lives outside AgentState).
  */
 
-import type { TokenCostBasis, TradeRecord } from "../../types/index.js";
+import type { TokenCostBasis, TradeRecord } from "../types/index.js";
 import { getState } from '../state/index.js';
 
 type PriceMap = Record<string, { price: number; [key: string]: any }>;

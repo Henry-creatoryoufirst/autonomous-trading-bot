@@ -6,7 +6,7 @@
  * NO Claude API calls — pure math, fast, free, deterministic.
  */
 
-import { SWARM_AGENT_WEIGHTS, SWARM_ACTION_SCORES, SWARM_SCORE_THRESHOLDS } from '../../config/constants.js';
+import { SWARM_AGENT_WEIGHTS, SWARM_ACTION_SCORES, SWARM_SCORE_THRESHOLDS } from "../config/constants.js";
 
 // ============================================================================
 // INTERFACES
