@@ -9614,14 +9614,6 @@ const executeChatTool = _executeChatTool;
 const handleChatRequest = _handleChatRequest;
 const getDashboardHTML = _getDashboardHTML;
 
-main().catch((err) => {
-  console.error("Fatal error:", err?.message || String(err));
-  if (err?.stack) console.error(err.stack.split('\n').slice(0, 5).join('\n'));
-  // v5.2: Try to save state even on fatal crash
-  try { saveTradeHistory(); } catch (_) {}
-  process.exit(1);
-});
-
 // ============================================================================
 // Export functions — imported from src/dashboard/exports.ts
 // generatePaperExportHTML wrapper passes live return from state
@@ -9897,5 +9889,16 @@ healthServer.listen(process.env.PORT || 3000, () => {
 });
 
 // EMBEDDED_DASHBOARD — imported from src/dashboard/embedded-html.ts
+
+// ============================================================================
+// ENTRY POINT — must be at the very end after all declarations
+// ============================================================================
+main().catch((err) => {
+  console.error("Fatal error:", err?.message || String(err));
+  if (err?.stack) console.error(err.stack.split('\n').slice(0, 5).join('\n'));
+  // v5.2: Try to save state even on fatal crash
+  try { saveTradeHistory(); } catch (_) {}
+  process.exit(1);
+});
 
 
