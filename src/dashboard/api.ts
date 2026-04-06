@@ -13,6 +13,7 @@ import type { StrategyPattern, TokenCostBasis, SectorDefinition, MarketRegime, T
 import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyData } from '../core/types/market-data.js';
 import type { DefiLlamaData, DerivativesData, FundingRateMeanReversion, SmartRetailDivergence, TVLPriceDivergence } from '../algorithm/market-analysis.js';
 import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../core/services/strategy-config.js';
+import { activeChain } from '../core/config/chain-config.js';
 import {
   BOT_VERSION,
   AI_MODEL_ROUTINE,
@@ -221,6 +222,7 @@ export function apiPortfolio() {
     totalValue: state.trading.totalPortfolioValue,
     initialValue: effectiveInitialValue,
     peakValue: state.trading.peakValue,
+    chain: activeChain.name.toLowerCase() as 'base' | 'ethereum' | 'arbitrum',
     pnl: truePnL,
     pnlPercent: truePnLPercent,
     dailyPnl,

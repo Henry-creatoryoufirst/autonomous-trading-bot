@@ -13,6 +13,8 @@ import type { ConfigDirective } from '../../simulation/strategy-config.js';
 import { BOT_VERSION } from '../../core/config/constants.js';
 import type { ConfidenceScore } from '../../simulation/types.js';
 import { runConfidenceGate } from '../../../scripts/confidence-gate.js';
+import { getModelTelemetry, getAgreementRate, type ModelTelemetry, type GemmaMode } from '../../core/services/model-client.js';
+import { activeChain } from '../../core/config/chain-config.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1983,5 +1985,71 @@ export function handleConfidence(
     });
   } catch (err: any) {
     ctx.sendJSON(res, 500, { error: `Confidence gate failed: ${err.message}` });
+  }
+}
+
+// ============================================================================
+// Route handler: /api/model-telemetry
+// ============================================================================
+
+export function handleModelTelemetry(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    const telemetry = getModelTelemetry();
+    const agreement = getAgreementRate();
+    const gemmaMode = (process.env.GEMMA_MODE || 'disabled') as GemmaMode;
+
+    // Compute stats from telemetry buffer
+    const gemmaEntries = telemetry.filter(t => t.tier === 'GEMMA');
+    const claudeEntries = telemetry.filter(t => t.tier === 'HAIKU' || t.tier === 'SONNET');
+    const allEntries = telemetry;
+
+    const gemmaAvgLatency = gemmaEntries.length > 0
+      ? gemmaEntries.reduce((s, t) => s + t.latencyMs, 0) / gemmaEntries.length
+      : 0;
+    const claudeAvgLatency = claudeEntries.length > 0
+      ? claudeEntries.reduce((s, t) => s + t.latencyMs, 0) / claudeEntries.length
+      : 0;
+
+    // Cost estimation: Haiku ~$0.0002/call, Sonnet ~$0.003/call, Gemma = $0
+    const haikuCalls = telemetry.filter(t => t.tier === 'HAIKU').length;
+    const sonnetCalls = telemetry.filter(t => t.tier === 'SONNET').length;
+    const estimatedClaudeCost = (haikuCalls * 0.0002) + (sonnetCalls * 0.003);
+    const estimatedSavings = gemmaEntries.length * 0.0002; // What those calls would have cost on Haiku
+
+    // Determine current tier from most recent entry
+    const lastEntry = allEntries[allEntries.length - 1];
+    const currentTier = lastEntry?.tier || (gemmaMode !== 'disabled' ? 'GEMMA' : 'HAIKU');
+
+    // Build escalation log from telemetry
+    const escalations = telemetry
+      .filter(t => t.escalated)
+      .slice(-10)
+      .map(t => ({
+        timestamp: t.timestamp,
+        reason: t.escalationReason || 'Unknown',
+        fromModel: 'Gemma',
+        toModel: t.model,
+      }));
+
+    ctx.sendJSON(res, 200, {
+      currentTier,
+      gemmaMode,
+      agreementRate: Math.round(agreement.rate * 1000) / 10, // percentage with 1 decimal
+      totalCycles: allEntries.length,
+      gemmaCycles: gemmaEntries.length,
+      claudeCycles: claudeEntries.length,
+      gemmaAvgLatencyMs: Math.round(gemmaAvgLatency),
+      claudeAvgLatencyMs: Math.round(claudeAvgLatency),
+      estimatedSavingsUSD: Math.round(estimatedSavings * 100) / 100,
+      monthlyClaudeCostUSD: Math.round(estimatedClaudeCost * 100) / 100,
+      escalations,
+      chain: activeChain.name.toLowerCase(),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    ctx.sendJSON(res, 500, { error: `Model telemetry failed: ${err.message}` });
   }
 }

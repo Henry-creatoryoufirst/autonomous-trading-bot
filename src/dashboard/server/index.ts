@@ -76,4 +76,7 @@ export {
 
   // Confidence gate
   handleConfidence,
+
+  // Model telemetry
+  handleModelTelemetry,
 } from './routes.js';
