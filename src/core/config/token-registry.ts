@@ -15,13 +15,13 @@ export const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -190,6 +190,29 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "RSR", name: "Reserve Rights", coingeckoId: "reserve-rights-token",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  // === INFRASTRUCTURE (cross-chain, interop) ===
+  ZRO: {
+    address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
+    symbol: "ZRO", name: "LayerZero", coingeckoId: "layerzero",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  // === AI & AGENT TOKENS (expanded) ===
+  VVV: {
+    address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
+    symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  // === DEFI (expanded) ===
+  WELL: {
+    address: "0xA88594D404727625A9437C3f886C7643872296AE",
+    symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  AVNT: {
+    address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
+    symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
@@ -211,8 +234,79 @@ export const QUOTE_DECIMALS: Record<string, number> = {
   WETH: 18, USDC: 6, cbBTC: 8, VIRTUAL: 18,
 };
 
-// Derived addresses (lowercase for comparison)
+// Derived addresses (lowercase for comparison) — Base defaults
 export const WETH_ADDRESS = '0x4200000000000000000000000000000000000006'.toLowerCase();
 export const USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'.toLowerCase();
 export const CBBTC_ADDRESS = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf'.toLowerCase();
 export const VIRTUAL_ADDRESS = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
+
+// ============================================================================
+// ETHEREUM TOKEN REGISTRY — Used when CHAIN=ethereum
+// ============================================================================
+
+export const ETHEREUM_TOKEN_REGISTRY: Record<string, {
+  address: string; symbol: string; name: string; coingeckoId: string;
+  sector: SectorKey; riskLevel: "LOW" | "MEDIUM" | "HIGH"; minTradeUSD: number; decimals: number;
+}> = {
+  USDC: { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", name: "USD Coin", coingeckoId: "usd-coin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 1, decimals: 6 },
+  ETH: { address: "native", symbol: "ETH", name: "Ethereum", coingeckoId: "ethereum", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
+  WETH: { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", symbol: "WETH", name: "Wrapped Ether", coingeckoId: "ethereum", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
+  WBTC: { address: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599", symbol: "WBTC", name: "Wrapped BTC", coingeckoId: "bitcoin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8 },
+  LINK: { address: "0x514910771AF9Ca656af840dff83E8264EcF986CA", symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
+  UNI: { address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984", symbol: "UNI", name: "Uniswap", coingeckoId: "uniswap", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  AAVE: { address: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9", symbol: "AAVE", name: "Aave", coingeckoId: "aave", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  MKR: { address: "0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2", symbol: "MKR", name: "Maker", coingeckoId: "maker", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  LDO: { address: "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32", symbol: "LDO", name: "Lido DAO", coingeckoId: "lido-dao", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  CRV: { address: "0xD533a949740bb3306d119CC777fa900bA034cd52", symbol: "CRV", name: "Curve DAO", coingeckoId: "curve-dao-token", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  COMP: { address: "0xc00e94Cb662C3520282E6f5717214004A7f26888", symbol: "COMP", name: "Compound", coingeckoId: "compound-governance-token", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  SNX: { address: "0xC011a73ee8576Fb46F5E1c5751cA3B9Fe0af2a6F", symbol: "SNX", name: "Synthetix", coingeckoId: "havven", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  ENS: { address: "0xC18360217D8F7Ab5e7c516566761Ea12Ce7F9D72", symbol: "ENS", name: "Ethereum Name Service", coingeckoId: "ethereum-name-service", sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  RPL: { address: "0xD33526068D116cE69F19A9ee46F0bd304F21A51f", symbol: "RPL", name: "Rocket Pool", coingeckoId: "rocket-pool", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  PEPE: { address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", symbol: "PEPE", name: "Pepe", coingeckoId: "pepe", sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18 },
+  SHIB: { address: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE", symbol: "SHIB", name: "Shiba Inu", coingeckoId: "shiba-inu", sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18 },
+  ENA: { address: "0x57e114B691Db790C35207b2e685D4A43181e6061", symbol: "ENA", name: "Ethena", coingeckoId: "ethena", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  PENDLE: { address: "0x808507121B80c02388fAd14726482e061B8da827", symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+};
+
+// ============================================================================
+// ARBITRUM TOKEN REGISTRY — Used when CHAIN=arbitrum
+// ============================================================================
+
+export const ARBITRUM_TOKEN_REGISTRY: Record<string, {
+  address: string; symbol: string; name: string; coingeckoId: string;
+  sector: SectorKey; riskLevel: "LOW" | "MEDIUM" | "HIGH"; minTradeUSD: number; decimals: number;
+}> = {
+  USDC: { address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", symbol: "USDC", name: "USD Coin", coingeckoId: "usd-coin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 1, decimals: 6 },
+  ETH: { address: "native", symbol: "ETH", name: "Ethereum", coingeckoId: "ethereum", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
+  WETH: { address: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", symbol: "WETH", name: "Wrapped Ether", coingeckoId: "ethereum", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
+  WBTC: { address: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f", symbol: "WBTC", name: "Wrapped BTC", coingeckoId: "bitcoin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8 },
+  LINK: { address: "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4", symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
+  ARB: { address: "0x912CE59144191C1204E64559FE8253a0e49E6548", symbol: "ARB", name: "Arbitrum", coingeckoId: "arbitrum", sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  GMX: { address: "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a", symbol: "GMX", name: "GMX", coingeckoId: "gmx", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  GNS: { address: "0x18c11FD286C5EC11c3b683Caa813B77f5163A122", symbol: "GNS", name: "Gains Network", coingeckoId: "gains-network", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  RDNT: { address: "0x3082CC23568eA640225c2467653dB90e9250AaA0", symbol: "RDNT", name: "Radiant Capital", coingeckoId: "radiant-capital", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  MAGIC: { address: "0x539bdE0d7Dbd336b79148AA742883198BBF60342", symbol: "MAGIC", name: "Magic", coingeckoId: "magic", sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  PENDLE: { address: "0x0c880f6761F1af8d9Aa9C466984b80DAb9a8c9e8", symbol: "PENDLE", name: "Pendle", coingeckoId: "pendle", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  UNI: { address: "0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0", symbol: "UNI", name: "Uniswap", coingeckoId: "uniswap", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  AAVE: { address: "0xba5DdD1f9d7F570dc94a51479a000E3BCE967196", symbol: "AAVE", name: "Aave", coingeckoId: "aave", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  CRV: { address: "0x11cDb42B0EB46D95f990BeDD4695A6e3fA034978", symbol: "CRV", name: "Curve DAO", coingeckoId: "curve-dao-token", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
+  PEPE: { address: "0x25d887Ce7a35172C62FeBFD67a1856F20FaEbB00", symbol: "PEPE", name: "Pepe", coingeckoId: "pepe", sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18 },
+};
+
+// ============================================================================
+// CHAIN-AWARE REGISTRY GETTER
+// ============================================================================
+
+import { activeChain } from './chain-config.js';
+
+/**
+ * Get the token registry for the active chain.
+ * Falls back to the Base registry (default) for backwards compatibility.
+ */
+export function getActiveTokenRegistry(): typeof TOKEN_REGISTRY {
+  switch (activeChain.name.toLowerCase()) {
+    case 'ethereum': return ETHEREUM_TOKEN_REGISTRY;
+    case 'arbitrum': return ARBITRUM_TOKEN_REGISTRY;
+    default: return TOKEN_REGISTRY; // Base
+  }
+}
