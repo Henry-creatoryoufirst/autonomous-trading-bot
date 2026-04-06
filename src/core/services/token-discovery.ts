@@ -49,20 +49,23 @@ async function fetchTokenDecimals(tokenAddress: string): Promise<number | null> 
 // ============================================================================
 
 export const TOKEN_DISCOVERY_CONFIG = {
-  /** How often to scan for new tokens (ms) */
-  scanIntervalMs: 6 * 60 * 60 * 1000, // 6 hours
+  /** How often to run a FULL scan for new tokens (ms) */
+  scanIntervalMs: 2 * 60 * 60 * 1000, // 2 hours (was 6h)
+
+  /** How often to run a QUICK momentum scan (ms) — catches fast movers */
+  momentumScanIntervalMs: 15 * 60 * 1000, // 15 minutes
 
   /** Minimum USD liquidity in the pool to consider */
-  minLiquidityUSD: 50_000,
+  minLiquidityUSD: 25_000, // Lowered from 50K — more aggressive discovery
 
   /** Minimum 24h volume to consider */
   minVolume24hUSD: 10_000,
 
   /** Minimum age of the token pair (hours) — avoid brand-new launches */
-  minPairAgeHours: 72,
+  minPairAgeHours: 48, // Lowered from 72h — catch newer tokens faster
 
   /** Maximum number of discovered tokens to track */
-  maxDiscoveredTokens: 30,
+  maxDiscoveredTokens: 75, // Increased from 30 — wider net
 
   /** Sectors to scan (DexScreener doesn't have sectors, we classify ourselves) */
   baseDexScreenerUrl: "https://api.dexscreener.com/latest/dex",
@@ -324,6 +327,103 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
 }
 
 /**
+ * Quick momentum scan — uses DexScreener's token-boosts and gainers
+ * to catch fast-moving tokens between full scans. Runs every 15 minutes.
+ * Only returns tokens that meet minimum safety thresholds.
+ */
+async function scanMomentum(): Promise<DiscoveredToken[]> {
+  const discovered: DiscoveredToken[] = [];
+  const cfg = TOKEN_DISCOVERY_CONFIG;
+  const chainId = activeChain.dexScreenerChainId;
+
+  try {
+    console.log(`  ⚡ Momentum scan: checking gainers & boosted tokens...`);
+
+    // 1. Fetch boosted tokens (DexScreener promoted — high visibility)
+    const endpoints = [
+      { url: "https://api.dexscreener.com/token-boosts/top/v1", label: "boosted" },
+    ];
+
+    const tokenAddresses: string[] = [];
+
+    for (const ep of endpoints) {
+      try {
+        const res = await axios.get(ep.url, { timeout: 10000 });
+        if (Array.isArray(res.data)) {
+          const chainTokens = res.data
+            .filter((t: any) => t.chainId === chainId)
+            .map((t: any) => t.tokenAddress)
+            .filter(Boolean);
+          tokenAddresses.push(...chainTokens);
+        }
+      } catch { /* endpoint optional */ }
+    }
+
+    // 2. Deduplicate and fetch pair data
+    const uniqueAddresses = [...new Set(tokenAddresses)].slice(0, 30);
+
+    for (const addr of uniqueAddresses) {
+      try {
+        const pairRes = await axios.get(
+          `${cfg.baseDexScreenerUrl}/tokens/${addr}`,
+          { timeout: 8000 }
+        );
+        const pairs = (pairRes.data?.pairs || [])
+          .filter((p: DexScreenerPair) => p.chainId === chainId)
+          .sort((a: DexScreenerPair, b: DexScreenerPair) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+
+        const bestPair = pairs[0];
+        if (!bestPair) continue;
+
+        const token = bestPair.baseToken;
+        const address = token.address.toLowerCase();
+        const liquidity = bestPair.liquidity?.usd || 0;
+        const volume = bestPair.volume?.h24 || 0;
+        const fdv = bestPair.fdv || 0;
+        const txns = (bestPair.txns?.h24?.buys || 0) + (bestPair.txns?.h24?.sells || 0);
+        const priceChange = bestPair.priceChange?.h24 || 0;
+        const pairAge = bestPair.pairCreatedAt ? (Date.now() - bestPair.pairCreatedAt) / (1000 * 60 * 60) : 0;
+
+        // Safety filters (more lenient than full scan for momentum plays)
+        if (cfg.excludeSymbols.has(token.symbol.toUpperCase())) continue;
+        if (liquidity < 25_000) continue;   // Min $25K liquidity
+        if (volume < 50_000) continue;       // Min $50K volume for momentum
+        if (pairAge < 24) continue;          // At least 24h old
+        if (txns < 50) continue;             // Some organic activity
+
+        discovered.push({
+          address: token.address,
+          symbol: token.symbol.toUpperCase(),
+          name: token.name,
+          decimals: 18,
+          coingeckoId: "",
+          sector: classifySector(token.symbol, token.name),
+          riskLevel: classifyRisk(liquidity, pairAge, fdv),
+          liquidityUSD: liquidity,
+          volume24hUSD: volume,
+          priceUSD: parseFloat(bestPair.priceUsd || "0"),
+          fdvUSD: fdv,
+          priceChange24h: priceChange,
+          txns24h: txns,
+          discoveredAt: new Date().toISOString(),
+          pairCreatedAt: bestPair.pairCreatedAt ? new Date(bestPair.pairCreatedAt).toISOString() : "",
+          dexName: bestPair.dexId || "unknown",
+          pairAddress: bestPair.pairAddress,
+          minTradeUSD: liquidity > 200_000 ? 5 : 3,
+        });
+      } catch { /* skip individual token failures */ }
+    }
+
+    console.log(`  ⚡ Momentum scan found ${discovered.length} candidates`);
+    return discovered;
+
+  } catch (error: any) {
+    console.warn(`  ⚠️ Momentum scan failed (non-critical):`, error.message);
+    return [];
+  }
+}
+
+/**
  * Resolve CoinGecko IDs for discovered tokens.
  * This enables price feeds and technical analysis.
  */
@@ -369,6 +469,7 @@ async function resolveCoinGeckoIds(tokens: DiscoveredToken[]): Promise<void> {
 export class TokenDiscoveryEngine {
   private state: TokenDiscoveryState;
   private scanTimer: NodeJS.Timeout | null = null;
+  private momentumTimer: NodeJS.Timeout | null = null;
   /** Static tokens that should never be removed by discovery */
   private staticSymbols: Set<string>;
 
@@ -384,16 +485,28 @@ export class TokenDiscoveryEngine {
     };
   }
 
-  /** Start periodic scanning */
+  /** Start periodic scanning — full scan + fast momentum scan */
   start(): void {
-    console.log(`  🔍 Token Discovery Engine started (scanning every ${TOKEN_DISCOVERY_CONFIG.scanIntervalMs / 3600000}h)`);
-    // Run initial scan after 30 seconds (let the bot boot first)
+    const fullHours = TOKEN_DISCOVERY_CONFIG.scanIntervalMs / 3600000;
+    const momentumMin = TOKEN_DISCOVERY_CONFIG.momentumScanIntervalMs / 60000;
+    console.log(`  🔍 Token Discovery Engine started (full scan: ${fullHours}h, momentum: ${momentumMin}m)`);
+
+    // Run initial full scan after 30 seconds (let the bot boot first)
     setTimeout(() => this.runScan(), 30_000);
-    // Then run on schedule
+
+    // Full scan on schedule
     this.scanTimer = setInterval(
       () => this.runScan(),
       TOKEN_DISCOVERY_CONFIG.scanIntervalMs
     );
+
+    // Fast momentum scan every 15 minutes (starts after first full scan)
+    setTimeout(() => {
+      this.momentumTimer = setInterval(
+        () => this.runMomentumScan(),
+        TOKEN_DISCOVERY_CONFIG.momentumScanIntervalMs
+      );
+    }, 60_000); // Start momentum scans after 1 minute
   }
 
   /** Stop scanning */
@@ -402,9 +515,65 @@ export class TokenDiscoveryEngine {
       clearInterval(this.scanTimer);
       this.scanTimer = null;
     }
+    if (this.momentumTimer) {
+      clearInterval(this.momentumTimer);
+      this.momentumTimer = null;
+    }
   }
 
-  /** Run a discovery scan */
+  /** Run a fast momentum scan — merges new finds into existing pool */
+  async runMomentumScan(): Promise<void> {
+    try {
+      const momentum = await scanMomentum();
+      if (momentum.length === 0) return;
+
+      // Merge momentum finds into existing discovered tokens
+      const existingAddresses = new Set(
+        this.state.discoveredTokens.map(t => t.address.toLowerCase())
+      );
+
+      let newFinds = 0;
+      for (const token of momentum) {
+        if (this.staticSymbols.has(token.symbol.toUpperCase())) continue;
+        if (existingAddresses.has(token.address.toLowerCase())) {
+          // Update existing token's price/volume data
+          const existing = this.state.discoveredTokens.find(
+            t => t.address.toLowerCase() === token.address.toLowerCase()
+          );
+          if (existing) {
+            existing.priceUSD = token.priceUSD;
+            existing.volume24hUSD = token.volume24hUSD;
+            existing.priceChange24h = token.priceChange24h;
+            existing.txns24h = token.txns24h;
+            existing.liquidityUSD = token.liquidityUSD;
+          }
+          continue;
+        }
+
+        // New token found by momentum scan
+        this.state.discoveredTokens.push(token);
+        existingAddresses.add(token.address.toLowerCase());
+        newFinds++;
+      }
+
+      if (newFinds > 0) {
+        console.log(`  ⚡ Momentum scan added ${newFinds} new tokens (pool: ${this.state.discoveredTokens.length})`);
+        this.state.tokensAdded += newFinds;
+
+        // Cap the pool — remove lowest volume tokens if over limit
+        if (this.state.discoveredTokens.length > TOKEN_DISCOVERY_CONFIG.maxDiscoveredTokens) {
+          this.state.discoveredTokens.sort((a, b) => b.volume24hUSD - a.volume24hUSD);
+          const removed = this.state.discoveredTokens.length - TOKEN_DISCOVERY_CONFIG.maxDiscoveredTokens;
+          this.state.discoveredTokens = this.state.discoveredTokens.slice(0, TOKEN_DISCOVERY_CONFIG.maxDiscoveredTokens);
+          this.state.tokensRemoved += removed;
+        }
+      }
+    } catch (error: any) {
+      console.warn(`  ⚠️ Momentum scan error:`, error.message);
+    }
+  }
+
+  /** Run a full discovery scan */
   async runScan(): Promise<DiscoveredToken[]> {
     console.log(`\n🔍 TOKEN DISCOVERY SCAN #${this.state.totalScans + 1}`);
     console.log(`   Scanning Base chain for high-liquidity tradeable tokens...`);
