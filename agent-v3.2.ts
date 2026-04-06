@@ -1844,6 +1844,14 @@ const anthropic = (process.env.SIGNAL_MODE !== 'central')
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null as any; // Central mode doesn't need Anthropic — signals come from remote producer
 
+// v21.2: Gemma 4 local model integration
+import { callModelWithShadow, logModelTelemetry } from './src/core/services/model-client.js';
+import type { GemmaMode } from './src/core/services/model-client.js';
+const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
+if (gemmaMode !== 'disabled') {
+  console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
+}
+
 // Initialize CDP Client - supports both old and new env var naming
 // CDP SDK credential format (verified from source):
 //   apiKeyId: UUID string (e.g. "fe3fabdc-...")
@@ -5038,20 +5046,22 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      // v11.4.9: 90-second timeout on AI call — prevents cycle hanging if API stalls
-      const aiCallPromise = anthropic.messages.create({
-        model: selectedModel,
-        max_tokens: needsSonnet ? 2000 : 500, // v20.5: Haiku needs less tokens for simple monitoring
-        messages: [{ role: "user", content: promptForAI }],
-      });
-      const response = await Promise.race([
-        aiCallPromise,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('AI call timed out after 90s')), 90_000)),
-      ]);
+      // v21.2: Model routing — Gemma for routine, Claude for difficult markets
+      const { response: modelResponse, telemetry: modelTelemetry } = await callModelWithShadow(
+        {
+          messages: [{ role: 'user', content: promptForAI }],
+          maxTokens: needsSonnet ? 2000 : 500,
+          jsonMode: true,
+          timeoutMs: 90_000,
+        },
+        { needsSonnet, portfolioValue: totalPortfolioValue },
+        anthropic,
+        gemmaMode,
+      );
+      logModelTelemetry(modelTelemetry);
 
-      const content = response.content[0];
-      if (content.type === "text") {
-        let text = content.text.trim();
+      {
+        let text = modelResponse.text.trim();
         // Strip markdown code fences
         if (text.startsWith("```")) {
           text = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();

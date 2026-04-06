@@ -38,6 +38,40 @@ export const SONNET_REQUIRED_REASONS = [
 ] as const;
 
 // ============================================================================
+// GEMMA 4 / OLLAMA INTEGRATION (v21.2)
+// ============================================================================
+
+/** Local Gemma 4 26B-A4B via Ollama for routine heartbeat cycles */
+export const AI_MODEL_GEMMA = 'gemma4:26b';
+
+/** Ollama base URL — configurable via OLLAMA_BASE_URL env var */
+export const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434';
+
+/** Timeout for Ollama health check probe */
+export const OLLAMA_HEALTH_CHECK_TIMEOUT_MS = 5_000;
+
+/** Timeout for Ollama chat completion requests */
+export const OLLAMA_REQUEST_TIMEOUT_MS = 120_000;
+
+/** How often to re-probe Ollama availability (5 minutes) */
+export const OLLAMA_HEALTH_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Thresholds for escalating Gemma decisions to Claude QC */
+export const GEMMA_ESCALATION_CONFIG = {
+  /** Trade exceeding this % of portfolio triggers escalation */
+  maxTradePercentOfPortfolio: 5,
+  /** Trade exceeding this USD amount triggers escalation */
+  maxTradeAmountUSD: 200,
+  /** Keywords in Gemma's reasoning that trigger escalation */
+  uncertaintyKeywords: [
+    'uncertain', 'unsure', 'not confident', 'risky',
+    'unclear', 'ambiguous', 'difficult to assess',
+  ],
+  /** Max concurrent non-HOLD actions before escalation */
+  maxConcurrentTrades: 3,
+} as const;
+
+// ============================================================================
 // TRADING CYCLE TIMING
 // ============================================================================
 
