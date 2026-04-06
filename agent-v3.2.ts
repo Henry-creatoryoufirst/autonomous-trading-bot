@@ -138,6 +138,7 @@ import { telegramService } from "./src/core/services/telegram.js";
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
 import { CACHE_TTL } from "./src/core/config/constants.js";
+import { activeChain } from "./src/core/config/chain-config.js";
 import { cooldownManager } from "./src/core/services/cooldown-manager.js";
 import {
   HEAVY_CYCLE_FORCED_INTERVAL_MS,
@@ -4440,7 +4441,7 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
 
     const fromAmount = parseUnits(GAS_REFUEL_AMOUNT_USDC.toFixed(6), 6); // USDC has 6 decimals
     await account.swap({
-      network: "base",
+      network: activeChain.cdpNetwork,
       fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`, // USDC
       toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`,   // WETH on Base
       fromAmount,
@@ -4491,7 +4492,7 @@ async function rescueGasFromNvrTrading(): Promise<void> {
     console.log(`\n  🚨 [GAS RESCUE] Transferring ${(transferAmount/1e18).toFixed(6)} ETH from nvr-trading → ${mainAccount.address}`);
 
     const tx = await nvrAccount.sendTransaction({
-      network: "base",
+      network: activeChain.cdpNetwork,
       transaction: {
         to: mainAccount.address as `0x${string}`,
         value: BigInt(transferAmount),
@@ -4537,7 +4538,7 @@ async function bootstrapGas(): Promise<void> {
 
     const fromAmount = parseUnits(GAS_BOOTSTRAP_SWAP_USD.toFixed(6), 6);
     await account.swap({
-      network: "base",
+      network: activeChain.cdpNetwork,
       fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`,
       toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`, // WETH on Base
       fromAmount,
@@ -5461,17 +5462,17 @@ async function executeTrade(
 // Uses account.sendTransaction() — same pattern as Permit2 approvals and Aave interactions.
 // ============================================================================
 
-const UNISWAP_V3_SWAP_ROUTER = "0x2626664c2603336E57B271c5C0b26F421741e481" as Address;
-// v20.4.2: Aerodrome Slipstream SwapRouter — 50%+ of Base DEX volume
-const AERODROME_SLIPSTREAM_ROUTER = "0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5" as Address;
+// v21.3: DEX router addresses from chain config
+const UNISWAP_V3_SWAP_ROUTER = (activeChain.dexRouters.uniswapV3?.router ?? '') as Address;
+const AERODROME_SLIPSTREAM_ROUTER = (activeChain.dexRouters.aerodromeSlipstream?.router ?? '') as Address;
 const AERODROME_TICK_SPACINGS = [200, 100, 50, 2000, 1]; // Common Slipstream tick spacings, ordered by liquidity likelihood
 
 // v20.0: Cache MAX_UINT256 approvals — once approved, no need to check on-chain again
 // Key: "tokenAddress:spenderAddress". Cleared on startup since it's an in-memory cache.
 const approvalCache = new Set<string>();
 // Note: approvals persist on-chain, so cache only saves RPC reads — no correctness risk on restart.
-const DEX_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as Address;
-const DEX_WETH = "0x4200000000000000000000000000000000000006" as Address;
+const DEX_USDC = activeChain.usdc.address as Address;
+const DEX_WETH = activeChain.weth.address as Address;
 
 // Calldata builders + selectors — delegated to src/execution/calldata.ts
 
@@ -5588,7 +5589,7 @@ async function executeDirectDexSwap(
           MAX_UINT256.slice(2);
 
         const approveTx = await account.sendTransaction({
-          network: "base",
+          network: activeChain.cdpNetwork,
           transaction: {
             to: tokenIn,
             data: approveData as `0x${string}`,
@@ -5664,7 +5665,7 @@ async function executeDirectDexSwap(
                 const MAX_UINT256 = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
                 const approveData = APPROVE_SELECTOR + aggQuote.allowanceTarget.slice(2).padStart(64, "0") + MAX_UINT256.slice(2);
                 await account.sendTransaction({
-                  network: "base",
+                  network: activeChain.cdpNetwork,
                   transaction: { to: tokenIn, data: approveData as `0x${string}`, value: BigInt(0) },
                 });
                 await new Promise(resolve => setTimeout(resolve, 5000));
@@ -5674,7 +5675,7 @@ async function executeDirectDexSwap(
           }
 
           const result = await account.sendTransaction({
-            network: "base",
+            network: activeChain.cdpNetwork,
             transaction: {
               to: aggQuote.to as `0x${string}`,
               data: aggQuote.data as `0x${string}`,
@@ -5692,7 +5693,7 @@ async function executeDirectDexSwap(
 
     // v20.4.2: Try Aerodrome Slipstream if the token's pool is on Aerodrome
     const aeroPool = poolRegistry[tokenSymbol];
-    if (!swapSuccess && aeroPool && (aeroPool.poolType === 'aerodromeV3' || aeroPool.poolType === 'aerodrome')) {
+    if (!swapSuccess && AERODROME_SLIPSTREAM_ROUTER && aeroPool && (aeroPool.poolType === 'aerodromeV3' || aeroPool.poolType === 'aerodrome')) {
       const tickSpacings = aeroPool.tickSpacing ? [aeroPool.tickSpacing, ...AERODROME_TICK_SPACINGS.filter(t => t !== aeroPool.tickSpacing)] : AERODROME_TICK_SPACINGS;
 
       // Ensure approval for Aerodrome router (same pattern as Uniswap V3 approval above)
@@ -5705,7 +5706,7 @@ async function executeDirectDexSwap(
         if (curAllowance === "0x" || curAllowance === "0x0000000000000000000000000000000000000000000000000000000000000000" || BigInt(curAllowance) < fromAmount) {
           console.log(`     🔑 Approving ${tokenSymbol} for Aerodrome Slipstream router...`);
           const appData = APPROVE_SEL + AERODROME_SLIPSTREAM_ROUTER.slice(2).padStart(64, "0") + MAX_U256.slice(2);
-          await account.sendTransaction({ network: "base", transaction: { to: tokenIn, data: appData as `0x${string}`, value: BigInt(0) } });
+          await account.sendTransaction({ network: activeChain.cdpNetwork, transaction: { to: tokenIn, data: appData as `0x${string}`, value: BigInt(0) } });
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
         approvalCache.add(aeroApprovalKey);
@@ -5720,7 +5721,7 @@ async function executeDirectDexSwap(
           );
 
           const result = await account.sendTransaction({
-            network: "base",
+            network: activeChain.cdpNetwork,
             transaction: {
               to: AERODROME_SLIPSTREAM_ROUTER,
               data: calldata,
@@ -5749,7 +5750,7 @@ async function executeDirectDexSwap(
         );
 
         const result = await account.sendTransaction({
-          network: "base",
+          network: activeChain.cdpNetwork,
           transaction: {
             to: UNISWAP_V3_SWAP_ROUTER,
             data: calldata,
@@ -5782,7 +5783,7 @@ async function executeDirectDexSwap(
             );
 
             const result = await account.sendTransaction({
-              network: "base",
+              network: activeChain.cdpNetwork,
               transaction: {
                 to: UNISWAP_V3_SWAP_ROUTER,
                 data: calldata,
@@ -6001,7 +6002,7 @@ async function executeSingleSwap(
         MAX_UINT256.slice(2);
 
       const approveTx = await account.sendTransaction({
-        network: "base",
+        network: activeChain.cdpNetwork,
         transaction: {
           to: fromTokenAddress,
           data: approveData as `0x${string}`,
@@ -6058,7 +6059,7 @@ async function executeSingleSwap(
         console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}...`);
 
         result = await account.swap({
-          network: "base",
+          network: activeChain.cdpNetwork,
           fromToken: fromTokenAddress,
           toToken: toTokenAddress,
           fromAmount,
@@ -6503,7 +6504,7 @@ async function sendUSDCTransfer(account: any, to: string, amountUSDC: number): P
 
   // v10.1.1: Use account.sendTransaction() directly — wallet IS a CoinbaseSmartWallet
   const result = await account.sendTransaction({
-    network: "base",
+    network: activeChain.cdpNetwork,
     transaction: {
       to: usdcAddress,
       data: transferData as `0x${string}`,
@@ -8365,7 +8366,7 @@ async function runTradingCycle() {
           const withdrawCalldata = aaveYieldService.buildWithdrawCalldata(withdrawAmount, walletAddr);
           const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
           const tx = await account.sendTransaction({
-            network: "base",
+            network: activeChain.cdpNetwork,
             transaction: {
               to: withdrawCalldata.to as `0x${string}`,
               data: withdrawCalldata.data as `0x${string}`,
@@ -8388,7 +8389,7 @@ async function runTradingCycle() {
           if (currentAllowance < depositAmountRaw) {
             console.log(`  🔓 Approving Aave Pool to spend USDC...`);
             const approveTx = await account.sendTransaction({
-              network: "base",
+              network: activeChain.cdpNetwork,
               transaction: {
                 to: supplyCalldata.approvalTo as `0x${string}`,
                 data: supplyCalldata.approvalData as `0x${string}`,
@@ -8401,7 +8402,7 @@ async function runTradingCycle() {
 
           // Execute supply
           const tx = await account.sendTransaction({
-            network: "base",
+            network: activeChain.cdpNetwork,
             transaction: {
               to: supplyCalldata.to as `0x${string}`,
               data: supplyCalldata.data as `0x${string}`,
@@ -8450,7 +8451,7 @@ async function runTradingCycle() {
           const withdrawCalldata = morphoYieldService.buildWithdrawCalldata(withdrawAmount, walletAddr);
           const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
           const tx = await account.sendTransaction({
-            network: "base",
+            network: activeChain.cdpNetwork,
             transaction: {
               to: withdrawCalldata.to as `0x${string}`,
               data: withdrawCalldata.data as `0x${string}`,
@@ -8472,7 +8473,7 @@ async function runTradingCycle() {
           if (currentAllowance < depositAmountRaw) {
             console.log(`  🔓 Approving Morpho vault to spend USDC...`);
             const approveTx = await account.sendTransaction({
-              network: "base",
+              network: activeChain.cdpNetwork,
               transaction: {
                 to: depositCalldata.approvalTo as `0x${string}`,
                 data: depositCalldata.approvalData as `0x${string}`,
@@ -8484,7 +8485,7 @@ async function runTradingCycle() {
           }
 
           const tx = await account.sendTransaction({
-            network: "base",
+            network: activeChain.cdpNetwork,
             transaction: {
               to: depositCalldata.to as `0x${string}`,
               data: depositCalldata.data as `0x${string}`,
@@ -8546,7 +8547,7 @@ async function runTradingCycle() {
                       // Step 1: Withdraw from Aave
                       const withdrawCalldata = aaveYieldService.buildWithdrawCalldata(deposited, walletAddr);
                       const withdrawTx = await account.sendTransaction({
-                        network: "base",
+                        network: activeChain.cdpNetwork,
                         transaction: { to: withdrawCalldata.to as `0x${string}`, data: withdrawCalldata.data as `0x${string}`, value: BigInt(0) },
                       });
                       aaveYieldService.recordWithdraw(deposited, withdrawTx.transactionHash, 'Rebalance to Morpho (higher APY)');
@@ -8558,14 +8559,14 @@ async function runTradingCycle() {
                       const allowance = await morphoYieldService.getAllowance(walletAddr);
                       if (allowance < BigInt(Math.floor(deposited * 1e6))) {
                         const approveTx = await account.sendTransaction({
-                          network: "base",
+                          network: activeChain.cdpNetwork,
                           transaction: { to: depositCalldata.approvalTo as `0x${string}`, data: depositCalldata.approvalData as `0x${string}`, value: BigInt(0) },
                         });
                         console.log(`  ✅ Morpho approval: ${approveTx.transactionHash}`);
                         await new Promise(resolve => setTimeout(resolve, 5000));
                       }
                       const depositTx = await account.sendTransaction({
-                        network: "base",
+                        network: activeChain.cdpNetwork,
                         transaction: { to: depositCalldata.to as `0x${string}`, data: depositCalldata.data as `0x${string}`, value: BigInt(0) },
                       });
                       morphoYieldService.recordSupply(deposited, depositTx.transactionHash, 'Rebalance from Aave (higher APY)');
@@ -8582,7 +8583,7 @@ async function runTradingCycle() {
                       // Step 1: Withdraw from Morpho
                       const withdrawCalldata = morphoYieldService.buildWithdrawCalldata(deposited, walletAddr);
                       const withdrawTx = await account.sendTransaction({
-                        network: "base",
+                        network: activeChain.cdpNetwork,
                         transaction: { to: withdrawCalldata.to as `0x${string}`, data: withdrawCalldata.data as `0x${string}`, value: BigInt(0) },
                       });
                       morphoYieldService.recordWithdraw(deposited, withdrawTx.transactionHash, 'Rebalance to Aave (higher APY)');
@@ -8594,14 +8595,14 @@ async function runTradingCycle() {
                       const allowance = await aaveYieldService.getAllowance(walletAddr);
                       if (allowance < BigInt(Math.floor(deposited * 1e6))) {
                         const approveTx = await account.sendTransaction({
-                          network: "base",
+                          network: activeChain.cdpNetwork,
                           transaction: { to: supplyCalldata.approvalTo as `0x${string}`, data: supplyCalldata.approvalData as `0x${string}`, value: BigInt(0) },
                         });
                         console.log(`  ✅ Aave approval: ${approveTx.transactionHash}`);
                         await new Promise(resolve => setTimeout(resolve, 5000));
                       }
                       const depositTx = await account.sendTransaction({
-                        network: "base",
+                        network: activeChain.cdpNetwork,
                         transaction: { to: supplyCalldata.to as `0x${string}`, data: supplyCalldata.data as `0x${string}`, value: BigInt(0) },
                       });
                       aaveYieldService.recordSupply(deposited, depositTx.transactionHash, 'Rebalance from Morpho (higher APY)');

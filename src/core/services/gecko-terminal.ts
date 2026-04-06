@@ -11,14 +11,14 @@
  */
 
 import axios from 'axios';
-import { BASE_USDC_ADDRESS } from '../config/constants.js';
+import { BASE_USDC_ADDRESS, activeChain } from '../config/constants.js';
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
 const API_BASE = 'https://api.geckoterminal.com/api/v2';
-const NETWORK = 'base';
+const NETWORK = activeChain.geckoTerminalNetwork; // v21.3: multi-chain
 const RATE_LIMIT_MS = 2100; // ~28 calls/min to stay under 30/min limit
 
 // Token addresses we trade (lowercase for matching)

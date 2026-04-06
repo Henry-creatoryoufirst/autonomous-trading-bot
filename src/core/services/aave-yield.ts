@@ -14,14 +14,17 @@
 
 import axios from 'axios';
 import { BASE_RPC_ENDPOINTS, BASE_USDC_ADDRESS } from '../config/constants.js';
+import { activeChain } from '../config/chain-config.js';
 
 // ============================================================================
-// CONTRACT ADDRESSES (Base Mainnet)
+// CONTRACT ADDRESSES — chain-aware (v21.3)
 // ============================================================================
 
-const AAVE_V3_POOL = '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5';
+const AAVE_V3_POOL = activeChain.yieldProtocols.aaveV3?.pool ?? '';
 const USDC_ADDRESS = BASE_USDC_ADDRESS;
-const ABASUSDC_ADDRESS = '0x4e65fE4DBa92790696d040ac24Aa414708F5c0AB';
+const ABASUSDC_ADDRESS = activeChain.yieldProtocols.aaveV3?.aUsdc ?? '';
+/** Whether Aave V3 is available on the active chain */
+export const AAVE_AVAILABLE = !!activeChain.yieldProtocols.aaveV3;
 const USDC_DECIMALS = 6;
 
 // Function selectors (Solidity ABI)

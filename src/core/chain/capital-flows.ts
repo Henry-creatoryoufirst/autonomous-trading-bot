@@ -9,8 +9,9 @@
 import axios from "axios";
 import type { TradeRecord } from "../types/index.js";
 import type { OnChainCapitalFlows, BasescanTransfer } from "../types/services.js";
+import { activeChain } from "../config/chain-config.js";
 
-const BLOCKSCOUT_API_URL = 'https://base.blockscout.com/api';
+const BLOCKSCOUT_API_URL = activeChain.explorer.apiUrl; // v21.3: chain-aware explorer
 
 // Module-level cache
 let cachedCapitalFlows: OnChainCapitalFlows | null = null;

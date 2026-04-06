@@ -10,14 +10,17 @@ const _require = createRequire(import.meta.url);
 export const BOT_VERSION: string = _require('../../../package.json').version;
 
 // ============================================================================
-// BASE CHAIN ADDRESSES & IDS
+// CHAIN CONFIGURATION — Multi-chain support (v21.3)
 // ============================================================================
 
-/** Base Mainnet chain ID */
-export const BASE_CHAIN_ID = 8453;
+import { activeChain } from './chain-config.js';
+export { activeChain } from './chain-config.js';
 
-/** USDC on Base Mainnet (checksummed) */
-export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+/** Active chain ID (Base=8453, Ethereum=1, Arbitrum=42161) */
+export const BASE_CHAIN_ID = activeChain.chainId;
+
+/** USDC on active chain (checksummed) */
+export const BASE_USDC_ADDRESS = activeChain.usdc.address;
 
 // ============================================================================
 // AI MODEL ROUTING — Cost Optimization (v20.5)
@@ -635,14 +638,8 @@ export const DEPLOYMENT_BREAKER_OVERRIDE_MAX_ENTRIES = 4;
  * v11.4: MEV protection — sequencer-direct endpoint first (bypasses public mempool),
  * then privacy-preserving relays, then public RPCs as fallback.
  */
-export const BASE_RPC_ENDPOINTS = [
-  'https://rpc.flashbots.net/fast?chainId=8453', // v20.0: Flashbots Protect — private tx submission, MEV rebates
-  'https://mainnet-sequencer.base.org',  // Direct sequencer — bypasses public mempool
-  'https://1rpc.io/base',               // TEE-attested privacy relay — burns metadata after relay
-  'https://mainnet.base.org',            // Coinbase public RPC
-  'https://base.meowrpc.com',            // Community RPC fallback
-  'https://base.drpc.org',               // dRPC fallback
-] as const;
+/** RPC endpoints for active chain (v21.3: from chain config) */
+export const BASE_RPC_ENDPOINTS = activeChain.rpcEndpoints;
 
 // ============================================================================
 // v12.0: ON-CHAIN PRICING ENGINE — Replace CoinGecko with direct DEX pool reads

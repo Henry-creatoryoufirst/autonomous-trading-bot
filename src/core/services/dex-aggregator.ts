@@ -16,14 +16,14 @@
  */
 
 import axios from "axios";
-import { BASE_CHAIN_ID } from "../config/constants.js";
+import { activeChain } from "../config/constants.js";
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-/** 0x API base URL for Base chain */
-const ZERO_X_API_URL = "https://base.api.0x.org";
+/** 0x API base URL — chain-aware (v21.3) */
+const ZERO_X_API_URL = activeChain.dexAggregators.zeroXBaseUrl;
 
 /** 1inch API base URL */
 const ONE_INCH_API_URL = "https://api.1inch.dev/swap/v6.0";
@@ -139,7 +139,7 @@ export async function get1inchQuote(
   if (!apiKey) return null;
 
   try {
-    const response = await axios.get(`${ONE_INCH_API_URL}/${BASE_CHAIN_ID}/swap`, {
+    const response = await axios.get(`${ONE_INCH_API_URL}/${activeChain.chainId}/swap`, {
       params: {
         src: sellToken,
         dst: buyToken,

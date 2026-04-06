@@ -10,12 +10,13 @@
  */
 
 import axios from "axios";
+import { activeChain } from "../config/chain-config.js";
 
 // ============================================================================
 // ON-CHAIN TOKEN DECIMALS FETCHER
 // ============================================================================
 
-const BASE_RPC = "https://mainnet.base.org";
+const BASE_RPC = activeChain.rpcEndpoints[activeChain.rpcEndpoints.length - 1]; // v21.3: use public RPC from chain config
 
 /**
  * Fetch token decimals from on-chain ERC-20 contract.
@@ -208,14 +209,14 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
   try {
     // DexScreener token profiles endpoint for Base chain trending
     // We use the search/pairs endpoint filtered to Base
-    const url = `${cfg.baseDexScreenerUrl}/search?q=base`;
+    const url = `${cfg.baseDexScreenerUrl}/search?q=${activeChain.dexScreenerChainId}`;
     console.log(`  🔍 Token Discovery: Scanning DexScreener...`);
 
     const response = await axios.get(url, { timeout: 15000 });
     const pairs: DexScreenerPair[] = response.data?.pairs || [];
 
     // Filter to Base chain pairs only
-    const basePairs = pairs.filter(p => p.chainId === "base");
+    const basePairs = pairs.filter(p => p.chainId === activeChain.dexScreenerChainId);
     console.log(`  📊 Found ${basePairs.length} Base chain pairs`);
 
     // Also try the top boosted tokens endpoint
@@ -227,7 +228,7 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       );
       if (Array.isArray(boostedResponse.data)) {
         const baseBoosted = boostedResponse.data
-          .filter((t: any) => t.chainId === "base")
+          .filter((t: any) => t.chainId === activeChain.dexScreenerChainId)
           .map((t: any) => t.tokenAddress);
         // Fetch pair data for boosted tokens
         for (const addr of baseBoosted.slice(0, 10)) {
@@ -236,7 +237,7 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
               `${cfg.baseDexScreenerUrl}/tokens/${addr}`,
               { timeout: 10000 }
             );
-            const tokenPairs = (pairRes.data?.pairs || []).filter((p: DexScreenerPair) => p.chainId === "base");
+            const tokenPairs = (pairRes.data?.pairs || []).filter((p: DexScreenerPair) => p.chainId === activeChain.dexScreenerChainId);
             boostedPairs.push(...tokenPairs);
           } catch { /* skip */ }
         }
