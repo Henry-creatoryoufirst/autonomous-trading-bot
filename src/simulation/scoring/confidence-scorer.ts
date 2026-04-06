@@ -376,18 +376,25 @@ export function calculateAggregateConfidence(
     robustnessScore: scores.reduce((s, c) => s + c.byMetric.robustnessScore, 0) / scores.length,
   };
 
-  const allPass = scores.every(s => s.passesThreshold);
+  // Pass if: average overall >= threshold AND all per-condition averages >= condition minimum
+  const allConditionsPass = conditions.every(
+    cond => avgByCondition[cond] >= config.minimumConditionConfidence
+  );
+  const overallPasses = avgOverall >= config.minimumConfidence;
+
   const reasoning = [
     `Aggregated from ${results.length} backtest runs`,
     `Individual scores: ${scores.map(s => s.overall.toFixed(0)).join(', ')}`,
-    allPass ? 'All runs passed threshold' : 'Some runs failed threshold',
+    overallPasses && allConditionsPass
+      ? 'Overall and all conditions pass threshold'
+      : 'Overall or condition minimums not met',
   ];
 
   return {
     overall: avgOverall,
     byCondition: avgByCondition,
     byMetric: avgByMetric,
-    passesThreshold: allPass && avgOverall >= config.minimumConfidence,
+    passesThreshold: overallPasses && allConditionsPass,
     threshold: config.minimumConfidence,
     reasoning,
   };

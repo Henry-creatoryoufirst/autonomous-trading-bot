@@ -64,15 +64,15 @@ export interface StrategyParams {
 
 /** Default strategy parameters matching the live bot */
 export const DEFAULT_STRATEGY_PARAMS: StrategyParams = {
-  confluenceBuyThreshold: 15,
-  confluenceSellThreshold: -30,
-  stopLossPercent: 15,
-  profitTakePercent: 20,
-  trailingStopPercent: 20,
-  maxPositionPercent: 18,
-  kellyFraction: 0.5,
+  confluenceBuyThreshold: 18,
+  confluenceSellThreshold: -50,
+  stopLossPercent: 6,
+  profitTakePercent: 5,
+  trailingStopPercent: 10,
+  maxPositionPercent: 6,
+  kellyFraction: 0.3,
   minPositionUSD: 5,
-  cashDeployThreshold: 40,
+  cashDeployThreshold: 10,
   startingCapital: 500,
 };
 

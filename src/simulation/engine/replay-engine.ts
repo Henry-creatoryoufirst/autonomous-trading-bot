@@ -11,7 +11,7 @@
  * - Pure functions, fully testable, no side effects
  */
 
-import { calculateRSI, calculateMACD, calculateBollingerBands, calculateSMA } from '../../algorithm/indicators.js';
+import { calculateRSI, calculateMACD, calculateBollingerBands, calculateSMA, calculateATR, calculateADX } from '../../algorithm/indicators.js';
 import type {
   HistoricalDataset,
   ReplayConfig,
@@ -20,6 +20,7 @@ import type {
   PerformanceMetrics,
   ConditionBreakdown,
   MarketCondition,
+  StrategyParams,
 } from '../types.js';
 import { classifyWindow } from '../data/market-conditions.js';
 
@@ -31,6 +32,8 @@ interface Position {
   qty: number;
   costBasis: number;
   entryTime: number;
+  peakPrice: number;
+  lastHarvestTier: number; // 0 = none, 1-4 = tier reached
 }
 
 // ============================================================================
@@ -38,10 +41,10 @@ interface Position {
 // ============================================================================
 
 /**
- * Calculate a simplified confluence score from indicators.
+ * Calculate confluence score from indicators.
  * Score range: -100 to +100
- * This matches the logic in services/simulator.ts but uses the real
- * indicator functions from src/algorithm/indicators.ts
+ * Enhanced with ADX trend confirmation, ATR volatility dampening,
+ * and short-term momentum — closer to the live bot's scoring.
  */
 function calculateSimConfluence(prices: number[]): number {
   let score = 0;
@@ -67,6 +70,8 @@ function calculateSimConfluence(prices: number[]): number {
   if (bb) {
     if (bb.signal === 'OVERSOLD') score += 20;
     else if (bb.signal === 'OVERBOUGHT') score -= 20;
+    // Squeeze bonus: tight bands suggest breakout coming
+    if (bb.bandwidth !== undefined && bb.bandwidth < 2) score += 5;
   }
 
   // SMA trend (weight: 15)
@@ -80,6 +85,35 @@ function calculateSimConfluence(prices: number[]): number {
   if (sma50 !== null) {
     if (currentPrice > sma50) score += 7;
     else score -= 7;
+  }
+
+  // ADX trend confirmation (weight: 10)
+  const adx = calculateADX(prices);
+  if (adx) {
+    if (adx.adx >= 30) {
+      // Strong trend — confirm direction
+      if (adx.plusDI > adx.minusDI) score += 10;  // strong uptrend
+      else score -= 10;                             // strong downtrend
+    } else if (adx.adx < 15) {
+      // No trend — dampen score toward 0 (avoid false signals)
+      score = Math.round(score * 0.8);
+    }
+  }
+
+  // Short-term momentum (weight: 8)
+  if (prices.length >= 24) {
+    const priceMom = (currentPrice - prices[prices.length - 24]) / prices[prices.length - 24] * 100;
+    if (priceMom > 5) score += 8;
+    else if (priceMom > 2) score += 4;
+    else if (priceMom < -5) score -= 8;
+    else if (priceMom < -2) score -= 4;
+  }
+
+  // ATR volatility dampening
+  const atr = calculateATR(prices);
+  if (atr && atr.atrPercent > 5) {
+    // Very volatile — reduce conviction
+    score = Math.round(score * 0.85);
   }
 
   return Math.max(-100, Math.min(100, score));
@@ -129,6 +163,14 @@ export function runReplay(
 
   let candlesProcessed = 0;
 
+  // Portfolio drawdown circuit breaker
+  let equityPeak = strategy.startingCapital;
+  let buyingPaused = false;
+  const DRAWDOWN_PAUSE_PCT = 20;  // pause buying after 20% drawdown
+  const DRAWDOWN_RESUME_PCT = 10; // resume after recovery to within 10%
+  let lastBuyTime = 0;
+  const MIN_BUY_INTERVAL_CANDLES = 6; // minimum 6 hours between buys
+
   for (let ti = 0; ti < timeline.length; ti += stepSize) {
     const tick = timeline[ti];
     candlesProcessed++;
@@ -174,8 +216,18 @@ export function runReplay(
       if (pos && pos.qty > 0) {
         const gainPct = ((price - pos.costBasis) / pos.costBasis) * 100;
 
-        // Stop loss
-        if (gainPct <= -strategy.stopLossPercent) {
+        // Update peak price for trailing stop
+        if (price > pos.peakPrice) {
+          pos.peakPrice = price;
+        }
+
+        // 1. Hard stop loss — ATR-adaptive: widen in volatile markets
+        const atrData = calculateATR(histSlice);
+        const atrPct = atrData?.atrPercent ?? 0;
+        const adaptiveStopLoss = atrPct > 3
+          ? Math.min(strategy.stopLossPercent * 2, strategy.stopLossPercent + atrPct)
+          : strategy.stopLossPercent;
+        if (gainPct <= -adaptiveStopLoss) {
           const sellUSD = pos.qty * price;
           const pnl = sellUSD - pos.qty * pos.costBasis;
           cash += sellUSD;
@@ -185,20 +237,54 @@ export function runReplay(
           continue;
         }
 
-        // Profit take
-        if (gainPct >= strategy.profitTakePercent) {
-          const sellQty = pos.qty * 0.3;
-          const sellUSD = sellQty * price;
-          const pnl = sellQty * (price - pos.costBasis);
-          cash += sellUSD;
-          pos.qty -= sellQty;
-          if (pos.qty < 0.0001) positions.delete(sym);
-          trades.push(makeTrade(tick, 'SELL', sym, sellUSD, price,
-            `PROFIT_TAKE (${gainPct.toFixed(1)}%)`, calcPortfolioValue(cash, positions, lastKnown), pnl, confluence));
-          continue;
+        // 2. Trailing stop — exit entire position when price drops from peak
+        if (gainPct >= 3 && pos.peakPrice > pos.costBasis) {
+          const dropFromPeak = ((pos.peakPrice - price) / pos.peakPrice) * 100;
+          if (dropFromPeak >= (strategy.trailingStopPercent ?? 15)) {
+            const sellUSD = pos.qty * price;
+            const pnl = sellUSD - pos.qty * pos.costBasis;
+            cash += sellUSD;
+            positions.delete(sym);
+            trades.push(makeTrade(tick, 'SELL', sym, sellUSD, price,
+              `TRAILING_STOP (peak=${pos.peakPrice.toFixed(2)}, drop=${dropFromPeak.toFixed(1)}%)`,
+              calcPortfolioValue(cash, positions, lastKnown), pnl, confluence));
+            continue;
+          }
         }
 
-        // Confluence sell signal
+        // 3. Tiered profit-taking — partial sells at milestones
+        const tier1Pct = strategy.profitTakePercent;
+        const tier2Pct = tier1Pct * 1.875;               // ~15%
+        const tier3Pct = tier1Pct * 3.125;               // ~25%
+        const tier4Pct = tier1Pct * 5;                   // ~40%
+        const tiers = [
+          { level: 1, threshold: tier1Pct, sellFrac: 0.30 },
+          { level: 2, threshold: tier2Pct, sellFrac: 0.40 },
+          { level: 3, threshold: tier3Pct, sellFrac: 0.50 },
+          { level: 4, threshold: tier4Pct, sellFrac: 0.70 },
+        ];
+
+        let harvested = false;
+        for (let t = tiers.length - 1; t >= 0; t--) {
+          const tier = tiers[t];
+          if (gainPct >= tier.threshold && pos.lastHarvestTier < tier.level) {
+            const sellQty = pos.qty * tier.sellFrac;
+            const sellUSD = sellQty * price;
+            const pnl = sellQty * (price - pos.costBasis);
+            cash += sellUSD;
+            pos.qty -= sellQty;
+            pos.lastHarvestTier = tier.level;
+            if (pos.qty < 0.0001) positions.delete(sym);
+            trades.push(makeTrade(tick, 'SELL', sym, sellUSD, price,
+              `PROFIT_T${tier.level} (${gainPct.toFixed(1)}%)`,
+              calcPortfolioValue(cash, positions, lastKnown), pnl, confluence));
+            harvested = true;
+            break; // one tier per candle
+          }
+        }
+        if (harvested) continue;
+
+        // 4. Confluence sell signal — sell 50%
         if (confluence <= strategy.confluenceSellThreshold) {
           const sellQty = pos.qty * 0.5;
           const sellUSD = sellQty * price;
@@ -213,15 +299,34 @@ export function runReplay(
       }
 
       // === BUY LOGIC ===
-      if (confluence >= strategy.confluenceBuyThreshold && cashPct >= strategy.cashDeployThreshold) {
+      // Circuit breaker: check portfolio drawdown
+      const currentPortfolio = calcPortfolioValue(cash, positions, lastKnown);
+      if (currentPortfolio > equityPeak) equityPeak = currentPortfolio;
+      const drawdownPct = equityPeak > 0 ? ((equityPeak - currentPortfolio) / equityPeak) * 100 : 0;
+      if (drawdownPct >= DRAWDOWN_PAUSE_PCT) buyingPaused = true;
+      if (buyingPaused && drawdownPct < DRAWDOWN_RESUME_PCT) buyingPaused = false;
+
+      if (!buyingPaused && confluence >= strategy.confluenceBuyThreshold
+          && cashPct >= strategy.cashDeployThreshold
+          && (candlesProcessed - lastBuyTime) >= MIN_BUY_INTERVAL_CANDLES) {
         const currentPosValue = pos ? pos.qty * price : 0;
         const currentPosPct = portfolioValue > 0 ? (currentPosValue / portfolioValue) * 100 : 0;
         if (currentPosPct >= strategy.maxPositionPercent) continue;
 
-        // Position sizing: simplified Kelly
-        const winRate = 0.55;
-        const avgWinLoss = 1.5;
-        const kellyPct = (winRate - (1 - winRate) / avgWinLoss) * strategy.kellyFraction * 100;
+        // Dynamic Kelly: use actual backtest stats after 10+ sells
+        const sellTrades = trades.filter(t => t.action === 'SELL');
+        let winRate = 0.50;
+        let avgWinLoss = 1.2;
+        if (sellTrades.length >= 10) {
+          const wins = sellTrades.filter(t => t.realizedPnl > 0);
+          const losses = sellTrades.filter(t => t.realizedPnl <= 0);
+          winRate = wins.length / sellTrades.length;
+          const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.realizedPnl, 0) / wins.length : 1;
+          const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((s, t) => s + t.realizedPnl, 0) / losses.length) : 1;
+          avgWinLoss = avgLoss > 0 ? avgWin / avgLoss : 1.5;
+        }
+
+        const kellyPct = Math.max(0, (winRate - (1 - winRate) / avgWinLoss) * strategy.kellyFraction * 100);
         const sizePct = Math.min(kellyPct, strategy.maxPositionPercent - currentPosPct);
         let sizeUSD = (sizePct / 100) * portfolioValue;
         sizeUSD = Math.min(sizeUSD, cash);
@@ -234,10 +339,12 @@ export function runReplay(
           const totalQty = pos.qty + qty;
           pos.costBasis = (pos.qty * pos.costBasis + sizeUSD) / totalQty;
           pos.qty = totalQty;
+          pos.peakPrice = Math.max(pos.peakPrice, price);
         } else {
-          positions.set(sym, { qty, costBasis: price, entryTime: tick });
+          positions.set(sym, { qty, costBasis: price, entryTime: tick, peakPrice: price, lastHarvestTier: 0 });
         }
 
+        lastBuyTime = candlesProcessed;
         trades.push(makeTrade(tick, 'BUY', sym, sizeUSD, price,
           `SIGNAL_BUY (conf=${confluence})`, calcPortfolioValue(cash, positions, lastKnown), 0, confluence));
       }

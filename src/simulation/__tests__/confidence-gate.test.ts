@@ -3,7 +3,7 @@ import { runConfidenceGate } from '../../../scripts/confidence-gate.js';
 import { DEFAULT_STRATEGY_PARAMS } from '../types.js';
 import type { StrategyParams } from '../types.js';
 
-// Gate runs take ~25s each due to 4x 365-day hourly replays.
+// Gate runs take ~80s each due to 4x 365-day hourly replays with enhanced indicators.
 // We run the gate once and share the result across multiple assertions.
 
 describe('Confidence Gate', () => {
@@ -18,7 +18,7 @@ describe('Confidence Gate', () => {
     expect(defaultGate).toHaveProperty('passed');
     expect(defaultGate.threshold).toBe(60);
     expect(typeof defaultGate.passed).toBe('boolean');
-  }, 60_000);
+  }, 120_000);
 
   it('score has correct structure', () => {
     const { score } = defaultGate;
@@ -71,7 +71,7 @@ describe('Confidence Gate', () => {
     const highGate = runConfidenceGate(100);
     expect(highGate.threshold).toBe(100);
     expect(highGate.passed).toBe(false);
-  }, 60_000);
+  }, 120_000);
 
   it('bad parameters score worse than default parameters', () => {
     const badParams: StrategyParams = {
@@ -87,7 +87,7 @@ describe('Confidence Gate', () => {
     // Bad params should score equal or worse than default
     expect(badGate.score.overall).toBeLessThanOrEqual(defaultGate.score.overall + 5); // small tolerance
     expect(badGate.passed).toBe(false);
-  }, 60_000);
+  }, 120_000);
 
   it('does not crash or throw', () => {
     // The gate ran without throwing (tested by first test)

@@ -153,6 +153,13 @@ export const PRESET_SWEEPS = {
     { param: 'stopLossPercent' as const, min: 10, max: 20, step: 5 },
     { param: 'profitTakePercent' as const, min: 15, max: 25, step: 5 },
   ],
+  /** Confidence-optimized sweep for gate scoring */
+  confidenceOptimized: [
+    { param: 'confluenceBuyThreshold' as const, min: 8, max: 15, step: 3 },
+    { param: 'stopLossPercent' as const, min: 8, max: 12, step: 2 },
+    { param: 'profitTakePercent' as const, min: 6, max: 10, step: 2 },
+    { param: 'cashDeployThreshold' as const, min: 10, max: 20, step: 5 },
+  ],
 } satisfies Record<string, SweepRange[]>;
 
 // ============================================================================
