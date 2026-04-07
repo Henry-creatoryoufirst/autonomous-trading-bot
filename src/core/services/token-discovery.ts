@@ -259,7 +259,7 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
             volume: { h24: vol24h },
             priceChange: { h24: parseFloat(attrs.price_change_percentage?.h24 || attrs.price_change_percentage?.h6 || '0') },
             liquidity: { usd: liq },
-            fdv: parseFloat(String(attrs.fdv_usd || '0')),
+            fdv: parseFloat(String(attrs.fdv_usd ?? '0')) || 0,
             pairCreatedAt: attrs.pool_created_at ? new Date(attrs.pool_created_at).getTime() : 0,
           });
         }
@@ -306,10 +306,6 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
     for (const pair of basePairs) {
       const token = pair.baseToken;
       const address = token.address.toLowerCase();
-
-      // Skip if already seen
-      if (seenAddresses.has(address)) continue;
-      seenAddresses.add(address);
 
       // Skip excluded tokens
       if (cfg.excludeSymbols.has(token.symbol.toUpperCase())) continue;
