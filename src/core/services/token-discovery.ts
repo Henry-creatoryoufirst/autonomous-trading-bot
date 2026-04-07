@@ -279,11 +279,16 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       }
     } catch { /* boosted endpoint optional */ }
 
-    // Merge and deduplicate
-    const allPairs = [...basePairs, ...boostedPairs];
-    const seenAddresses = new Set<string>();
+    // Merge boosted pairs into the main deduplicated pool
+    for (const bp of boostedPairs) {
+      const addr = bp.baseToken.address.toLowerCase();
+      if (!seenAddresses.has(addr)) {
+        seenAddresses.add(addr);
+        basePairs.push(bp);
+      }
+    }
 
-    for (const pair of allPairs) {
+    for (const pair of basePairs) {
       const token = pair.baseToken;
       const address = token.address.toLowerCase();
 
