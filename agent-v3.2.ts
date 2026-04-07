@@ -9908,6 +9908,23 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/model-telemetry':
         handleModelTelemetry(res, serverCtx);
         break;
+      case '/api/discovery/scan':
+        // Manual trigger for token discovery scan
+        if (tokenDiscoveryEngine) {
+          tokenDiscoveryEngine.runScan().then(tokens => {
+            sendJSON(res, 200, {
+              scanned: true,
+              tokensFound: tokens.length,
+              state: tokenDiscoveryEngine!.getState(),
+            });
+          }).catch(err => {
+            sendJSON(res, 500, { error: `Scan failed: ${(err as Error).message}` });
+          });
+          return; // async handler
+        } else {
+          sendJSON(res, 503, { error: 'Discovery engine not initialized' });
+        }
+        break;
       case '/api/simulate':
         handleSimulate(url, res, serverCtx);
         break;

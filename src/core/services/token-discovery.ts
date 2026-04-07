@@ -208,19 +208,51 @@ interface DexScreenerPair {
 async function scanDexScreener(): Promise<DiscoveredToken[]> {
   const discovered: DiscoveredToken[] = [];
   const cfg = TOKEN_DISCOVERY_CONFIG;
+  const chainId = activeChain.dexScreenerChainId;
 
   try {
-    // DexScreener token profiles endpoint for Base chain trending
-    // We use the search/pairs endpoint filtered to Base
-    const url = `${cfg.baseDexScreenerUrl}/search?q=${activeChain.dexScreenerChainId}`;
-    console.log(`  🔍 Token Discovery: Scanning DexScreener...`);
+    console.log(`  🔍 Token Discovery: Scanning DexScreener for ${chainId}...`);
 
-    const response = await axios.get(url, { timeout: 15000 });
-    const pairs: DexScreenerPair[] = response.data?.pairs || [];
+    // Strategy: use multiple search terms to find diverse tokens on our chain
+    const searchTerms = ['defi', 'ai', 'meme', 'swap', 'token', 'protocol', 'finance'];
+    let allPairs: DexScreenerPair[] = [];
 
-    // Filter to Base chain pairs only
-    const basePairs = pairs.filter(p => p.chainId === activeChain.dexScreenerChainId);
-    console.log(`  📊 Found ${basePairs.length} Base chain pairs`);
+    for (const term of searchTerms) {
+      try {
+        const url = `${cfg.baseDexScreenerUrl}/search?q=${term}`;
+        const response = await axios.get(url, { timeout: 10000 });
+        const pairs: DexScreenerPair[] = response.data?.pairs || [];
+        const chainPairs = pairs.filter(p => p.chainId === chainId);
+        allPairs.push(...chainPairs);
+      } catch { /* skip failed searches */ }
+    }
+
+    // Also try direct token search for known Base ecosystem tokens
+    const knownTokenAddresses = [
+      '0xA88594D404727625A9437C3f886C7643872296AE', // WELL
+      '0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf', // VVV
+      '0x696F9436B67233384889472Cd7cD58A6fB5DF4f1', // AVNT
+      '0x6985884C4392D348587B19cb9eAAf157F13271cd', // ZRO
+    ];
+    for (const addr of knownTokenAddresses) {
+      try {
+        const res = await axios.get(`${cfg.baseDexScreenerUrl}/tokens/${addr}`, { timeout: 8000 });
+        const tokenPairs = (res.data?.pairs || []).filter((p: DexScreenerPair) => p.chainId === chainId);
+        allPairs.push(...tokenPairs);
+      } catch { /* skip */ }
+    }
+
+    // Deduplicate by base token address
+    const seenAddresses = new Set<string>();
+    const basePairs: DexScreenerPair[] = [];
+    for (const pair of allPairs) {
+      const addr = pair.baseToken.address.toLowerCase();
+      if (!seenAddresses.has(addr)) {
+        seenAddresses.add(addr);
+        basePairs.push(pair);
+      }
+    }
+    console.log(`  📊 Found ${basePairs.length} unique ${chainId} tokens`);
 
     // Also try the top boosted tokens endpoint
     let boostedPairs: DexScreenerPair[] = [];
@@ -492,7 +524,14 @@ export class TokenDiscoveryEngine {
     console.log(`  🔍 Token Discovery Engine started (full scan: ${fullHours}h, momentum: ${momentumMin}m)`);
 
     // Run initial full scan after 30 seconds (let the bot boot first)
-    setTimeout(() => this.runScan(), 30_000);
+    // If it fails, retry after 2 minutes
+    setTimeout(async () => {
+      const results = await this.runScan();
+      if (results.length === 0) {
+        console.log(`  🔍 Initial scan found 0 tokens — retrying in 2 minutes...`);
+        setTimeout(() => this.runScan(), 120_000);
+      }
+    }, 30_000);
 
     // Full scan on schedule
     this.scanTimer = setInterval(
