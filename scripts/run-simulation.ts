@@ -20,9 +20,11 @@ import { calculateAggregateConfidence } from '../src/simulation/scoring/confiden
 import { runParameterSweep, runTournamentSweep, PRESET_SWEEPS } from '../src/simulation/backtester/parameter-sweep.js';
 import { compareStrategies, getPresetVariants } from '../src/simulation/backtester/strategy-tester.js';
 import { runImprovementLoop } from '../src/simulation/self-improvement/loop.js';
+import { runAdaptiveReplay } from '../src/simulation/engine/adaptive-replay-engine.js';
+import { generateMetaLearningReport } from '../src/simulation/analytics/meta-learning.js';
 import { DEFAULT_STRATEGY_PARAMS, DEFAULT_CONFIDENCE_CONFIG } from '../src/simulation/types.js';
-import type { HistoricalDataset, StrategyParams, MarketCondition, ReplayResult, ConfidenceScore } from '../src/simulation/types.js';
-import { runConfidenceGate } from './confidence-gate.js';
+import type { HistoricalDataset, StrategyParams, MarketCondition, ReplayResult, ConfidenceScore, AdaptiveReplayResult } from '../src/simulation/types.js';
+import { runConfidenceGate, runAdaptiveConfidenceGate } from './confidence-gate.js';
 
 // ============================================================================
 // MARKET SCENARIOS (shared across all modes)
@@ -407,6 +409,109 @@ async function improve(): Promise<void> {
   }
 }
 
+async function adaptiveBenchmark(): Promise<void> {
+  console.log(`\n${BOLD}${CYAN}NVR CAPITAL — ADAPTIVE vs ORIGINAL BENCHMARK${RESET}\n`);
+  console.log(`${DIM}Head-to-head: same datasets, same confidence gate${RESET}\n`);
+
+  const startMs = Date.now();
+
+  // Run both engines
+  console.log(`Running original engine...`);
+  const originalGate = runConfidenceGate(60);
+  console.log(`Running adaptive engine (all levels enabled)...`);
+  const adaptiveGate = runAdaptiveConfidenceGate(60);
+
+  const dur = ((Date.now() - startMs) / 1000).toFixed(1);
+
+  // Head-to-head comparison
+  console.log(`\n${hr('=')}`);
+  console.log(`${BOLD}HEAD-TO-HEAD COMPARISON${RESET} (${dur}s)\n`);
+
+  const oS = originalGate.score;
+  const aS = adaptiveGate.score;
+
+  // Overall
+  const overallDelta = aS.overall - oS.overall;
+  const overallColor = overallDelta > 0 ? GREEN : overallDelta < 0 ? RED : YELLOW;
+  console.log(`  ${''.padEnd(14)} ${'Original'.padStart(10)} ${'Adaptive'.padStart(10)} ${'Delta'.padStart(8)}`);
+  console.log(`  ${hr('-', 44)}`);
+  console.log(`  ${'Overall'.padEnd(14)} ${Math.round(oS.overall).toString().padStart(9)}/100 ${Math.round(aS.overall).toString().padStart(9)}/100 ${overallColor}${(overallDelta > 0 ? '+' : '') + overallDelta.toFixed(1).padStart(7)}${RESET}`);
+  console.log('');
+
+  // Metric breakdown
+  console.log(`  ${BOLD}By Metric:${RESET}`);
+  const metrics = [
+    { name: 'Returns', o: oS.byMetric.returnScore, a: aS.byMetric.returnScore, max: 25 },
+    { name: 'Risk', o: oS.byMetric.riskScore, a: aS.byMetric.riskScore, max: 25 },
+    { name: 'Consistency', o: oS.byMetric.consistencyScore, a: aS.byMetric.consistencyScore, max: 25 },
+    { name: 'Robustness', o: oS.byMetric.robustnessScore, a: aS.byMetric.robustnessScore, max: 25 },
+  ];
+  for (const m of metrics) {
+    const delta = m.a - m.o;
+    const color = delta > 0 ? GREEN : delta < 0 ? RED : YELLOW;
+    console.log(`    ${m.name.padEnd(14)} ${Math.round(m.o).toString().padStart(6)}/${m.max} ${Math.round(m.a).toString().padStart(9)}/${m.max} ${color}${(delta > 0 ? '+' : '') + delta.toFixed(1).padStart(7)}${RESET}`);
+  }
+
+  // Condition breakdown
+  console.log(`\n  ${BOLD}By Condition:${RESET}`);
+  const conditions: MarketCondition[] = ['BULL', 'BEAR', 'RANGING', 'VOLATILE'];
+  for (const cond of conditions) {
+    const o = Math.round(oS.byCondition[cond]);
+    const a = Math.round(aS.byCondition[cond]);
+    const delta = a - o;
+    const color = delta > 0 ? GREEN : delta < 0 ? RED : YELLOW;
+    console.log(`    ${cond.padEnd(14)} ${o.toString().padStart(6)}/100 ${a.toString().padStart(9)}/100 ${color}${(delta > 0 ? '+' : '') + delta.toString().padStart(7)}${RESET}`);
+  }
+
+  // Adaptive engine meta-data
+  const adaptiveResults = adaptiveGate.results as AdaptiveReplayResult[];
+  if (adaptiveResults.length > 0 && adaptiveResults[0].tradeSnapshots) {
+    const allSnapshots = adaptiveResults.flatMap(r => r.tradeSnapshots || []);
+    if (allSnapshots.length > 0) {
+      const meta = generateMetaLearningReport(allSnapshots);
+      console.log(`\n  ${BOLD}Meta-Learning Insights:${RESET}`);
+      for (const rec of meta.recommendations) {
+        console.log(`    ${DIM}${rec}${RESET}`);
+      }
+      if (meta.indicatorRankings.length > 0) {
+        console.log(`\n  ${BOLD}Indicator Rankings:${RESET}`);
+        for (const ir of meta.indicatorRankings.slice(0, 6)) {
+          const accColor = ir.accuracy >= 0.55 ? GREEN : ir.accuracy < 0.45 ? RED : YELLOW;
+          console.log(`    ${ir.name.padEnd(12)} ${accColor}${(ir.accuracy * 100).toFixed(0)}% accurate${RESET} | ${(ir.contribution * 100).toFixed(0)}% contribution`);
+        }
+      }
+    }
+
+    // Regime distribution
+    if (adaptiveResults[0].regimeDistribution) {
+      console.log(`\n  ${BOLD}Regime Distribution:${RESET}`);
+      for (const r of adaptiveResults) {
+        const ar = r as AdaptiveReplayResult;
+        if (!ar.regimeDistribution) continue;
+        const total = Object.values(ar.regimeDistribution).reduce((s, v) => s + v, 0) || 1;
+        const parts = Object.entries(ar.regimeDistribution)
+          .map(([k, v]) => `${k}: ${((v / total) * 100).toFixed(0)}%`)
+          .join(', ');
+        console.log(`    ${DIM}${parts}${RESET}`);
+        break; // just show first dataset's distribution
+      }
+    }
+  }
+
+  // Verdict
+  console.log(`\n${hr('=')}`);
+  if (overallDelta > 3) {
+    console.log(`${GREEN}${BOLD}ADAPTIVE WINS${RESET} — +${overallDelta.toFixed(1)} confidence points`);
+  } else if (overallDelta > 0) {
+    console.log(`${YELLOW}${BOLD}MARGINAL IMPROVEMENT${RESET} — +${overallDelta.toFixed(1)} points (needs tuning)`);
+  } else if (overallDelta === 0) {
+    console.log(`${YELLOW}${BOLD}TIE${RESET} — same score, but adaptive provides better tooling`);
+  } else {
+    console.log(`${RED}${BOLD}ORIGINAL WINS${RESET} — adaptive needs tuning (${overallDelta.toFixed(1)} points)`);
+  }
+  console.log('');
+}
+
 async function report(): Promise<void> {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${BOLD}${CYAN}NVR CAPITAL — FULL SIMULATION REPORT${RESET}`);
@@ -431,6 +536,7 @@ const MODES: Record<string, () => Promise<void>> = {
   optimize,
   'fast-optimize': fastOptimize,
   improve,
+  'adaptive-benchmark': adaptiveBenchmark,
   validate,
   stress,
   compare,
@@ -450,8 +556,9 @@ Modes:
   benchmark      Current confidence score (default)
   optimize       Brute-force parameter sweep (slow, exhaustive)
   fast-optimize  Tournament optimizer (4-6x faster, recommended)
-  improve        Self-improvement loop (research → hypothesize → simulate → validate → report)
-  validate       Walk-forward validation (train/test split)
+  improve           Self-improvement loop (research → hypothesize → simulate → validate → report)
+  adaptive-benchmark Head-to-head: original vs adaptive engine (L1-L5)
+  validate           Walk-forward validation (train/test split)
   stress      Extreme market stress tests
   compare     Compare 5 strategy presets side-by-side
   report      Full report (all of the above)

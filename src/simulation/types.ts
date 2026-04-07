@@ -319,3 +319,171 @@ export interface CachedDataset {
   fetchedAt: number;
   cacheKey: string;
 }
+
+// ============================================================================
+// ADAPTIVE ENGINE TYPES (Levels 1-6)
+// ============================================================================
+
+/** Market structure regime (direction-agnostic) */
+export type SimRegime = 'TRENDING' | 'RANGING' | 'VOLATILE' | 'BREAKOUT';
+
+/** Multi-timeframe candle data derived from base 1h candles */
+export interface MultiTimeframeData {
+  tf1h: OHLCVCandle[];
+  tf4h: OHLCVCandle[];
+  tf1d: OHLCVCandle[];
+}
+
+/** Score from a single timeframe's indicators */
+export interface TimeframeScore {
+  timeframe: '1h' | '4h' | '1d';
+  score: number;
+  weight: number;
+  direction: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  indicatorSignals: Record<string, number>;
+}
+
+/** Alignment detection across timeframes */
+export interface TimeframeAlignment {
+  aligned: boolean;
+  bonus: number;
+  scores: TimeframeScore[];
+  compositeScore: number;
+}
+
+/** Detected market regime with confidence and underlying metrics */
+export interface RegimeState {
+  regime: SimRegime;
+  confidence: number;
+  adx: number;
+  atrPercent: number;
+  bbBandwidth: number;
+  trendDirection: 'UP' | 'DOWN' | 'FLAT';
+}
+
+/** Per-regime strategy parameter adjustments */
+export interface RegimeOverlay {
+  confluenceBuyThreshold: number;
+  stopLossPercent: number;
+  profitTakePercent: number;
+  trailingStopPercent: number;
+  maxPositionPercent: number;
+  kellyFraction: number;
+}
+
+/** Per-indicator weight tracking for dynamic adjustment */
+export interface IndicatorWeight {
+  name: string;
+  baseWeight: number;
+  multiplier: number;
+  correctPredictions: number;
+  totalPredictions: number;
+  rollingAccuracy: number;
+}
+
+/** Collection of all dynamic indicator weights */
+export interface DynamicWeightState {
+  weights: IndicatorWeight[];
+  windowSize: number;
+  /** Rolling window of recent prediction results per indicator */
+  history: Array<{ indicator: string; correct: boolean }>;
+}
+
+/** Exit signal from intelligent exit evaluation */
+export interface ExitSignal {
+  type: 'HOLD' | 'REDUCE' | 'EXIT';
+  reason: string;
+  urgency: number; // 0-1
+  suggestedSellFraction: number; // 0-1
+}
+
+/** ATR-based dynamic profit targets */
+export interface DynamicProfitTargets {
+  target1: number; // 1.5x ATR
+  target2: number; // 3x ATR
+  target3: number; // 5x ATR
+  atrValue: number;
+  atrPercent: number;
+}
+
+/** Volume analysis signal */
+export interface VolumeSignal {
+  volumeRatio: number;
+  confirmed: boolean;
+  dryingUp: boolean;
+}
+
+/** Snapshot of signals at trade entry/exit for meta-learning */
+export interface TradeSignalSnapshot {
+  timestamp: number;
+  action: 'BUY' | 'SELL';
+  symbol: string;
+  price: number;
+  regime: SimRegime;
+  confluenceScore: number;
+  timeframeAligned: boolean;
+  volumeConfirmed: boolean;
+  indicatorSignals: Record<string, number>;
+  pnl?: number; // filled on sell
+  holdCandles?: number;
+}
+
+/** Extended position with adaptive metadata */
+export interface AdaptivePosition {
+  qty: number;
+  costBasis: number;
+  entryTime: number;
+  peakPrice: number;
+  lastHarvestTier: number;
+  candlesHeld: number;
+  entryRegime: SimRegime;
+  entrySignals: Record<string, number>;
+  entryConfluence: number;
+}
+
+/** Config for the adaptive replay engine with level toggles */
+export interface AdaptiveReplayConfig {
+  strategy: StrategyParams;
+  startTime?: number;
+  endTime?: number;
+  stepSize?: number;
+  warmupCandles?: number;
+  /** Level toggles — all default true */
+  enableMultiTimeframe?: boolean;
+  enableRegimeAdaptation?: boolean;
+  enableDynamicWeights?: boolean;
+  enableIntelligentExits?: boolean;
+  enableVolumeIntel?: boolean;
+}
+
+/** Result from the adaptive replay engine */
+export interface AdaptiveReplayResult extends ReplayResult {
+  regimeDistribution: Record<SimRegime, number>;
+  finalWeights: DynamicWeightState;
+  tradeSnapshots: TradeSignalSnapshot[];
+  levelsEnabled: {
+    multiTimeframe: boolean;
+    regimeAdaptation: boolean;
+    dynamicWeights: boolean;
+    intelligentExits: boolean;
+    volumeIntel: boolean;
+  };
+}
+
+/** Meta-learning report from trade analysis */
+export interface MetaLearningReport {
+  bestEntryConditions: Array<{
+    regime: SimRegime;
+    aligned: boolean;
+    volumeConfirmed: boolean;
+    winRate: number;
+    avgPnlPct: number;
+    tradeCount: number;
+  }>;
+  indicatorRankings: Array<{
+    name: string;
+    accuracy: number;
+    contribution: number;
+  }>;
+  recommendations: string[];
+}
