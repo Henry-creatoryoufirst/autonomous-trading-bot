@@ -13,8 +13,9 @@
  *   npx tsx scripts/run-simulation.ts report              # Full report (all of the above)
  */
 
-import { generateSyntheticData } from '../src/simulation/data/historical-data.js';
+import { generateSyntheticData, fromPriceHistory } from '../src/simulation/data/historical-data.js';
 import { runReplay } from '../src/simulation/engine/replay-engine.js';
+import { ensureRealisticVolume } from '../src/simulation/strategy/volume-intelligence.js';
 import { walkForwardSplit } from '../src/simulation/engine/market-simulator.js';
 import { calculateAggregateConfidence } from '../src/simulation/scoring/confidence-scorer.js';
 import { runParameterSweep, runTournamentSweep, PRESET_SWEEPS } from '../src/simulation/backtester/parameter-sweep.js';
@@ -409,6 +410,145 @@ async function improve(): Promise<void> {
   }
 }
 
+async function realBenchmark(): Promise<void> {
+  console.log(`\n${BOLD}${CYAN}NVR CAPITAL — REAL DATA BENCHMARK${RESET}\n`);
+  console.log(`${DIM}Fetching 90 days of hourly BTC + ETH data from CoinGecko...${RESET}\n`);
+
+  // Fetch real hourly data from CoinGecko market_chart endpoint
+  const coins = ['bitcoin', 'ethereum'];
+  const datasets: HistoricalDataset[] = [];
+
+  for (const coinId of coins) {
+    console.log(`  Fetching ${coinId}...`);
+    const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=usd&days=89`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`CoinGecko fetch failed: ${res.status}`);
+    const data = await res.json();
+
+    // Build OHLCV from hourly close prices + volume
+    const prices: number[] = data.prices.map((p: number[]) => p[1]);
+    const timestamps: number[] = data.prices.map((p: number[]) => p[0]);
+    const volumes: number[] = data.total_volumes?.map((v: number[]) => v[1]) || [];
+
+    // Create proper OHLCV candles (market_chart gives close-only, synthesize O/H/L from consecutive)
+    const candles: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }> = [];
+    for (let i = 1; i < prices.length; i++) {
+      const open = prices[i - 1];
+      const close = prices[i];
+      candles.push({
+        timestamp: timestamps[i],
+        open,
+        high: Math.max(open, close) * (1 + Math.random() * 0.003),
+        low: Math.min(open, close) * (1 - Math.random() * 0.003),
+        close,
+        volume: volumes[i] || 0,
+      });
+    }
+
+    const ds: HistoricalDataset = {
+      symbol: coinId.toUpperCase(),
+      candles,
+      startTime: candles[0]?.timestamp || 0,
+      endTime: candles[candles.length - 1]?.timestamp || 0,
+      intervalMs: 3600000,
+    };
+    datasets.push(ds);
+    console.log(`  ${coinId}: ${candles.length} hourly candles (${new Date(ds.startTime).toISOString().slice(0,10)} → ${new Date(ds.endTime).toISOString().slice(0,10)})`);
+
+    // Rate limit — CoinGecko free tier
+    if (coins.indexOf(coinId) < coins.length - 1) {
+      console.log(`  ${DIM}(waiting 5s for rate limit)${RESET}`);
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+
+  console.log(`\n${BOLD}Running both engines on real data...${RESET}\n`);
+
+  // Run original engine on each dataset independently
+  console.log(`  Original engine...`);
+  const origStartMs = Date.now();
+  const origResults = datasets.map(ds => runReplay([ds], { strategy: DEFAULT_STRATEGY_PARAMS }));
+  const origDur = ((Date.now() - origStartMs) / 1000).toFixed(1);
+
+  // Run adaptive engine on each dataset independently
+  console.log(`  Adaptive engine...`);
+  const adaptStartMs = Date.now();
+  const adaptResults = datasets.map(ds => runAdaptiveReplay([ds], { strategy: DEFAULT_STRATEGY_PARAMS })) as AdaptiveReplayResult[];
+  const adaptDur = ((Date.now() - adaptStartMs) / 1000).toFixed(1);
+
+  // Print per-dataset comparison
+  console.log(`\n${hr('=')}`);
+  console.log(`${BOLD}HEAD-TO-HEAD ON REAL DATA${RESET} (orig: ${origDur}s, adapt: ${adaptDur}s)\n`);
+
+  console.log(`  ${'Asset'.padEnd(10)} ${''.padEnd(5)} ${'Return'.padStart(10)} ${'Sharpe'.padStart(8)} ${'Win%'.padStart(6)} ${'MaxDD'.padStart(8)} ${'Trades'.padStart(8)}`);
+  console.log(`  ${hr('-', 55)}`);
+
+  for (let i = 0; i < datasets.length; i++) {
+    const sym = datasets[i].symbol;
+    const oM = origResults[i].metrics;
+    const aM = adaptResults[i].metrics;
+
+    const oRetColor = oM.totalReturnPct >= 0 ? GREEN : RED;
+    const aRetColor = aM.totalReturnPct >= 0 ? GREEN : RED;
+
+    console.log(`  ${sym.padEnd(10)} ${DIM}orig${RESET}  ${oRetColor}${formatPct(oM.totalReturnPct).padStart(10)}${RESET} ${oM.sharpeRatio.toFixed(2).padStart(8)} ${(oM.winRate * 100).toFixed(0).padStart(5)}% ${RED}${formatPct(oM.maxDrawdownPct).padStart(8)}${RESET} ${String(oM.totalTrades).padStart(8)}`);
+    console.log(`  ${''.padEnd(10)} ${CYAN}adapt${RESET} ${aRetColor}${formatPct(aM.totalReturnPct).padStart(10)}${RESET} ${aM.sharpeRatio.toFixed(2).padStart(8)} ${(aM.winRate * 100).toFixed(0).padStart(5)}% ${RED}${formatPct(aM.maxDrawdownPct).padStart(8)}${RESET} ${String(aM.totalTrades).padStart(8)}`);
+
+    const retDelta = aM.totalReturnPct - oM.totalReturnPct;
+    const deltaColor = retDelta > 0 ? GREEN : retDelta < 0 ? RED : YELLOW;
+    console.log(`  ${''.padEnd(10)} ${deltaColor}delta ${(retDelta > 0 ? '+' : '') + formatPct(retDelta).padStart(10)}${RESET} ${(aM.sharpeRatio - oM.sharpeRatio).toFixed(2).padStart(8)}`);
+    console.log('');
+  }
+
+  // Aggregate metrics
+  const avgOrigReturn = origResults.reduce((s, r) => s + r.metrics.totalReturnPct, 0) / origResults.length;
+  const avgAdaptReturn = adaptResults.reduce((s, r) => s + r.metrics.totalReturnPct, 0) / adaptResults.length;
+  const avgOrigSharpe = origResults.reduce((s, r) => s + r.metrics.sharpeRatio, 0) / origResults.length;
+  const avgAdaptSharpe = adaptResults.reduce((s, r) => s + r.metrics.sharpeRatio, 0) / adaptResults.length;
+
+  console.log(`  ${BOLD}${'AVERAGE'.padEnd(10)}${RESET} ${DIM}orig${RESET}  ${formatPct(avgOrigReturn).padStart(10)} ${avgOrigSharpe.toFixed(2).padStart(8)}`);
+  console.log(`  ${''.padEnd(10)} ${CYAN}adapt${RESET} ${formatPct(avgAdaptReturn).padStart(10)} ${avgAdaptSharpe.toFixed(2).padStart(8)}`);
+
+  // Meta-learning from adaptive results
+  const allSnapshots = adaptResults.flatMap(r => r.tradeSnapshots || []);
+  if (allSnapshots.length > 0) {
+    const meta = generateMetaLearningReport(allSnapshots);
+    console.log(`\n  ${BOLD}Meta-Learning (Real Data):${RESET}`);
+    for (const rec of meta.recommendations) {
+      console.log(`    ${DIM}${rec}${RESET}`);
+    }
+    if (meta.indicatorRankings.length > 0) {
+      console.log(`\n  ${BOLD}Indicator Rankings (Real Data):${RESET}`);
+      for (const ir of meta.indicatorRankings.slice(0, 6)) {
+        const accColor = ir.accuracy >= 0.55 ? GREEN : ir.accuracy < 0.45 ? RED : YELLOW;
+        console.log(`    ${ir.name.padEnd(12)} ${accColor}${(ir.accuracy * 100).toFixed(0)}% accurate${RESET}`);
+      }
+    }
+  }
+
+  // Regime distribution from adaptive
+  if (adaptResults.length > 0 && adaptResults[0].regimeDistribution) {
+    console.log(`\n  ${BOLD}Regime Distribution (Real Data):${RESET}`);
+    for (const r of adaptResults) {
+      const total = Object.values(r.regimeDistribution).reduce((s, v) => s + v, 0) || 1;
+      const parts = Object.entries(r.regimeDistribution).map(([k, v]) => `${k}: ${((v / total) * 100).toFixed(0)}%`).join(', ');
+      console.log(`    ${r.trades[0]?.symbol || '?'}: ${DIM}${parts}${RESET}`);
+    }
+  }
+
+  // Verdict
+  const retDelta = avgAdaptReturn - avgOrigReturn;
+  console.log(`\n${hr('=')}`);
+  if (retDelta > 0.5) {
+    console.log(`${GREEN}${BOLD}ADAPTIVE WINS ON REAL DATA${RESET} — +${retDelta.toFixed(1)}% avg return`);
+  } else if (retDelta > -0.5) {
+    console.log(`${YELLOW}${BOLD}ESSENTIALLY TIED${RESET} — ${retDelta.toFixed(1)}% delta (within noise)`);
+  } else {
+    console.log(`${RED}${BOLD}ORIGINAL WINS ON REAL DATA${RESET} — ${retDelta.toFixed(1)}% avg return`);
+  }
+  console.log('');
+}
+
 async function adaptiveBenchmark(): Promise<void> {
   console.log(`\n${BOLD}${CYAN}NVR CAPITAL — ADAPTIVE vs ORIGINAL BENCHMARK${RESET}\n`);
   console.log(`${DIM}Head-to-head: same datasets, same confidence gate${RESET}\n`);
@@ -537,6 +677,7 @@ const MODES: Record<string, () => Promise<void>> = {
   'fast-optimize': fastOptimize,
   improve,
   'adaptive-benchmark': adaptiveBenchmark,
+  'real-benchmark': realBenchmark,
   validate,
   stress,
   compare,
