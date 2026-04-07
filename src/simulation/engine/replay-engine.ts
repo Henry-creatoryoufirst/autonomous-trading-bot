@@ -70,7 +70,6 @@ function calculateSimConfluence(prices: number[]): number {
   if (bb) {
     if (bb.signal === 'OVERSOLD') score += 20;
     else if (bb.signal === 'OVERBOUGHT') score -= 20;
-    // Squeeze bonus: tight bands suggest breakout coming
     if (bb.bandwidth !== undefined && bb.bandwidth < 2) score += 5;
   }
 
