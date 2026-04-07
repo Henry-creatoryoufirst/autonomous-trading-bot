@@ -15,9 +15,10 @@
 
 import { generateSyntheticData } from '../src/simulation/data/historical-data.js';
 import { runReplay } from '../src/simulation/engine/replay-engine.js';
+import { runAdaptiveReplay } from '../src/simulation/engine/adaptive-replay-engine.js';
 import { calculateAggregateConfidence } from '../src/simulation/scoring/confidence-scorer.js';
 import { DEFAULT_STRATEGY_PARAMS, DEFAULT_CONFIDENCE_CONFIG } from '../src/simulation/types.js';
-import type { HistoricalDataset, ReplayResult, ConfidenceScore, MarketCondition } from '../src/simulation/types.js';
+import type { HistoricalDataset, ReplayResult, ConfidenceScore, MarketCondition, AdaptiveReplayConfig } from '../src/simulation/types.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -78,6 +79,49 @@ export function runConfidenceGate(
     minimumConfidence: threshold,
   };
   const score = calculateAggregateConfidence(results, config);
+
+  return {
+    score,
+    results,
+    threshold,
+    passed: score.passesThreshold,
+  };
+}
+
+// ============================================================================
+// ADAPTIVE CONFIDENCE GATE
+// ============================================================================
+
+export function runAdaptiveConfidenceGate(
+  threshold: number = CONFIDENCE_MIN,
+  strategyParams = DEFAULT_STRATEGY_PARAMS,
+  adaptiveConfig?: Partial<AdaptiveReplayConfig>,
+): GateResult {
+  const datasets: HistoricalDataset[] = MARKET_SCENARIOS.map(scenario =>
+    generateSyntheticData({
+      symbol: `BTC-${scenario.label}`,
+      startPrice: scenario.startPrice,
+      candles: scenario.days * 24,
+      drift: scenario.drift,
+      volatility: scenario.volatility,
+      seed: scenario.seed,
+    })
+  );
+
+  const config: AdaptiveReplayConfig = {
+    strategy: strategyParams,
+    ...adaptiveConfig,
+  };
+
+  const results: ReplayResult[] = datasets.map(ds =>
+    runAdaptiveReplay([ds], config)
+  );
+
+  const scorerConfig = {
+    ...DEFAULT_CONFIDENCE_CONFIG,
+    minimumConfidence: threshold,
+  };
+  const score = calculateAggregateConfidence(results, scorerConfig);
 
   return {
     score,
