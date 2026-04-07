@@ -297,14 +297,13 @@ export const ARBITRUM_TOKEN_REGISTRY: Record<string, {
 // CHAIN-AWARE REGISTRY GETTER
 // ============================================================================
 
-import { activeChain } from './chain-config.js';
-
 /**
- * Get the token registry for the active chain.
+ * Get the token registry for a given chain name.
  * Falls back to the Base registry (default) for backwards compatibility.
+ * Uses chain name string instead of importing activeChain to avoid circular deps.
  */
-export function getActiveTokenRegistry(): typeof TOKEN_REGISTRY {
-  switch (activeChain.name.toLowerCase()) {
+export function getTokenRegistryForChain(chainName: string): typeof TOKEN_REGISTRY {
+  switch (chainName.toLowerCase()) {
     case 'ethereum': return ETHEREUM_TOKEN_REGISTRY;
     case 'arbitrum': return ARBITRUM_TOKEN_REGISTRY;
     default: return TOKEN_REGISTRY; // Base

@@ -524,13 +524,16 @@ export class TokenDiscoveryEngine {
     console.log(`  🔍 Token Discovery Engine started (full scan: ${fullHours}h, momentum: ${momentumMin}m)`);
 
     // Run initial full scan after 30 seconds (let the bot boot first)
-    // If it fails, retry after 2 minutes
-    setTimeout(async () => {
-      const results = await this.runScan();
-      if (results.length === 0) {
-        console.log(`  🔍 Initial scan found 0 tokens — retrying in 2 minutes...`);
-        setTimeout(() => this.runScan(), 120_000);
-      }
+    // Wrapped in try/catch to prevent unhandled promise rejection from crashing the process
+    setTimeout(() => {
+      this.runScan().then(results => {
+        if (results.length === 0) {
+          console.log(`  🔍 Initial scan found 0 tokens — retrying in 2 minutes...`);
+          setTimeout(() => this.runScan().catch(e => console.warn('  ⚠️ Retry scan failed:', (e as Error).message)), 120_000);
+        }
+      }).catch(err => {
+        console.warn(`  ⚠️ Initial discovery scan failed (non-fatal):`, (err as Error).message);
+      });
     }, 30_000);
 
     // Full scan on schedule
