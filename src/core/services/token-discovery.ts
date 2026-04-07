@@ -126,6 +126,8 @@ export interface DiscoveredToken {
   pairAddress: string;
   /** Minimum trade in USD (derived from liquidity) */
   minTradeUSD: number;
+  /** Whether this token is also in the static TOKEN_REGISTRY */
+  isStatic?: boolean;
 }
 
 export interface TokenDiscoveryState {
@@ -592,7 +594,8 @@ export class TokenDiscoveryEngine {
 
       let newFinds = 0;
       for (const token of momentum) {
-        if (this.staticSymbols.has(token.symbol.toUpperCase())) continue;
+        // Tag static tokens but DON'T skip them — track their momentum
+        const isStatic = this.staticSymbols.has(token.symbol.toUpperCase());
         if (existingAddresses.has(token.address.toLowerCase())) {
           // Update existing token's price/volume data
           const existing = this.state.discoveredTokens.find(
@@ -609,7 +612,7 @@ export class TokenDiscoveryEngine {
         }
 
         // New token found by momentum scan
-        this.state.discoveredTokens.push(token);
+        this.state.discoveredTokens.push({ ...token, isStatic });
         existingAddresses.add(token.address.toLowerCase());
         newFinds++;
       }
@@ -640,8 +643,14 @@ export class TokenDiscoveryEngine {
       // Scan DexScreener
       const discovered = await scanDexScreener();
 
-      // Filter out tokens that are already in the static registry
-      const newTokens = discovered.filter(t => !this.staticSymbols.has(t.symbol.toUpperCase()));
+      // Tag tokens that overlap with static registry — but keep them in the pool
+      // so discovery can track their momentum, volume spikes, and price action.
+      // Previously this was a hard filter that removed ALL registry tokens,
+      // causing the bot to miss 30-50% runners on tokens it already knew about.
+      const newTokens = discovered.map(t => ({
+        ...t,
+        isStatic: this.staticSymbols.has(t.symbol.toUpperCase()),
+      }));
 
       // Resolve CoinGecko IDs (rate-limited, so only run occasionally)
       if (this.state.totalScans % 4 === 0) { // Every 4th scan (~24h)
@@ -678,9 +687,21 @@ export class TokenDiscoveryEngine {
       this.state.totalScans++;
       this.state.lastError = null;
 
-      console.log(`   📊 Discovery pool: ${newTokens.length} tokens | Top by volume:`);
+      const staticCount = newTokens.filter(t => t.isStatic).length;
+      const freshCount = newTokens.length - staticCount;
+      console.log(`   📊 Discovery pool: ${newTokens.length} tokens (${freshCount} new + ${staticCount} static) | Top by volume:`);
       for (const t of newTokens.slice(0, 5)) {
-        console.log(`      ${t.symbol}: $${(t.volume24hUSD / 1000).toFixed(0)}K vol | $${(t.liquidityUSD / 1000).toFixed(0)}K liq | ${t.sector}`);
+        const tag = t.isStatic ? " [STATIC]" : "";
+        console.log(`      ${t.symbol}${tag}: $${(t.volume24hUSD / 1000).toFixed(0)}K vol | $${(t.liquidityUSD / 1000).toFixed(0)}K liq | ${t.sector}`);
+      }
+
+      // Log hot movers (runners the bot should pay attention to)
+      const hotMovers = newTokens.filter(t => t.priceChange24h >= 20 && t.volume24hUSD >= 50_000);
+      if (hotMovers.length > 0) {
+        console.log(`   🔥 HOT MOVERS (20%+ in 24h):`);
+        for (const t of hotMovers.sort((a, b) => b.priceChange24h - a.priceChange24h).slice(0, 5)) {
+          console.log(`      ${t.symbol}: +${t.priceChange24h.toFixed(1)}% | $${(t.volume24hUSD / 1000).toFixed(0)}K vol${t.isStatic ? " [STATIC]" : ""}`);
+        }
       }
 
       return newTokens;
@@ -757,8 +778,9 @@ export class TokenDiscoveryEngine {
         txnScore * 0.15
       ) * 100;
 
-      // Runner detection: 50%+ gain with meaningful volume = forced inclusion
-      const isRunner = t.priceChange24h >= 50 && t.volume24hUSD >= 100_000;
+      // Runner detection: 30%+ gain with meaningful volume = forced inclusion
+      // Lowered from 50% — a 40% pump like PLAY/EDGE should absolutely flag
+      const isRunner = t.priceChange24h >= 30 && t.volume24hUSD >= 100_000;
 
       return { ...t, compositeScore: Math.round(compositeScore * 10) / 10, isRunner };
     });
@@ -799,7 +821,8 @@ export class TokenDiscoveryEngine {
     return this.state.discoveredTokens.filter(t => t.sector === sector);
   }
 
-  /** Export discovered tokens in TOKEN_REGISTRY format for the agent */
+  /** Export discovered tokens in TOKEN_REGISTRY format for the agent.
+   *  Only exports NON-static tokens (static ones are already in TOKEN_REGISTRY). */
   toRegistryFormat(): Record<string, {
     address: string;
     symbol: string;
@@ -813,6 +836,7 @@ export class TokenDiscoveryEngine {
   }> {
     const registry: Record<string, any> = {};
     for (const token of this.getTradableTokens()) {
+      if (token.isStatic) continue; // Already in TOKEN_REGISTRY — don't duplicate
       registry[token.symbol] = {
         address: token.address,
         symbol: token.symbol,
@@ -826,6 +850,15 @@ export class TokenDiscoveryEngine {
       };
     }
     return registry;
+  }
+
+  /** Get tokens with significant momentum — includes static registry tokens.
+   *  This is the key method for catching runners like PLAY +47%, EDGE +30%.
+   *  Returns tokens sorted by 24h price change (highest first). */
+  getHotMovers(minPriceChange: number = 10): DiscoveredToken[] {
+    return this.state.discoveredTokens
+      .filter(t => t.priceChange24h >= minPriceChange && t.volume24hUSD >= 50_000)
+      .sort((a, b) => b.priceChange24h - a.priceChange24h);
   }
 
   /** Restore state from persisted data */

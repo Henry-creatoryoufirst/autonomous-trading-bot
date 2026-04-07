@@ -790,6 +790,8 @@ export function handleDiscovery(
 ): void {
   if (ctx.tokenDiscoveryEngine) {
     const discoveryState = ctx.tokenDiscoveryEngine.getState();
+    const topOpps = ctx.tokenDiscoveryEngine.getTopOpportunities(5);
+    const hotMovers = ctx.tokenDiscoveryEngine.getHotMovers(10);
     ctx.sendJSON(res, 200, {
       ...discoveryState,
       tradableTokens: ctx.tokenDiscoveryEngine.getTradableTokens().length,
@@ -803,6 +805,24 @@ export function handleDiscovery(
         change24h: t.priceChange24h,
         dex: t.dexName,
         hasCoinGecko: !!t.coingeckoId,
+        isStatic: !!t.isStatic,
+      })),
+      topOpportunities: topOpps.map(t => ({
+        symbol: t.symbol,
+        name: t.name,
+        change24h: t.priceChange24h,
+        volume24h: t.volume24hUSD,
+        compositeScore: t.compositeScore,
+        isRunner: t.isRunner,
+        isStatic: !!t.isStatic,
+      })),
+      hotMovers: hotMovers.slice(0, 10).map(t => ({
+        symbol: t.symbol,
+        name: t.name,
+        change24h: t.priceChange24h,
+        volume24h: t.volume24hUSD,
+        liquidity: t.liquidityUSD,
+        isStatic: !!t.isStatic,
       })),
     });
   } else {
