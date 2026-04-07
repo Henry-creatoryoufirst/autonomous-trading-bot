@@ -229,17 +229,22 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
           const name = attrs.name || '';
           const parts = name.split(' / ');
           const symbol = parts[0]?.trim() || '';
-          const address = pool.relationships?.base_token?.data?.id?.split('_')[1] || '';
+          // GeckoTerminal IDs are formatted as "base_0xABC..." — strip the chain prefix
+          const rawId = pool.relationships?.base_token?.data?.id || '';
+          const address = rawId.includes('_') ? rawId.split('_').slice(1).join('_') : rawId;
 
-          if (!address || !symbol) continue;
+          if (!address || !symbol || !address.startsWith('0x')) continue;
           if (seenAddresses.has(address.toLowerCase())) continue;
           seenAddresses.add(address.toLowerCase());
 
           // Convert GeckoTerminal format to DexScreenerPair shape
-          const vol24h = parseFloat(attrs.volume_usd?.h24 || '0');
+          // volume_usd and transactions are nested by time period
+          const volObj = attrs.volume_usd || {};
+          const vol24h = parseFloat(volObj.h24 || volObj.h6 || '0');
           const liq = parseFloat(attrs.reserve_in_usd || '0');
-          const txBuys = attrs.transactions?.h24?.buys || 0;
-          const txSells = attrs.transactions?.h24?.sells || 0;
+          const txObj = attrs.transactions?.h24 || {};
+          const txBuys = txObj.buys || 0;
+          const txSells = txObj.sells || 0;
 
           basePairs.push({
             chainId,
@@ -252,9 +257,9 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
             priceUsd: attrs.base_token_price_usd || '0',
             txns: { h24: { buys: txBuys, sells: txSells } },
             volume: { h24: vol24h },
-            priceChange: { h24: parseFloat(attrs.price_change_percentage?.h24 || '0') },
+            priceChange: { h24: parseFloat(attrs.price_change_percentage?.h24 || attrs.price_change_percentage?.h6 || '0') },
             liquidity: { usd: liq },
-            fdv: parseFloat(attrs.fdv_usd || '0'),
+            fdv: parseFloat(String(attrs.fdv_usd || '0')),
             pairCreatedAt: attrs.pool_created_at ? new Date(attrs.pool_created_at).getTime() : 0,
           });
         }
