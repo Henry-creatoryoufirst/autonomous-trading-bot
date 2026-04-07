@@ -209,50 +209,60 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
   const discovered: DiscoveredToken[] = [];
   const cfg = TOKEN_DISCOVERY_CONFIG;
   const chainId = activeChain.dexScreenerChainId;
+  const geckoNetwork = activeChain.geckoTerminalNetwork;
 
   try {
-    console.log(`  🔍 Token Discovery: Scanning DexScreener for ${chainId}...`);
+    console.log(`  🔍 Token Discovery: Scanning GeckoTerminal + DexScreener for ${chainId}...`);
 
-    // Strategy: use multiple search terms to find diverse tokens on our chain
-    const searchTerms = ['defi', 'ai', 'meme', 'swap', 'token', 'protocol', 'finance'];
-    let allPairs: DexScreenerPair[] = [];
-
-    for (const term of searchTerms) {
-      try {
-        const url = `${cfg.baseDexScreenerUrl}/search?q=${term}`;
-        const response = await axios.get(url, { timeout: 10000 });
-        const pairs: DexScreenerPair[] = response.data?.pairs || [];
-        const chainPairs = pairs.filter(p => p.chainId === chainId);
-        allPairs.push(...chainPairs);
-      } catch { /* skip failed searches */ }
-    }
-
-    // Also try direct token search for known Base ecosystem tokens
-    const knownTokenAddresses = [
-      '0xA88594D404727625A9437C3f886C7643872296AE', // WELL
-      '0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf', // VVV
-      '0x696F9436B67233384889472Cd7cD58A6fB5DF4f1', // AVNT
-      '0x6985884C4392D348587B19cb9eAAf157F13271cd', // ZRO
-    ];
-    for (const addr of knownTokenAddresses) {
-      try {
-        const res = await axios.get(`${cfg.baseDexScreenerUrl}/tokens/${addr}`, { timeout: 8000 });
-        const tokenPairs = (res.data?.pairs || []).filter((p: DexScreenerPair) => p.chainId === chainId);
-        allPairs.push(...tokenPairs);
-      } catch { /* skip */ }
-    }
-
-    // Deduplicate by base token address
-    const seenAddresses = new Set<string>();
+    // PRIMARY SOURCE: GeckoTerminal trending pools — returns real tokens by volume
     const basePairs: DexScreenerPair[] = [];
-    for (const pair of allPairs) {
-      const addr = pair.baseToken.address.toLowerCase();
-      if (!seenAddresses.has(addr)) {
-        seenAddresses.add(addr);
-        basePairs.push(pair);
-      }
+    const seenAddresses = new Set<string>();
+
+    for (const page of [1, 2, 3]) {
+      try {
+        const gtUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/trending_pools?page=${page}`;
+        const gtRes = await axios.get(gtUrl, { timeout: 10000 });
+        const pools = gtRes.data?.data || [];
+
+        for (const pool of pools) {
+          const attrs = pool.attributes || {};
+          const name = attrs.name || '';
+          const parts = name.split(' / ');
+          const symbol = parts[0]?.trim() || '';
+          const address = pool.relationships?.base_token?.data?.id?.split('_')[1] || '';
+
+          if (!address || !symbol) continue;
+          if (seenAddresses.has(address.toLowerCase())) continue;
+          seenAddresses.add(address.toLowerCase());
+
+          // Convert GeckoTerminal format to DexScreenerPair shape
+          const vol24h = parseFloat(attrs.volume_usd?.h24 || '0');
+          const liq = parseFloat(attrs.reserve_in_usd || '0');
+          const txBuys = attrs.transactions?.h24?.buys || 0;
+          const txSells = attrs.transactions?.h24?.sells || 0;
+
+          basePairs.push({
+            chainId,
+            dexId: attrs.dex_id || 'unknown',
+            url: '',
+            pairAddress: pool.attributes?.address || '',
+            baseToken: { address, name: symbol, symbol },
+            quoteToken: { address: '', name: '', symbol: '' },
+            priceNative: '0',
+            priceUsd: attrs.base_token_price_usd || '0',
+            txns: { h24: { buys: txBuys, sells: txSells } },
+            volume: { h24: vol24h },
+            priceChange: { h24: parseFloat(attrs.price_change_percentage?.h24 || '0') },
+            liquidity: { usd: liq },
+            fdv: parseFloat(attrs.fdv_usd || '0'),
+            pairCreatedAt: attrs.pool_created_at ? new Date(attrs.pool_created_at).getTime() : 0,
+          });
+        }
+      } catch { /* skip page failures */ }
     }
-    console.log(`  📊 Found ${basePairs.length} unique ${chainId} tokens`);
+
+    // SECONDARY: DexScreener boosted tokens (already existed)
+    console.log(`  📊 GeckoTerminal found ${basePairs.length} unique ${chainId} tokens`);
 
     // Also try the top boosted tokens endpoint
     let boostedPairs: DexScreenerPair[] = [];
