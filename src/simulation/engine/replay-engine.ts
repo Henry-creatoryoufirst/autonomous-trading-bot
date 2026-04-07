@@ -157,9 +157,15 @@ export function runReplay(
   const firstPrices = new Map<string, number>();
   const symbols = datasets.map(d => d.symbol);
 
-  // Track candle indices per symbol for price history slicing
-  const candleIndexBySymbol = new Map<string, number>();
-  for (const sym of symbols) candleIndexBySymbol.set(sym, 0);
+  // Pre-build timestamp→index maps for O(1) lookups (was O(n) linear scan)
+  const timestampIndexBySymbol = new Map<string, Map<number, number>>();
+  for (const ds of datasets) {
+    const indexMap = new Map<number, number>();
+    for (let j = 0; j < ds.candles.length; j++) {
+      indexMap.set(ds.candles[j].timestamp, j + 1); // +1 because we use as slice end
+    }
+    timestampIndexBySymbol.set(ds.symbol, indexMap);
+  }
 
   let candlesProcessed = 0;
 
@@ -195,13 +201,9 @@ export function runReplay(
       const closePrices = closePricesBySymbol.get(sym);
       if (!closePrices) continue;
 
-      // Find how many prices are up to this tick
-      const allTimestamps = datasets.find(d => d.symbol === sym)!.candles;
-      let idx = 0;
-      for (let j = 0; j < allTimestamps.length; j++) {
-        if (allTimestamps[j].timestamp <= tick) idx = j + 1;
-        else break;
-      }
+      // O(1) timestamp→index lookup (pre-built map)
+      const indexMap = timestampIndexBySymbol.get(sym);
+      const idx = indexMap?.get(tick) ?? 0;
 
       if (idx < warmup) continue;
 

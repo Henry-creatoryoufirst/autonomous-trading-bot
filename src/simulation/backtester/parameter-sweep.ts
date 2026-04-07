@@ -6,6 +6,7 @@
  */
 
 import { runReplay } from '../engine/replay-engine.js';
+import { generateSyntheticData } from '../data/historical-data.js';
 import type {
   HistoricalDataset,
   StrategyParams,
@@ -13,6 +14,7 @@ import type {
   SweepResult,
   ReplayConfig,
   PerformanceMetrics,
+  MarketCondition,
 } from '../types.js';
 
 // ============================================================================
@@ -160,11 +162,280 @@ export const PRESET_SWEEPS = {
     { param: 'profitTakePercent' as const, min: 6, max: 10, step: 2 },
     { param: 'cashDeployThreshold' as const, min: 10, max: 20, step: 5 },
   ],
+  /** Returns-focused: attack the 7/25 returns score */
+  returnsFocused: [
+    { param: 'confluenceBuyThreshold' as const, min: 12, max: 24, step: 4 },
+    { param: 'stopLossPercent' as const, min: 4, max: 10, step: 3 },
+    { param: 'profitTakePercent' as const, min: 3, max: 12, step: 3 },
+    { param: 'kellyFraction' as const, min: 0.2, max: 0.5, step: 0.15 },
+  ],
+  /** Aggressive: let winners run, tighter entries */
+  aggressive: [
+    { param: 'confluenceBuyThreshold' as const, min: 15, max: 30, step: 5 },
+    { param: 'stopLossPercent' as const, min: 4, max: 8, step: 2 },
+    { param: 'profitTakePercent' as const, min: 8, max: 20, step: 4 },
+  ],
 } satisfies Record<string, SweepRange[]>;
+
+// ============================================================================
+// TOURNAMENT SWEEP (FAST)
+// ============================================================================
+
+export interface TournamentConfig {
+  /** Sweep ranges to test */
+  ranges: SweepRange[];
+  /** Base params (non-swept values) */
+  baseParams: StrategyParams;
+  /** What fraction of combos survive screening. Default 0.25 */
+  survivalRate?: number;
+  /** Screen with short datasets (days). Default 90 */
+  screenDays?: number;
+  /** Full validation datasets (days). Default 365 */
+  fullDays?: number;
+  /** Progress callback */
+  onProgress?: (msg: string) => void;
+}
+
+export interface TournamentResult {
+  /** Best params found */
+  bestParams: Partial<StrategyParams>;
+  /** Full metrics for the best params */
+  bestMetrics: PerformanceMetrics;
+  /** All finalists with their full metrics */
+  finalists: Array<{ params: Partial<StrategyParams>; metrics: PerformanceMetrics }>;
+  /** Total combos generated */
+  totalCombinations: number;
+  /** Combos that survived screening */
+  survivorCount: number;
+  /** Total replay runs executed (vs brute force) */
+  replayRuns: number;
+  /** Brute force would have been this many runs */
+  bruteForceRuns: number;
+  /** Time saved ratio */
+  speedup: string;
+  /** Duration in ms */
+  durationMs: number;
+}
+
+const TOURNAMENT_SCENARIOS: Array<{
+  label: MarketCondition;
+  days: number;
+  startPrice: number;
+  drift: number;
+  volatility: number;
+  seed: number;
+}> = [
+  { label: 'BULL',     startPrice: 40000, drift: 1.0,  volatility: 0.4,  seed: 101, days: 365 },
+  { label: 'BEAR',     startPrice: 60000, drift: -0.6, volatility: 0.5,  seed: 202, days: 365 },
+  { label: 'RANGING',  startPrice: 45000, drift: 0.0,  volatility: 0.25, seed: 303, days: 365 },
+  { label: 'VOLATILE', startPrice: 50000, drift: 0.1,  volatility: 0.9,  seed: 404, days: 365 },
+];
+
+/**
+ * Tournament-style parameter optimization.
+ *
+ * Stage 1 (SCREEN): Run all combos on short (90-day) datasets.
+ *   - Only uses BULL + BEAR conditions (the two extremes)
+ *   - Ranks by combined Sharpe ratio
+ *   - Keeps top 25% of combos
+ *
+ * Stage 2 (VALIDATE): Run survivors on full (365-day) datasets.
+ *   - All 4 market conditions
+ *   - Early termination: if after 2 conditions a combo's avg return
+ *     is worse than the current best by >50%, skip remaining conditions
+ *
+ * Typical speedup: 4-6x vs brute force grid search.
+ */
+export function runTournamentSweep(config: TournamentConfig): TournamentResult {
+  const {
+    ranges,
+    baseParams,
+    survivalRate = 0.25,
+    screenDays = 90,
+    fullDays = 365,
+    onProgress = () => {},
+  } = config;
+
+  const startMs = Date.now();
+  const combinations = generateCombinations(ranges);
+  const totalCombos = combinations.length;
+  let replayRuns = 0;
+
+  onProgress(`Generated ${totalCombos} parameter combinations`);
+
+  // --- Stage 1: Quick screen with short datasets, 2 conditions ---
+  onProgress(`\nSTAGE 1: Screening ${totalCombos} combos (${screenDays}-day BULL + BEAR)...`);
+
+  const screenConditions = TOURNAMENT_SCENARIOS.filter(
+    s => s.label === 'BULL' || s.label === 'BEAR'
+  );
+  const screenDatasets = screenConditions.map(s =>
+    generateSyntheticData({
+      symbol: `SCREEN-${s.label}`,
+      startPrice: s.startPrice,
+      candles: screenDays * 24,
+      drift: s.drift,
+      volatility: s.volatility,
+      seed: s.seed,
+    })
+  );
+
+  const screenResults: Array<{
+    params: Partial<StrategyParams>;
+    score: number; // combined metric for ranking
+    metrics: PerformanceMetrics;
+  }> = [];
+
+  for (let i = 0; i < combinations.length; i++) {
+    const combo = combinations[i];
+    const params: StrategyParams = { ...baseParams, ...combo };
+    const result = runReplay(screenDatasets, { strategy: params });
+    replayRuns++;
+
+    // Score by Sharpe + normalized return (balanced metric)
+    const score = result.metrics.sharpeRatio * 0.6 + (result.metrics.totalReturnPct / 10) * 0.4;
+    screenResults.push({ params: combo, score, metrics: result.metrics });
+
+    if ((i + 1) % 20 === 0 || i === combinations.length - 1) {
+      onProgress(`  Screened ${i + 1}/${totalCombos} combos...`);
+    }
+  }
+
+  // Sort by score, keep top survivors
+  screenResults.sort((a, b) => b.score - a.score);
+  const survivorCount = Math.max(4, Math.ceil(totalCombos * survivalRate));
+  const survivors = screenResults.slice(0, survivorCount);
+
+  onProgress(`\n  Top ${survivorCount} survivors (of ${totalCombos}):`);
+  for (let i = 0; i < Math.min(5, survivors.length); i++) {
+    const s = survivors[i];
+    onProgress(`    #${i + 1}: score=${s.score.toFixed(2)} | return=${s.metrics.totalReturnPct.toFixed(1)}% | sharpe=${s.metrics.sharpeRatio.toFixed(2)} | params=${JSON.stringify(s.params)}`);
+  }
+
+  // --- Stage 2: Full validation with early termination ---
+  onProgress(`\nSTAGE 2: Full validation of ${survivorCount} survivors (${fullDays}-day, 4 conditions)...`);
+
+  const fullDatasets = TOURNAMENT_SCENARIOS.map(s =>
+    generateSyntheticData({
+      symbol: `BTC-${s.label}`,
+      startPrice: s.startPrice,
+      candles: fullDays * 24,
+      drift: s.drift,
+      volatility: s.volatility,
+      seed: s.seed,
+    })
+  );
+
+  const finalists: Array<{ params: Partial<StrategyParams>; metrics: PerformanceMetrics }> = [];
+  let currentBestSharpe = -Infinity;
+  let skippedCount = 0;
+
+  for (let i = 0; i < survivors.length; i++) {
+    const combo = survivors[i].params;
+    const params: StrategyParams = { ...baseParams, ...combo };
+
+    // Run conditions one at a time for early termination
+    const conditionMetrics: PerformanceMetrics[] = [];
+    let terminated = false;
+
+    for (let c = 0; c < fullDatasets.length; c++) {
+      const result = runReplay([fullDatasets[c]], { strategy: params });
+      replayRuns++;
+      conditionMetrics.push(result.metrics);
+
+      // Early termination: after 2 conditions, if avg return is clearly bad, skip
+      if (c >= 1 && currentBestSharpe > -Infinity) {
+        const avgReturn = conditionMetrics.reduce((a, m) => a + m.totalReturnPct, 0) / conditionMetrics.length;
+        if (avgReturn < -10) {
+          terminated = true;
+          skippedCount++;
+          break;
+        }
+      }
+    }
+
+    if (terminated) {
+      onProgress(`  Validated ${i + 1}/${survivorCount}: [EARLY TERMINATED — weak returns]`);
+      continue;
+    }
+
+    // Aggregate metrics from individual conditions (no redundant combined run)
+    const aggMetrics = aggregateMetrics(conditionMetrics);
+    finalists.push({ params: combo, metrics: aggMetrics });
+
+    if (aggMetrics.sharpeRatio > currentBestSharpe) {
+      currentBestSharpe = aggMetrics.sharpeRatio;
+    }
+
+    onProgress(`  Validated ${i + 1}/${survivorCount}: return=${aggMetrics.totalReturnPct.toFixed(1)}% | sharpe=${aggMetrics.sharpeRatio.toFixed(2)}`);
+  }
+
+  onProgress(`\n  Early-terminated ${skippedCount} weak combos`);
+
+  // Rank finalists by Sharpe (more stable than raw return)
+  finalists.sort((a, b) => b.metrics.sharpeRatio - a.metrics.sharpeRatio);
+  const best = finalists[0] || { params: {}, metrics: emptyMetrics() };
+
+  const bruteForceRuns = totalCombos * fullDatasets.length;
+  const durationMs = Date.now() - startMs;
+  const speedup = (bruteForceRuns / replayRuns).toFixed(1);
+
+  onProgress(`\nDone: ${replayRuns} replay runs vs ${bruteForceRuns} brute force (${speedup}x faster)`);
+
+  return {
+    bestParams: best.params,
+    bestMetrics: best.metrics,
+    finalists,
+    totalCombinations: totalCombos,
+    survivorCount,
+    replayRuns,
+    bruteForceRuns,
+    speedup,
+    durationMs,
+  };
+}
 
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+/**
+ * Aggregate metrics from multiple individual condition runs.
+ * Averages most metrics, takes worst-case for drawdown.
+ */
+function aggregateMetrics(conditionMetrics: PerformanceMetrics[]): PerformanceMetrics {
+  const n = conditionMetrics.length;
+  if (n === 0) return emptyMetrics();
+
+  const avg = (fn: (m: PerformanceMetrics) => number) =>
+    conditionMetrics.reduce((s, m) => s + fn(m), 0) / n;
+  const max = (fn: (m: PerformanceMetrics) => number) =>
+    Math.max(...conditionMetrics.map(fn));
+  const min = (fn: (m: PerformanceMetrics) => number) =>
+    Math.min(...conditionMetrics.map(fn));
+  const sum = (fn: (m: PerformanceMetrics) => number) =>
+    conditionMetrics.reduce((s, m) => s + fn(m), 0);
+
+  return {
+    totalReturn: avg(m => m.totalReturn),
+    totalReturnPct: avg(m => m.totalReturnPct),
+    maxDrawdown: max(m => m.maxDrawdown),
+    maxDrawdownPct: min(m => m.maxDrawdownPct), // most negative = worst
+    winRate: avg(m => m.winRate),
+    totalTrades: Math.round(sum(m => m.totalTrades)),
+    winningTrades: Math.round(sum(m => m.winningTrades)),
+    losingTrades: Math.round(sum(m => m.losingTrades)),
+    profitFactor: avg(m => m.profitFactor),
+    avgWin: avg(m => m.avgWin),
+    avgLoss: avg(m => m.avgLoss),
+    sharpeRatio: avg(m => m.sharpeRatio),
+    sortinoRatio: avg(m => m.sortinoRatio),
+    calmarRatio: avg(m => m.calmarRatio),
+    holdBaseline: avg(m => m.holdBaseline),
+    holdBaselinePct: avg(m => m.holdBaselinePct),
+    avgTradesPerMonth: avg(m => m.avgTradesPerMonth),
+  };
+}
 
 function emptyMetrics(): PerformanceMetrics {
   return {

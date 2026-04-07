@@ -17,8 +17,9 @@ import { generateSyntheticData } from '../src/simulation/data/historical-data.js
 import { runReplay } from '../src/simulation/engine/replay-engine.js';
 import { walkForwardSplit } from '../src/simulation/engine/market-simulator.js';
 import { calculateAggregateConfidence } from '../src/simulation/scoring/confidence-scorer.js';
-import { runParameterSweep, PRESET_SWEEPS } from '../src/simulation/backtester/parameter-sweep.js';
+import { runParameterSweep, runTournamentSweep, PRESET_SWEEPS } from '../src/simulation/backtester/parameter-sweep.js';
 import { compareStrategies, getPresetVariants } from '../src/simulation/backtester/strategy-tester.js';
+import { runImprovementLoop } from '../src/simulation/self-improvement/loop.js';
 import { DEFAULT_STRATEGY_PARAMS, DEFAULT_CONFIDENCE_CONFIG } from '../src/simulation/types.js';
 import type { HistoricalDataset, StrategyParams, MarketCondition, ReplayResult, ConfidenceScore } from '../src/simulation/types.js';
 import { runConfidenceGate } from './confidence-gate.js';
@@ -186,6 +187,96 @@ async function optimize(): Promise<void> {
   console.log('');
 }
 
+async function fastOptimize(): Promise<void> {
+  // Allow selecting sweep preset via CLI arg: fast-optimize [preset]
+  const presetName = (process.argv[3] || 'returnsFocused') as keyof typeof PRESET_SWEEPS;
+  const ranges = PRESET_SWEEPS[presetName] || PRESET_SWEEPS.returnsFocused;
+
+  console.log(`\n${BOLD}${CYAN}NVR CAPITAL — FAST TOURNAMENT OPTIMIZER${RESET}\n`);
+  console.log(`${DIM}Preset: ${presetName}${RESET}`);
+  console.log(`${DIM}2-stage tournament: screen with short data → validate survivors with full data${RESET}`);
+  console.log(`${DIM}Early termination kills weak combos mid-run${RESET}\n`);
+
+  const result = runTournamentSweep({
+    ranges,
+    baseParams: DEFAULT_STRATEGY_PARAMS,
+    survivalRate: 0.25,
+    screenDays: 90,
+    fullDays: 365,
+    onProgress: (msg) => console.log(msg),
+  });
+
+  console.log(`\n${hr('=')}`);
+  console.log(`${BOLD}TOURNAMENT RESULTS${RESET}\n`);
+  console.log(`  Total combos:    ${result.totalCombinations}`);
+  console.log(`  Survivors:       ${result.survivorCount}`);
+  console.log(`  Replay runs:     ${result.replayRuns} ${DIM}(vs ${result.bruteForceRuns} brute force)${RESET}`);
+  console.log(`  Speedup:         ${GREEN}${result.speedup}x faster${RESET}`);
+  console.log(`  Duration:        ${(result.durationMs / 1000).toFixed(1)}s`);
+
+  // Show top 5 finalists
+  console.log(`\n${BOLD}Top 5 Finalists:${RESET}`);
+  console.log(`${'Rank'.padEnd(6)} ${'Return'.padStart(10)} ${'Sharpe'.padStart(8)} ${'Win%'.padStart(6)} ${'MaxDD'.padStart(8)} ${'Params'}`);
+  console.log(hr());
+
+  for (let i = 0; i < Math.min(5, result.finalists.length); i++) {
+    const f = result.finalists[i];
+    const returnColor = f.metrics.totalReturnPct >= 0 ? GREEN : RED;
+    console.log(
+      `${('#' + (i + 1)).padEnd(6)} ` +
+      `${returnColor}${formatPct(f.metrics.totalReturnPct).padStart(10)}${RESET} ` +
+      `${f.metrics.sharpeRatio.toFixed(2).padStart(8)} ` +
+      `${(f.metrics.winRate * 100).toFixed(0).padStart(5)}% ` +
+      `${RED}${formatPct(f.metrics.maxDrawdownPct).padStart(8)}${RESET} ` +
+      `${DIM}${JSON.stringify(f.params)}${RESET}`
+    );
+  }
+
+  // Score best through confidence gate
+  console.log(`\n${hr()}`);
+  console.log(`${BOLD}Confidence Gate Comparison${RESET}\n`);
+
+  const proposedParams = { ...DEFAULT_STRATEGY_PARAMS, ...result.bestParams };
+  const proposedGate = runConfidenceGate(60, proposedParams);
+  const currentGate = runConfidenceGate(60);
+
+  console.log(`  Current:   ${scoreColor(currentGate.score.overall, 100)}${Math.round(currentGate.score.overall)}/100${RESET}`);
+  console.log(`  Proposed:  ${scoreColor(proposedGate.score.overall, 100)}${Math.round(proposedGate.score.overall)}/100${RESET}`);
+
+  const delta = proposedGate.score.overall - currentGate.score.overall;
+  const deltaColor = delta > 0 ? GREEN : delta < 0 ? RED : YELLOW;
+  console.log(`  Delta:     ${deltaColor}${delta > 0 ? '+' : ''}${delta.toFixed(1)}${RESET}`);
+
+  // Show metric breakdown
+  console.log(`\n  ${BOLD}Metric breakdown (current → proposed):${RESET}`);
+  console.log(`    Returns:     ${Math.round(currentGate.score.byMetric.returnScore)}/25 → ${scoreColor(proposedGate.score.byMetric.returnScore, 25)}${Math.round(proposedGate.score.byMetric.returnScore)}/25${RESET}`);
+  console.log(`    Risk:        ${Math.round(currentGate.score.byMetric.riskScore)}/25 → ${scoreColor(proposedGate.score.byMetric.riskScore, 25)}${Math.round(proposedGate.score.byMetric.riskScore)}/25${RESET}`);
+  console.log(`    Consistency: ${Math.round(currentGate.score.byMetric.consistencyScore)}/25 → ${scoreColor(proposedGate.score.byMetric.consistencyScore, 25)}${Math.round(proposedGate.score.byMetric.consistencyScore)}/25${RESET}`);
+  console.log(`    Robustness:  ${Math.round(currentGate.score.byMetric.robustnessScore)}/25 → ${scoreColor(proposedGate.score.byMetric.robustnessScore, 25)}${Math.round(proposedGate.score.byMetric.robustnessScore)}/25${RESET}`);
+
+  // Condition breakdown
+  console.log(`\n  ${BOLD}Condition breakdown (current → proposed):${RESET}`);
+  const conditions: MarketCondition[] = ['BULL', 'BEAR', 'RANGING', 'VOLATILE'];
+  for (const cond of conditions) {
+    const cur = Math.round(currentGate.score.byCondition[cond]);
+    const prop = Math.round(proposedGate.score.byCondition[cond]);
+    const condDelta = prop - cur;
+    const condColor = condDelta > 0 ? GREEN : condDelta < 0 ? RED : YELLOW;
+    console.log(`    ${cond.padEnd(10)} ${cur}/100 → ${condColor}${prop}/100 (${condDelta > 0 ? '+' : ''}${condDelta})${RESET}`);
+  }
+
+  if (delta > 0 && proposedGate.passed) {
+    console.log(`\n${GREEN}${BOLD}IMPROVEMENT FOUND${RESET} — +${delta.toFixed(1)} confidence points`);
+    console.log(`${DIM}Best params:${RESET} ${JSON.stringify(result.bestParams)}`);
+    console.log(`${DIM}Full proposed:${RESET} ${JSON.stringify(proposedParams, null, 2)}`);
+  } else if (delta <= 0) {
+    console.log(`\n${YELLOW}No improvement${RESET} — current params already optimal for this sweep range`);
+  } else {
+    console.log(`\n${RED}Proposed params fail confidence gate${RESET}`);
+  }
+  console.log('');
+}
+
 async function validate(): Promise<void> {
   console.log(`\n${BOLD}${CYAN}NVR CAPITAL — WALK-FORWARD VALIDATION${RESET}\n`);
 
@@ -285,6 +376,37 @@ async function compare(): Promise<void> {
   console.log('');
 }
 
+async function improve(): Promise<void> {
+  console.log(`\n${BOLD}${CYAN}NVR CAPITAL — SELF-IMPROVEMENT LOOP${RESET}\n`);
+
+  const report = runImprovementLoop({
+    currentParams: DEFAULT_STRATEGY_PARAMS,
+    minConfidence: 60,
+    onProgress: (msg) => console.log(msg),
+  });
+
+  // Save report to file
+  const reportPath = `reports/improvement-${new Date().toISOString().slice(0, 10)}.json`;
+  const fs = await import('fs');
+  const path = await import('path');
+  const dir = path.dirname(reportPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+  console.log(`${DIM}Report saved to ${reportPath}${RESET}\n`);
+
+  // Final summary
+  console.log(`${BOLD}RECOMMENDATION: ${
+    report.recommendation === 'APPLY' ? `${GREEN}APPLY${RESET}` :
+    report.recommendation === 'REVIEW' ? `${YELLOW}REVIEW${RESET}` :
+    `${RED}REJECT${RESET}`
+  }${RESET}`);
+
+  if (report.proposedParams) {
+    console.log(`\n${DIM}Proposed params:${RESET}`);
+    console.log(JSON.stringify(report.proposedParams, null, 2));
+  }
+}
+
 async function report(): Promise<void> {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${BOLD}${CYAN}NVR CAPITAL — FULL SIMULATION REPORT${RESET}`);
@@ -307,6 +429,8 @@ async function report(): Promise<void> {
 const MODES: Record<string, () => Promise<void>> = {
   benchmark,
   optimize,
+  'fast-optimize': fastOptimize,
+  improve,
   validate,
   stress,
   compare,
@@ -323,9 +447,11 @@ NVR Capital — Simulation CLI
 Usage: npx tsx scripts/run-simulation.ts <mode>
 
 Modes:
-  benchmark   Current confidence score (default)
-  optimize    Parameter sweep → find best params
-  validate    Walk-forward validation (train/test split)
+  benchmark      Current confidence score (default)
+  optimize       Brute-force parameter sweep (slow, exhaustive)
+  fast-optimize  Tournament optimizer (4-6x faster, recommended)
+  improve        Self-improvement loop (research → hypothesize → simulate → validate → report)
+  validate       Walk-forward validation (train/test split)
   stress      Extreme market stress tests
   compare     Compare 5 strategy presets side-by-side
   report      Full report (all of the above)
