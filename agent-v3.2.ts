@@ -369,6 +369,7 @@ import {
   handleWithdraw, handleStateBackup, handleStateRestore,
   handleConfidence,
   handleModelTelemetry,
+  handleTicker,
 } from "./src/dashboard/server/index.js";
 // Phase 4: Extracted execution engine
 import {
@@ -9910,6 +9911,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/model-telemetry':
         handleModelTelemetry(res, serverCtx);
+        break;
+      case '/api/ticker':
+        handleTicker(res, serverCtx);
         break;
       case '/api/discovery/scan':
         // Manual trigger for token discovery scan

@@ -79,4 +79,7 @@ export {
 
   // Model telemetry
   handleModelTelemetry,
+
+  // Trade ticker
+  handleTicker,
 } from './routes.js';
