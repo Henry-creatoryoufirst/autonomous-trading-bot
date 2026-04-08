@@ -421,8 +421,6 @@ import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSign
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/core/portfolio/index.js";
-import { initBalanceReader, readBalances as _readBalances } from "./src/core/portfolio/balance-reader.js";
-import { checkProfitTaking as _checkProfitTaking, checkStopLoss as _checkStopLoss } from "./src/core/exits/index.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
 import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/core/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/core/diagnostics/index.js";
@@ -430,7 +428,6 @@ import type { OpportunityCostLog } from "./src/core/diagnostics/index.js";
 import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility as _assessVolatility, checkCashDeploymentMode as _checkCashDeploymentMode, checkCrashBuyingOverride as _checkCrashBuyingOverride } from "./src/core/capital/index.js";
 // Phase 13: Extracted gas & liquidity module
 import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from "./src/core/gas/index.js";
-import { initGasManager as _initGasManager, checkAndRefuelGas as _checkAndRefuelGas, bootstrapGas as _bootstrapGas, rescueGasFromNvrTrading as _rescueGasFromNvrTrading, getLastKnownETHBalance as _getLastKnownETHBalance } from "./src/core/gas/index.js";
 // Phase 14: Extracted on-chain capital flows module
 import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/core/chain/index.js";
 // Phase 3c: Centralized state store
@@ -2567,8 +2564,9 @@ let state: AgentState = {
   profitTakeCooldowns: {},
   stopLossCooldowns: {},
   tradeFailures: {},
-  harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
+  // v18.1: Error log ring buffer for remote diagnostics
   errorLog: [] as Array<{ timestamp: string; type: string; message: string; details?: any }>,
+  harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
   // v9.1: Auto-harvest transfer state (multi-wallet)
   autoHarvestTransfers: [] as Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string; label: string }>,
   totalAutoHarvestedUSD: 0,
@@ -3158,25 +3156,387 @@ async function consolidateDustPositions(
 // PROFIT-TAKING & STOP-LOSS GUARDS
 // ============================================================================
 
-// v21.6: Profit harvester + stop loss delegated to src/core/exits/
+/**
+ * v5.1.1: TIERED PROFIT HARVESTING — scale out of winners in tranches
+ *
+ * Philosophy: Don't ride everything to the moon and back. When the market gives you
+ * something, take a piece. Bank small wins consistently. The remaining position still
+ * rides for the bigger move, but you've already locked in profit.
+ *
+ * Tiers:
+ *   +8%  → sell 15% (early harvest — skim the cream)
+ *   +15% → sell 20% (moderate win — bank a real gain)
+ *   +25% → sell 30% (strong win — significant profit lock)
+ *   +40% → sell 40% (major win — protect the bag)
+ *
+ * Each tier has its own cooldown tracking per token. A token can trigger tier 1,
+ * then later trigger tier 2 as it keeps climbing — harvesting along the way.
+ *
+ * Time-based rebalancing: If a position has been held for 72+ hours without any
+ * profit trigger and is up at least 5%, take a small 10% harvest. Patient capital,
+ * but not passive capital.
+ */
 function checkProfitTaking(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
   indicators: Record<string, TechnicalIndicators> = {},
 ): TradeDecision | null {
-  return _checkProfitTaking(balances, indicators, {
-    state, config: CONFIG.trading, tokenRegistry: TOKEN_REGISTRY,
-    isTokenBlocked, markStateDirty,
+  if (!CONFIG.trading.profitTaking.enabled) return null;
+
+  const cfg = CONFIG.trading.profitTaking;
+  // v21.6: Lowered profit-take tiers to free up dry powder faster.
+  // Old: 25/50/100/200% — too conservative, bot sat fully deployed for days.
+  // New: 10/20/40/80% — takes profits earlier, keeps USDC available for new opportunities.
+  const flatTiers = (cfg as any).tiers || [
+    { gainPercent: 10,  sellPercent: 15, label: "EARLY_HARVEST" },
+    { gainPercent: 20,  sellPercent: 20, label: "MID_HARVEST" },
+    { gainPercent: 40,  sellPercent: 25, label: "STRONG_HARVEST" },
+    { gainPercent: 80,  sellPercent: 35, label: "MAJOR_HARVEST" },
+  ];
+  const now = new Date();
+
+  // Track the best opportunity across all holdings (highest tier hit wins)
+  let bestCandidate: {
+    symbol: string;
+    balance: number;
+    usdValue: number;
+    gainPercent: number;
+    tier: { gainPercent: number; sellPercent: number; label: string };
+    costBasis: number;
+    currentPrice: number;
+    sector?: string;
+  } | null = null;
+
+  for (const b of balances) {
+    if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
+    // v20.4.1: Skip tokens not in active registry
+    if (!TOKEN_REGISTRY[b.symbol]) continue;
+    const cb = state.costBasis[b.symbol];
+    if (!cb || cb.averageCostBasis <= 0) continue;
+
+    // v5.3.3: Skip tokens blocked by circuit breaker
+    if (isTokenBlocked(b.symbol)) continue;
+
+    // v10.2: Stop-loss cooldown removed from profit-taking — they're independent actions.
+    // Profit-taking has its own per-tier cooldown at line ~2246.
+
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    const gainPercent = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+
+    if (gainPercent <= 0) continue; // No profit to take
+
+    // v11.4.7: SANITY CHECK — >500% unrealized gain almost certainly means stale cost basis.
+    // Flag it, auto-reset cost basis to current price, and skip harvesting this cycle.
+    if (gainPercent > 500) {
+      console.warn(`\n  🚨 SANITY CHECK: ${b.symbol} shows +${gainPercent.toFixed(1)}% unrealized gain — likely stale cost basis!`);
+      console.warn(`     Cost basis: $${cb.averageCostBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
+      console.warn(`     AUTO-RESETTING cost basis to current market price. Skipping harvest.`);
+      // Track the anomaly
+      if (!state.sanityAlerts) state.sanityAlerts = [];
+      state.sanityAlerts.push({
+        timestamp: now.toISOString(),
+        symbol: b.symbol,
+        type: 'STALE_COST_BASIS',
+        oldCostBasis: cb.averageCostBasis,
+        currentPrice,
+        gainPercent: Math.round(gainPercent * 10) / 10,
+        action: 'AUTO_RESET',
+      });
+      if (state.sanityAlerts.length > 100) state.sanityAlerts = state.sanityAlerts.slice(-100);
+      // Auto-reset cost basis to current market price
+      cb.averageCostBasis = currentPrice;
+      cb.totalInvestedUSD = currentPrice * cb.currentHolding;
+      cb.totalTokensAcquired = cb.currentHolding;
+      cb.unrealizedPnL = 0;
+      cb.firstBuyDate = now.toISOString();
+      cb.lastTradeDate = now.toISOString();
+      markStateDirty();
+      continue; // Skip harvesting — cost basis was bogus
+    }
+
+    // v9.0: Compute effective tiers — ATR-relative when ATR data available, flat fallback
+    const ind = indicators[b.symbol];
+    const atrPct = ind?.atrPercent ?? null;
+    let effectiveTiers: { gainPercent: number; sellPercent: number; label: string }[];
+    if (atrPct !== null && atrPct > 0) {
+      // ATR-relative tiers: gainPercent = atrMultiple × atrPercent
+      effectiveTiers = ATR_PROFIT_TIERS.map(t => ({
+        gainPercent: t.atrMultiple * atrPct,
+        sellPercent: t.sellPercent,
+        label: t.label,
+      }));
+    } else {
+      effectiveTiers = flatTiers;
+    }
+
+    // Find the highest tier this position qualifies for
+    // Walk tiers from highest to lowest — take the best available
+    const sortedTiers = [...effectiveTiers].sort((a: any, b: any) => b.gainPercent - a.gainPercent);
+    for (const tier of sortedTiers) {
+      if (gainPercent >= tier.gainPercent) {
+        // Check per-tier cooldown: key is "symbol:tierLabel"
+        const cooldownKey = `${b.symbol}:${tier.label}`;
+        const lastTrigger = state.profitTakeCooldowns[cooldownKey];
+        if (lastTrigger) {
+          const hoursSince = (now.getTime() - new Date(lastTrigger).getTime()) / (1000 * 60 * 60);
+          if (hoursSince < cfg.cooldownHours) continue; // This tier is on cooldown
+        }
+
+        // This tier is available — is it better than our current best?
+        if (!bestCandidate || tier.gainPercent > bestCandidate.tier.gainPercent) {
+          bestCandidate = {
+            symbol: b.symbol,
+            balance: b.balance,
+            usdValue: b.usdValue,
+            gainPercent,
+            tier,
+            costBasis: cb.averageCostBasis,
+            currentPrice,
+            sector: b.sector,
+          };
+        }
+        break; // Found highest qualifying tier for this token, move to next token
+      }
+    }
+
+    // Time-based rebalancing: 72+ hours held, up at least 8%, no recent harvest
+    // v21.6: Lowered from 15% to 8% — 15% meant stale positions never rebalanced
+    if (!bestCandidate && gainPercent >= 8 && cb.totalInvestedUSD > 0) {
+      const holdingAge = cb.firstBuyDate
+        ? (now.getTime() - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
+        : 0;
+      if (holdingAge >= 72) {
+        const timeKey = `${b.symbol}:TIME_REBALANCE`;
+        const lastTimeHarvest = state.profitTakeCooldowns[timeKey];
+        if (!lastTimeHarvest || (now.getTime() - new Date(lastTimeHarvest).getTime()) / (1000 * 60 * 60) >= 48) {
+          bestCandidate = {
+            symbol: b.symbol,
+            balance: b.balance,
+            usdValue: b.usdValue,
+            gainPercent,
+            tier: { gainPercent: 15, sellPercent: 10, label: "TIME_REBALANCE" },
+            costBasis: cb.averageCostBasis,
+            currentPrice,
+            sector: b.sector,
+          };
+        }
+      }
+    }
+  }
+
+  if (!bestCandidate) return null;
+
+  // v18.0: LET WINNERS RUN — Do not harvest if momentum is still strong
+  // If buy ratio > 55% AND MACD is bullish, the winner is still running.
+  // Only trim on deceleration, not on arbitrary percentage thresholds.
+  // Exception: MAJOR_HARVEST tier (40%+ gain) always harvests — protect the bag.
+  {
+    const ind = indicators[bestCandidate.symbol];
+    const orderFlow = ind?.orderFlow;
+    const macd = ind?.macd;
+    const buyRatio = orderFlow ? orderFlow.buyVolumeUSD / (orderFlow.buyVolumeUSD + orderFlow.sellVolumeUSD) : null;
+    const macdBullish = macd?.signal === 'BULLISH';
+
+    if (bestCandidate.tier.label !== 'MAJOR_HARVEST' && bestCandidate.tier.label !== 'ATR_MAJOR') {
+      if (buyRatio !== null && buyRatio > 0.55 && macdBullish) {
+        console.log(`\n  🏃 LET_IT_RUN: ${bestCandidate.symbol} +${bestCandidate.gainPercent.toFixed(1)}% but momentum still strong (buyRatio: ${(buyRatio * 100).toFixed(0)}%, MACD: BULLISH) — holding`);
+        return null;
+      }
+    }
+  }
+
+  const { symbol, balance, usdValue, gainPercent, tier, costBasis, currentPrice, sector } = bestCandidate;
+  const sellPct = tier.sellPercent;
+  const sellUSD = usdValue * (sellPct / 100);
+  const tokenAmount = balance * (sellPct / 100);
+
+  // Don't sell less than $2 — not worth the gas
+  if (sellUSD < 2) return null;
+
+  // v10.1.1: Capital floor check — selling a position to USDC is value-neutral (doesn't reduce portfolio).
+  // Only block if the REMAINING position + rest of portfolio would be below floor.
+  // Selling actually HELPS by converting illiquid positions to deployable USDC.
+  const capitalFloor = CONFIG.autoHarvest?.minTradingCapitalUSD || 500;
+  const currentPortfolio = state.trading.totalPortfolioValue || 0;
+  if (currentPortfolio < capitalFloor) {
+    // Only block if total portfolio is already below floor (not the sell itself)
+    console.log(`  ⚠️ CAPITAL FLOOR: Portfolio $${currentPortfolio.toFixed(2)} below floor $${capitalFloor} — skipping harvest`);
+    return null;
+  }
+
+  const tierEmoji = tier.label === "EARLY_HARVEST" ? "🌱" :
+                    tier.label === "MID_HARVEST" ? "🌿" :
+                    tier.label === "STRONG_HARVEST" ? "🎯" :
+                    tier.label === "MAJOR_HARVEST" ? "💰" :
+                    tier.label === "TIME_REBALANCE" ? "⏰" : "📊";
+
+  console.log(`\n  ${tierEmoji} ${tier.label}: ${symbol} is UP +${gainPercent.toFixed(1)}% (tier threshold: +${tier.gainPercent}%)`);
+  console.log(`     Avg cost: $${costBasis.toFixed(6)} → Current: $${currentPrice.toFixed(6)}`);
+  console.log(`     Harvesting ${sellPct}% = ~$${sellUSD.toFixed(2)} → USDC (banking profit)`);
+
+  // Record cooldown for this specific tier
+  const cooldownKey = `${symbol}:${tier.label}`;
+  state.profitTakeCooldowns[cooldownKey] = now.toISOString();
+
+  // Track cumulative harvested profits for dashboard
+  if (!state.harvestedProfits) {
+    state.harvestedProfits = { totalHarvested: 0, harvestCount: 0, harvests: [] };
+  }
+  const profitPortion = sellUSD - (sellUSD / (1 + gainPercent / 100)); // Approximate profit from this sell
+  state.harvestedProfits.totalHarvested += profitPortion;
+  state.harvestedProfits.harvestCount++;
+  state.harvestedProfits.harvests.push({
+    timestamp: now.toISOString(),
+    symbol,
+    tier: tier.label,
+    gainPercent: Math.round(gainPercent * 10) / 10,
+    sellPercent: sellPct,
+    amountUSD: Math.round(sellUSD * 100) / 100,
+    profitUSD: Math.round(profitPortion * 100) / 100,
   });
+  // Keep last 50 harvests
+  if (state.harvestedProfits.harvests.length > 50) {
+    state.harvestedProfits.harvests = state.harvestedProfits.harvests.slice(-50);
+  }
+
+  return {
+    action: "SELL" as const,
+    fromToken: symbol,
+    toToken: "USDC",
+    amountUSD: sellUSD,
+    tokenAmount,
+    reasoning: `${tier.label}: ${symbol} +${gainPercent.toFixed(1)}% from avg cost $${costBasis.toFixed(4)}. Harvesting ${sellPct}% (~$${sellUSD.toFixed(2)}) to lock in profit. Remaining ${100 - sellPct}% continues to ride.`,
+    sector,
+  };
 }
 
 function checkStopLoss(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
   indicators: Record<string, TechnicalIndicators> = {},
 ): TradeDecision | null {
-  return _checkStopLoss(balances, indicators, {
-    state, config: CONFIG.trading, tokenRegistry: TOKEN_REGISTRY,
-    isTokenBlocked, computeAtrStopLevels,
-  });
+  if (!CONFIG.trading.stopLoss.enabled) return null;
+
+  const cfg = CONFIG.trading.stopLoss;
+  let worstLoss = 0;
+  let worstDecision: TradeDecision | null = null;
+
+  for (const b of balances) {
+    if (b.symbol === "USDC" || b.usdValue < cfg.minHoldingUSD) continue;
+    // v20.4.1: Skip tokens not in active registry — can't execute the sell anyway
+    if (!TOKEN_REGISTRY[b.symbol]) continue;
+    // v20.4.2: Skip tokens blocked by per-token circuit breaker — swap routes are broken
+    if (isTokenBlocked(b.symbol)) continue;
+    const cb = state.costBasis[b.symbol];
+    if (!cb || cb.averageCostBasis <= 0) continue;
+
+    // v11.4.6: Check stop-loss cooldown — prevent repeated firing on same token
+    const lastStopLoss = state.stopLossCooldowns[b.symbol];
+    if (lastStopLoss) {
+      const hoursSince = (Date.now() - new Date(lastStopLoss).getTime()) / (1000 * 60 * 60);
+      if (hoursSince < 24) continue; // Skip — already triggered within 24h
+    }
+
+    // v21.2: FORCED_DEPLOY cooldown — if last buy was a forced deployment, don't trigger
+    // trailing stop for 2 hours. This prevents the buy-sell-buy-sell death loop where
+    // FORCED_DEPLOY buys and the trailing stop immediately sells every 15 minutes.
+    const recentBuy = state.tradeHistory.find(t =>
+      t.toToken === b.symbol && t.action === 'BUY' && t.success !== false
+    );
+    if (recentBuy && (recentBuy.reasoning?.includes('FORCED_DEPLOY') || recentBuy.reasoning?.includes('SCOUT'))) {
+      const hoursSinceBuy = (Date.now() - new Date(recentBuy.timestamp).getTime()) / (1000 * 60 * 60);
+      if (hoursSinceBuy < 2) {
+        continue; // Give forced/scout buys 2 hours before trailing stop can fire
+      }
+    }
+
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    const lossFromCost = ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+
+    // Check trailing stop (loss from peak)
+    let trailingLoss = 0;
+    if (cfg.trailingEnabled && cb.peakPrice > 0) {
+      trailingLoss = ((currentPrice - cb.peakPrice) / cb.peakPrice) * 100;
+    }
+
+    // --- v9.0: ATR-based dynamic stops ---
+    const ind = indicators[b.symbol];
+    const atrPct = ind?.atrPercent ?? null;
+    const atrLevels = computeAtrStopLevels(b.symbol, b.sector, atrPct, currentPrice, cb);
+
+    // Update cost basis with latest ATR stop data
+    if (atrLevels) {
+      cb.atrStopPercent = atrLevels.stopPercent;
+      cb.atrTrailPercent = atrLevels.trailPercent;
+      cb.trailActivated = atrLevels.trailActivated;
+      cb.lastAtrUpdate = new Date().toISOString();
+      if (cb.atrAtEntry === null && atrPct !== null) {
+        cb.atrAtEntry = atrPct;
+      }
+    }
+
+    // Use adaptive flat thresholds as fallback
+    let effectiveSL = state.adaptiveThresholds.stopLossPercent;
+    let effectiveTrailing = state.adaptiveThresholds.trailingStopPercent;
+
+    // v6.2: Sector-specific stop-loss tightening
+    const sectorOverride = b.sector ? SECTOR_STOP_LOSS_OVERRIDES[b.sector] : undefined;
+    if (sectorOverride) {
+      effectiveSL = Math.max(effectiveSL, sectorOverride.maxLoss);
+      effectiveTrailing = Math.max(effectiveTrailing, sectorOverride.maxTrailing);
+    }
+
+    // v9.0: When ATR data available, use tighter of ATR-based vs flat
+    if (atrLevels) {
+      // ATR stop: use tighter (closer to 0) of ATR vs flat+sector
+      effectiveSL = Math.max(effectiveSL, atrLevels.stopPercent);
+      // ATR trail: only apply if trail has activated
+      if (atrLevels.trailActivated) {
+        effectiveTrailing = Math.max(effectiveTrailing, atrLevels.trailPercent);
+      }
+
+      // v9.0: Comparison logging for first N cycles
+      if (atrComparisonLogCount < ATR_COMPARISON_LOG_COUNT) {
+        const flatSL = state.adaptiveThresholds.stopLossPercent;
+        const flatTrail = state.adaptiveThresholds.trailingStopPercent;
+        console.log(`  [ATR-CMP] ${b.symbol}: ATR%=${atrPct?.toFixed(2)} | ATR-stop=${atrLevels.stopPercent.toFixed(1)}% vs flat=${flatSL}% -> effective=${effectiveSL.toFixed(1)}% | trail=${atrLevels.trailPercent.toFixed(1)}% vs flat=${flatTrail}% activated=${atrLevels.trailActivated}`);
+        atrComparisonLogCount++;
+      }
+    }
+
+    // Determine if stop triggered
+    const costBasisTriggered = lossFromCost <= effectiveSL;
+    const trailingTriggered = cfg.trailingEnabled && trailingLoss <= effectiveTrailing;
+    // v9.0: Only allow trailing stop if trail is activated (ATR mode) or no ATR data
+    const trailAllowed = !atrLevels || atrLevels.trailActivated;
+
+    const triggered = costBasisTriggered || (trailingTriggered && trailAllowed);
+
+    if (triggered && lossFromCost < worstLoss) {
+      worstLoss = lossFromCost;
+      const sellUSD = b.usdValue * (cfg.sellPercent / 100);
+      const tokenAmount = b.balance * (cfg.sellPercent / 100);
+      const stopType = atrLevels ? "ATR" : "FLAT";
+      const reason = costBasisTriggered
+        ? `Stop-loss(${stopType}): ${b.symbol} ${lossFromCost.toFixed(1)}% from cost $${cb.averageCostBasis.toFixed(4)} (effective: ${effectiveSL.toFixed(1)}%)`
+        : `Trailing-stop(${stopType}): ${b.symbol} ${trailingLoss.toFixed(1)}% from peak $${cb.peakPrice.toFixed(4)} (effective: ${effectiveTrailing.toFixed(1)}%)`;
+
+      worstDecision = {
+        action: "SELL",
+        fromToken: b.symbol,
+        toToken: "USDC",
+        amountUSD: sellUSD,
+        tokenAmount,
+        reasoning: `${reason}. Selling ${cfg.sellPercent}%.`,
+        sector: b.sector,
+      };
+    }
+  }
+
+  if (worstDecision) {
+    console.log(`\n  🛑 STOP-LOSS: ${worstDecision.fromToken} is DOWN ${worstLoss.toFixed(1)}%`);
+    console.log(`     Selling ${cfg.sellPercent}% = ~$${worstDecision.amountUSD.toFixed(2)}`);
+  }
+
+  return worstDecision;
 }
 
 // ============================================================================
@@ -3496,7 +3856,7 @@ function triggerCircuitBreaker(reason: string) {
   console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
   console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
   // v19.6: Telegram alert on circuit breaker
-  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(e => console.warn('[Telegram]', e?.message || e));
+  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(() => {});
 }
 
 /**
@@ -3511,7 +3871,7 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDet
     console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
   }
   // v19.6: Telegram trade failure tracking
-  telegramService.onTradeResult(success, tradeDetails).catch(e => console.warn('[Telegram]', e?.message || e));
+  telegramService.onTradeResult(success, tradeDetails).catch(() => {});
 
   // v10.4: Rolling window — track last N trade results regardless of outcome
   breakerState.rollingTradeResults.push(isWin);
@@ -3844,10 +4204,6 @@ async function getMarketData(): Promise<MarketData> {
     const stablecoinSupply = stablecoinData;
 
     // Sync history to state for persistence
-    if (fundingRateHistory.btc.length > 504) {
-      fundingRateHistory.btc = fundingRateHistory.btc.slice(-504);
-      fundingRateHistory.eth = fundingRateHistory.eth.slice(-504);
-    }
     state.fundingRateHistory = fundingRateHistory;
     state.btcDominanceHistory = btcDominanceHistory;
     state.stablecoinSupplyHistory = stablecoinSupplyHistory;
@@ -4051,24 +4407,249 @@ const getETHBalance = _getETHBalance;
 const getERC20Balance = _getERC20Balance;
 
 // ============================================================================
-// v21.6: GAS MANAGEMENT — Delegated to src/core/gas/gas-manager.ts
+// v9.2: AUTO GAS REFUEL — Swap USDC→WETH when ETH gas balance is low
 // ============================================================================
 
-// v21.6: Gas management delegated to src/core/gas/gas-manager.ts
-const checkAndRefuelGas = _checkAndRefuelGas;
-const bootstrapGas = _bootstrapGas;
-const rescueGasFromNvrTrading = _rescueGasFromNvrTrading;
-// These remain as local proxies — dashboard API reads them directly
+let lastGasRefuelTime = 0;
 let lastKnownETHBalance = 0;
-let gasBootstrapAttempted = false;
-// Sync from module after each gas operation
-function syncGasState() {
-  lastKnownETHBalance = _getLastKnownETHBalance();
+
+async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
+  try {
+    // v10.1: Smart Account swaps are gasless — skip refuel if Smart Account active
+    // v10.1.1: Gas refuel remains active — wallet is a CoinbaseSmartWallet but
+    // account.swap() still routes through standard paths that may need gas
+
+    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+    const ethBalance = await getETHBalance(account.address);
+    lastKnownETHBalance = ethBalance;
+
+    // Not low enough to refuel
+    if (ethBalance >= GAS_REFUEL_THRESHOLD_ETH) {
+      return { refueled: false, ethBalance };
+    }
+
+    // Cooldown check — don't refuel too frequently
+    if (Date.now() - lastGasRefuelTime < GAS_REFUEL_COOLDOWN_MS) {
+      return { refueled: false, ethBalance, error: 'Gas refuel on cooldown' };
+    }
+
+    // Check USDC balance — don't drain the last few dollars
+    const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, account.address, 6);
+    if (usdcBalance < GAS_REFUEL_MIN_USDC) {
+      return { refueled: false, ethBalance, error: `USDC balance ($${usdcBalance.toFixed(2)}) below minimum for gas refuel` };
+    }
+
+    // Execute USDC → WETH swap for gas (EOA fallback only)
+    console.log(`\n  ⛽ AUTO GAS REFUEL: ETH balance ${ethBalance.toFixed(6)} below threshold ${GAS_REFUEL_THRESHOLD_ETH}`);
+    console.log(`     Swapping $${GAS_REFUEL_AMOUNT_USDC.toFixed(2)} USDC → WETH for gas...`);
+
+    const fromAmount = parseUnits(GAS_REFUEL_AMOUNT_USDC.toFixed(6), 6); // USDC has 6 decimals
+    await account.swap({
+      network: activeChain.cdpNetwork,
+      fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`, // USDC
+      toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`,   // WETH on Base
+      fromAmount,
+      slippageBps: 100, // 1% slippage — not critical, just need gas
+    });
+
+    lastGasRefuelTime = Date.now();
+    const newEthBalance = await getETHBalance(account.address);
+    lastKnownETHBalance = newEthBalance;
+    console.log(`     ✅ Gas refueled: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
+    return { refueled: true, ethBalance: newEthBalance };
+  } catch (err: any) {
+    const msg = err?.message?.substring(0, 200) || 'Unknown error';
+    console.warn(`  ⛽ Gas refuel failed: ${msg}`);
+    return { refueled: false, ethBalance: lastKnownETHBalance, error: msg };
+  }
 }
 
-// v21.6: Balance reading delegated to src/core/portfolio/balance-reader.ts
-async function getBalances() {
-  return _readBalances(CONFIG.walletAddress);
+// ============================================================================
+// v9.2.1: GAS BOOTSTRAP — Auto-buy ETH on first startup when wallet has USDC but no ETH
+// ============================================================================
+
+// v19.3.3: One-time rescue — transfer ETH from nvr-trading (0xf129) to henry-trading-bot (0xB7c51b)
+let gasRescueAttempted = false;
+async function rescueGasFromNvrTrading(): Promise<void> {
+  if (gasRescueAttempted) return;
+  gasRescueAttempted = true;
+  try {
+    const mainAccount = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+    const mainETH = await getETHBalance(mainAccount.address);
+
+    if (mainETH >= 0.001) {
+      console.log(`  [GAS RESCUE] Main wallet has ${mainETH.toFixed(6)} ETH — no rescue needed`);
+      return;
+    }
+
+    // Check if nvr-trading account has ETH we can rescue
+    const nvrAccount = await cdpClient.evm.getOrCreateAccount({ name: "nvr-trading" });
+    const nvrETH = await getETHBalance(nvrAccount.address);
+
+    if (nvrETH < 0.001) {
+      console.log(`  [GAS RESCUE] nvr-trading (${nvrAccount.address}) has ${nvrETH.toFixed(6)} ETH — nothing to rescue`);
+      return;
+    }
+
+    // Transfer 90% of nvr-trading ETH to main account (keep some for the tx fee)
+    const transferAmount = Math.floor((nvrETH * 0.9) * 1e18);
+    console.log(`\n  🚨 [GAS RESCUE] Transferring ${(transferAmount/1e18).toFixed(6)} ETH from nvr-trading → ${mainAccount.address}`);
+
+    const tx = await nvrAccount.sendTransaction({
+      network: activeChain.cdpNetwork,
+      transaction: {
+        to: mainAccount.address as `0x${string}`,
+        value: BigInt(transferAmount),
+      },
+    });
+
+    console.log(`  ✅ [GAS RESCUE] ETH transferred! TX: ${(tx as any).transactionHash || 'sent'}`);
+    const newBalance = await getETHBalance(mainAccount.address);
+    console.log(`  ✅ [GAS RESCUE] Main wallet ETH: ${newBalance.toFixed(6)}`);
+  } catch (err: any) {
+    console.warn(`  ⚠️ [GAS RESCUE] Failed: ${err?.message?.substring(0, 200) || 'Unknown'}`);
+  }
+}
+
+let gasBootstrapAttempted = false;
+
+async function bootstrapGas(): Promise<void> {
+  try {
+    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+    const walletAddr = CONFIG.walletAddress;
+    const ethBalance = await getETHBalance(walletAddr);
+    lastKnownETHBalance = ethBalance;
+
+    // Estimate ETH value in USD (~$2700 rough estimate, good enough for threshold check)
+    const ethPriceEstimate = 2700;
+    const ethValueUSD = ethBalance * ethPriceEstimate;
+
+    if (ethValueUSD >= GAS_BOOTSTRAP_MIN_ETH_USD) {
+      console.log(`  [GAS BOOTSTRAP] Gas OK — ETH balance ${ethBalance.toFixed(6)} (~$${ethValueUSD.toFixed(2)})`);
+      gasBootstrapAttempted = true;
+      return;
+    }
+
+    const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6);
+
+    if (usdcBalance < GAS_BOOTSTRAP_MIN_USDC) {
+      console.log(`  [GAS BOOTSTRAP] Insufficient USDC for gas bootstrap ($${usdcBalance.toFixed(2)} < $${GAS_BOOTSTRAP_MIN_USDC} minimum)`);
+      return;
+    }
+
+    console.log(`\n  ⛽ [GAS BOOTSTRAP] ETH balance ${ethBalance.toFixed(6)} (~$${ethValueUSD.toFixed(2)}) below $${GAS_BOOTSTRAP_MIN_ETH_USD} threshold`);
+    console.log(`     Swapping $${GAS_BOOTSTRAP_SWAP_USD} USDC → WETH for gas fees...`);
+
+    const fromAmount = parseUnits(GAS_BOOTSTRAP_SWAP_USD.toFixed(6), 6);
+    await account.swap({
+      network: activeChain.cdpNetwork,
+      fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`,
+      toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`, // WETH on Base
+      fromAmount,
+      slippageBps: 100, // 1% slippage
+    });
+
+    const newEthBalance = await getETHBalance(walletAddr);
+    lastKnownETHBalance = newEthBalance;
+    gasBootstrapAttempted = true;
+    lastGasRefuelTime = Date.now(); // Prevent immediate refuel after bootstrap
+
+    console.log(`     ✅ [GAS BOOTSTRAP] Swapped $${GAS_BOOTSTRAP_SWAP_USD} USDC → ETH for gas fees`);
+    console.log(`     ETH: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
+  } catch (err: any) {
+    const msg = err?.message?.substring(0, 200) || 'Unknown error';
+    console.warn(`  ⛽ [GAS BOOTSTRAP] Failed: ${msg} — will retry next cycle`);
+    // Don't set gasBootstrapAttempted so it retries next cycle
+  }
+}
+
+async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
+  // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet at 0x55509...)
+  const walletAddress = CONFIG.walletAddress;
+  const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
+
+  console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
+
+  const tokenEntries = Object.entries(TOKEN_REGISTRY);
+  const results: { symbol: string; balance: number }[] = [];
+  const failedTokens: string[] = [];
+
+  // Read balances one at a time with delay — public RPC rate-limits batch calls
+  for (let i = 0; i < tokenEntries.length; i++) {
+    const [symbol, token] = tokenEntries[i];
+    let balance = 0;
+    let success = false;
+
+    // Try up to 3 times per token
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        balance = token.address === "native"
+          ? await getETHBalance(walletAddress)
+          : await getERC20Balance(token.address, walletAddress, token.decimals);
+        success = true;
+        break;
+      } catch (err: any) {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        } else {
+          console.warn(`  ⚠️ Failed to read ${symbol} after 3 attempts: ${err?.message || err}`);
+          failedTokens.push(symbol);
+        }
+      }
+    }
+
+    if (success) {
+      results.push({ symbol, balance });
+    }
+
+    // Delay between each token read to avoid RPC rate limits
+    if (i < tokenEntries.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  }
+
+  // If any tokens failed, retry them after a longer pause
+  if (failedTokens.length > 0) {
+    console.log(`  🔄 Retrying ${failedTokens.length} failed tokens after cooldown...`);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    for (const symbol of failedTokens) {
+      const token = TOKEN_REGISTRY[symbol];
+      try {
+        const balance = token.address === "native"
+          ? await getETHBalance(walletAddress)
+          : await getERC20Balance(token.address, walletAddress, token.decimals);
+        results.push({ symbol, balance });
+        console.log(`  ✅ Retry succeeded for ${symbol}: ${balance}`);
+      } catch (err: any) {
+        console.warn(`  ❌ Final retry failed for ${symbol}: ${err?.message || err}`);
+        // Use last known balance from state if available
+        const lastKnown = state.trading.balances?.find(b => b.symbol === symbol);
+        if (lastKnown && lastKnown.balance > 0) {
+          results.push({ symbol, balance: lastKnown.balance });
+          console.log(`  📎 Using last known balance for ${symbol}: ${lastKnown.balance}`);
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  for (const { symbol, balance } of results) {
+    const token = TOKEN_REGISTRY[symbol];
+    if (balance > 0 || ["USDC", "ETH", "WETH"].includes(symbol)) {
+      balances.push({
+        symbol, balance,
+        usdValue: symbol === "USDC" ? balance : 0,
+        sector: token?.sector,
+      });
+    }
+  }
+
+  const nonZero = balances.filter(b => b.balance > 0);
+  console.log(`  ✅ Found ${nonZero.length} tokens with balances`);
+  for (const b of nonZero) {
+    console.log(`     ${b.symbol}: ${b.balance < 0.001 ? b.balance.toFixed(8) : b.balance.toFixed(4)} (${b.symbol === "USDC" ? `$${b.usdValue.toFixed(2)}` : "pending price"})`);
+  }
+  return balances;
 }
 
 // ============================================================================
@@ -6661,7 +7242,7 @@ async function runTradingCycle() {
     // Skip update during phantom moves — prevents false drop alerts AND prevents
     // inflating Telegram's lastKnownBalance baseline during phantom spikes
     if (!isPhantomMove) {
-      telegramService.onBalanceUpdate(newPortfolioValue).catch(e => console.warn('[Telegram]', e?.message || e));
+      telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
     }
 
     // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
@@ -7652,7 +8233,7 @@ async function runTradingCycle() {
               token: decision.toToken || decision.fromToken || '?',
               error: tradeResult.error || 'unknown',
               action: decision.action,
-            }).catch(e => console.warn('[Telegram]', e?.message || e));
+            }).catch(() => {});
           }
         }
 
@@ -8329,20 +8910,6 @@ async function main() {
     console.log(`  ✅ Bot-level guards: max trade $${CONFIG.trading.maxBuySize}, Base-only, circuit breakers`);
 
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
-
-    // v21.6: Initialize extracted modules
-    _initGasManager({
-      cdpClient, cdpAccountName: CDP_ACCOUNT_NAME,
-      getETHBalance, getERC20Balance,
-      usdcAddress: TOKEN_REGISTRY.USDC.address,
-      cdpNetwork: activeChain.cdpNetwork,
-      walletAddress: CONFIG.walletAddress,
-    });
-    initBalanceReader({
-      getETHBalance, getERC20Balance,
-      tokenRegistry: TOKEN_REGISTRY,
-      getLastKnownBalances: () => state.trading.balances,
-    });
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
       console.error(`\n  🚫 WALLET MISMATCH — TRADING DISABLED`);
@@ -9091,7 +9658,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 
   // v19.6: Telegram shutdown notification (best-effort, 3s timeout)
-  telegramService.onShutdown(`Received ${signal}`).catch(e => console.warn('[Telegram]', e?.message || e)).finally(() => {
+  telegramService.onShutdown(`Received ${signal}`).catch(() => {}).finally(() => {
     console.log("   Goodbye.");
     process.exit(0);
   });
@@ -9420,7 +9987,7 @@ healthServer.listen(process.env.PORT || 3000, () => {
     BOT_VERSION,
     state.trading.totalPortfolioValue,
     CONFIG.walletAddress
-  ).catch(e => console.warn('[Telegram]', e?.message || e));
+  ).catch(() => {});
 });
 
 // EMBEDDED_DASHBOARD — imported from src/dashboard/embedded-html.ts

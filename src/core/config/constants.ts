@@ -649,8 +649,8 @@ export const BASE_RPC_ENDPOINTS = activeChain.rpcEndpoints;
 /** How often to record a price snapshot for the self-accumulating history (hourly) */
 export const PRICE_HISTORY_RECORD_INTERVAL_MS = 55 * 60 * 1000; // 55 min (allows for cycle drift)
 
-/** Maximum hourly data points to retain per token (21 days of hourly data) */
-export const PRICE_HISTORY_MAX_POINTS = 504;
+/** Maximum hourly data points to retain per token (30 days of hourly data) */
+export const PRICE_HISTORY_MAX_POINTS = 720;
 
 /** How often to persist price history to disk */
 export const PRICE_HISTORY_SAVE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
