@@ -37,7 +37,7 @@ export function logMissedOpportunity(
     priceAtBlock,
     scored: false,
   });
-  if (log.entries.length > 100) log.entries = log.entries.slice(-100);
+  if (log.entries.length > 1000) log.entries = log.entries.slice(-1000);
   log.cumulativeMissedCount++;
 }
 

@@ -17,7 +17,7 @@ COPY . .
 RUN mkdir -p logs
 # /data is provided by Railway volume mount — don't mkdir here to avoid conflicts
 
-ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV NODE_OPTIONS="--max-old-space-size=384"
 ENV PERSIST_DIR="/data"
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \

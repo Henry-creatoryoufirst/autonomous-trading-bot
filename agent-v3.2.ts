@@ -2564,9 +2564,8 @@ let state: AgentState = {
   profitTakeCooldowns: {},
   stopLossCooldowns: {},
   tradeFailures: {},
-  // v18.1: Error log ring buffer for remote diagnostics
-  errorLog: [] as Array<{ timestamp: string; type: string; message: string; details?: any }>,
   harvestedProfits: { totalHarvested: 0, harvestCount: 0, harvests: [] },
+  errorLog: [] as Array<{ timestamp: string; type: string; message: string; details?: any }>,
   // v9.1: Auto-harvest transfer state (multi-wallet)
   autoHarvestTransfers: [] as Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string; label: string }>,
   totalAutoHarvestedUSD: 0,
@@ -3856,7 +3855,7 @@ function triggerCircuitBreaker(reason: string) {
   console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
   console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
   // v19.6: Telegram alert on circuit breaker
-  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(() => {});
+  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(e => console.warn('[Telegram]', e?.message || e));
 }
 
 /**
@@ -3871,7 +3870,7 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDet
     console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
   }
   // v19.6: Telegram trade failure tracking
-  telegramService.onTradeResult(success, tradeDetails).catch(() => {});
+  telegramService.onTradeResult(success, tradeDetails).catch(e => console.warn('[Telegram]', e?.message || e));
 
   // v10.4: Rolling window — track last N trade results regardless of outcome
   breakerState.rollingTradeResults.push(isWin);
@@ -4204,6 +4203,10 @@ async function getMarketData(): Promise<MarketData> {
     const stablecoinSupply = stablecoinData;
 
     // Sync history to state for persistence
+    if (fundingRateHistory.btc.length > 504) {
+      fundingRateHistory.btc = fundingRateHistory.btc.slice(-504);
+      fundingRateHistory.eth = fundingRateHistory.eth.slice(-504);
+    }
     state.fundingRateHistory = fundingRateHistory;
     state.btcDominanceHistory = btcDominanceHistory;
     state.stablecoinSupplyHistory = stablecoinSupplyHistory;
@@ -7242,7 +7245,7 @@ async function runTradingCycle() {
     // Skip update during phantom moves — prevents false drop alerts AND prevents
     // inflating Telegram's lastKnownBalance baseline during phantom spikes
     if (!isPhantomMove) {
-      telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
+      telegramService.onBalanceUpdate(newPortfolioValue).catch(e => console.warn('[Telegram]', e?.message || e));
     }
 
     // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
@@ -8233,7 +8236,7 @@ async function runTradingCycle() {
               token: decision.toToken || decision.fromToken || '?',
               error: tradeResult.error || 'unknown',
               action: decision.action,
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram]', e?.message || e));
           }
         }
 
@@ -9658,7 +9661,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 
   // v19.6: Telegram shutdown notification (best-effort, 3s timeout)
-  telegramService.onShutdown(`Received ${signal}`).catch(() => {}).finally(() => {
+  telegramService.onShutdown(`Received ${signal}`).catch(e => console.warn('[Telegram]', e?.message || e)).finally(() => {
     console.log("   Goodbye.");
     process.exit(0);
   });
@@ -9987,7 +9990,7 @@ healthServer.listen(process.env.PORT || 3000, () => {
     BOT_VERSION,
     state.trading.totalPortfolioValue,
     CONFIG.walletAddress
-  ).catch(() => {});
+  ).catch(e => console.warn('[Telegram]', e?.message || e));
 });
 
 // EMBEDDED_DASHBOARD — imported from src/dashboard/embedded-html.ts
