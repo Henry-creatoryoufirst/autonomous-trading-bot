@@ -242,11 +242,11 @@ export function calculateWinRateTruth(): WinRateTruthData {
 export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: number }> = {
   rsiOversold:           { min: 20, max: 40, maxStep: 2 },
   rsiOverbought:         { min: 60, max: 80, maxStep: 2 },
-  confluenceBuy:         { min: 5,  max: 28, maxStep: 2 },  // v21.2: capped at 28 (was 30) — bot tuned itself to 30 and stopped trading entirely
+  confluenceBuy:         { min: 5,  max: 22, maxStep: 2 },  // v21.6: capped at 22 (was 28) — RSI/BB weight reduction compressed score range
   confluenceSell:        { min: -30, max: -5, maxStep: 2 },
-  confluenceStrongBuy:   { min: 25, max: 45, maxStep: 3 },  // v21.2: capped at 45 (was 60) — death spiral prevention
+  confluenceStrongBuy:   { min: 20, max: 38, maxStep: 3 },  // v21.6: lowered (was 25-45) — compressed score range from weight rebalance
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
+  profitTakeTarget:      { min: 8, max: 25, maxStep: 2 },  // v21.6: capped at 25 (was 40) — keep dry powder, don't let it drift to 30%+
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
   stopLossPercent:       { min: -25, max: -12, maxStep: 2 },    // v12.2.2: widened from -6% ceiling — was causing churn
   trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },   // v12.2.2: widened from -5% ceiling — too tight for altcoins
@@ -671,6 +671,28 @@ export function adaptThresholds(review: PerformanceReview, currentRegime?: strin
   // v9.0: Low win rate → tighten ATR stops
   if (winRate < 0.35) {
     proposeAdaptation("atrStopMultiplier", -0.25, `Low win rate ${(winRate * 100).toFixed(0)}%`);
+  }
+
+  // v21.6: Profit-take adaptation — keep dry powder available
+  // If profit-take drifts above 20%, push it back down. The bot needs cash to catch opportunities.
+  if (t.profitTakeTarget > 20) {
+    proposeAdaptation("profitTakeTarget", -2, `Profit-take too high (${t.profitTakeTarget}%) — freeing dry powder`);
+  }
+
+  // v21.6: META-LEARNING — Log indicator accuracy insights
+  // These don't propose threshold changes but add to the audit trail for visibility.
+  // Real indicator weight changes happen in src/algorithm/confluence.ts based on simulation data.
+  if (review.periodStats.avgReturn > 0) {
+    const insight = `Profitable period: avgReturn=$${review.periodStats.avgReturn.toFixed(2)}, winRate=${(winRate * 100).toFixed(0)}%. ` +
+      `Indicator weights (from simulation): MOMENTUM=22, MACD=25, RSI=15(reduced), BB=12(reduced), ADX=±10(boosted). ` +
+      `Shadow proposals should NOT raise confluenceBuy above 20 — higher thresholds starve the bot of trades.`;
+    t.history.push({
+      timestamp: new Date().toISOString(),
+      field: 'META_INSIGHT',
+      oldValue: 0,
+      newValue: 0,
+      reason: insight,
+    });
   }
 
   // Clean up old completed/rejected proposals (keep last 50)
