@@ -47,7 +47,7 @@ export const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   confluenceSell: -8,
   confluenceStrongBuy: 30,
   confluenceStrongSell: -30,
-  profitTakeTarget: 30,
+  profitTakeTarget: 15,  // v21.6: Lowered from 30%
   profitTakeSellPercent: 30,
   stopLossPercent: -15,
   trailingStopPercent: -12,

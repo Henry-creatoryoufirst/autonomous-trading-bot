@@ -443,13 +443,14 @@ export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
 };
 
 /** ATR-relative profit harvest tiers: [atrMultiple, sellPercent]
- *  v18.0: Raised further — 5x ATR was still triggering too early on volatile tokens.
- *  Combined with let-winners-run filter, these only fire when momentum decelerates. */
+ *  v21.6: Lowered from 8/12/18/25x to 4/7/12/18x — bot was sitting fully deployed
+ *  with no dry powder for days. First harvest now triggers at ~4x ATR (~8-12% gain).
+ *  The let-winners-run filter still prevents harvesting during strong momentum. */
 export const ATR_PROFIT_TIERS = [
-  { atrMultiple: 8,  sellPercent: 15, label: "ATR_EARLY" },
-  { atrMultiple: 12, sellPercent: 20, label: "ATR_MID" },
-  { atrMultiple: 18, sellPercent: 25, label: "ATR_STRONG" },
-  { atrMultiple: 25, sellPercent: 35, label: "ATR_MAJOR" },
+  { atrMultiple: 4,  sellPercent: 15, label: "ATR_EARLY" },
+  { atrMultiple: 7,  sellPercent: 20, label: "ATR_MID" },
+  { atrMultiple: 12, sellPercent: 25, label: "ATR_STRONG" },
+  { atrMultiple: 18, sellPercent: 35, label: "ATR_MAJOR" },
 ] as const;
 
 /** How many ATR comparison log entries to emit (for debugging first N cycles) */

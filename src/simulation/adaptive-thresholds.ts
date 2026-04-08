@@ -102,7 +102,7 @@ export function createDefaultAdaptiveThresholds(
     confluenceSell: -8,     // v11.4.22: Symmetrical with buy threshold
     confluenceStrongBuy: 30, // v11.4.22: Lowered from 40 — more achievable for conviction trades
     confluenceStrongSell: -30, // v11.4.22: Symmetrical
-    profitTakeTarget: 30,    // Let winners run to 30% before harvesting
+    profitTakeTarget: 15,    // v21.6: Lowered from 30% — harvest earlier, maintain dry powder
     profitTakeSellPercent: 30,
     stopLossPercent: -15,       // v6.2: tightened from -25%
     trailingStopPercent: -12,   // v6.2: tightened from -20%

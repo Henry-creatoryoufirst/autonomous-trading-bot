@@ -3183,11 +3183,14 @@ function checkProfitTaking(
   if (!CONFIG.trading.profitTaking.enabled) return null;
 
   const cfg = CONFIG.trading.profitTaking;
+  // v21.6: Lowered profit-take tiers to free up dry powder faster.
+  // Old: 25/50/100/200% — too conservative, bot sat fully deployed for days.
+  // New: 10/20/40/80% — takes profits earlier, keeps USDC available for new opportunities.
   const flatTiers = (cfg as any).tiers || [
-    { gainPercent: 25,  sellPercent: 15, label: "EARLY_HARVEST" },
-    { gainPercent: 50,  sellPercent: 20, label: "MID_HARVEST" },
-    { gainPercent: 100, sellPercent: 25, label: "STRONG_HARVEST" },
-    { gainPercent: 200, sellPercent: 35, label: "MAJOR_HARVEST" },
+    { gainPercent: 10,  sellPercent: 15, label: "EARLY_HARVEST" },
+    { gainPercent: 20,  sellPercent: 20, label: "MID_HARVEST" },
+    { gainPercent: 40,  sellPercent: 25, label: "STRONG_HARVEST" },
+    { gainPercent: 80,  sellPercent: 35, label: "MAJOR_HARVEST" },
   ];
   const now = new Date();
 
@@ -3295,9 +3298,9 @@ function checkProfitTaking(
       }
     }
 
-    // Time-based rebalancing: 72+ hours held, up at least 15%, no recent harvest
-    // v11.4.5: Raised from +5% to +15% — 5% is normal crypto noise
-    if (!bestCandidate && gainPercent >= 15 && cb.totalInvestedUSD > 0) {
+    // Time-based rebalancing: 72+ hours held, up at least 8%, no recent harvest
+    // v21.6: Lowered from 15% to 8% — 15% meant stale positions never rebalanced
+    if (!bestCandidate && gainPercent >= 8 && cb.totalInvestedUSD > 0) {
       const holdingAge = cb.firstBuyDate
         ? (now.getTime() - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
         : 0;
