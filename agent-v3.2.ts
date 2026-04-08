@@ -421,6 +421,7 @@ import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSign
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/core/portfolio/index.js";
+import { initBalanceReader, readBalances as _readBalances } from "./src/core/portfolio/balance-reader.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
 import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/core/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/core/diagnostics/index.js";
@@ -4426,93 +4427,9 @@ function syncGasState() {
   lastKnownETHBalance = _getLastKnownETHBalance();
 }
 
-async function getBalances(): Promise<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[]> {
-  // v10.1.1: Always read from CONFIG.walletAddress (the CoinbaseSmartWallet at 0x55509...)
-  const walletAddress = CONFIG.walletAddress;
-  const balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[] = [];
-
-  console.log(`  📡 Reading on-chain balances for ${walletAddress.slice(0, 8)}...`);
-
-  const tokenEntries = Object.entries(TOKEN_REGISTRY);
-  const results: { symbol: string; balance: number }[] = [];
-  const failedTokens: string[] = [];
-
-  // Read balances one at a time with delay — public RPC rate-limits batch calls
-  for (let i = 0; i < tokenEntries.length; i++) {
-    const [symbol, token] = tokenEntries[i];
-    let balance = 0;
-    let success = false;
-
-    // Try up to 3 times per token
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        balance = token.address === "native"
-          ? await getETHBalance(walletAddress)
-          : await getERC20Balance(token.address, walletAddress, token.decimals);
-        success = true;
-        break;
-      } catch (err: any) {
-        if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-        } else {
-          console.warn(`  ⚠️ Failed to read ${symbol} after 3 attempts: ${err?.message || err}`);
-          failedTokens.push(symbol);
-        }
-      }
-    }
-
-    if (success) {
-      results.push({ symbol, balance });
-    }
-
-    // Delay between each token read to avoid RPC rate limits
-    if (i < tokenEntries.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-  }
-
-  // If any tokens failed, retry them after a longer pause
-  if (failedTokens.length > 0) {
-    console.log(`  🔄 Retrying ${failedTokens.length} failed tokens after cooldown...`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    for (const symbol of failedTokens) {
-      const token = TOKEN_REGISTRY[symbol];
-      try {
-        const balance = token.address === "native"
-          ? await getETHBalance(walletAddress)
-          : await getERC20Balance(token.address, walletAddress, token.decimals);
-        results.push({ symbol, balance });
-        console.log(`  ✅ Retry succeeded for ${symbol}: ${balance}`);
-      } catch (err: any) {
-        console.warn(`  ❌ Final retry failed for ${symbol}: ${err?.message || err}`);
-        // Use last known balance from state if available
-        const lastKnown = state.trading.balances?.find(b => b.symbol === symbol);
-        if (lastKnown && lastKnown.balance > 0) {
-          results.push({ symbol, balance: lastKnown.balance });
-          console.log(`  📎 Using last known balance for ${symbol}: ${lastKnown.balance}`);
-        }
-      }
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  }
-
-  for (const { symbol, balance } of results) {
-    const token = TOKEN_REGISTRY[symbol];
-    if (balance > 0 || ["USDC", "ETH", "WETH"].includes(symbol)) {
-      balances.push({
-        symbol, balance,
-        usdValue: symbol === "USDC" ? balance : 0,
-        sector: token?.sector,
-      });
-    }
-  }
-
-  const nonZero = balances.filter(b => b.balance > 0);
-  console.log(`  ✅ Found ${nonZero.length} tokens with balances`);
-  for (const b of nonZero) {
-    console.log(`     ${b.symbol}: ${b.balance < 0.001 ? b.balance.toFixed(8) : b.balance.toFixed(4)} (${b.symbol === "USDC" ? `$${b.usdValue.toFixed(2)}` : "pending price"})`);
-  }
-  return balances;
+// v21.6: Balance reading delegated to src/core/portfolio/balance-reader.ts
+async function getBalances() {
+  return _readBalances(CONFIG.walletAddress);
 }
 
 // ============================================================================
@@ -8774,13 +8691,18 @@ async function main() {
 
     console.log(`  ✅ CDP SDK fully operational — trades WILL execute`);
 
-    // v21.6: Initialize extracted gas manager module
+    // v21.6: Initialize extracted modules
     _initGasManager({
       cdpClient, cdpAccountName: CDP_ACCOUNT_NAME,
       getETHBalance, getERC20Balance,
       usdcAddress: TOKEN_REGISTRY.USDC.address,
       cdpNetwork: activeChain.cdpNetwork,
       walletAddress: CONFIG.walletAddress,
+    });
+    initBalanceReader({
+      getETHBalance, getERC20Balance,
+      tokenRegistry: TOKEN_REGISTRY,
+      getLastKnownBalances: () => state.trading.balances,
     });
 
     if (account.address.toLowerCase() !== CONFIG.walletAddress.toLowerCase()) {
