@@ -11,8 +11,12 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 - **BaseScan:** basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F
 - **Network:** Base Mainnet (Coinbase L2)
 
-## Deployment
-- **Railway** — auto-deploys from `main` branch
+## Deployment — STAGING REQUIRED
+- **NEVER push bot code changes directly to `main`** — always go through staging first
+- **Production (main):** Railway auto-deploys from `main` branch
+- **Staging (staging):** Railway auto-deploys from `staging` branch (paper-trade mode)
+- **Workflow:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+- **Rollback:** `./scripts/deploy/rollback.sh`
 - **Project ID:** 44a17190-9c66-481d-bdaf-6ef93c3babe2
 - **Service ID:** 80096f70-dc22-463f-87a2-77f6081d6781
 - **URL:** autonomous-trading-bot-production.up.railway.app
