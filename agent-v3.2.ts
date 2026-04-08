@@ -443,6 +443,19 @@ import {
   setLastOnChainIntelligence as _setLastOnChainIntelligence,
   getChainlinkDeviations as _getChainlinkDeviations,
 } from "./src/core/pricing/index.js";
+// Phase 16: Extracted on-chain intelligence engine
+import {
+  initOnChainIntelligence as _initOnChainIntelligence,
+  fetchTWAPDivergence as _fetchTWAPDivergence,
+  fetchSwapOrderFlow as _fetchSwapOrderFlow,
+  readTickLiquidityNet as _readTickLiquidityNet,
+  fetchTickLiquidityDepth as _fetchTickLiquidityDepth,
+  fetchAllOnChainIntelligence as _fetchAllOnChainIntelligence,
+  computePriceChange as _computePriceChangeIntel,
+  enrichVolumeData as _enrichVolumeData,
+  computeLocalAltseasonSignal as _computeLocalAltseasonSignalIntel,
+  fetchBaseUSDCSupply as _fetchBaseUSDCSupply,
+} from "./src/core/pricing/index.js";
 // Phase 14: Extracted on-chain capital flows module
 import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/core/chain/index.js";
 // Phase 3c: Centralized state store
@@ -680,576 +693,32 @@ function recordPriceSnapshot(prices: Map<string, number>): void {
  * Only works for V3 pools (uniswapV3, aerodromeV3).
  * Returns null if pool doesn't support oracle or cardinality too low.
  */
-async function fetchTWAPDivergence(
-  symbol: string,
-  spotPrice: number,
-  ethPrice: number,
-  btcPrice: number = 0,
-  virtualPrice: number = 0
-): Promise<TechnicalIndicators["twapDivergence"]> {
-  const pool = poolRegistry[symbol];
-  if (!pool || (pool.poolType !== 'uniswapV3' && pool.poolType !== 'aerodromeV3')) return null;
-  if (spotPrice <= 0 || ethPrice <= 0) return null;
+// fetchTWAPDivergence — delegated to src/core/pricing/on-chain-intelligence.ts
+const fetchTWAPDivergence = _fetchTWAPDivergence;
 
-  try {
-    // observe([0, 900]) — selector 0x883bdbfd, ABI-encoded dynamic uint32 array
-    const calldata = '0x883bdbfd' +
-      '0000000000000000000000000000000000000000000000000000000000000020' + // offset
-      '0000000000000000000000000000000000000000000000000000000000000002' + // length = 2
-      '0000000000000000000000000000000000000000000000000000000000000000' + // secondsAgo[0] = 0
-      '0000000000000000000000000000000000000000000000000000000000000384'; // secondsAgo[1] = 900
+// fetchSwapOrderFlow — delegated to src/core/pricing/on-chain-intelligence.ts
+const fetchSwapOrderFlow = _fetchSwapOrderFlow;
 
-    const result = await rpcCall('eth_call', [
-      { to: pool.poolAddress, data: calldata }, 'latest'
-    ]);
+// fetchTickLiquidityDepth — delegated to src/core/pricing/on-chain-intelligence.ts
+const fetchTickLiquidityDepth = _fetchTickLiquidityDepth;
 
-    if (!result || result === '0x' || result.length < 258) return null; // Need at least 2 int56 values
+// readTickLiquidityNet — delegated to src/core/pricing/on-chain-intelligence.ts
+const readTickLiquidityNet = _readTickLiquidityNet;
 
-    // Decode response: (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128s)
-    // tickCumulatives is a dynamic array, starts at offset in response
-    // Layout: offset_ticks(32) + offset_spl(32) + [ticks_length(32) + tick0(32) + tick1(32)] + ...
-    const data = result.slice(2); // strip 0x
+// fetchAllOnChainIntelligence — delegated to src/core/pricing/on-chain-intelligence.ts
+const fetchAllOnChainIntelligence = _fetchAllOnChainIntelligence;
 
-    // Read offsets
-    const ticksOffset = parseInt(data.slice(0, 64), 16) * 2; // byte offset → hex char offset
-    const ticksLength = parseInt(data.slice(ticksOffset, ticksOffset + 64), 16);
-    if (ticksLength < 2) return null;
+// computePriceChange — delegated to src/core/pricing/on-chain-intelligence.ts
+const computePriceChange = _computePriceChangeIntel;
 
-    // Read tick cumulatives (int56 stored as int256)
-    const tick0Hex = data.slice(ticksOffset + 64, ticksOffset + 128);
-    const tick1Hex = data.slice(ticksOffset + 128, ticksOffset + 192);
+// enrichVolumeData — delegated to src/core/pricing/on-chain-intelligence.ts
+const enrichVolumeData = _enrichVolumeData;
 
-    const parseSigned256 = (hex: string): bigint => {
-      const val = BigInt('0x' + hex);
-      return val > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
-        ? val - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
-        : val;
-    };
+// computeLocalAltseasonSignal — delegated to src/core/pricing/on-chain-intelligence.ts
+const computeLocalAltseasonSignal = _computeLocalAltseasonSignalIntel;
 
-    const tickCum0 = parseSigned256(tick0Hex); // Now (most recent)
-    const tickCum1 = parseSigned256(tick1Hex); // 900 seconds ago
-
-    // TWAP tick = (tickCumNow - tickCumPast) / elapsed
-    const twapTick = Number(tickCum0 - tickCum1) / TWAP_OBSERVATION_SECONDS;
-
-    // Convert tick to price: price = 1.0001^tick
-    // This gives price of token0 in terms of token1
-    const twapRawPrice = Math.pow(1.0001, twapTick);
-
-    // Apply decimal adjustment (same as decodeSqrtPriceX96)
-    const decimalAdjustment = 10 ** (pool.token0Decimals - pool.token1Decimals);
-    let twapTokenPrice = twapRawPrice * decimalAdjustment;
-
-    // If our token is token1, invert
-    if (!pool.token0IsBase) {
-      twapTokenPrice = 1 / twapTokenPrice;
-    }
-
-    // Convert to USD
-    let twapPriceUSD: number;
-    if (pool.quoteToken === 'WETH') twapPriceUSD = twapTokenPrice * ethPrice;
-    else if (pool.quoteToken === 'cbBTC') twapPriceUSD = btcPrice > 0 ? twapTokenPrice * btcPrice : 0;
-    else if (pool.quoteToken === 'VIRTUAL') twapPriceUSD = virtualPrice > 0 ? twapTokenPrice * virtualPrice : 0;
-    else twapPriceUSD = twapTokenPrice; // USDC
-
-    if (twapPriceUSD <= 0 || !isFinite(twapPriceUSD)) return null;
-
-    // Calculate divergence
-    const divergencePct = ((spotPrice - twapPriceUSD) / twapPriceUSD) * 100;
-
-    let signal: "OVERSOLD" | "OVERBOUGHT" | "NORMAL";
-    if (divergencePct < -TWAP_DIVERGENCE_THRESHOLD_PCT) signal = "OVERSOLD";
-    else if (divergencePct > TWAP_DIVERGENCE_THRESHOLD_PCT) signal = "OVERBOUGHT";
-    else signal = "NORMAL";
-
-    return {
-      twapPrice: twapPriceUSD,
-      spotPrice,
-      divergencePct,
-      signal,
-    };
-  } catch {
-    return null; // observe() reverted — cardinality too low or pool doesn't support oracle
-  }
-}
-
-/**
- * 2B: Fetch swap event order flow from DEX pool.
- * Reads eth_getLogs for Swap events over last ~10 minutes (300 blocks on Base).
- * Determines net buy/sell pressure (CVD) with trade size bucketing.
- */
-async function fetchSwapOrderFlow(
-  symbol: string,
-  currentPrice: number,
-  ethPrice: number,
-  currentBlock: number
-): Promise<TechnicalIndicators["orderFlow"]> {
-  const pool = poolRegistry[symbol];
-  if (!pool || currentPrice <= 0 || ethPrice <= 0 || currentBlock <= 0) return null;
-
-  try {
-    const fromBlock = '0x' + Math.max(0, currentBlock - ORDER_FLOW_BLOCK_LOOKBACK).toString(16);
-    const toBlock = 'latest';
-
-    const logs = await rpcCall('eth_getLogs', [{
-      address: pool.poolAddress,
-      topics: [SWAP_EVENT_TOPIC],
-      fromBlock,
-      toBlock,
-    }]);
-
-    if (!logs || !Array.isArray(logs) || logs.length === 0) return null;
-
-    let buyVolumeUSD = 0;
-    let sellVolumeUSD = 0;
-    let largeBuyVolume = 0;
-    let tradeCount = 0;
-
-    for (const log of logs) {
-      try {
-        if (!log.data || log.data.length < 130) continue;
-        const data = log.data.slice(2); // strip 0x
-
-        // Swap event data layout:
-        // For V3: amount0 (int256, 32 bytes), amount1 (int256, 32 bytes), sqrtPriceX96 (uint160, 32 bytes), liquidity (uint128, 32 bytes), tick (int24, 32 bytes)
-        // For V2/Aerodrome: similar but may differ — we just need amount0 and amount1
-        const amount0Hex = data.slice(0, 64);
-        const amount1Hex = data.slice(64, 128);
-
-        const parseSigned = (hex: string): bigint => {
-          const val = BigInt('0x' + hex);
-          return val > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
-            ? val - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
-            : val;
-        };
-
-        const amount0 = parseSigned(amount0Hex);
-        const amount1 = parseSigned(amount1Hex);
-
-        // Determine buy/sell direction:
-        // In a swap, one amount is positive (received by pool) and one negative (sent by pool)
-        // If token0IsBase:
-        //   amount0 < 0 means pool sent token0 to user → user BOUGHT our token
-        //   amount0 > 0 means user sent token0 to pool → user SOLD our token
-        let isBuy: boolean;
-        let tradeAmountRaw: bigint;
-        let tradeDecimals: number;
-
-        if (pool.token0IsBase) {
-          isBuy = amount0 < 0n;
-          tradeAmountRaw = amount0 < 0n ? -amount0 : amount0;
-          tradeDecimals = pool.token0Decimals;
-        } else {
-          isBuy = amount1 < 0n;
-          tradeAmountRaw = amount1 < 0n ? -amount1 : amount1;
-          tradeDecimals = pool.token1Decimals;
-        }
-
-        const tradeAmountTokens = Number(tradeAmountRaw) / (10 ** tradeDecimals);
-        const tradeValueUSD = tradeAmountTokens * currentPrice;
-
-        if (tradeValueUSD <= 0 || !isFinite(tradeValueUSD) || tradeValueUSD > 10_000_000) continue; // Sanity check
-
-        tradeCount++;
-        if (isBuy) {
-          buyVolumeUSD += tradeValueUSD;
-          if (tradeValueUSD >= LARGE_TRADE_THRESHOLD_USD) {
-            largeBuyVolume += tradeValueUSD;
-          }
-        } else {
-          sellVolumeUSD += tradeValueUSD;
-        }
-      } catch {
-        continue; // Skip malformed logs
-      }
-    }
-
-    if (tradeCount === 0) return null;
-
-    const netBuyVolumeUSD = buyVolumeUSD - sellVolumeUSD;
-    const totalVolume = buyVolumeUSD + sellVolumeUSD;
-    const buyRatio = totalVolume > 0 ? buyVolumeUSD / totalVolume : 0.5;
-    const largeBuyPct = buyVolumeUSD > 0 ? (largeBuyVolume / buyVolumeUSD) * 100 : 0;
-
-    let signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
-    if (buyRatio > 0.65) signal = "STRONG_BUY";
-    else if (buyRatio > 0.55) signal = "BUY";
-    else if (buyRatio < 0.35) signal = "STRONG_SELL";
-    else if (buyRatio < 0.45) signal = "SELL";
-    else signal = "NEUTRAL";
-
-    return {
-      netBuyVolumeUSD: Math.round(netBuyVolumeUSD),
-      buyVolumeUSD: Math.round(buyVolumeUSD),
-      sellVolumeUSD: Math.round(sellVolumeUSD),
-      tradeCount,
-      largeBuyPct: Math.round(largeBuyPct),
-      signal,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 2C: Fetch tick liquidity depth around current price.
- * Reads ticks above/below current to map on-chain support/resistance.
- * Heavy cycle only — more RPC calls (~11 per pool).
- */
-async function fetchTickLiquidityDepth(
-  symbol: string,
-  currentPrice: number,
-  ethPrice: number
-): Promise<TechnicalIndicators["tickDepth"]> {
-  const pool = poolRegistry[symbol];
-  if (!pool || (pool.poolType !== 'uniswapV3' && pool.poolType !== 'aerodromeV3')) return null;
-  if (currentPrice <= 0 || ethPrice <= 0) return null;
-
-  const currentTick = lastPoolTicks[symbol];
-  if (currentTick === undefined) return null;
-
-  try {
-    // Get tickSpacing (cached — immutable per pool)
-    if (!pool.tickSpacing) {
-      const tsResult = await rpcCall('eth_call', [
-        { to: pool.poolAddress, data: '0xd0c93a7c' }, 'latest'
-      ]);
-      if (tsResult && tsResult !== '0x') {
-        const tsVal = parseInt(tsResult, 16);
-        // int24 range: handle potential sign
-        pool.tickSpacing = tsVal > 8388607 ? tsVal - 16777216 : tsVal;
-        if (pool.tickSpacing <= 0 || pool.tickSpacing > 16384) {
-          pool.tickSpacing = undefined;
-          return null;
-        }
-      } else {
-        return null;
-      }
-    }
-
-    const spacing = pool.tickSpacing!;
-
-    // Align current tick to tick spacing
-    const alignedTick = Math.floor(currentTick / spacing) * spacing;
-
-    // Read current liquidity
-    const liqResult = await rpcCall('eth_call', [
-      { to: pool.poolAddress, data: '0x1a686502' }, 'latest'
-    ]);
-    const inRangeLiquidity = liqResult && liqResult !== '0x' ? Number(BigInt(liqResult)) : 0;
-
-    // Read ticks above and below — batch with Promise.allSettled
-    const tickReads: Promise<{ tick: number; liquidityNet: bigint }>[] = [];
-
-    for (let i = 1; i <= TICK_DEPTH_RANGE; i++) {
-      // Below current price (support)
-      const tickBelow = alignedTick - (i * spacing);
-      tickReads.push(readTickLiquidityNet(pool.poolAddress, tickBelow));
-      // Above current price (resistance)
-      const tickAbove = alignedTick + (i * spacing);
-      tickReads.push(readTickLiquidityNet(pool.poolAddress, tickAbove));
-    }
-
-    const tickResults = await Promise.allSettled(tickReads);
-
-    let bidDepthRaw = 0n; // Support: positive liquidityNet below price
-    let askDepthRaw = 0n; // Resistance: negative liquidityNet above price (absolute)
-
-    for (let i = 0; i < TICK_DEPTH_RANGE; i++) {
-      const belowResult = tickResults[i * 2];
-      const aboveResult = tickResults[i * 2 + 1];
-
-      if (belowResult.status === 'fulfilled' && belowResult.value.liquidityNet > 0n) {
-        bidDepthRaw += belowResult.value.liquidityNet;
-      }
-      if (aboveResult.status === 'fulfilled') {
-        const net = aboveResult.value.liquidityNet;
-        if (net < 0n) askDepthRaw += -net; // Take absolute of negative
-      }
-    }
-
-    // Convert liquidity to USD approximation
-    // Each unit of liquidity ≈ sqrt(price) worth of value per tick range
-    // Simplified: liquidity × sqrtPrice × tickRange / 2^96 ≈ value in token terms
-    // For practical purposes, use currentPrice as proxy multiplier
-    const sqrtPrice = Math.sqrt(currentPrice);
-    const tickRangePrice = currentPrice * (Math.pow(1.0001, spacing) - 1); // Price diff per tick spacing
-
-    // Convert liquidity to approximate USD using quote token pricing
-    let quotePrice = 1; // USDC
-    if (pool.quoteToken === 'WETH') quotePrice = ethPrice;
-    else if (pool.quoteToken === 'cbBTC') quotePrice = lastKnownPrices['cbBTC']?.price || 0;
-    else if (pool.quoteToken === 'VIRTUAL') quotePrice = lastKnownPrices['VIRTUAL']?.price || 0;
-
-    // liquidity * tickRangePrice gives rough token-equivalent depth
-    // Divide by 10^18 to normalize (liquidity is in raw form)
-    const scaleFactor = tickRangePrice * quotePrice / (10 ** 18);
-    const bidDepthUSD = Number(bidDepthRaw) * scaleFactor;
-    const askDepthUSD = Number(askDepthRaw) * scaleFactor;
-    const inRangeLiqUSD = inRangeLiquidity * scaleFactor;
-
-    if (bidDepthUSD <= 0 && askDepthUSD <= 0) return null;
-
-    const depthRatio = askDepthUSD > 0 ? bidDepthUSD / askDepthUSD : bidDepthUSD > 0 ? 10 : 1;
-
-    let signal: "STRONG_SUPPORT" | "SUPPORT" | "BALANCED" | "RESISTANCE" | "STRONG_RESISTANCE";
-    if (depthRatio > 2.0) signal = "STRONG_SUPPORT";
-    else if (depthRatio > 1.3) signal = "SUPPORT";
-    else if (depthRatio < 0.5) signal = "STRONG_RESISTANCE";
-    else if (depthRatio < 0.77) signal = "RESISTANCE";
-    else signal = "BALANCED";
-
-    return {
-      bidDepthUSD: Math.round(bidDepthUSD),
-      askDepthUSD: Math.round(askDepthUSD),
-      depthRatio: Math.round(depthRatio * 100) / 100,
-      inRangeLiquidity: Math.round(inRangeLiqUSD),
-      signal,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Helper: Read liquidityNet for a specific tick from a V3 pool.
- * ticks(int24) selector: 0xf30dba93
- * Returns (uint128 liquidityGross, int128 liquidityNet, ...)
- */
-async function readTickLiquidityNet(poolAddress: string, tick: number): Promise<{ tick: number; liquidityNet: bigint }> {
-  // ABI-encode int24 as int256 (two's complement for negative)
-  let tickHex: string;
-  if (tick >= 0) {
-    tickHex = tick.toString(16).padStart(64, '0');
-  } else {
-    // Two's complement for negative int256
-    const twosComp = BigInt('0x10000000000000000000000000000000000000000000000000000000000000000') + BigInt(tick);
-    tickHex = twosComp.toString(16).padStart(64, '0');
-  }
-
-  const result = await rpcCall('eth_call', [
-    { to: poolAddress, data: '0xf30dba93' + tickHex }, 'latest'
-  ]);
-
-  if (!result || result === '0x' || result.length < 130) {
-    return { tick, liquidityNet: 0n };
-  }
-
-  // liquidityNet is at bytes 32-63 (int128 stored as int256)
-  const netHex = result.slice(2 + 64, 2 + 128);
-  const netBigInt = BigInt('0x' + netHex);
-  const liquidityNet = netBigInt > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
-    ? netBigInt - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
-    : netBigInt;
-
-  return { tick, liquidityNet };
-}
-
-/**
- * 2D: Orchestrator — fetch all on-chain intelligence for V3 pools.
- * Launches TWAP + OrderFlow in parallel for each pool.
- * Tick depth only on heavy cycles.
- * Returns Record<symbol, { twap, orderFlow, tickDepth }>
- */
-async function fetchAllOnChainIntelligence(
-  ethPrice: number,
-  onChainPrices: Map<string, number>,
-  includeTickDepth: boolean = true
-): Promise<Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }>> {
-  const result: Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }> = {};
-
-  if (ethPrice <= 0) return result;
-
-  try {
-    // Get current block number (1 call, used for all order flow queries)
-    const blockHex = await rpcCall('eth_blockNumber', []);
-    const currentBlock = blockHex ? parseInt(blockHex, 16) : 0;
-    if (currentBlock <= 0) return result;
-
-    const btcPrice = onChainPrices.get('cbBTC') || lastKnownPrices['cbBTC']?.price || 0;
-    const virtualPrice = onChainPrices.get('VIRTUAL') || lastKnownPrices['VIRTUAL']?.price || 0;
-
-    // Collect all V3 pools to analyze
-    const poolSymbols = Object.entries(poolRegistry)
-      .filter(([symbol, pool]) =>
-        (pool.poolType === 'uniswapV3' || pool.poolType === 'aerodromeV3') &&
-        symbol !== 'ETH' && symbol !== 'WETH' && symbol !== 'USDC' &&
-        pool.consecutiveFailures < 3
-      )
-      .map(([symbol]) => symbol);
-
-    // Launch TWAP + OrderFlow for each pool in parallel
-    const promises = poolSymbols.map(async (symbol) => {
-      const spotPrice = onChainPrices.get(symbol) || lastKnownPrices[symbol]?.price || 0;
-      if (spotPrice <= 0) return;
-
-      const [twap, orderFlow] = await Promise.all([
-        fetchTWAPDivergence(symbol, spotPrice, ethPrice, btcPrice, virtualPrice).catch(() => null),
-        fetchSwapOrderFlow(symbol, spotPrice, ethPrice, currentBlock).catch(() => null),
-      ]);
-
-      let tickDepth: TechnicalIndicators["tickDepth"] = null;
-      if (includeTickDepth) {
-        tickDepth = await fetchTickLiquidityDepth(symbol, spotPrice, ethPrice).catch(() => null);
-      }
-
-      result[symbol] = { twap, orderFlow, tickDepth };
-    });
-
-    await Promise.allSettled(promises);
-
-    // Log summary
-    const twapCount = Object.values(result).filter(r => r.twap).length;
-    const flowCount = Object.values(result).filter(r => r.orderFlow).length;
-    const depthCount = Object.values(result).filter(r => r.tickDepth).length;
-    console.log(`  📊 On-chain intelligence: ${twapCount} TWAP, ${flowCount} flow, ${depthCount} depth signals from ${poolSymbols.length} V3 pools`);
-
-    // Cache for light cycles — stored in pricing module
-    _setLastOnChainIntelligence(result);
-
-    return result;
-  } catch (e: any) {
-    console.error(`  ⚠️ On-chain intelligence failed: ${e?.message || String(e)}`);
-    return result;
-  }
-}
-
-// computePriceChange — delegated to src/algorithm/market-analysis.ts
-function computePriceChange(symbol: string, currentPrice: number, lookbackMs: number): number {
-  return _computePriceChange(priceHistoryStore.tokens[symbol], currentPrice, lookbackMs);
-}
-
-// Volume enrichment state
-let lastVolumeEnrichmentTime = 0;
-
-/**
- * Periodic volume enrichment from DexScreener (fades out once self-sufficient).
- * Returns volume data per symbol, or empty map if skipped.
- */
-async function enrichVolumeData(): Promise<Map<string, number>> {
-  const volumes = new Map<string, number>();
-  const now = Date.now();
-
-  // Skip if too soon since last enrichment
-  if (now - lastVolumeEnrichmentTime < VOLUME_ENRICHMENT_INTERVAL_MS) return volumes;
-
-  // Check if we're self-sufficient (have enough history to skip DexScreener)
-  const tokenLengths = Object.values(priceHistoryStore.tokens)
-    .filter(t => t.prices.length > 0)
-    .map(t => t.prices.length);
-  const minPoints = tokenLengths.length > 0 ? Math.min(...tokenLengths) : 0;
-  if (minPoints >= VOLUME_SELF_SUFFICIENT_POINTS) {
-    // Self-sufficient — no need for DexScreener volume enrichment
-    return volumes;
-  }
-
-  try {
-    const addresses = Object.entries(TOKEN_REGISTRY)
-      .filter(([s]) => s !== 'USDC' && TOKEN_REGISTRY[s].address !== 'native')
-      .map(([_, t]) => t.address)
-      .join(',');
-
-    const res = await axios.get(
-      `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
-      { timeout: 10000 }
-    );
-
-    if (res.data && Array.isArray(res.data)) {
-      const seen = new Set<string>();
-      for (const pair of res.data) {
-        const addr = pair.baseToken?.address?.toLowerCase();
-        const entry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.address.toLowerCase() === addr);
-        if (entry && !seen.has(entry[0])) {
-          seen.add(entry[0]);
-          const vol = pair.volume?.h24 || 0;
-          if (vol > 0) volumes.set(entry[0], vol);
-        }
-      }
-    }
-
-    lastVolumeEnrichmentTime = now;
-    if (volumes.size > 0) {
-      console.log(`  📊 Volume enrichment: ${volumes.size} tokens (fade-out: ${minPoints}/${VOLUME_SELF_SUFFICIENT_POINTS} points)`);
-    }
-  } catch { /* non-critical */ }
-
-  return volumes;
-}
-
-// computeLocalAltseasonSignal — delegated to src/algorithm/market-analysis.ts
-function computeLocalAltseasonSignal(): AltseasonSignal {
-  return _computeLocalAltseasonSignal(
-    priceHistoryStore.tokens['cbBTC'],
-    priceHistoryStore.tokens['ETH'] || priceHistoryStore.tokens['WETH'],
-    BTC_DOMINANCE_CHANGE_THRESHOLD,
-  );
-}
-
-/**
- * Fetch USDC total supply on Base as a proxy for stablecoin capital flow.
- * Replaces fetchStablecoinSupply() CoinGecko call.
- */
-async function fetchBaseUSDCSupply(): Promise<StablecoinSupplyData | null> {
-  try {
-    // totalSupply() on Base USDC contract (checksummed address)
-    const result = await rpcCall('eth_call', [
-      { to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', data: '0x18160ddd' },
-      'latest'
-    ]);
-    if (!result || result === '0x') return null;
-
-    // Use BigInt to avoid precision loss on large supply values, then convert to USD
-    const totalSupply = Number(BigInt(result)) / 1e6; // USDC has 6 decimals
-    const now = new Date().toISOString();
-
-    // v12.0.2: Filter out stale CoinGecko-era history entries (global supply ~$200B vs Base USDC ~$4B)
-    // Remove ANY entries that differ >10x from current reading — handles mixed history from migration
-    if (stablecoinSupplyHistory.values.length > 0) {
-      const before = stablecoinSupplyHistory.values.length;
-      stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.filter(v => {
-        if (v.totalSupply <= 0) return false;
-        const ratio = totalSupply / v.totalSupply;
-        return ratio >= 0.1 && ratio <= 10; // Keep only entries within 10x of current
-      });
-      const purged = before - stablecoinSupplyHistory.values.length;
-      if (purged > 0) {
-        console.log(`  🔄 Stablecoin history: purged ${purged} stale entries (pre-v12 data), ${stablecoinSupplyHistory.values.length} remain`);
-      }
-    }
-
-    // Track in existing stablecoinSupplyHistory for persistence
-    stablecoinSupplyHistory.values.push({ timestamp: now, totalSupply });
-    if (stablecoinSupplyHistory.values.length > 504) {
-      stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.slice(-504);
-    }
-
-    // Compute 7-day change
-    let supplyChange7d = 0;
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const oldEntry = stablecoinSupplyHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
-    if (oldEntry && oldEntry.totalSupply > 0) {
-      supplyChange7d = ((totalSupply - oldEntry.totalSupply) / oldEntry.totalSupply) * 100;
-    }
-
-    let signal: StablecoinSupplyData['signal'] = 'STABLE';
-    if (supplyChange7d > STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = 'CAPITAL_INFLOW';
-    else if (supplyChange7d < -STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = 'CAPITAL_OUTFLOW';
-
-    console.log(`  💵 Base USDC supply: $${(totalSupply / 1e6).toFixed(1)}M (${supplyChange7d >= 0 ? '+' : ''}${supplyChange7d.toFixed(2)}% 7d) → ${signal}`);
-
-    return {
-      usdtMarketCap: 0, // Not available on-chain
-      usdcMarketCap: totalSupply,
-      totalStablecoinSupply: totalSupply,
-      supplyChange7d,
-      signal,
-      lastUpdated: now,
-    };
-  } catch (e: any) {
-    console.warn(`  ⚠️ Base USDC supply fetch failed: ${e.message?.substring(0, 100) || e}`);
-    return null;
-  }
-}
+// fetchBaseUSDCSupply — delegated to src/core/pricing/on-chain-intelligence.ts
+const fetchBaseUSDCSupply = _fetchBaseUSDCSupply;
 
 // Load stores on module init
 loadPriceHistoryStore();
@@ -7887,6 +7356,29 @@ async function main() {
       POOL_REDISCOVERY_FAILURE_THRESHOLD, PRICE_SANITY_MAX_DEVIATION,
       WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS,
       QUOTE_DECIMALS, getLastKnownPrices: () => lastKnownPrices,
+    });
+    _initOnChainIntelligence({
+      rpcCall,
+      getPoolRegistry: _getPoolRegistry,
+      getLastPoolTicks: _getLastPoolTicks,
+      setLastOnChainIntelligence: _setLastOnChainIntelligence,
+      getLastKnownPrices: () => lastKnownPrices,
+      getPriceHistoryTokens: () => priceHistoryStore.tokens,
+      getStablecoinSupplyHistory: () => stablecoinSupplyHistory,
+      setStablecoinSupplyHistory: (h) => { stablecoinSupplyHistory = h; },
+      computePriceChange: _computePriceChange,
+      computeLocalAltseasonSignal: _computeLocalAltseasonSignal,
+      TOKEN_REGISTRY,
+      TWAP_OBSERVATION_SECONDS,
+      TWAP_DIVERGENCE_THRESHOLD_PCT,
+      ORDER_FLOW_BLOCK_LOOKBACK,
+      SWAP_EVENT_TOPIC,
+      LARGE_TRADE_THRESHOLD_USD,
+      TICK_DEPTH_RANGE,
+      VOLUME_ENRICHMENT_INTERVAL_MS,
+      VOLUME_SELF_SUFFICIENT_POINTS,
+      BTC_DOMINANCE_CHANGE_THRESHOLD,
+      STABLECOIN_SUPPLY_CHANGE_THRESHOLD,
     });
     initBalanceReader({
       getETHBalance, getERC20Balance,

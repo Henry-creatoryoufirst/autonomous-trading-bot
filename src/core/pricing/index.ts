@@ -23,3 +23,19 @@ export {
 } from './on-chain-pricing.js';
 
 export type { OnChainPricingDeps } from './on-chain-pricing.js';
+
+// Phase 16: On-Chain Intelligence Engine
+export {
+  initOnChainIntelligence,
+  fetchTWAPDivergence,
+  fetchSwapOrderFlow,
+  readTickLiquidityNet,
+  fetchTickLiquidityDepth,
+  fetchAllOnChainIntelligence,
+  computePriceChange,
+  enrichVolumeData,
+  computeLocalAltseasonSignal,
+  fetchBaseUSDCSupply,
+} from './on-chain-intelligence.js';
+
+export type { OnChainIntelligenceDeps } from './on-chain-intelligence.js';
