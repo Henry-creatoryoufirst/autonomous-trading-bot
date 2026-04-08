@@ -6,3 +6,11 @@
  */
 
 export { fetchPoolLiquidity, checkLiquidity, fetchGasPrice, checkGasCost } from './gas-liquidity.js';
+export {
+  initGasManager,
+  checkAndRefuelGas,
+  bootstrapGas,
+  rescueGasFromNvrTrading,
+  getLastKnownETHBalance,
+  isGasBootstrapAttempted,
+} from './gas-manager.js';
