@@ -431,31 +431,6 @@ import { getPortfolioSensitivity as _getPortfolioSensitivity, assessVolatility a
 // Phase 13: Extracted gas & liquidity module
 import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiquidity, fetchGasPrice as _fetchGasPrice, checkGasCost as _checkGasCost } from "./src/core/gas/index.js";
 import { initGasManager as _initGasManager, checkAndRefuelGas as _checkAndRefuelGas, bootstrapGas as _bootstrapGas, rescueGasFromNvrTrading as _rescueGasFromNvrTrading, getLastKnownETHBalance as _getLastKnownETHBalance } from "./src/core/gas/index.js";
-// Phase 15: Extracted on-chain pricing engine
-import {
-  initOnChainPricing as _initOnChainPricing,
-  fetchChainlinkPrices as _fetchChainlinkPrices,
-  fetchAllOnChainPrices as _fetchAllOnChainPrices,
-  discoverPoolAddresses as _discoverPoolAddresses,
-  getPoolRegistry as _getPoolRegistry,
-  getLastPoolTicks as _getLastPoolTicks,
-  getLastOnChainIntelligence as _getLastOnChainIntelligence,
-  setLastOnChainIntelligence as _setLastOnChainIntelligence,
-  getChainlinkDeviations as _getChainlinkDeviations,
-} from "./src/core/pricing/index.js";
-// Phase 16: Extracted on-chain intelligence engine
-import {
-  initOnChainIntelligence as _initOnChainIntelligence,
-  fetchTWAPDivergence as _fetchTWAPDivergence,
-  fetchSwapOrderFlow as _fetchSwapOrderFlow,
-  readTickLiquidityNet as _readTickLiquidityNet,
-  fetchTickLiquidityDepth as _fetchTickLiquidityDepth,
-  fetchAllOnChainIntelligence as _fetchAllOnChainIntelligence,
-  computePriceChange as _computePriceChangeIntel,
-  enrichVolumeData as _enrichVolumeData,
-  computeLocalAltseasonSignal as _computeLocalAltseasonSignalIntel,
-  fetchBaseUSDCSupply as _fetchBaseUSDCSupply,
-} from "./src/core/pricing/index.js";
 // Phase 14: Extracted on-chain capital flows module
 import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/core/chain/index.js";
 // Phase 3c: Centralized state store
@@ -576,35 +551,505 @@ console.error = (...args: any[]) => {
 
 // CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT — imported from config/chainlink-feeds.ts
 
+/**
+ * v6.2: Fetch prices directly from Chainlink oracles on Base via eth_call.
+ * These are on-chain reads — no API key needed, no rate limits possible.
+ * Only covers major tokens (ETH, BTC) but provides an unbreakable price floor.
+ */
+async function fetchChainlinkPrices(): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  const chainlinkRpc = BASE_RPC_ENDPOINTS[0]; // v8.1: Use primary from fallback list
+
+  for (const [symbol, config] of Object.entries(CHAINLINK_FEEDS_BASE)) {
+    try {
+      const res = await axios.post(chainlinkRpc, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [{ to: config.feed, data: CHAINLINK_ABI_FRAGMENT }, "latest"],
+      }, { timeout: 5000 });
+
+      if (res.data?.result && res.data.result !== "0x") {
+        const rawPrice = parseInt(res.data.result, 16);
+        const price = rawPrice / Math.pow(10, config.decimals);
+        if (price > 0) {
+          prices.set(symbol, price);
+        }
+      }
+    } catch {
+      // Silent fail per token — other sources still available
+    }
+  }
+
+  if (prices.size > 0) {
+    console.log(`  🔗 Chainlink oracle: ${prices.size} prices (${[...prices.entries()].map(([s, p]) => `${s}=$${p.toFixed(2)}`).join(", ")})`);
+  }
+
+  return prices;
+}
+
 // ============================================================================
-// v21.7: ON-CHAIN PRICING ENGINE — Delegated to src/core/pricing/on-chain-pricing.ts
+// v12.0: ON-CHAIN PRICING ENGINE — Direct DEX pool reads, no CoinGecko
 // ============================================================================
 
-// poolRegistry, lastPoolTicks, lastOnChainIntelligence, chainlinkDeviations — live in pricing module
-// Thin accessor proxies for monolith code that reads these:
-const poolRegistry = new Proxy({} as Record<string, PoolRegistryEntry>, {
-  get: (_target, prop, receiver) => Reflect.get(_getPoolRegistry(), prop, receiver),
-  set: (_target, prop, value, receiver) => Reflect.set(_getPoolRegistry(), prop, value, receiver),
-  has: (_target, prop) => Reflect.has(_getPoolRegistry(), prop),
-  ownKeys: () => Reflect.ownKeys(_getPoolRegistry()),
-  getOwnPropertyDescriptor: (_target, prop) => Object.getOwnPropertyDescriptor(_getPoolRegistry(), prop),
-  deleteProperty: (_target, prop) => Reflect.deleteProperty(_getPoolRegistry(), prop),
-});
-const lastPoolTicks = new Proxy({} as Record<string, number>, {
-  get: (_target, prop, receiver) => Reflect.get(_getLastPoolTicks(), prop, receiver),
-  set: (_target, prop, value, receiver) => Reflect.set(_getLastPoolTicks(), prop, value, receiver),
-  has: (_target, prop) => Reflect.has(_getLastPoolTicks(), prop),
-  ownKeys: () => Reflect.ownKeys(_getLastPoolTicks()),
-  getOwnPropertyDescriptor: (_target, prop) => Object.getOwnPropertyDescriptor(_getLastPoolTicks(), prop),
-});
+// PoolRegistryEntry, PoolRegistryFile — imported from types/services.ts
 
-// Functions delegated to pricing module
-const fetchChainlinkPrices = _fetchChainlinkPrices;
-const fetchAllOnChainPrices = _fetchAllOnChainPrices;
-const discoverPoolAddresses = _discoverPoolAddresses;
+const POOL_REGISTRY_VERSION = 6; // v20.5: Bump — force re-discovery for new tokens (AAVE, CRV, ENA, ETHFI)
+
+let poolRegistry: Record<string, PoolRegistryEntry> = {};
+
+// v12.3: Cached ticks from slot0 reads — updated every heavy cycle, used by tick depth analysis
+let lastPoolTicks: Record<string, number> = {};
+
+// v12.3: On-chain intelligence cache — persists between cycles
+let lastOnChainIntelligence: Record<string, {
+  twap: TechnicalIndicators["twapDivergence"];
+  orderFlow: TechnicalIndicators["orderFlow"];
+  tickDepth: TechnicalIndicators["tickDepth"];
+}> = {};
+
+const POOL_REGISTRY_FILE = process.env.PERSIST_DIR ? `${process.env.PERSIST_DIR}/pool-registry.json` : "./logs/pool-registry.json";
+
+// Known DEX IDs that we accept (allows filtering out completely unknown DEXes)
+const KNOWN_DEX_IDS = new Set([
+  'uniswap', 'uniswap_v3', 'uniswap-v3',
+  'aerodrome', 'aerodrome_v2', 'aerodrome_slipstream', 'aerodrome-slipstream', 'slipstream',
+  'pancakeswap', 'pancakeswap_v3',
+  'sushiswap', 'sushiswap_v3',
+  'baseswap', 'baseswap_v3',
+  'quickswap', 'rocketswap',
+]);
+
+/**
+ * v12.0.3: Probe a pool contract on-chain to determine V2 vs V3 type.
+ * DexScreener's labels field is unreliable (missing for Aerodrome, PancakeSwap, etc.).
+ * Instead, we try slot0() first — if it responds, it's V3. Otherwise try getReserves() for V2.
+ * This costs 1-2 free RPC view calls per pool during one-time discovery.
+ */
+async function probePoolType(poolAddress: string, dexId: string): Promise<PoolRegistryEntry['poolType'] | null> {
+  const id = dexId.toLowerCase();
+
+  // Try slot0() — V3/CL pools implement this (selector 0x3850c7bd)
+  try {
+    const slot0Result = await rpcCall('eth_call', [
+      { to: poolAddress, data: '0x3850c7bd' }, 'latest'
+    ]);
+    if (slot0Result && slot0Result !== '0x' && slot0Result.length >= 66) {
+      // Valid slot0 response — this is a V3/CL pool
+      // Aerodrome CL (slipstream) uses same ABI as Uni V3
+      return (id === 'aerodrome' || id === 'aerodrome_slipstream' || id === 'aerodrome-slipstream' || id === 'slipstream')
+        ? 'aerodromeV3' : 'uniswapV3';
+    }
+  } catch { /* slot0 not available — not a V3 pool */ }
+
+  // Try getReserves() — V2/constant-product pools implement this (selector 0x0902f1ac)
+  try {
+    const reservesResult = await rpcCall('eth_call', [
+      { to: poolAddress, data: '0x0902f1ac' }, 'latest'
+    ]);
+    if (reservesResult && reservesResult !== '0x' && reservesResult.length >= 130) {
+      return 'aerodrome'; // V2 pool — all V2 forks use the same getReserves ABI
+    }
+  } catch { /* getReserves not available either */ }
+
+  // Neither worked — skip this pool
+  return null;
+}
+
+// Token addresses on Base for pool pair detection
+// WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS, QUOTE_DECIMALS — imported from config/token-registry.ts
+
+/**
+ * Discover pool addresses for all tokens via DexScreener (one-time bootstrap).
+ * Caches to disk — subsequent startups load from file.
+ */
+async function discoverPoolAddresses(): Promise<void> {
+  // Try loading from disk first
+  try {
+    if (fs.existsSync(POOL_REGISTRY_FILE)) {
+      const data: PoolRegistryFile = JSON.parse(fs.readFileSync(POOL_REGISTRY_FILE, 'utf-8'));
+      const age = Date.now() - new Date(data.discoveredAt).getTime();
+      // v12.2.1: Check if any TOKEN_REGISTRY tokens are missing from cached registry — force re-discover if so
+      const registryTokens = Object.keys(TOKEN_REGISTRY).filter(s => s !== 'USDC');
+      const cachedTokens = new Set(Object.keys(data.pools));
+      const missingTokens = registryTokens.filter(s => !cachedTokens.has(s) && s !== 'ETH'); // ETH aliases WETH
+      if (data.version === POOL_REGISTRY_VERSION && age < POOL_DISCOVERY_MAX_AGE_MS && Object.keys(data.pools).length > 0 && missingTokens.length === 0) {
+        poolRegistry = data.pools;
+        // Reset failure counts on fresh load
+        for (const entry of Object.values(poolRegistry)) entry.consecutiveFailures = 0;
+        console.log(`  ♻️  Pool registry loaded: ${Object.keys(poolRegistry).length} pools from cache (${(age / 3600000).toFixed(1)}h old)`);
+        return;
+      }
+      if (missingTokens.length > 0) {
+        console.log(`  🔄 Pool registry stale — missing pools for: ${missingTokens.join(', ')}. Re-discovering...`);
+      }
+    }
+  } catch { /* corrupt file — re-discover */ }
+
+  console.log(`  🔍 Discovering pool addresses via DexScreener...`);
+
+  try {
+    // Batch all token addresses in one call
+    const addresses = Object.entries(TOKEN_REGISTRY)
+      .filter(([s]) => s !== 'USDC' && TOKEN_REGISTRY[s].address !== 'native')
+      .map(([_, t]) => t.address)
+      .join(',');
+
+    const res = await axios.get(
+      `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+      { timeout: 15000 }
+    );
+
+    if (!res.data || !Array.isArray(res.data)) {
+      console.warn(`  ⚠️ DexScreener pool discovery returned invalid data`);
+      return;
+    }
+
+    const newRegistry: Record<string, PoolRegistryEntry> = {};
+
+    for (const [symbol, tokenInfo] of Object.entries(TOKEN_REGISTRY)) {
+      if (symbol === 'USDC') continue;
+      const tokenAddr = (tokenInfo.address === 'native' ? TOKEN_REGISTRY.WETH.address : tokenInfo.address).toLowerCase();
+
+      // Find all Base pools for this token, sorted by liquidity
+      const pools = res.data
+        .filter((p: any) =>
+          p.chainId === 'base' &&
+          (p.baseToken?.address?.toLowerCase() === tokenAddr || p.quoteToken?.address?.toLowerCase() === tokenAddr) &&
+          (p.liquidity?.usd || 0) > 0
+        )
+        .sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
+
+      if (pools.length === 0) continue;
+
+      // Pick deepest pool that we can read on-chain
+      for (const pool of pools) {
+        const dexId = (pool.dexId || '').toLowerCase();
+        if (!KNOWN_DEX_IDS.has(dexId)) continue; // skip completely unknown DEXes
+
+        const baseAddr = pool.baseToken?.address?.toLowerCase() || '';
+        const quoteAddr = pool.quoteToken?.address?.toLowerCase() || '';
+
+        // Determine which side is our token and what it's paired with
+        const isToken0 = baseAddr === tokenAddr;
+        const pairedAddr = isToken0 ? quoteAddr : baseAddr;
+        let quoteToken: 'WETH' | 'USDC' | 'cbBTC' | 'VIRTUAL';
+        if (pairedAddr === WETH_ADDRESS) quoteToken = 'WETH';
+        else if (pairedAddr === USDC_ADDRESS) quoteToken = 'USDC';
+        else if (pairedAddr === CBBTC_ADDRESS) quoteToken = 'cbBTC';
+        else if (pairedAddr === VIRTUAL_ADDRESS) quoteToken = 'VIRTUAL';
+        else continue; // paired with something else, skip
+
+        // v12.0.3: Probe pool on-chain to determine V2 vs V3 (DexScreener labels are unreliable)
+        const poolType = await probePoolType(pool.pairAddress, dexId);
+        if (!poolType) continue; // pool didn't respond to either slot0 or getReserves
+
+        // For slot0-based pools, token0IsBase refers to Uniswap's actual token0
+        // DexScreener's baseToken is the first token in the pair display, which may differ
+        // We need to determine the actual on-chain token0 ordering
+        // token0 is always the address that sorts lower numerically
+        const addr0 = tokenAddr < pairedAddr ? tokenAddr : pairedAddr;
+        const token0IsOurToken = addr0 === tokenAddr;
+
+        const quoteDec = QUOTE_DECIMALS[quoteToken] || 18;
+        const dec0 = token0IsOurToken ? tokenInfo.decimals : quoteDec;
+        const dec1 = token0IsOurToken ? quoteDec : tokenInfo.decimals;
+
+        // v20.4.2: Read tickSpacing for Aerodrome Slipstream pools
+        let tickSpacing: number | undefined;
+        if (poolType === 'aerodromeV3') {
+          try {
+            // tickSpacing() selector: 0xd0c93a7c
+            const tsResult = await rpcCall('eth_call', [{ to: pool.pairAddress, data: '0xd0c93a7c' }, 'latest']);
+            if (tsResult && tsResult !== '0x' && tsResult.length >= 66) {
+              const raw = parseInt(tsResult.slice(0, 66), 16);
+              tickSpacing = raw > 0x7fffff ? raw - 0x1000000 : raw; // int24 decoding
+              console.log(`     🔵 ${symbol}: Aerodrome Slipstream tickSpacing=${tickSpacing}`);
+            }
+          } catch { /* non-critical — will try all spacings during swap */ }
+        }
+
+        newRegistry[symbol] = {
+          poolAddress: pool.pairAddress,
+          poolType,
+          quoteToken,
+          token0IsBase: token0IsOurToken,
+          token0Decimals: dec0,
+          token1Decimals: dec1,
+          dexName: pool.dexId || 'unknown',
+          liquidityUSD: pool.liquidity?.usd || 0,
+          consecutiveFailures: 0,
+          tickSpacing,
+        };
+        break; // Use first viable pool (deepest liquidity)
+      }
+    }
+
+    // Handle ETH as an alias for WETH
+    if (newRegistry['WETH'] && !newRegistry['ETH']) {
+      newRegistry['ETH'] = { ...newRegistry['WETH'] };
+    }
+
+    poolRegistry = newRegistry;
+    const v3Count = Object.values(poolRegistry).filter(p => p.poolType === 'uniswapV3' || p.poolType === 'aerodromeV3').length;
+    const v2Count = Object.values(poolRegistry).filter(p => p.poolType === 'aerodrome').length;
+    console.log(`  ✅ Pool registry: ${Object.keys(poolRegistry).length} pools discovered (${v3Count} V3/slot0, ${v2Count} V2/reserves)`);
+    for (const [sym, info] of Object.entries(poolRegistry)) {
+      console.log(`     ${sym}: ${info.poolType} @ ${info.poolAddress.slice(0, 10)}... (${info.quoteToken}, $${(info.liquidityUSD / 1000).toFixed(0)}K liq)`);
+    }
+
+    // Persist to disk
+    const registryData: PoolRegistryFile = { version: POOL_REGISTRY_VERSION, discoveredAt: new Date().toISOString(), pools: poolRegistry };
+    const tmpFile = POOL_REGISTRY_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(registryData, null, 2));
+    fs.renameSync(tmpFile, POOL_REGISTRY_FILE);
+  } catch (e: any) {
+    console.warn(`  ⚠️ Pool discovery failed: ${e.message?.substring(0, 100) || e}`);
+  }
+}
 
 // decodeSqrtPriceX96 — delegated to src/algorithm/indicators.ts
 const decodeSqrtPriceX96 = _decodeSqrtPriceX96;
+
+/**
+ * Read a single token's price from its on-chain DEX pool.
+ * Returns price in USD, or null on failure.
+ */
+async function fetchOnChainTokenPrice(symbol: string, ethUsdPrice: number, btcUsdPrice: number = 0, virtualUsdPrice: number = 0): Promise<number | null> {
+  const pool = poolRegistry[symbol];
+  if (!pool) return null;
+
+  try {
+    let tokenPrice: number;
+
+    if (pool.poolType === 'uniswapV3' || pool.poolType === 'aerodromeV3') {
+      // slot0() → returns (uint160 sqrtPriceX96, int24 tick, ...)
+      const result = await rpcCall('eth_call', [
+        { to: pool.poolAddress, data: '0x3850c7bd' }, 'latest'
+      ]);
+      if (!result || result === '0x' || result.length < 66) return null;
+
+      // Strip '0x' prefix for decoding
+      const rawPrice = decodeSqrtPriceX96(result.slice(2), pool.token0Decimals, pool.token1Decimals);
+
+      // v12.3: Parse tick from slot0 bytes 32-63 (int24 packed in int256) — free data, already fetched
+      try {
+        const tickHex = result.slice(2 + 64, 2 + 128); // bytes 32-63
+        const tickBigInt = BigInt('0x' + tickHex);
+        const tick = Number(tickBigInt > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+          ? tickBigInt - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+          : tickBigInt);
+        if (tick >= -887272 && tick <= 887272) { // Valid V3 tick range
+          lastPoolTicks[symbol] = tick;
+        }
+      } catch { /* tick parse failure is non-critical */ }
+      if (rawPrice <= 0) return null;
+
+      // rawPrice = amount of token1 per 1 token0 (price of token0 in token1 terms)
+      // If our token is token0: rawPrice IS our token's price in quote (token1) terms
+      // If our token is token1: our token's price = 1/rawPrice in quote (token0) terms
+      if (pool.token0IsBase) {
+        // Our token is token0 → rawPrice = quote_per_our_token → use directly
+        tokenPrice = rawPrice;
+      } else {
+        // Our token is token1 → rawPrice = our_token_per_quote → invert
+        tokenPrice = 1 / rawPrice;
+      }
+    } else {
+      // Aerodrome V2: getReserves() → (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
+      const result = await rpcCall('eth_call', [
+        { to: pool.poolAddress, data: '0x0902f1ac' }, 'latest'
+      ]);
+      if (!result || result === '0x' || result.length < 130) return null;
+
+      const reserve0 = BigInt('0x' + result.slice(2, 66));
+      const reserve1 = BigInt('0x' + result.slice(66, 130));
+      if (reserve0 === 0n || reserve1 === 0n) return null;
+
+      // Adjust for decimals
+      const r0 = Number(reserve0) / (10 ** pool.token0Decimals);
+      const r1 = Number(reserve1) / (10 ** pool.token1Decimals);
+
+      if (pool.token0IsBase) {
+        // Our token is token0 → price = reserve1/reserve0 (how many quote tokens per base token)
+        tokenPrice = r1 / r0;
+      } else {
+        // Our token is token1 → price = reserve0/reserve1
+        tokenPrice = r0 / r1;
+      }
+    }
+
+    // Convert to USD
+    let priceUSD: number;
+    if (pool.quoteToken === 'WETH') priceUSD = tokenPrice * ethUsdPrice;
+    else if (pool.quoteToken === 'cbBTC') priceUSD = btcUsdPrice > 0 ? tokenPrice * btcUsdPrice : 0;
+    else if (pool.quoteToken === 'VIRTUAL') priceUSD = virtualUsdPrice > 0 ? tokenPrice * virtualUsdPrice : 0;
+    else priceUSD = tokenPrice; // USDC — already in USD
+    if (priceUSD <= 0 || !isFinite(priceUSD)) return null;
+
+    // Reset failure counter on success
+    pool.consecutiveFailures = 0;
+    return priceUSD;
+  } catch (e: any) {
+    pool.consecutiveFailures++;
+    return null;
+  }
+}
+
+/**
+ * Fetch ETH/USD price from Chainlink oracle (single RPC call).
+ * Reuses existing Chainlink infrastructure.
+ */
+async function fetchChainlinkETHPrice(): Promise<number> {
+  try {
+    const result = await rpcCall('eth_call', [
+      { to: CHAINLINK_FEEDS_BASE.ETH.feed, data: CHAINLINK_ABI_FRAGMENT }, 'latest'
+    ]);
+    if (result && result !== '0x') {
+      const price = parseInt(result, 16) / Math.pow(10, CHAINLINK_FEEDS_BASE.ETH.decimals);
+      if (price > 0) return price;
+    }
+  } catch { /* fall through */ }
+  // Fallback: use last known ETH price
+  return lastKnownPrices['ETH']?.price || lastKnownPrices['WETH']?.price || 0;
+}
+
+/**
+ * Fetch BTC/USD price from Chainlink oracle (single RPC call).
+ */
+async function fetchChainlinkBTCPrice(): Promise<number> {
+  try {
+    const result = await rpcCall('eth_call', [
+      { to: CHAINLINK_FEEDS_BASE.cbBTC.feed, data: CHAINLINK_ABI_FRAGMENT }, 'latest'
+    ]);
+    if (result && result !== '0x') {
+      const price = parseInt(result, 16) / Math.pow(10, CHAINLINK_FEEDS_BASE.cbBTC.decimals);
+      if (price > 0) return price;
+    }
+  } catch { /* fall through */ }
+  return lastKnownPrices['cbBTC']?.price || 0;
+}
+
+/**
+ * Fetch LINK/USD price from Chainlink oracle (single RPC call).
+ */
+async function fetchChainlinkLINKPrice(): Promise<number> {
+  try {
+    const result = await rpcCall('eth_call', [
+      { to: CHAINLINK_FEEDS_BASE.LINK.feed, data: CHAINLINK_ABI_FRAGMENT }, 'latest'
+    ]);
+    if (result && result !== '0x') {
+      const price = parseInt(result, 16) / Math.pow(10, CHAINLINK_FEEDS_BASE.LINK.decimals);
+      if (price > 0) return price;
+    }
+  } catch { /* fall through */ }
+  return lastKnownPrices['LINK']?.price || 0;
+}
+
+/**
+ * Fetch all token prices on-chain in parallel.
+ * Primary: DEX pool reads. Chainlink for ETH/BTC/LINK.
+ */
+async function fetchAllOnChainPrices(): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  prices.set('USDC', 1.0);
+
+  // Step 1: Get ETH, BTC, and LINK prices from Chainlink (most reliable)
+  const [ethPrice, btcPrice, linkPrice] = await Promise.all([
+    fetchChainlinkETHPrice(),
+    fetchChainlinkBTCPrice(),
+    fetchChainlinkLINKPrice(),
+  ]);
+
+  if (ethPrice > 0) {
+    prices.set('ETH', ethPrice);
+    prices.set('WETH', ethPrice);
+  }
+  if (btcPrice > 0) {
+    prices.set('cbBTC', btcPrice);
+  }
+  if (linkPrice > 0) {
+    prices.set('LINK', linkPrice);
+  }
+
+  // Step 2: Fetch tokens paired with WETH/USDC (no dependency on other token prices)
+  const pass1Symbols = Object.keys(poolRegistry).filter(s =>
+    !prices.has(s) && (poolRegistry[s].quoteToken === 'WETH' || poolRegistry[s].quoteToken === 'USDC')
+  );
+  const pass1Results = await Promise.allSettled(
+    pass1Symbols.map(s => fetchOnChainTokenPrice(s, ethPrice, btcPrice))
+  );
+
+  for (let i = 0; i < pass1Symbols.length; i++) {
+    const result = pass1Results[i];
+    if (result.status === 'fulfilled' && result.value !== null && result.value > 0) {
+      const lastPrice = lastKnownPrices[pass1Symbols[i]]?.price;
+      if (lastPrice && lastPrice > 0) {
+        const deviation = Math.abs(result.value - lastPrice) / lastPrice;
+        if (deviation > PRICE_SANITY_MAX_DEVIATION) {
+          console.warn(`  ⚠️ Price sanity fail: ${pass1Symbols[i]} on-chain=$${result.value.toFixed(4)} vs last=$${lastPrice.toFixed(4)} (${(deviation * 100).toFixed(1)}% deviation) — skipping`);
+          continue;
+        }
+      }
+      prices.set(pass1Symbols[i], result.value);
+    }
+  }
+
+  // Step 3: Fetch tokens paired with cbBTC or VIRTUAL (need pass 1 prices)
+  const virtualUsdPrice = prices.get('VIRTUAL') || 0;
+  const pass2Symbols = Object.keys(poolRegistry).filter(s =>
+    !prices.has(s) && (poolRegistry[s].quoteToken === 'cbBTC' || poolRegistry[s].quoteToken === 'VIRTUAL')
+  );
+  if (pass2Symbols.length > 0) {
+    const pass2Results = await Promise.allSettled(
+      pass2Symbols.map(s => fetchOnChainTokenPrice(s, ethPrice, btcPrice, virtualUsdPrice))
+    );
+
+    for (let i = 0; i < pass2Symbols.length; i++) {
+      const result = pass2Results[i];
+      if (result.status === 'fulfilled' && result.value !== null && result.value > 0) {
+        const lastPrice = lastKnownPrices[pass2Symbols[i]]?.price;
+        if (lastPrice && lastPrice > 0) {
+          const deviation = Math.abs(result.value - lastPrice) / lastPrice;
+          if (deviation > PRICE_SANITY_MAX_DEVIATION) {
+            console.warn(`  ⚠️ Price sanity fail: ${pass2Symbols[i]} on-chain=$${result.value.toFixed(4)} vs last=$${lastPrice.toFixed(4)} (${(deviation * 100).toFixed(1)}% deviation) — skipping`);
+            continue;
+          }
+        }
+        prices.set(pass2Symbols[i], result.value);
+      }
+    }
+  }
+
+  // Check for tokens that need pool re-discovery
+  for (const [symbol, entry] of Object.entries(poolRegistry)) {
+    if (entry.consecutiveFailures >= POOL_REDISCOVERY_FAILURE_THRESHOLD) {
+      console.warn(`  🔄 ${symbol}: ${entry.consecutiveFailures} consecutive failures — will re-discover pool on next startup`);
+    }
+  }
+
+  // v20.3.1: Chainlink deviation detection — compare DEX prices vs oracle reference
+  // When DEX deviates >2% from Chainlink, it signals mispricing or arbitrage opportunity
+  const chainlinkPrices = await fetchChainlinkPrices();
+  const deviations: { symbol: string; dexPrice: number; oraclePrice: number; deviationPct: number }[] = [];
+  for (const [symbol, oraclePrice] of chainlinkPrices) {
+    const dexPrice = prices.get(symbol);
+    if (dexPrice && oraclePrice > 0) {
+      const deviation = ((dexPrice - oraclePrice) / oraclePrice) * 100;
+      if (Math.abs(deviation) > 2.0) {
+        deviations.push({ symbol, dexPrice, oraclePrice, deviationPct: deviation });
+      }
+    }
+  }
+  if (deviations.length > 0) {
+    chainlinkDeviations = deviations;
+    console.log(`  ⚡ CHAINLINK DEVIATION: ${deviations.map(d => `${d.symbol} DEX=$${d.dexPrice.toFixed(2)} vs Oracle=$${d.oraclePrice.toFixed(2)} (${d.deviationPct > 0 ? '+' : ''}${d.deviationPct.toFixed(1)}%)`).join(' | ')}`);
+  } else {
+    chainlinkDeviations = [];
+  }
+
+  return prices;
+}
 
 // ============================================================================
 // v12.0: SELF-ACCUMULATING PRICE HISTORY STORE
@@ -693,32 +1138,576 @@ function recordPriceSnapshot(prices: Map<string, number>): void {
  * Only works for V3 pools (uniswapV3, aerodromeV3).
  * Returns null if pool doesn't support oracle or cardinality too low.
  */
-// fetchTWAPDivergence — delegated to src/core/pricing/on-chain-intelligence.ts
-const fetchTWAPDivergence = _fetchTWAPDivergence;
+async function fetchTWAPDivergence(
+  symbol: string,
+  spotPrice: number,
+  ethPrice: number,
+  btcPrice: number = 0,
+  virtualPrice: number = 0
+): Promise<TechnicalIndicators["twapDivergence"]> {
+  const pool = poolRegistry[symbol];
+  if (!pool || (pool.poolType !== 'uniswapV3' && pool.poolType !== 'aerodromeV3')) return null;
+  if (spotPrice <= 0 || ethPrice <= 0) return null;
 
-// fetchSwapOrderFlow — delegated to src/core/pricing/on-chain-intelligence.ts
-const fetchSwapOrderFlow = _fetchSwapOrderFlow;
+  try {
+    // observe([0, 900]) — selector 0x883bdbfd, ABI-encoded dynamic uint32 array
+    const calldata = '0x883bdbfd' +
+      '0000000000000000000000000000000000000000000000000000000000000020' + // offset
+      '0000000000000000000000000000000000000000000000000000000000000002' + // length = 2
+      '0000000000000000000000000000000000000000000000000000000000000000' + // secondsAgo[0] = 0
+      '0000000000000000000000000000000000000000000000000000000000000384'; // secondsAgo[1] = 900
 
-// fetchTickLiquidityDepth — delegated to src/core/pricing/on-chain-intelligence.ts
-const fetchTickLiquidityDepth = _fetchTickLiquidityDepth;
+    const result = await rpcCall('eth_call', [
+      { to: pool.poolAddress, data: calldata }, 'latest'
+    ]);
 
-// readTickLiquidityNet — delegated to src/core/pricing/on-chain-intelligence.ts
-const readTickLiquidityNet = _readTickLiquidityNet;
+    if (!result || result === '0x' || result.length < 258) return null; // Need at least 2 int56 values
 
-// fetchAllOnChainIntelligence — delegated to src/core/pricing/on-chain-intelligence.ts
-const fetchAllOnChainIntelligence = _fetchAllOnChainIntelligence;
+    // Decode response: (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128s)
+    // tickCumulatives is a dynamic array, starts at offset in response
+    // Layout: offset_ticks(32) + offset_spl(32) + [ticks_length(32) + tick0(32) + tick1(32)] + ...
+    const data = result.slice(2); // strip 0x
 
-// computePriceChange — delegated to src/core/pricing/on-chain-intelligence.ts
-const computePriceChange = _computePriceChangeIntel;
+    // Read offsets
+    const ticksOffset = parseInt(data.slice(0, 64), 16) * 2; // byte offset → hex char offset
+    const ticksLength = parseInt(data.slice(ticksOffset, ticksOffset + 64), 16);
+    if (ticksLength < 2) return null;
 
-// enrichVolumeData — delegated to src/core/pricing/on-chain-intelligence.ts
-const enrichVolumeData = _enrichVolumeData;
+    // Read tick cumulatives (int56 stored as int256)
+    const tick0Hex = data.slice(ticksOffset + 64, ticksOffset + 128);
+    const tick1Hex = data.slice(ticksOffset + 128, ticksOffset + 192);
 
-// computeLocalAltseasonSignal — delegated to src/core/pricing/on-chain-intelligence.ts
-const computeLocalAltseasonSignal = _computeLocalAltseasonSignalIntel;
+    const parseSigned256 = (hex: string): bigint => {
+      const val = BigInt('0x' + hex);
+      return val > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+        ? val - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+        : val;
+    };
 
-// fetchBaseUSDCSupply — delegated to src/core/pricing/on-chain-intelligence.ts
-const fetchBaseUSDCSupply = _fetchBaseUSDCSupply;
+    const tickCum0 = parseSigned256(tick0Hex); // Now (most recent)
+    const tickCum1 = parseSigned256(tick1Hex); // 900 seconds ago
+
+    // TWAP tick = (tickCumNow - tickCumPast) / elapsed
+    const twapTick = Number(tickCum0 - tickCum1) / TWAP_OBSERVATION_SECONDS;
+
+    // Convert tick to price: price = 1.0001^tick
+    // This gives price of token0 in terms of token1
+    const twapRawPrice = Math.pow(1.0001, twapTick);
+
+    // Apply decimal adjustment (same as decodeSqrtPriceX96)
+    const decimalAdjustment = 10 ** (pool.token0Decimals - pool.token1Decimals);
+    let twapTokenPrice = twapRawPrice * decimalAdjustment;
+
+    // If our token is token1, invert
+    if (!pool.token0IsBase) {
+      twapTokenPrice = 1 / twapTokenPrice;
+    }
+
+    // Convert to USD
+    let twapPriceUSD: number;
+    if (pool.quoteToken === 'WETH') twapPriceUSD = twapTokenPrice * ethPrice;
+    else if (pool.quoteToken === 'cbBTC') twapPriceUSD = btcPrice > 0 ? twapTokenPrice * btcPrice : 0;
+    else if (pool.quoteToken === 'VIRTUAL') twapPriceUSD = virtualPrice > 0 ? twapTokenPrice * virtualPrice : 0;
+    else twapPriceUSD = twapTokenPrice; // USDC
+
+    if (twapPriceUSD <= 0 || !isFinite(twapPriceUSD)) return null;
+
+    // Calculate divergence
+    const divergencePct = ((spotPrice - twapPriceUSD) / twapPriceUSD) * 100;
+
+    let signal: "OVERSOLD" | "OVERBOUGHT" | "NORMAL";
+    if (divergencePct < -TWAP_DIVERGENCE_THRESHOLD_PCT) signal = "OVERSOLD";
+    else if (divergencePct > TWAP_DIVERGENCE_THRESHOLD_PCT) signal = "OVERBOUGHT";
+    else signal = "NORMAL";
+
+    return {
+      twapPrice: twapPriceUSD,
+      spotPrice,
+      divergencePct,
+      signal,
+    };
+  } catch {
+    return null; // observe() reverted — cardinality too low or pool doesn't support oracle
+  }
+}
+
+/**
+ * 2B: Fetch swap event order flow from DEX pool.
+ * Reads eth_getLogs for Swap events over last ~10 minutes (300 blocks on Base).
+ * Determines net buy/sell pressure (CVD) with trade size bucketing.
+ */
+async function fetchSwapOrderFlow(
+  symbol: string,
+  currentPrice: number,
+  ethPrice: number,
+  currentBlock: number
+): Promise<TechnicalIndicators["orderFlow"]> {
+  const pool = poolRegistry[symbol];
+  if (!pool || currentPrice <= 0 || ethPrice <= 0 || currentBlock <= 0) return null;
+
+  try {
+    const fromBlock = '0x' + Math.max(0, currentBlock - ORDER_FLOW_BLOCK_LOOKBACK).toString(16);
+    const toBlock = 'latest';
+
+    const logs = await rpcCall('eth_getLogs', [{
+      address: pool.poolAddress,
+      topics: [SWAP_EVENT_TOPIC],
+      fromBlock,
+      toBlock,
+    }]);
+
+    if (!logs || !Array.isArray(logs) || logs.length === 0) return null;
+
+    let buyVolumeUSD = 0;
+    let sellVolumeUSD = 0;
+    let largeBuyVolume = 0;
+    let tradeCount = 0;
+
+    for (const log of logs) {
+      try {
+        if (!log.data || log.data.length < 130) continue;
+        const data = log.data.slice(2); // strip 0x
+
+        // Swap event data layout:
+        // For V3: amount0 (int256, 32 bytes), amount1 (int256, 32 bytes), sqrtPriceX96 (uint160, 32 bytes), liquidity (uint128, 32 bytes), tick (int24, 32 bytes)
+        // For V2/Aerodrome: similar but may differ — we just need amount0 and amount1
+        const amount0Hex = data.slice(0, 64);
+        const amount1Hex = data.slice(64, 128);
+
+        const parseSigned = (hex: string): bigint => {
+          const val = BigInt('0x' + hex);
+          return val > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+            ? val - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+            : val;
+        };
+
+        const amount0 = parseSigned(amount0Hex);
+        const amount1 = parseSigned(amount1Hex);
+
+        // Determine buy/sell direction:
+        // In a swap, one amount is positive (received by pool) and one negative (sent by pool)
+        // If token0IsBase:
+        //   amount0 < 0 means pool sent token0 to user → user BOUGHT our token
+        //   amount0 > 0 means user sent token0 to pool → user SOLD our token
+        let isBuy: boolean;
+        let tradeAmountRaw: bigint;
+        let tradeDecimals: number;
+
+        if (pool.token0IsBase) {
+          isBuy = amount0 < 0n;
+          tradeAmountRaw = amount0 < 0n ? -amount0 : amount0;
+          tradeDecimals = pool.token0Decimals;
+        } else {
+          isBuy = amount1 < 0n;
+          tradeAmountRaw = amount1 < 0n ? -amount1 : amount1;
+          tradeDecimals = pool.token1Decimals;
+        }
+
+        const tradeAmountTokens = Number(tradeAmountRaw) / (10 ** tradeDecimals);
+        const tradeValueUSD = tradeAmountTokens * currentPrice;
+
+        if (tradeValueUSD <= 0 || !isFinite(tradeValueUSD) || tradeValueUSD > 10_000_000) continue; // Sanity check
+
+        tradeCount++;
+        if (isBuy) {
+          buyVolumeUSD += tradeValueUSD;
+          if (tradeValueUSD >= LARGE_TRADE_THRESHOLD_USD) {
+            largeBuyVolume += tradeValueUSD;
+          }
+        } else {
+          sellVolumeUSD += tradeValueUSD;
+        }
+      } catch {
+        continue; // Skip malformed logs
+      }
+    }
+
+    if (tradeCount === 0) return null;
+
+    const netBuyVolumeUSD = buyVolumeUSD - sellVolumeUSD;
+    const totalVolume = buyVolumeUSD + sellVolumeUSD;
+    const buyRatio = totalVolume > 0 ? buyVolumeUSD / totalVolume : 0.5;
+    const largeBuyPct = buyVolumeUSD > 0 ? (largeBuyVolume / buyVolumeUSD) * 100 : 0;
+
+    let signal: "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL";
+    if (buyRatio > 0.65) signal = "STRONG_BUY";
+    else if (buyRatio > 0.55) signal = "BUY";
+    else if (buyRatio < 0.35) signal = "STRONG_SELL";
+    else if (buyRatio < 0.45) signal = "SELL";
+    else signal = "NEUTRAL";
+
+    return {
+      netBuyVolumeUSD: Math.round(netBuyVolumeUSD),
+      buyVolumeUSD: Math.round(buyVolumeUSD),
+      sellVolumeUSD: Math.round(sellVolumeUSD),
+      tradeCount,
+      largeBuyPct: Math.round(largeBuyPct),
+      signal,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 2C: Fetch tick liquidity depth around current price.
+ * Reads ticks above/below current to map on-chain support/resistance.
+ * Heavy cycle only — more RPC calls (~11 per pool).
+ */
+async function fetchTickLiquidityDepth(
+  symbol: string,
+  currentPrice: number,
+  ethPrice: number
+): Promise<TechnicalIndicators["tickDepth"]> {
+  const pool = poolRegistry[symbol];
+  if (!pool || (pool.poolType !== 'uniswapV3' && pool.poolType !== 'aerodromeV3')) return null;
+  if (currentPrice <= 0 || ethPrice <= 0) return null;
+
+  const currentTick = lastPoolTicks[symbol];
+  if (currentTick === undefined) return null;
+
+  try {
+    // Get tickSpacing (cached — immutable per pool)
+    if (!pool.tickSpacing) {
+      const tsResult = await rpcCall('eth_call', [
+        { to: pool.poolAddress, data: '0xd0c93a7c' }, 'latest'
+      ]);
+      if (tsResult && tsResult !== '0x') {
+        const tsVal = parseInt(tsResult, 16);
+        // int24 range: handle potential sign
+        pool.tickSpacing = tsVal > 8388607 ? tsVal - 16777216 : tsVal;
+        if (pool.tickSpacing <= 0 || pool.tickSpacing > 16384) {
+          pool.tickSpacing = undefined;
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+
+    const spacing = pool.tickSpacing!;
+
+    // Align current tick to tick spacing
+    const alignedTick = Math.floor(currentTick / spacing) * spacing;
+
+    // Read current liquidity
+    const liqResult = await rpcCall('eth_call', [
+      { to: pool.poolAddress, data: '0x1a686502' }, 'latest'
+    ]);
+    const inRangeLiquidity = liqResult && liqResult !== '0x' ? Number(BigInt(liqResult)) : 0;
+
+    // Read ticks above and below — batch with Promise.allSettled
+    const tickReads: Promise<{ tick: number; liquidityNet: bigint }>[] = [];
+
+    for (let i = 1; i <= TICK_DEPTH_RANGE; i++) {
+      // Below current price (support)
+      const tickBelow = alignedTick - (i * spacing);
+      tickReads.push(readTickLiquidityNet(pool.poolAddress, tickBelow));
+      // Above current price (resistance)
+      const tickAbove = alignedTick + (i * spacing);
+      tickReads.push(readTickLiquidityNet(pool.poolAddress, tickAbove));
+    }
+
+    const tickResults = await Promise.allSettled(tickReads);
+
+    let bidDepthRaw = 0n; // Support: positive liquidityNet below price
+    let askDepthRaw = 0n; // Resistance: negative liquidityNet above price (absolute)
+
+    for (let i = 0; i < TICK_DEPTH_RANGE; i++) {
+      const belowResult = tickResults[i * 2];
+      const aboveResult = tickResults[i * 2 + 1];
+
+      if (belowResult.status === 'fulfilled' && belowResult.value.liquidityNet > 0n) {
+        bidDepthRaw += belowResult.value.liquidityNet;
+      }
+      if (aboveResult.status === 'fulfilled') {
+        const net = aboveResult.value.liquidityNet;
+        if (net < 0n) askDepthRaw += -net; // Take absolute of negative
+      }
+    }
+
+    // Convert liquidity to USD approximation
+    // Each unit of liquidity ≈ sqrt(price) worth of value per tick range
+    // Simplified: liquidity × sqrtPrice × tickRange / 2^96 ≈ value in token terms
+    // For practical purposes, use currentPrice as proxy multiplier
+    const sqrtPrice = Math.sqrt(currentPrice);
+    const tickRangePrice = currentPrice * (Math.pow(1.0001, spacing) - 1); // Price diff per tick spacing
+
+    // Convert liquidity to approximate USD using quote token pricing
+    let quotePrice = 1; // USDC
+    if (pool.quoteToken === 'WETH') quotePrice = ethPrice;
+    else if (pool.quoteToken === 'cbBTC') quotePrice = lastKnownPrices['cbBTC']?.price || 0;
+    else if (pool.quoteToken === 'VIRTUAL') quotePrice = lastKnownPrices['VIRTUAL']?.price || 0;
+
+    // liquidity * tickRangePrice gives rough token-equivalent depth
+    // Divide by 10^18 to normalize (liquidity is in raw form)
+    const scaleFactor = tickRangePrice * quotePrice / (10 ** 18);
+    const bidDepthUSD = Number(bidDepthRaw) * scaleFactor;
+    const askDepthUSD = Number(askDepthRaw) * scaleFactor;
+    const inRangeLiqUSD = inRangeLiquidity * scaleFactor;
+
+    if (bidDepthUSD <= 0 && askDepthUSD <= 0) return null;
+
+    const depthRatio = askDepthUSD > 0 ? bidDepthUSD / askDepthUSD : bidDepthUSD > 0 ? 10 : 1;
+
+    let signal: "STRONG_SUPPORT" | "SUPPORT" | "BALANCED" | "RESISTANCE" | "STRONG_RESISTANCE";
+    if (depthRatio > 2.0) signal = "STRONG_SUPPORT";
+    else if (depthRatio > 1.3) signal = "SUPPORT";
+    else if (depthRatio < 0.5) signal = "STRONG_RESISTANCE";
+    else if (depthRatio < 0.77) signal = "RESISTANCE";
+    else signal = "BALANCED";
+
+    return {
+      bidDepthUSD: Math.round(bidDepthUSD),
+      askDepthUSD: Math.round(askDepthUSD),
+      depthRatio: Math.round(depthRatio * 100) / 100,
+      inRangeLiquidity: Math.round(inRangeLiqUSD),
+      signal,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Helper: Read liquidityNet for a specific tick from a V3 pool.
+ * ticks(int24) selector: 0xf30dba93
+ * Returns (uint128 liquidityGross, int128 liquidityNet, ...)
+ */
+async function readTickLiquidityNet(poolAddress: string, tick: number): Promise<{ tick: number; liquidityNet: bigint }> {
+  // ABI-encode int24 as int256 (two's complement for negative)
+  let tickHex: string;
+  if (tick >= 0) {
+    tickHex = tick.toString(16).padStart(64, '0');
+  } else {
+    // Two's complement for negative int256
+    const twosComp = BigInt('0x10000000000000000000000000000000000000000000000000000000000000000') + BigInt(tick);
+    tickHex = twosComp.toString(16).padStart(64, '0');
+  }
+
+  const result = await rpcCall('eth_call', [
+    { to: poolAddress, data: '0xf30dba93' + tickHex }, 'latest'
+  ]);
+
+  if (!result || result === '0x' || result.length < 130) {
+    return { tick, liquidityNet: 0n };
+  }
+
+  // liquidityNet is at bytes 32-63 (int128 stored as int256)
+  const netHex = result.slice(2 + 64, 2 + 128);
+  const netBigInt = BigInt('0x' + netHex);
+  const liquidityNet = netBigInt > BigInt('0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+    ? netBigInt - BigInt('0x10000000000000000000000000000000000000000000000000000000000000000')
+    : netBigInt;
+
+  return { tick, liquidityNet };
+}
+
+/**
+ * 2D: Orchestrator — fetch all on-chain intelligence for V3 pools.
+ * Launches TWAP + OrderFlow in parallel for each pool.
+ * Tick depth only on heavy cycles.
+ * Returns Record<symbol, { twap, orderFlow, tickDepth }>
+ */
+async function fetchAllOnChainIntelligence(
+  ethPrice: number,
+  onChainPrices: Map<string, number>,
+  includeTickDepth: boolean = true
+): Promise<Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }>> {
+  const result: Record<string, { twap: TechnicalIndicators["twapDivergence"]; orderFlow: TechnicalIndicators["orderFlow"]; tickDepth: TechnicalIndicators["tickDepth"] }> = {};
+
+  if (ethPrice <= 0) return result;
+
+  try {
+    // Get current block number (1 call, used for all order flow queries)
+    const blockHex = await rpcCall('eth_blockNumber', []);
+    const currentBlock = blockHex ? parseInt(blockHex, 16) : 0;
+    if (currentBlock <= 0) return result;
+
+    const btcPrice = onChainPrices.get('cbBTC') || lastKnownPrices['cbBTC']?.price || 0;
+    const virtualPrice = onChainPrices.get('VIRTUAL') || lastKnownPrices['VIRTUAL']?.price || 0;
+
+    // Collect all V3 pools to analyze
+    const poolSymbols = Object.entries(poolRegistry)
+      .filter(([symbol, pool]) =>
+        (pool.poolType === 'uniswapV3' || pool.poolType === 'aerodromeV3') &&
+        symbol !== 'ETH' && symbol !== 'WETH' && symbol !== 'USDC' &&
+        pool.consecutiveFailures < 3
+      )
+      .map(([symbol]) => symbol);
+
+    // Launch TWAP + OrderFlow for each pool in parallel
+    const promises = poolSymbols.map(async (symbol) => {
+      const spotPrice = onChainPrices.get(symbol) || lastKnownPrices[symbol]?.price || 0;
+      if (spotPrice <= 0) return;
+
+      const [twap, orderFlow] = await Promise.all([
+        fetchTWAPDivergence(symbol, spotPrice, ethPrice, btcPrice, virtualPrice).catch(() => null),
+        fetchSwapOrderFlow(symbol, spotPrice, ethPrice, currentBlock).catch(() => null),
+      ]);
+
+      let tickDepth: TechnicalIndicators["tickDepth"] = null;
+      if (includeTickDepth) {
+        tickDepth = await fetchTickLiquidityDepth(symbol, spotPrice, ethPrice).catch(() => null);
+      }
+
+      result[symbol] = { twap, orderFlow, tickDepth };
+    });
+
+    await Promise.allSettled(promises);
+
+    // Log summary
+    const twapCount = Object.values(result).filter(r => r.twap).length;
+    const flowCount = Object.values(result).filter(r => r.orderFlow).length;
+    const depthCount = Object.values(result).filter(r => r.tickDepth).length;
+    console.log(`  📊 On-chain intelligence: ${twapCount} TWAP, ${flowCount} flow, ${depthCount} depth signals from ${poolSymbols.length} V3 pools`);
+
+    // Cache for light cycles
+    lastOnChainIntelligence = result;
+
+    return result;
+  } catch (e: any) {
+    console.error(`  ⚠️ On-chain intelligence failed: ${e?.message || String(e)}`);
+    return result;
+  }
+}
+
+// computePriceChange — delegated to src/algorithm/market-analysis.ts
+function computePriceChange(symbol: string, currentPrice: number, lookbackMs: number): number {
+  return _computePriceChange(priceHistoryStore.tokens[symbol], currentPrice, lookbackMs);
+}
+
+// Volume enrichment state
+let lastVolumeEnrichmentTime = 0;
+
+/**
+ * Periodic volume enrichment from DexScreener (fades out once self-sufficient).
+ * Returns volume data per symbol, or empty map if skipped.
+ */
+async function enrichVolumeData(): Promise<Map<string, number>> {
+  const volumes = new Map<string, number>();
+  const now = Date.now();
+
+  // Skip if too soon since last enrichment
+  if (now - lastVolumeEnrichmentTime < VOLUME_ENRICHMENT_INTERVAL_MS) return volumes;
+
+  // Check if we're self-sufficient (have enough history to skip DexScreener)
+  const tokenLengths = Object.values(priceHistoryStore.tokens)
+    .filter(t => t.prices.length > 0)
+    .map(t => t.prices.length);
+  const minPoints = tokenLengths.length > 0 ? Math.min(...tokenLengths) : 0;
+  if (minPoints >= VOLUME_SELF_SUFFICIENT_POINTS) {
+    // Self-sufficient — no need for DexScreener volume enrichment
+    return volumes;
+  }
+
+  try {
+    const addresses = Object.entries(TOKEN_REGISTRY)
+      .filter(([s]) => s !== 'USDC' && TOKEN_REGISTRY[s].address !== 'native')
+      .map(([_, t]) => t.address)
+      .join(',');
+
+    const res = await axios.get(
+      `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+      { timeout: 10000 }
+    );
+
+    if (res.data && Array.isArray(res.data)) {
+      const seen = new Set<string>();
+      for (const pair of res.data) {
+        const addr = pair.baseToken?.address?.toLowerCase();
+        const entry = Object.entries(TOKEN_REGISTRY).find(([_, t]) => t.address.toLowerCase() === addr);
+        if (entry && !seen.has(entry[0])) {
+          seen.add(entry[0]);
+          const vol = pair.volume?.h24 || 0;
+          if (vol > 0) volumes.set(entry[0], vol);
+        }
+      }
+    }
+
+    lastVolumeEnrichmentTime = now;
+    if (volumes.size > 0) {
+      console.log(`  📊 Volume enrichment: ${volumes.size} tokens (fade-out: ${minPoints}/${VOLUME_SELF_SUFFICIENT_POINTS} points)`);
+    }
+  } catch { /* non-critical */ }
+
+  return volumes;
+}
+
+// computeLocalAltseasonSignal — delegated to src/algorithm/market-analysis.ts
+function computeLocalAltseasonSignal(): AltseasonSignal {
+  return _computeLocalAltseasonSignal(
+    priceHistoryStore.tokens['cbBTC'],
+    priceHistoryStore.tokens['ETH'] || priceHistoryStore.tokens['WETH'],
+    BTC_DOMINANCE_CHANGE_THRESHOLD,
+  );
+}
+
+/**
+ * Fetch USDC total supply on Base as a proxy for stablecoin capital flow.
+ * Replaces fetchStablecoinSupply() CoinGecko call.
+ */
+async function fetchBaseUSDCSupply(): Promise<StablecoinSupplyData | null> {
+  try {
+    // totalSupply() on Base USDC contract (checksummed address)
+    const result = await rpcCall('eth_call', [
+      { to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', data: '0x18160ddd' },
+      'latest'
+    ]);
+    if (!result || result === '0x') return null;
+
+    // Use BigInt to avoid precision loss on large supply values, then convert to USD
+    const totalSupply = Number(BigInt(result)) / 1e6; // USDC has 6 decimals
+    const now = new Date().toISOString();
+
+    // v12.0.2: Filter out stale CoinGecko-era history entries (global supply ~$200B vs Base USDC ~$4B)
+    // Remove ANY entries that differ >10x from current reading — handles mixed history from migration
+    if (stablecoinSupplyHistory.values.length > 0) {
+      const before = stablecoinSupplyHistory.values.length;
+      stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.filter(v => {
+        if (v.totalSupply <= 0) return false;
+        const ratio = totalSupply / v.totalSupply;
+        return ratio >= 0.1 && ratio <= 10; // Keep only entries within 10x of current
+      });
+      const purged = before - stablecoinSupplyHistory.values.length;
+      if (purged > 0) {
+        console.log(`  🔄 Stablecoin history: purged ${purged} stale entries (pre-v12 data), ${stablecoinSupplyHistory.values.length} remain`);
+      }
+    }
+
+    // Track in existing stablecoinSupplyHistory for persistence
+    stablecoinSupplyHistory.values.push({ timestamp: now, totalSupply });
+    if (stablecoinSupplyHistory.values.length > 504) {
+      stablecoinSupplyHistory.values = stablecoinSupplyHistory.values.slice(-504);
+    }
+
+    // Compute 7-day change
+    let supplyChange7d = 0;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const oldEntry = stablecoinSupplyHistory.values.find(v => new Date(v.timestamp).getTime() >= sevenDaysAgo);
+    if (oldEntry && oldEntry.totalSupply > 0) {
+      supplyChange7d = ((totalSupply - oldEntry.totalSupply) / oldEntry.totalSupply) * 100;
+    }
+
+    let signal: StablecoinSupplyData['signal'] = 'STABLE';
+    if (supplyChange7d > STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = 'CAPITAL_INFLOW';
+    else if (supplyChange7d < -STABLECOIN_SUPPLY_CHANGE_THRESHOLD) signal = 'CAPITAL_OUTFLOW';
+
+    console.log(`  💵 Base USDC supply: $${(totalSupply / 1e6).toFixed(1)}M (${supplyChange7d >= 0 ? '+' : ''}${supplyChange7d.toFixed(2)}% 7d) → ${signal}`);
+
+    return {
+      usdtMarketCap: 0, // Not available on-chain
+      usdcMarketCap: totalSupply,
+      totalStablecoinSupply: totalSupply,
+      supplyChange7d,
+      signal,
+      lastUpdated: now,
+    };
+  } catch (e: any) {
+    console.warn(`  ⚠️ Base USDC supply fetch failed: ${e.message?.substring(0, 100) || e}`);
+    return null;
+  }
+}
 
 // Load stores on module init
 loadPriceHistoryStore();
@@ -984,7 +1973,7 @@ let lastPriceSnapshot: Map<string, number> = new Map();
 let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
 let lastMarketRegime = 'UNKNOWN'; // v20.3.1: Track for hourly Telegram reports
-// chainlinkDeviations — delegated to src/core/pricing/on-chain-pricing.ts (getter: _getChainlinkDeviations)
+let chainlinkDeviations: { symbol: string; dexPrice: number; oraclePrice: number; deviationPct: number }[] = []; // v20.3.1: DEX vs oracle price deviations
 
 // === v19.3: CAPITAL PRESERVATION MODE ===
 // When F&G < 15 for >6 consecutive hours, only allow high-conviction trades.
@@ -7348,37 +8337,6 @@ async function main() {
       usdcAddress: TOKEN_REGISTRY.USDC.address,
       cdpNetwork: activeChain.cdpNetwork,
       walletAddress: CONFIG.walletAddress,
-    });
-    _initOnChainPricing({
-      rpcCall, decodeSqrtPriceX96: _decodeSqrtPriceX96,
-      TOKEN_REGISTRY, CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT,
-      BASE_RPC_ENDPOINTS, POOL_DISCOVERY_MAX_AGE_MS,
-      POOL_REDISCOVERY_FAILURE_THRESHOLD, PRICE_SANITY_MAX_DEVIATION,
-      WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS,
-      QUOTE_DECIMALS, getLastKnownPrices: () => lastKnownPrices,
-    });
-    _initOnChainIntelligence({
-      rpcCall,
-      getPoolRegistry: _getPoolRegistry,
-      getLastPoolTicks: _getLastPoolTicks,
-      setLastOnChainIntelligence: _setLastOnChainIntelligence,
-      getLastKnownPrices: () => lastKnownPrices,
-      getPriceHistoryTokens: () => priceHistoryStore.tokens,
-      getStablecoinSupplyHistory: () => stablecoinSupplyHistory,
-      setStablecoinSupplyHistory: (h) => { stablecoinSupplyHistory = h; },
-      computePriceChange: _computePriceChange,
-      computeLocalAltseasonSignal: _computeLocalAltseasonSignal,
-      TOKEN_REGISTRY,
-      TWAP_OBSERVATION_SECONDS,
-      TWAP_DIVERGENCE_THRESHOLD_PCT,
-      ORDER_FLOW_BLOCK_LOOKBACK,
-      SWAP_EVENT_TOPIC,
-      LARGE_TRADE_THRESHOLD_USD,
-      TICK_DEPTH_RANGE,
-      VOLUME_ENRICHMENT_INTERVAL_MS,
-      VOLUME_SELF_SUFFICIENT_POINTS,
-      BTC_DOMINANCE_CHANGE_THRESHOLD,
-      STABLECOIN_SUPPLY_CHANGE_THRESHOLD,
     });
     initBalanceReader({
       getETHBalance, getERC20Balance,
