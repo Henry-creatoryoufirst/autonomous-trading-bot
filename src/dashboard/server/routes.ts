@@ -2073,3 +2073,64 @@ export function handleModelTelemetry(
     ctx.sendJSON(res, 500, { error: `Model telemetry failed: ${err.message}` });
   }
 }
+
+// ============================================================================
+// Route handler: Trade Ticker — real-time activity feed for fleet dashboard
+// ============================================================================
+
+export function handleTicker(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    const botName = process.env.BOT_INSTANCE_NAME || 'NVR';
+
+    // All trades, exclude pure HOLD records
+    const allTrades: any[] = ctx.state.tradeHistory || [];
+    const actionTrades = allTrades.filter((t: any) => t.action !== 'HOLD');
+
+    // Last 20 action trades, newest first
+    const recentTrades = actionTrades.slice(-20).reverse();
+
+    // Activity status: ACTIVE if last action trade within 4 hours
+    const lastTrade = recentTrades[0] ?? null;
+    const lastTradeAt: string | null = lastTrade?.timestamp ?? null;
+    const msSinceLastTrade = lastTradeAt
+      ? Date.now() - new Date(lastTradeAt).getTime()
+      : Infinity;
+    const hoursSinceLastTrade = msSinceLastTrade === Infinity
+      ? null
+      : Math.round((msSinceLastTrade / 3_600_000) * 10) / 10;
+    const botStatus = msSinceLastTrade < 4 * 3_600_000 ? 'ACTIVE' : 'IDLE';
+
+    // Market drift: difference between current portfolio value and value
+    // recorded right after the last trade. If positive, market moved the
+    // portfolio up since the last trade (no bot action involved).
+    const portfolioValueNow: number = ctx.state.trading?.totalPortfolioValue ?? 0;
+    const portfolioValueAtLastTrade: number =
+      lastTrade?.portfolioValueAfter ?? lastTrade?.portfolioValueBefore ?? portfolioValueNow;
+    const marketDrift = portfolioValueNow - portfolioValueAtLastTrade;
+    const marketDriftPct =
+      portfolioValueAtLastTrade > 0
+        ? Math.round((marketDrift / portfolioValueAtLastTrade) * 10_000) / 100
+        : 0;
+
+    const staleWarning = msSinceLastTrade > 24 * 3_600_000 && msSinceLastTrade !== Infinity;
+
+    ctx.sendJSON(res, 200, {
+      botName,
+      botStatus,
+      lastTradeAt,
+      hoursSinceLastTrade,
+      staleWarning,
+      recentTrades,
+      portfolioValueNow,
+      portfolioValueAtLastTrade,
+      marketDrift: Math.round(marketDrift * 100) / 100,
+      marketDriftPct,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    ctx.sendJSON(res, 500, { error: `Ticker failed: ${err.message}` });
+  }
+}

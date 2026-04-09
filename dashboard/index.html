@@ -848,6 +848,39 @@ tr:hover td { background: var(--bg-subtle); }
 .gauge-val { font-size: var(--fs-md); font-weight: 700; font-family: var(--font-mono); }
 
 /* ============================================================================
+   TRADE TICKER
+   ============================================================================ */
+.ticker-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-4); flex-wrap: wrap; gap: var(--space-3); }
+.ticker-bot { display: flex; align-items: center; gap: var(--space-3); }
+.ticker-bot-name { font-size: var(--fs-sm); font-weight: 700; color: var(--text-primary); letter-spacing: 0.3px; }
+.ticker-status-active { background: var(--green-soft); color: var(--green); padding: 2px 8px; border-radius: var(--radius-full); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.05em; }
+.ticker-status-idle { background: var(--amber-soft); color: var(--amber); padding: 2px 8px; border-radius: var(--radius-full); font-size: var(--fs-xs); font-weight: 700; letter-spacing: 0.05em; }
+.ticker-meta { font-size: var(--fs-xs); color: var(--text-muted); }
+.ticker-drift { text-align: right; }
+.ticker-drift-label { font-size: var(--fs-xs); color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.ticker-drift-val { font-size: var(--fs-sm); font-weight: 700; font-family: var(--font-mono); }
+.ticker-list { display: flex; flex-direction: column; gap: 3px; max-height: 240px; overflow-y: auto; }
+.ticker-item { display: flex; align-items: center; gap: var(--space-3); padding: 7px var(--space-3); border-radius: var(--radius-sm); transition: background var(--dur-fast); }
+.ticker-item:hover { background: var(--bg-subtle); }
+.ticker-item.buy { border-left: 2px solid var(--green); }
+.ticker-item.sell { border-left: 2px solid var(--red); }
+.ticker-item.withdraw { border-left: 2px solid var(--amber); }
+.ticker-pill { font-size: var(--fs-xs); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-full); flex-shrink: 0; letter-spacing: 0.04em; }
+.ticker-pill.buy { background: var(--green-soft); color: var(--green); }
+.ticker-pill.sell { background: var(--red-soft); color: var(--red); }
+.ticker-pill.withdraw { background: var(--amber-soft); color: var(--amber); }
+.ticker-token { font-weight: 700; font-size: var(--fs-sm); color: var(--text-primary); min-width: 60px; }
+.ticker-amt { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; flex: 1; }
+.ticker-amt.buy { color: var(--green); }
+.ticker-amt.sell { color: var(--red); }
+.ticker-reason { font-size: var(--fs-xs); color: var(--text-muted); flex: 2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticker-time { font-size: var(--fs-xs); color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+.ticker-tx { font-size: var(--fs-xs); color: var(--accent); text-decoration: none; flex-shrink: 0; }
+.ticker-empty { color: var(--text-muted); font-size: var(--fs-sm); padding: var(--space-6); text-align: center; }
+@keyframes tickerNew { from { background: var(--accent-dim); } to { background: transparent; } }
+.ticker-item.new { animation: tickerNew 1.5s ease-out; }
+
+/* ============================================================================
    TOAST
    ============================================================================ */
 .toast-container {
@@ -1437,6 +1470,33 @@ tr:hover td { background: var(--bg-subtle); }
         <span id="directivesCount" style="font-size:var(--fs-xs);color:var(--text-muted)"></span>
       </div>
       <div id="directivesList" style="display:flex;flex-direction:column;gap:var(--space-2)"></div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       TRADE TICKER — Real-time activity feed
+       ================================================================ -->
+  <div class="card" style="margin-top: var(--space-3); padding: var(--space-5)">
+    <div class="ticker-header">
+      <div class="ticker-bot">
+        <span class="ticker-bot-name" id="tickerBotName">--</span>
+        <span id="tickerStatusBadge" class="ticker-status-idle">IDLE</span>
+        <span class="ticker-meta" id="tickerLastTrade"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--space-6)">
+        <div class="ticker-drift">
+          <div class="ticker-drift-label">Market Drift</div>
+          <div class="ticker-drift-val" id="tickerDrift">--</div>
+        </div>
+        <div class="ticker-drift">
+          <div class="ticker-drift-label">Since Last Trade</div>
+          <div class="ticker-drift-val" id="tickerDriftPct">--</div>
+        </div>
+      </div>
+    </div>
+    <div id="tickerStaleWarning" style="display:none;margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:var(--radius);font-size:var(--fs-xs);color:#b45309;font-weight:500"></div>
+    <div class="ticker-list" id="tickerList">
+      <div class="ticker-empty">Loading activity...</div>
     </div>
   </div>
 
@@ -2865,16 +2925,16 @@ const AV = {
 // ============================================================================
 async function fetchAll() {
   const endpoints = [
-    'health','api/portfolio','api/balances','api/trades?limit=100',
+    'health','api/portfolio','api/balances','api/trades?limit=100&include_failures=true',
     'api/indicators','api/intelligence','api/patterns','api/reviews',
     'api/thresholds','api/adaptive','api/derivatives','api/discovery',
     'api/cache','api/auto-harvest','api/sectors','api/equity','api/daily-pnl',
-    'api/yield-rates','api/directives'
+    'api/yield-rates','api/directives','api/ticker'
   ];
   const keys = [
     'health','portfolio','balances','trades','indicators','intelligence',
     'patterns','reviews','thresholds','adaptive','derivatives','discovery',
-    'cache','autoHarvest','sectors','equity','dailyPnl','yieldRates','directives'
+    'cache','autoHarvest','sectors','equity','dailyPnl','yieldRates','directives','ticker'
   ];
 
   const results = await Promise.allSettled(
@@ -2910,6 +2970,7 @@ async function fetchAll() {
 function render() {
   renderBadges();
   renderOverview();
+  renderTicker();
   renderHoldings();
   renderYieldOptimizer();
   renderIntelligence();
@@ -2965,6 +3026,114 @@ function renderDirectives() {
       <button onclick="removeDirective('${dir.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px 4px;font-size:12px;line-height:1;border-radius:var(--radius-sm);transition:color var(--dur-fast)" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-muted)'" title="Remove directive">&times;</button>
     </div>`;
   }).join('');
+}
+
+// ============================================================================
+// TRADE TICKER
+// ============================================================================
+function renderTicker() {
+  const t = Store.data.ticker;
+  if (!t) return;
+
+  // Bot name + status
+  $('tickerBotName').textContent = t.botName || 'NVR';
+
+  const statusEl = $('tickerStatusBadge');
+  if (t.botStatus === 'ACTIVE') {
+    statusEl.textContent = 'ACTIVE';
+    statusEl.className = 'ticker-status-active';
+  } else {
+    statusEl.textContent = 'IDLE';
+    statusEl.className = 'ticker-status-idle';
+  }
+
+  // Last trade time
+  const lastEl = $('tickerLastTrade');
+  if (t.lastTradeAt) {
+    lastEl.textContent = 'Last trade ' + fmtAgo(t.lastTradeAt);
+  } else {
+    lastEl.textContent = 'No trades recorded';
+  }
+
+  // Market drift (portfolio movement since last trade — not bot action)
+  const driftEl = $('tickerDrift');
+  const driftPctEl = $('tickerDriftPct');
+  if (t.portfolioValueAtLastTrade > 0) {
+    const drift = t.marketDrift || 0;
+    const driftPct = t.marketDriftPct || 0;
+    const driftCls = drift >= 0 ? 'positive' : 'negative';
+    driftEl.textContent = (drift >= 0 ? '+' : '') + fmtUSD(drift);
+    driftEl.className = 'ticker-drift-val ' + driftCls;
+    driftPctEl.textContent = (driftPct >= 0 ? '+' : '') + driftPct.toFixed(2) + '%';
+    driftPctEl.className = 'ticker-drift-val ' + driftCls;
+  } else {
+    driftEl.textContent = '--';
+    driftPctEl.textContent = '--';
+  }
+
+  // Stale warning — show amber banner if no successful trade in 24h+
+  const staleEl = document.getElementById('tickerStaleWarning');
+  if (staleEl) {
+    const allFailed = (t.recentTrades || []).length > 0 && (t.recentTrades || []).every(tr => tr.success === false);
+    if (t.staleWarning || allFailed) {
+      const hrs = t.hoursSinceLastTrade ? t.hoursSinceLastTrade + 'h' : '24h+';
+      staleEl.textContent = allFailed
+        ? 'Recent trades are failing — check /api/errors for details'
+        : 'No successful trades in ' + hrs + ' — bot may be in hold mode or encountering errors';
+      staleEl.style.display = '';
+    } else {
+      staleEl.style.display = 'none';
+    }
+  }
+
+  // Trade list
+  const listEl = $('tickerList');
+  const trades = t.recentTrades || [];
+  if (trades.length === 0) {
+    listEl.innerHTML = '<div class="ticker-empty">No trades yet — bot is analyzing markets</div>';
+    return;
+  }
+
+  // Track previously rendered timestamps to animate new entries
+  const prevFirst = listEl.dataset.firstTs || '';
+  const currentFirst = trades[0]?.timestamp || '';
+
+  listEl.innerHTML = trades.map((tr, idx) => {
+    const isWithdraw = tr.action === 'WITHDRAW';
+    const isBuy = tr.action === 'BUY';
+    const isFailed = tr.success === false;
+    const cls = isWithdraw ? 'withdraw' : (isBuy ? 'buy' : 'sell');
+    const actionLabel = tr.action || 'TRADE';
+    const token = isWithdraw ? 'WITHDRAW' : (isBuy ? (tr.toToken || '?') : (tr.fromToken || '?'));
+    const amtCls = isBuy ? 'buy' : (isWithdraw ? '' : 'sell');
+
+    // Trim reasoning to key part (before colon or 60 chars)
+    let reason = isFailed ? (tr.error || tr.reasoning || 'failed') : (tr.reasoning || '');
+    const colonIdx = reason.indexOf(':');
+    if (!isFailed && colonIdx > 0 && colonIdx < 40) reason = reason.slice(colonIdx + 1).trim();
+    if (reason.length > 55) reason = reason.slice(0, 55) + '…';
+
+    const txLink = tr.txHash
+      ? '<a href="https://basescan.org/tx/' + tr.txHash + '" target="_blank" rel="noopener" class="ticker-tx" title="View on BaseScan">&#x2197;</a>'
+      : '';
+
+    const isNew = idx === 0 && prevFirst && currentFirst !== prevFirst;
+    const newCls = isNew ? ' new' : '';
+    const failStyle = isFailed ? ' style="opacity:0.6"' : '';
+    const failBadge = isFailed ? '<span style="font-size:10px;color:var(--negative);font-weight:600;margin-left:4px">FAIL</span>' : '';
+
+    return '<div class="ticker-item ' + cls + newCls + '"' + failStyle + '>' +
+      '<span class="ticker-pill ' + cls + '">' + actionLabel + '</span>' +
+      failBadge +
+      '<span class="ticker-token">' + token + '</span>' +
+      '<span class="ticker-amt ' + amtCls + '">' + fmtUSD(tr.amountUSD) + '</span>' +
+      '<span class="ticker-reason">' + reason + '</span>' +
+      '<span class="ticker-time">' + fmtAgo(tr.timestamp) + '</span>' +
+      txLink +
+      '</div>';
+  }).join('');
+
+  listEl.dataset.firstTs = currentFirst;
 }
 
 async function removeDirective(id) {

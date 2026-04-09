@@ -369,6 +369,7 @@ import {
   handleWithdraw, handleStateBackup, handleStateRestore,
   handleConfidence,
   handleModelTelemetry,
+  handleTicker,
 } from "./src/dashboard/server/index.js";
 // Phase 4: Extracted execution engine
 import {
@@ -6080,8 +6081,11 @@ async function executeSingleSwap(
           // v5.1: If slippage too tight, relax slightly and retry (but never above base config)
           adaptiveSlippage = Math.min(adaptiveSlippage + 25, CONFIG.trading.slippageBps);
           console.log(`     ⚠️ Slippage too tight, relaxing to ${adaptiveSlippage}bps and retrying...`);
-        } else if (swapMsg.includes("Invalid request") || swapMsg.includes("payment method") || swapMsg.includes("not supported") || swapMsg.includes("invalid")) {
+        } else if (swapMsg.includes("Invalid request") || swapMsg.includes("payment method") || swapMsg.includes("not supported") || swapMsg.includes("invalid") || swapMsg.includes("Insufficient balance")) {
           // v14.3: CDP SDK can't route this token — fall back to direct DEX swap
+          // v21.7: "Insufficient balance" added — CDP SDK returns this when it can't route a
+          // SELL even though on-chain balance is sufficient (verified via getTokenBalance cap).
+          // Fall back to Aerodrome DEX which can route these sells directly.
           console.log(`     ⚠️ CDP SDK rejected swap — will fall back to direct DEX swap`);
           console.log(`     Reason: ${swapMsg.substring(0, 120)}`);
           logError('SWAP_REJECTED', swapMsg, { from: decision.fromToken, to: decision.toToken, amountUSD: decision.amountUSD });
@@ -9245,11 +9249,8 @@ async function main() {
   }
   breakerState.consecutiveLosses = 0;
 
-  // v11.4.22: On-chain trade history recovery — DISABLED pending debug.
-  // The Blockscout recovery was causing Railway deploy failures (healthcheck timeout / crash).
-  // Will re-enable once we confirm the root cause from logs.
-  (state as any)._recoveryStatus = 'disabled';
-  console.log(`  ⏭️ On-chain recovery disabled — will re-enable after debug`);
+  // v21.7: On-chain recovery moved to post-startup (30s after server.listen) to avoid
+  // blocking Railway healthchecks. Runs background after boot — see healthServer.listen().
 
   // v11.4.24: Log discrepancy between lifetime counters and capped trade history array, but do NOT
   // overwrite lifetime counters — the trade array is capped at 2500 so it will always be smaller.
@@ -9911,6 +9912,9 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/model-telemetry':
         handleModelTelemetry(res, serverCtx);
         break;
+      case '/api/ticker':
+        handleTicker(res, serverCtx);
+        break;
       case '/api/discovery/scan':
         // Manual trigger for token discovery scan
         if (tokenDiscoveryEngine) {
@@ -9961,6 +9965,26 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/state-restore':
         if (handleStateRestore(req, res, serverCtx)) return;
         break;
+      case '/api/recover-trades':
+        // POST — trigger on-chain trade history recovery on demand
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST required' }); break; }
+        (async () => {
+          try {
+            const before = state.tradeHistory.length;
+            const result = await recoverOnChainTradeHistory(CONFIG.walletAddress);
+            const after = state.tradeHistory.length;
+            sendJSON(res, 200, {
+              ok: true,
+              recovered: result.recovered,
+              merged: result.merged,
+              tradesBefore: before,
+              tradesAfter: after,
+            });
+          } catch (e: any) {
+            sendJSON(res, 500, { error: `Recovery failed: ${e.message}` });
+          }
+        })();
+        return;
       default: {
         // NVR-NL: DELETE /api/directives/:id — remove a directive
         if (url.pathname.startsWith('/api/directives/') && req.method === 'DELETE') {
@@ -9988,6 +10012,23 @@ healthServer.listen(process.env.PORT || 3000, () => {
     state.trading.totalPortfolioValue,
     CONFIG.walletAddress
   ).catch(() => {});
+
+  // v21.7: Background on-chain trade recovery — runs 30s after server starts so
+  // healthcheck passes first. Merges any on-chain trades missing from persisted state
+  // (e.g. trades made during an unstable deploy that didn't save to disk).
+  // Safe: additive-only, no blocking, full error containment.
+  setTimeout(() => {
+    recoverOnChainTradeHistory(CONFIG.walletAddress)
+      .then(result => {
+        if (result.merged > 0) {
+          console.log(`[Recovery] Backfilled ${result.merged} on-chain trades missing from state`);
+          markStateDirty(true);
+        } else {
+          console.log(`[Recovery] On-chain history in sync — no gaps found (${result.recovered} chain trades checked)`);
+        }
+      })
+      .catch(e => console.warn(`[Recovery] Background on-chain recovery skipped: ${e.message}`));
+  }, 30_000);
 });
 
 // EMBEDDED_DASHBOARD — imported from src/dashboard/embedded-html.ts
