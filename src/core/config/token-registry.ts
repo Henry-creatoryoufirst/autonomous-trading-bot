@@ -21,19 +21,19 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "MIGGLES"],
   },
   DEFI: {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "SEAM"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -148,6 +148,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
+  MIGGLES: {
+    address: "0xb1a03eda10342529bbf8eb700a06c60441fef25d",
+    symbol: "MIGGLES", name: "Mr. Miggles", coingeckoId: "mister-miggles",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
@@ -202,6 +207,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  CLANKER: {
+    address: "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
+    symbol: "CLANKER", name: "Tokenbot", coingeckoId: "clanker",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
@@ -212,6 +222,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  SEAM: {
+    address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
+    symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
