@@ -6092,8 +6092,14 @@ async function executeSingleSwap(
           cdpSwapFailed = true;
           break;
         } else {
+          // v21.8: Universal CDP fallback — ANY unrecognized CDP error falls back to Aerodrome DEX.
+          // Specific string matching caused the 39-consecutive-failure incident (CDP returned
+          // "Insufficient balance" which wasn't in the fallback list). Now catch-all: no CDP error
+          // is ever rethrown. If CDP can't do it for ANY reason, DEX will handle it.
           logError('SWAP_ERROR', swapMsg, { from: decision.fromToken, to: decision.toToken, attempt, code: swapError?.code });
-          throw swapError; // Re-throw for outer catch to handle
+          console.log(`     ⚠️ CDP SDK error (catch-all → DEX fallback): ${swapMsg.substring(0, 100)}`);
+          cdpSwapFailed = true;
+          break;
         }
       }
     }
@@ -7510,6 +7516,112 @@ async function runTradingCycle() {
       }
     }
 
+    // === v21.8: HARD CIRCUIT BREAKER — Emergency exit for severe losses or persistent failures ===
+    // Safety net that fires EVERY cycle regardless of normal algo decisions.
+    // Triggers for: (1) any position down >50% from cost basis, OR
+    //               (2) any token with 10+ consecutive execution failures.
+    // Goes directly to executeSingleSwap (CDP→DEX chain), then executeDirectDexSwap as final fallback.
+    // This catches execution failures that slip past stop-losses (like the 39-failure incident).
+    {
+      const EMERGENCY_EXIT_LOSS_THRESHOLD = -50; // -50% from cost basis
+      const EMERGENCY_FAILURE_THRESHOLD = 10;    // 10+ consecutive failures → force exit regardless of P&L
+      const emergencyTokens: string[] = [];
+
+      for (const [symbol, cb] of Object.entries(state.costBasis)) {
+        if (!cb || cb.averageCostBasis <= 0 || cb.currentHolding <= 0) continue;
+        const tokenPrice = currentPrices.get(symbol) || 0;
+        if (tokenPrice <= 0) continue;
+
+        const lossPct = ((tokenPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+        const failCount = state.tradeFailures[symbol]?.count || 0;
+        const isDownHeavily = lossPct <= EMERGENCY_EXIT_LOSS_THRESHOLD;
+        const hasManyFailures = failCount >= EMERGENCY_FAILURE_THRESHOLD;
+
+        if (!isDownHeavily && !hasManyFailures) continue;
+
+        const balance = balances.find(b => b.symbol === symbol);
+        const positionUSD = balance?.usdValue || (cb.currentHolding * tokenPrice);
+        if (positionUSD < 1) continue;
+
+        const triggerReason = isDownHeavily
+          ? `down ${lossPct.toFixed(1)}% from cost basis`
+          : `${failCount} consecutive execution failures`;
+
+        emergencyTokens.push(symbol);
+        console.log(`\n🚨 CIRCUIT BREAKER: Emergency exit triggered for ${symbol} at ${lossPct.toFixed(1)}% — ${triggerReason}`);
+        console.log(`   Cost basis: $${cb.averageCostBasis.toFixed(6)} | Current: $${tokenPrice.toFixed(6)} | Position: $${positionUSD.toFixed(2)}`);
+
+        await telegramService.sendAlert({
+          severity: "CRITICAL",
+          title: `CIRCUIT BREAKER: Emergency exit for ${symbol}`,
+          message: `Emergency exit triggered — ${triggerReason}.\nTrying all execution methods (CDP → Aerodrome → DEX fallbacks).`,
+          data: {
+            token: symbol,
+            lossPct: `${lossPct.toFixed(1)}%`,
+            triggerReason,
+            costBasis: `$${cb.averageCostBasis.toFixed(6)}`,
+            currentPrice: `$${tokenPrice.toFixed(6)}`,
+            positionUSD: `$${positionUSD.toFixed(2)}`,
+          },
+        }).catch(() => {});
+
+        const emergencyDecision: TradeDecision = {
+          action: 'SELL',
+          fromToken: symbol,
+          toToken: 'USDC',
+          amountUSD: positionUSD,
+          reasoning: `CIRCUIT_BREAKER: Emergency exit — ${triggerReason}. Cost basis $${cb.averageCostBasis.toFixed(4)}.`,
+          sector: TOKEN_REGISTRY[symbol]?.sector,
+        };
+
+        // Attempt 1: executeSingleSwap — CDP first (now universal fallback), then DEX
+        let emergencyResult: { success: boolean; txHash?: string; error?: string } = { success: false };
+        try {
+          emergencyResult = await executeSingleSwap(emergencyDecision, marketData);
+        } catch (e: any) {
+          console.error(`  🚨 CIRCUIT BREAKER: executeSingleSwap threw for ${symbol}: ${e.message?.substring(0, 120)}`);
+          emergencyResult = { success: false, error: e.message };
+        }
+
+        // Attempt 2: executeDirectDexSwap — final bypass if executeSingleSwap still failed
+        if (!emergencyResult.success) {
+          console.log(`  🚨 CIRCUIT BREAKER: Trying executeDirectDexSwap as final fallback for ${symbol}...`);
+          try {
+            emergencyResult = await executeDirectDexSwap(emergencyDecision, marketData);
+          } catch (e: any) {
+            const errMsg = e.message?.substring(0, 200) || 'unknown';
+            console.error(`  🚨 CIRCUIT BREAKER: ALL methods failed for ${symbol}: ${errMsg}`);
+            await telegramService.sendAlert({
+              severity: "CRITICAL",
+              title: `CIRCUIT BREAKER FAILED: ${symbol} unsellable`,
+              message: `Emergency exit attempted but ALL execution methods (CDP + Aerodrome + DEX fallbacks) failed.\n\nManual intervention required immediately.\n\nTrigger: ${triggerReason}`,
+              data: {
+                token: symbol,
+                error: errMsg,
+                positionUSD: `$${positionUSD.toFixed(2)}`,
+                triggerReason,
+              },
+            }).catch(() => {});
+          }
+        }
+
+        if (emergencyResult.success) {
+          console.log(`  ✅ CIRCUIT BREAKER: Emergency exit successful for ${symbol} | TX: ${emergencyResult.txHash || 'n/a'}`);
+          clearTradeFailures(symbol);
+          markStateDirty(true);
+        }
+      }
+
+      // Refresh balances after any emergency exits
+      if (emergencyTokens.length > 0) {
+        const refreshedAfterEmergency = await getBalances();
+        if (refreshedAfterEmergency && refreshedAfterEmergency.length > 0) {
+          balances = refreshedAfterEmergency;
+        }
+        markStateDirty(true);
+      }
+    }
+
     // v21.0: MECHANICAL PROFIT-TAKING REMOVED — Claude decides when to harvest.
     // Claude sees each position's gain %, hold duration, momentum, and flow data.
     // It decides profit-taking based on deceleration signals and portfolio balance,
@@ -8193,9 +8305,35 @@ async function runTradingCycle() {
         // v19.3.1: Skip circuit breaker for "Insufficient balance" — these are transient sync issues,
         // not permanent routing failures. Blocking tokens for 6h over a balance mismatch is too aggressive.
         const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
-        const isBalanceError = tradeResult.error?.includes('Insufficient balance') || tradeResult.error?.includes('Balance too small');
+        // v21.8: "Insufficient balance" now always falls back to DEX (universal CDP fallback),
+        // so it no longer needs special-casing here. All CDP errors go to DEX automatically.
+        const isBalanceError = false; // v21.8: no longer skip-listed — universal CDP→DEX fallback handles it
         if (!tradeResult.success && !isBalanceError) {
           recordTradeFailure(tradeToken);
+          // v21.8: Per-token consecutive failure alerting — 3 / 5 / 10 thresholds
+          const tokenFailCount = state.tradeFailures[tradeToken]?.count || 0;
+          if (tokenFailCount === 3) {
+            telegramService.sendAlert({
+              severity: "HIGH",
+              title: `WARNING: 3 consecutive sell failures for ${tradeToken}`,
+              message: `WARNING: 3 consecutive sell failures for ${tradeToken}. Investigating...`,
+              data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
+            }).catch(() => {});
+          } else if (tokenFailCount === 5) {
+            telegramService.sendAlert({
+              severity: "CRITICAL",
+              title: `CRITICAL: 5 consecutive sell failures for ${tradeToken}`,
+              message: `CRITICAL: 5 consecutive sell failures for ${tradeToken}. Manual intervention may be needed.`,
+              data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
+            }).catch(() => {});
+          } else if (tokenFailCount >= 10) {
+            telegramService.sendAlert({
+              severity: "CRITICAL",
+              title: `CRITICAL: 10+ failures for ${tradeToken} — emergency exit queued`,
+              message: `CRITICAL: ${tokenFailCount} consecutive sell failures for ${tradeToken}. Emergency circuit breaker will fire next cycle regardless of loss percentage.`,
+              data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
+            }).catch(() => {});
+          }
         } else if (!tradeResult.success && isBalanceError) {
           console.log(`  ℹ️ Balance error for ${tradeToken} — NOT triggering circuit breaker (transient issue)`);
         } else {
