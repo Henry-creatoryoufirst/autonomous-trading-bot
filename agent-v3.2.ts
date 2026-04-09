@@ -6081,8 +6081,11 @@ async function executeSingleSwap(
           // v5.1: If slippage too tight, relax slightly and retry (but never above base config)
           adaptiveSlippage = Math.min(adaptiveSlippage + 25, CONFIG.trading.slippageBps);
           console.log(`     ⚠️ Slippage too tight, relaxing to ${adaptiveSlippage}bps and retrying...`);
-        } else if (swapMsg.includes("Invalid request") || swapMsg.includes("payment method") || swapMsg.includes("not supported") || swapMsg.includes("invalid")) {
+        } else if (swapMsg.includes("Invalid request") || swapMsg.includes("payment method") || swapMsg.includes("not supported") || swapMsg.includes("invalid") || swapMsg.includes("Insufficient balance")) {
           // v14.3: CDP SDK can't route this token — fall back to direct DEX swap
+          // v21.7: "Insufficient balance" added — CDP SDK returns this when it can't route a
+          // SELL even though on-chain balance is sufficient (verified via getTokenBalance cap).
+          // Fall back to Aerodrome DEX which can route these sells directly.
           console.log(`     ⚠️ CDP SDK rejected swap — will fall back to direct DEX swap`);
           console.log(`     Reason: ${swapMsg.substring(0, 120)}`);
           logError('SWAP_REJECTED', swapMsg, { from: decision.fromToken, to: decision.toToken, amountUSD: decision.amountUSD });
