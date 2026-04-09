@@ -2115,11 +2115,14 @@ export function handleTicker(
         ? Math.round((marketDrift / portfolioValueAtLastTrade) * 10_000) / 100
         : 0;
 
+    const staleWarning = msSinceLastTrade > 24 * 3_600_000 && msSinceLastTrade !== Infinity;
+
     ctx.sendJSON(res, 200, {
       botName,
       botStatus,
       lastTradeAt,
       hoursSinceLastTrade,
+      staleWarning,
       recentTrades,
       portfolioValueNow,
       portfolioValueAtLastTrade,

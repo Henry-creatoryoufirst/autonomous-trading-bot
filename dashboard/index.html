@@ -1494,6 +1494,7 @@ tr:hover td { background: var(--bg-subtle); }
         </div>
       </div>
     </div>
+    <div id="tickerStaleWarning" style="display:none;margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:var(--radius);font-size:var(--fs-xs);color:#b45309;font-weight:500"></div>
     <div class="ticker-list" id="tickerList">
       <div class="ticker-empty">Loading activity...</div>
     </div>
@@ -2924,7 +2925,7 @@ const AV = {
 // ============================================================================
 async function fetchAll() {
   const endpoints = [
-    'health','api/portfolio','api/balances','api/trades?limit=100',
+    'health','api/portfolio','api/balances','api/trades?limit=100&include_failures=true',
     'api/indicators','api/intelligence','api/patterns','api/reviews',
     'api/thresholds','api/adaptive','api/derivatives','api/discovery',
     'api/cache','api/auto-harvest','api/sectors','api/equity','api/daily-pnl',
@@ -3070,6 +3071,21 @@ function renderTicker() {
     driftPctEl.textContent = '--';
   }
 
+  // Stale warning — show amber banner if no successful trade in 24h+
+  const staleEl = document.getElementById('tickerStaleWarning');
+  if (staleEl) {
+    const allFailed = (t.recentTrades || []).length > 0 && (t.recentTrades || []).every(tr => tr.success === false);
+    if (t.staleWarning || allFailed) {
+      const hrs = t.hoursSinceLastTrade ? t.hoursSinceLastTrade + 'h' : '24h+';
+      staleEl.textContent = allFailed
+        ? 'Recent trades are failing — check /api/errors for details'
+        : 'No successful trades in ' + hrs + ' — bot may be in hold mode or encountering errors';
+      staleEl.style.display = '';
+    } else {
+      staleEl.style.display = 'none';
+    }
+  }
+
   // Trade list
   const listEl = $('tickerList');
   const trades = t.recentTrades || [];
@@ -3085,15 +3101,16 @@ function renderTicker() {
   listEl.innerHTML = trades.map((tr, idx) => {
     const isWithdraw = tr.action === 'WITHDRAW';
     const isBuy = tr.action === 'BUY';
+    const isFailed = tr.success === false;
     const cls = isWithdraw ? 'withdraw' : (isBuy ? 'buy' : 'sell');
     const actionLabel = tr.action || 'TRADE';
     const token = isWithdraw ? 'WITHDRAW' : (isBuy ? (tr.toToken || '?') : (tr.fromToken || '?'));
     const amtCls = isBuy ? 'buy' : (isWithdraw ? '' : 'sell');
 
     // Trim reasoning to key part (before colon or 60 chars)
-    let reason = tr.reasoning || '';
+    let reason = isFailed ? (tr.error || tr.reasoning || 'failed') : (tr.reasoning || '');
     const colonIdx = reason.indexOf(':');
-    if (colonIdx > 0 && colonIdx < 40) reason = reason.slice(colonIdx + 1).trim();
+    if (!isFailed && colonIdx > 0 && colonIdx < 40) reason = reason.slice(colonIdx + 1).trim();
     if (reason.length > 55) reason = reason.slice(0, 55) + '…';
 
     const txLink = tr.txHash
@@ -3102,9 +3119,12 @@ function renderTicker() {
 
     const isNew = idx === 0 && prevFirst && currentFirst !== prevFirst;
     const newCls = isNew ? ' new' : '';
+    const failStyle = isFailed ? ' style="opacity:0.6"' : '';
+    const failBadge = isFailed ? '<span style="font-size:10px;color:var(--negative);font-weight:600;margin-left:4px">FAIL</span>' : '';
 
-    return '<div class="ticker-item ' + cls + newCls + '">' +
+    return '<div class="ticker-item ' + cls + newCls + '"' + failStyle + '>' +
       '<span class="ticker-pill ' + cls + '">' + actionLabel + '</span>' +
+      failBadge +
       '<span class="ticker-token">' + token + '</span>' +
       '<span class="ticker-amt ' + amtCls + '">' + fmtUSD(tr.amountUSD) + '</span>' +
       '<span class="ticker-reason">' + reason + '</span>' +
