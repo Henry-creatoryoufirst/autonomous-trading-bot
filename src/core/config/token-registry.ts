@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "KAITO", "ELSA"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -147,6 +147,16 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4",
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  KAITO: {
+    address: "0x98d0baa52b2d063e780de12f615f963fe8537553",
+    symbol: "KAITO", name: "Kaito", coingeckoId: "kaito",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  ELSA: {
+    address: "0x29cc30f9d113b356ce408667aa6433589cecbdca",
+    symbol: "ELSA", name: "HeyElsa", coingeckoId: "elsa",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
