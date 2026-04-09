@@ -27,7 +27,7 @@ export const SECTORS = {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "ZORA"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -147,6 +147,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4",
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  ZORA: {
+    address: "0x1111111111166b7fe7bd91427724b487980afc69",
+    symbol: "ZORA", name: "Zora", coingeckoId: "zora",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
