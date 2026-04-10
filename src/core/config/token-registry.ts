@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "LUNA"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -201,6 +201,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  LUNA: {
+    address: "0x55cd6469f597452b5a7536e2cd98fde4c1247ee4",
+    symbol: "LUNA", name: "Luna by Virtuals", coingeckoId: "luna-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === DEFI (expanded) ===
   WELL: {
