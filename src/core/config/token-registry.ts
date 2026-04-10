@@ -15,13 +15,13 @@ export const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "USOL"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "LUNA"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -116,6 +116,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "cbXRP", name: "Coinbase Wrapped XRP", coingeckoId: "ripple",
     sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 6,
   },
+  USOL: {
+    address: "0x9B8Df6E244526ab5F6e6400d331DB28C8fdDDB55",
+    symbol: "USOL", name: "Wrapped Solana (Universal)", coingeckoId: "wrapped-solana-universal",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 50, decimals: 18,
+  },
   // === AI & AGENT TOKENS (20%) ===
   VIRTUAL: {
     address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
@@ -131,6 +136,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe",
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  LUNA: {
+    address: "0x55cD6469F597452B5A7536e2CD98fDE4c1247ee4",
+    symbol: "LUNA", name: "Luna by Virtuals", coingeckoId: "luna-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === MEME COINS (15%) ===
   BRETT: {
