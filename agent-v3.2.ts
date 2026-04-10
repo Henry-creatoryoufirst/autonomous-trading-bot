@@ -3742,10 +3742,15 @@ function calculateInstitutionalPositionSize(portfolioValue: number) {
   const momentum = calculateMarketMomentum();
   lastMomentumSignal = momentum;
 
-  return _calculateInstitutionalPositionSize(
+  const base = _calculateInstitutionalPositionSize(
     portfolioValue, state, _kellyConstants, _volConstants,
     momentum, breakerState, cashDeploymentMode, BREAKER_SIZE_REDUCTION,
   );
+  // v21.7: Drawdown-aware Kelly — smoothly reduce size as portfolio pulls back from peak.
+  // Starts scaling at 5% drawdown, floors at 0.5× by ~17.5% (before circuit breaker halts at 20%).
+  const dd = state.trading.peakValue > 0 ? (state.trading.peakValue - portfolioValue) / state.trading.peakValue : 0;
+  const ddScaler = dd > 0.05 ? Math.max(0.5, 1 - (dd - 0.05) * 4) : 1;
+  return { ...base, sizeUSD: base.sizeUSD * ddScaler, kellyPct: base.kellyPct * ddScaler };
 }
 
 /**
