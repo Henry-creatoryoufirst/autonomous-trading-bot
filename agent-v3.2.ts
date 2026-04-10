@@ -7999,8 +7999,10 @@ async function runTradingCycle() {
         } else {
           // NORMAL MODE: Kelly cap with ATR adjustment, no other reductions.
           const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
-          decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
-          console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
+          // v20.7: Confidence-weighted Kelly — halve position when win rate < 45% (VIX-rank inspired)
+          const confidenceScale = instSizeCycle.winRate > 0 && instSizeCycle.winRate < 0.45 ? 0.5 : 1.0;
+          decision.amountUSD = Math.min(decision.amountUSD, kellyMax * confidenceScale);
+          console.log(`   🎰 Kelly Cap: $${(kellyMax * confidenceScale).toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%${confidenceScale < 1 ? ` | ⚠️ WR${(instSizeCycle.winRate * 100).toFixed(0)}% → 0.5x confidence` : ''})`);
 
           // v20.0: Enhanced volatility-adjusted position sizing
           // Goal: each position contributes equal RISK to the portfolio.
