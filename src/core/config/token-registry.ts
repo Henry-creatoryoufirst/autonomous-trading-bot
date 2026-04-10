@@ -213,6 +213,18 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  // === AI & AGENT TOKENS (auto-scouted) ===
+  CLANKER: {
+    address: "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
+    symbol: "CLANKER", name: "tokenbot (Clanker)", coingeckoId: "tokenbot-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  // === DEFI PROTOCOLS (auto-scouted) ===
+  SEAM: {
+    address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
+    symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
