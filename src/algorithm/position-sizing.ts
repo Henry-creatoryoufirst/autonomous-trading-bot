@@ -139,7 +139,10 @@ export function calculateKellyPositionSize(
 
   const rawKelly = avgWin > 0 ? (winRate * avgWin - (1 - winRate) * avgLoss) / avgWin : 0;
 
-  const quarterKelly = Math.max(0, rawKelly * kc.KELLY_FRACTION);
+  // Sample confidence: sqrt(n/window) ramps from ~63% at KELLY_MIN_TRADES to 100% at full window.
+  // Prevents overconfident sizing when win-rate estimate has high statistical uncertainty.
+  const sampleConfidence = Math.min(1.0, Math.sqrt(sells.length / kc.KELLY_ROLLING_WINDOW));
+  const quarterKelly = Math.max(0, rawKelly * kc.KELLY_FRACTION * sampleConfidence);
   const kellyPct = Math.min(quarterKelly * 100, effectiveCeiling);
   const kellyUSD = Math.max(kc.KELLY_POSITION_FLOOR_USD, Math.min(portfolioValue * (kellyPct / 100), portfolioValue * (effectiveCeiling / 100)));
 
