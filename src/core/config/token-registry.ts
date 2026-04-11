@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -217,6 +217,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
+  WIRE: {
+    address: "0x0b3ae50babe7ffa4e1a50569cee6bdefd4ccaee0",
+    symbol: "WIRE", name: "717ai by Virtuals", coingeckoId: "717ai-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
@@ -232,6 +237,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
     symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  HYDX: {
+    address: "0x00000e7efa313f4e11bfff432471ed9423ac6b30",
+    symbol: "HYDX", name: "Hydrex", coingeckoId: "hydrex",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
