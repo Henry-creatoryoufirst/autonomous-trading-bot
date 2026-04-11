@@ -133,7 +133,9 @@ export function calculateKellyPositionSize(
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
-  const winRate = wins.length / (wins.length + losses.length);
+  // Cap win rate at 0.65 — no edge this strong is credible from a 20-50 trade sample;
+  // guards against Kelly over-betting during lucky streaks.
+  const winRate = Math.min(0.65, wins.length / (wins.length + losses.length));
   const avgWin = wins.length > 0 ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
   const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
 
