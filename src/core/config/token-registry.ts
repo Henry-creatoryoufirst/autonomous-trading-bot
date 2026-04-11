@@ -27,7 +27,7 @@ export const SECTORS = {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -147,6 +147,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4",
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  PEEZY: {
+    address: "0x1b6a569dd61edce3c383f6d565e2f79ec3a12980",
+    symbol: "PEEZY", name: "Young Peezy AKA Pepe", coingeckoId: "young-peezy-aka-pepe",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   KEYCAT: {
     address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
