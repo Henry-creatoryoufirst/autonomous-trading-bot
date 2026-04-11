@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "SEAM"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -212,6 +212,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  SEAM: {
+    address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
+    symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
