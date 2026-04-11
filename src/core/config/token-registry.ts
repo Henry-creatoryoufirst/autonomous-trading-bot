@@ -21,13 +21,13 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY", "DOGINME"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -153,6 +153,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "PEEZY", name: "Young Peezy AKA Pepe", coingeckoId: "young-peezy-aka-pepe",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  DOGINME: {
+    address: "0x6921b130d297cc43754afba22e5eac0fbf8db75b",
+    symbol: "DOGINME", name: "doginme", coingeckoId: "doginme",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   KEYCAT: {
     address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
     symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
@@ -221,6 +226,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x0b3ae50babe7ffa4e1a50569cee6bdefd4ccaee0",
     symbol: "WIRE", name: "717ai by Virtuals", coingeckoId: "717ai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  ZORA: {
+    address: "0x1111111111166b7fe7bd91427724b487980afc69",
+    symbol: "ZORA", name: "Zora", coingeckoId: "zora",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === DEFI (expanded) ===
   WELL: {
