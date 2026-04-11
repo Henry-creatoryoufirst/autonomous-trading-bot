@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "ELSA", "CLANKER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -195,6 +195,17 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
     symbol: "ZRO", name: "LayerZero", coingeckoId: "layerzero",
     sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  // === AI & AGENT TOKENS (auto-discovered 2026-04-11) ===
+  ELSA: {
+    address: "0x29cc30f9d113b356ce408667aa6433589cecbdca",
+    symbol: "ELSA", name: "HeyElsa AI", coingeckoId: "elsa",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  CLANKER: {
+    address: "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
+    symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === AI & AGENT TOKENS (expanded) ===
   VVV: {
