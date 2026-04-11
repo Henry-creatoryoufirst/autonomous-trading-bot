@@ -162,6 +162,7 @@ import {
   SECTOR_STOP_LOSS_OVERRIDES,
   // v8.0: Phase 1 — Institutional Position Sizing & Capital Protection
   KELLY_FRACTION,
+  KELLY_FRACTION_BEAR,
   KELLY_MIN_TRADES,
   KELLY_ROLLING_WINDOW,
   KELLY_POSITION_FLOOR_USD,
@@ -3730,7 +3731,9 @@ function getEffectiveKellyCeiling(portfolioValue: number): number {
 }
 
 function calculateKellyPositionSize(portfolioValue: number) {
-  return _calculateKellyPositionSize(portfolioValue, state, _kellyConstants);
+  const bearMode = lastMarketRegime === 'VOLATILE' || lastMarketRegime === 'TRENDING_DOWN';
+  const kc = bearMode ? { ..._kellyConstants, KELLY_FRACTION: KELLY_FRACTION_BEAR } : _kellyConstants;
+  return _calculateKellyPositionSize(portfolioValue, state, kc);
 }
 
 function calculateVolatilityMultiplier() {
