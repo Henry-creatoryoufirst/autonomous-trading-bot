@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "KTA"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -202,7 +202,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  CLANKER: {
+    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
+    symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI (expanded) ===
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
     symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
