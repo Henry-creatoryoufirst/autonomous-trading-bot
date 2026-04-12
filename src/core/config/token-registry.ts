@@ -27,7 +27,7 @@ export const SECTORS = {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "KEYCAT"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -133,6 +133,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   // === MEME COINS (15%) ===
+  KEYCAT: {
+    address: "0x9a26f5433671751c3276a065f57e5a02d2817973",
+    symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
     symbol: "BRETT", name: "Brett", coingeckoId: "brett",
