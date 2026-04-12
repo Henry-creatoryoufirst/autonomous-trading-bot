@@ -27,7 +27,7 @@ export const SECTORS = {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY", "DOGINME"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY", "DOGINME", "MIGGLES"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -161,6 +161,11 @@ export const TOKEN_REGISTRY: Record<string, {
   KEYCAT: {
     address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
     symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  MIGGLES: {
+    address: "0xb1a03eda10342529bbf8eb700a06c60441fef25d",
+    symbol: "MIGGLES", name: "Mr. Miggles", coingeckoId: "mister-miggles",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === DEFI PROTOCOLS (15%) ===
