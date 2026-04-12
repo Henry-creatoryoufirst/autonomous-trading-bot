@@ -207,6 +207,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  ZORA: {
+    address: "0x1111111111166b7FE7bd91427724B487980aFc69",
+    symbol: "ZORA", name: "Zora", coingeckoId: "zora",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
@@ -217,6 +222,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
