@@ -493,7 +493,7 @@ export const BREAKER_DAILY_DD_PCT = 8;         // 8% daily drawdown → pause
 export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
-export const BREAKER_SIZE_REDUCTION = 0.7;     // 30% size reduction for 24h after breaker
+export const BREAKER_SIZE_REDUCTION = 0.5;     // 50% size reduction for 24h after breaker — research: fractional Kelly during losing streaks cuts drawdown (was 0.7/30%)
 export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
 
 // ============================================================================
