@@ -213,6 +213,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  // === DEFI (expanded — auto-discovered) ===
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  SEAM: {
+    address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
+    symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
