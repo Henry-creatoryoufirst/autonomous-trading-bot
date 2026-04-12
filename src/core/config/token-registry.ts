@@ -15,7 +15,7 @@ export const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "KTA"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -196,6 +196,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "ZRO", name: "LayerZero", coingeckoId: "layerzero",
     sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === AI & AGENT TOKENS (expanded) ===
   VVV: {
     address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
@@ -212,6 +217,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  HYDX: {
+    address: "0x00000e7efa313f4e11bfff432471ed9423ac6b30",
+    symbol: "HYDX", name: "Hydrex", coingeckoId: "hydrex",
+    sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
