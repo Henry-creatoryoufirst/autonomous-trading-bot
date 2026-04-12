@@ -253,6 +253,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "HYDX", name: "Hydrex", coingeckoId: "hydrex",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  MEZO: {
+    address: "0x8e4cbbcc33db6c0a18561fde1f6ba35906d4848b",
+    symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
