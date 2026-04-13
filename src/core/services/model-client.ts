@@ -1,12 +1,14 @@
 /**
- * NVR Capital — Model Client Abstraction (v21.2)
+ * NVR Capital — Model Client Abstraction (v21.14)
  *
  * Unified interface for AI model backends:
  * - Anthropic Claude (Sonnet/Haiku) via @anthropic-ai/sdk
  * - Google Gemma 4 26B-A4B via Ollama (OpenAI-compatible endpoint)
+ * - Groq cloud inference (OpenAI-compatible, near-zero cost, no local GPU needed)
  *
+ * Routing priority for routine cycles: Groq → Ollama → Claude Haiku
  * Supports phased rollout: shadow → supervised → graduated → production.
- * Falls back to Claude when Ollama is unreachable.
+ * Falls back to Claude when cheaper backends are unreachable.
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
@@ -19,6 +21,9 @@ import {
   OLLAMA_REQUEST_TIMEOUT_MS,
   OLLAMA_HEALTH_CHECK_INTERVAL_MS,
   GEMMA_ESCALATION_CONFIG,
+  GROQ_BASE_URL,
+  GROQ_MODEL_FAST,
+  GROQ_REQUEST_TIMEOUT_MS,
 } from '../config/constants.js';
 
 // ============================================================================
@@ -29,7 +34,7 @@ import {
 export interface ModelResponse {
   text: string;
   model: string;
-  backend: 'anthropic' | 'ollama';
+  backend: 'anthropic' | 'ollama' | 'groq';
   usage: { inputTokens: number; outputTokens: number };
   latencyMs: number;
 }
@@ -43,7 +48,7 @@ export interface ModelRequestOptions {
 }
 
 /** Model routing tiers */
-export type ModelTier = 'GEMMA' | 'HAIKU' | 'SONNET';
+export type ModelTier = 'GROQ' | 'GEMMA' | 'HAIKU' | 'SONNET';
 
 /** Gemma operating mode */
 export type GemmaMode = 'disabled' | 'shadow' | 'supervised' | 'graduated' | 'production';
@@ -53,7 +58,7 @@ export interface ModelTelemetry {
   timestamp: string;
   tier: ModelTier;
   model: string;
-  backend: 'anthropic' | 'ollama';
+  backend: 'anthropic' | 'ollama' | 'groq';
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
@@ -72,7 +77,7 @@ export interface ModelTelemetry {
 interface RoutingDecision {
   tier: ModelTier;
   model: string;
-  backend: 'anthropic' | 'ollama';
+  backend: 'anthropic' | 'ollama' | 'groq';
   reason: string;
 }
 
@@ -200,6 +205,95 @@ export async function callOllama(options: ModelRequestOptions): Promise<ModelRes
 }
 
 // ============================================================================
+// GROQ BACKEND (OpenAI-compatible, cloud-hosted, no local GPU required)
+// ============================================================================
+
+/**
+ * Check if Groq is available (simply verifies GROQ_API_KEY is set).
+ * No network round-trip needed — Groq is a managed API with 99.9% uptime.
+ */
+export async function isGroqAvailable(): Promise<boolean> {
+  return typeof process.env.GROQ_API_KEY === 'string' && process.env.GROQ_API_KEY.length > 0;
+}
+
+/**
+ * Call Groq's OpenAI-compatible chat completions endpoint.
+ * Same request/response shape as callOllama() — only base URL, auth, and model differ.
+ */
+export async function callGroq(options: ModelRequestOptions): Promise<ModelResponse> {
+  const startMs = Date.now();
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is not set');
+  }
+
+  // Build messages — prepend JSON enforcement system message
+  const messages = [
+    {
+      role: 'system' as const,
+      content: 'Respond ONLY with a valid JSON array of trade decisions. No markdown fences, no prose, no explanation outside the JSON. If no action needed, return [{"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"no action"}].',
+    },
+    ...options.messages,
+  ];
+
+  const body: Record<string, unknown> = {
+    model: GROQ_MODEL_FAST,
+    messages,
+    stream: false,
+    temperature: 0.1,
+    max_tokens: options.maxTokens,
+  };
+
+  if (options.jsonMode) {
+    body.response_format = { type: 'json_object' };
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? GROQ_REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${GROQ_BASE_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      throw new Error(`Groq returned ${res.status}: ${await res.text()}`);
+    }
+
+    const data = await res.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const latencyMs = Date.now() - startMs;
+
+    return {
+      text,
+      model: GROQ_MODEL_FAST,
+      backend: 'groq',
+      usage: {
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
+      },
+      latencyMs,
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+// ============================================================================
 // ANTHROPIC BACKEND (wraps existing SDK)
 // ============================================================================
 
@@ -263,15 +357,22 @@ export async function resolveModelRouting(
     return { tier: 'SONNET', model: AI_MODEL_HEAVY, backend: 'anthropic', reason: 'Difficult market → Sonnet required' };
   }
 
-  // Routine cycle: try Gemma
-  const available = await isOllamaAvailable();
-  if (available) {
-    return { tier: 'GEMMA', model: AI_MODEL_GEMMA, backend: 'ollama', reason: 'Routine cycle → Gemma' };
+  // Routine cycle: Groq → Ollama → Haiku
+  // Groq first — it's a managed cloud API, no health check latency needed
+  const groqReady = await isGroqAvailable();
+  if (groqReady) {
+    return { tier: 'GROQ', model: GROQ_MODEL_FAST, backend: 'groq', reason: 'Routine cycle → Groq (GROQ_API_KEY set)' };
   }
 
-  // Fallback: Ollama down
-  console.warn('[Model] Ollama unreachable, falling back to Claude Haiku');
-  return { tier: 'HAIKU', model: AI_MODEL_ROUTINE, backend: 'anthropic', reason: 'Ollama unreachable → Haiku fallback' };
+  // Groq not configured — try local Ollama
+  const ollamaReady = await isOllamaAvailable();
+  if (ollamaReady) {
+    return { tier: 'GEMMA', model: AI_MODEL_GEMMA, backend: 'ollama', reason: 'Routine cycle → Gemma (no Groq key)' };
+  }
+
+  // Both cheap backends unavailable — fall back to Claude Haiku
+  console.warn('[Model] Groq not configured and Ollama unreachable, falling back to Claude Haiku');
+  return { tier: 'HAIKU', model: AI_MODEL_ROUTINE, backend: 'anthropic', reason: 'Groq not set + Ollama unreachable → Haiku fallback' };
 }
 
 // ============================================================================
@@ -447,12 +548,17 @@ async function callShadowMode(
   context: ModelCallContext,
   anthropicClient: Anthropic,
 ): Promise<{ response: ModelResponse; telemetry: ModelTelemetry }> {
-  // Claude is authoritative; Gemma runs in parallel for comparison
+  // Claude is authoritative; cheap model (Groq preferred, Ollama fallback) runs in parallel for comparison
   const claudeModel = context.needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
+
+  // Select shadow backend: Groq if key is set, else Ollama
+  const groqReady = await isGroqAvailable();
+  const cheapCall = groqReady ? callGroq(options) : callOllama(options);
+  const shadowBackendLabel = groqReady ? 'Groq' : 'Gemma';
 
   const [claudeResult, gemmaResult] = await Promise.allSettled([
     callAnthropic(options, anthropicClient, claudeModel),
-    callOllama(options),
+    cheapCall,
   ]);
 
   const claudeResponse = claudeResult.status === 'fulfilled' ? claudeResult.value : null;
@@ -495,10 +601,10 @@ async function callShadowMode(
 
   if (gemmaResponse) {
     console.log(
-      `[Shadow] Claude=${claudeResponse.latencyMs}ms Gemma=${gemmaResponse.latencyMs}ms | Agreement: ${agreed ? 'YES' : 'NO'}`
+      `[Shadow] Claude=${claudeResponse.latencyMs}ms ${shadowBackendLabel}=${gemmaResponse.latencyMs}ms | Agreement: ${agreed ? 'YES' : 'NO'}`
     );
   } else {
-    console.log(`[Shadow] Gemma call failed, Claude-only this cycle`);
+    console.log(`[Shadow] ${shadowBackendLabel} call failed, Claude-only this cycle`);
   }
 
   return { response: claudeResponse, telemetry };
@@ -516,11 +622,16 @@ async function callGemmaPrimary(
 ): Promise<{ response: ModelResponse; telemetry: ModelTelemetry }> {
   let gemmaResponse: ModelResponse;
 
+  // Determine which cheap backend to use based on routing
+  const routing = await resolveModelRouting(context, gemmaMode);
+  const useGroq = routing.backend === 'groq';
+  const cheapBackendLabel = useGroq ? 'Groq' : 'Gemma';
+
   try {
-    gemmaResponse = await callOllama(options);
+    gemmaResponse = useGroq ? await callGroq(options) : await callOllama(options);
   } catch (err) {
-    // Gemma failed — fall back to Claude
-    console.warn(`[Model] Gemma failed (${(err as Error).message}), falling back to Claude`);
+    // Cheap backend failed — fall back to Claude
+    console.warn(`[Model] ${cheapBackendLabel} failed (${(err as Error).message}), falling back to Claude`);
     const fallbackModel = context.needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
     const response = await callAnthropic(options, anthropicClient, fallbackModel);
     const telemetry: ModelTelemetry = {
@@ -533,7 +644,7 @@ async function callGemmaPrimary(
       outputTokens: response.usage.outputTokens,
       success: true,
       escalated: true,
-      escalationReason: `Gemma failed: ${(err as Error).message}`,
+      escalationReason: `${cheapBackendLabel} failed: ${(err as Error).message}`,
     };
     return { response, telemetry };
   }
@@ -543,7 +654,7 @@ async function callGemmaPrimary(
   const escalation = checkEscalation(gemmaResponse.text, portfolioValue, gemmaMode);
 
   if (escalation.shouldEscalate) {
-    console.log(`[Escalation] Gemma→Sonnet: ${escalation.reason}`);
+    console.log(`[Escalation] ${cheapBackendLabel}→Sonnet: ${escalation.reason}`);
     const claudeResponse = await callAnthropic(options, anthropicClient, AI_MODEL_HEAVY);
     const telemetry: ModelTelemetry = {
       timestamp: new Date().toISOString(),
@@ -560,12 +671,12 @@ async function callGemmaPrimary(
     return { response: claudeResponse, telemetry };
   }
 
-  // Gemma response is good — use it
+  // Cheap backend response is good — use it
   const telemetry: ModelTelemetry = {
     timestamp: new Date().toISOString(),
-    tier: 'GEMMA',
-    model: AI_MODEL_GEMMA,
-    backend: 'ollama',
+    tier: routing.tier,
+    model: gemmaResponse.model,
+    backend: gemmaResponse.backend,
     latencyMs: gemmaResponse.latencyMs,
     inputTokens: gemmaResponse.usage.inputTokens,
     outputTokens: gemmaResponse.usage.outputTokens,
