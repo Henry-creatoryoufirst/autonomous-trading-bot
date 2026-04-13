@@ -336,7 +336,7 @@ export const DEFAULT_PROFIT_TIERS = [
 
 export const DEFAULT_REGIME_MULTIPLIERS = {
   TRENDING_UP: 1.3,     // v9.4: Raised — lean into uptrends harder
-  TRENDING_DOWN: 0.85,  // v9.4: Raised from 0.6 — still trade, just more selective (was too defensive)
+  TRENDING_DOWN: 0.75,  // v9.4: Raised from 0.6; auditor Apr-2026: lowered 0.85→0.75 — 46-day bear/extreme-fear tightens sizing without killing activity
   RANGING: 0.9,         // v9.4: Raised from 0.8 — ranges are opportunity, not risk
   VOLATILE: 0.7,        // v9.4: Raised from 0.5 — vol = opportunity for a bot that cycles fast
   UNKNOWN: 0.8,         // v9.4: Raised from 0.7
