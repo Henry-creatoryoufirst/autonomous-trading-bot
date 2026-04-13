@@ -478,7 +478,7 @@ export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K g
  * Size = BaseSize × (TargetVol / CurrentVol)
  */
 export const VOL_TARGET_DAILY_PCT = 2;         // Target 2% daily portfolio volatility
-export const VOL_HIGH_THRESHOLD = 8;           // >8% daily vol → reduce size by 60% (was 5 — too aggressive in normal crypto vol)
+export const VOL_HIGH_THRESHOLD = 6;           // >6% daily vol → reduce size by 60% (was 8; auditor Apr-2026: lowered 8→6 — 46-day bear tightens vol trigger without full lockout)
 export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
 export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%
 export const VOL_LOW_BOOST = 1.5;              // Multiplier when vol < threshold
