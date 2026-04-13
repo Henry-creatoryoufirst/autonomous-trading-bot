@@ -208,6 +208,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   // === DEFI (expanded) ===
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
     symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
