@@ -8111,8 +8111,10 @@ async function runTradingCycle() {
         } else {
           // NORMAL MODE: Kelly cap with ATR adjustment, no other reductions.
           const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
-          decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
-          console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
+          // v21.9: Enforce caution-mode 50% size cut when drawdown >= 12% (was logged but never applied)
+          const effectiveKellyMax = circuitBreakerActive ? kellyMax * 0.5 : kellyMax;
+          decision.amountUSD = Math.min(decision.amountUSD, effectiveKellyMax);
+          console.log(`   🎰 Kelly Cap: $${effectiveKellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)${circuitBreakerActive ? ' [⚠️ halved — 12% DD caution]' : ''}`);
 
           // v20.0: Enhanced volatility-adjusted position sizing
           // Goal: each position contributes equal RISK to the portfolio.
