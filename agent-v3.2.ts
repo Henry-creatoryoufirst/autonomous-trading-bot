@@ -218,6 +218,11 @@ import {
   HOT_SCAN_INTERVAL_MS,
   HOT_MOVER_COOLDOWN_MS,
   HOT_MOVER_URGENT_CYCLE_MS,
+  ICU_STOP_LOSS_PCT,
+  ICU_GRADUATION_HOURS,
+  ICU_STABLE_THRESHOLD_PCT,
+  ICU_ALERT_INTERVAL_MS,
+  ICU_SCAN_INTERVAL_MS,
   // v9.3: Daily Payout
   DAILY_PAYOUT_CRON,
   DAILY_PAYOUT_MIN_TRANSFER_USD,
@@ -2084,6 +2089,23 @@ let hotMoverAlerts: HotMoverAlert[] = [];
 const hotMoverCooldowns = new Map<string, number>(); // token address → cooldown until ms
 let hotMoverUrgent = false; // when true, scheduleNextCycle fires in HOT_MOVER_URGENT_CYCLE_MS
 
+// === v21.13: ICU WATCH MODE STATE ===
+interface ICUPosition {
+  symbol: string;
+  entryTime: number;          // When position was tagged ICU (ms)
+  entryPrice: number;         // Average cost basis at time of ICU entry
+  mode: 'ICU' | 'ESTABLISHED'; // ICU = intensive watch, ESTABLISHED = graduated
+  lastAlertAt: number;        // When last Telegram update was sent
+  alertCount: number;         // Total Telegram updates sent
+  isHotMover: boolean;        // Was this a hot mover scanner entry?
+  graduatedAt?: number;       // When it graduated (ms)
+}
+const icuPositions = new Map<string, ICUPosition>();
+// Symbols queued for immediate exit by the ICU scanner (checked in stop eval each cycle)
+const icuForceExitSymbols = new Set<string>();
+// Blue chip tokens that skip ICU — established assets with deep liquidity
+const ICU_EXEMPT_SYMBOLS = new Set(['WETH', 'ETH', 'cbBTC', 'WBTC', 'USDC', 'USDT', 'cbETH', 'wstETH']);
+
 // === v14.1: MOMENTUM DECELERATION STATE (per-token) ===
 const decelStates: Record<string, DecelState> = {};
 const flowTimeframeState: FlowTimeframeState = createFlowTimeframeState();
@@ -3496,6 +3518,18 @@ function checkStopLoss(
       effectiveTrailing = Math.max(effectiveTrailing, sectorOverride.maxTrailing);
     }
 
+    // v21.13: ICU Watch Mode — enforce tighter exit for intensive positions
+    // Math.max(-20, -15) = -15 → tighter (closer to 0 = earlier exit)
+    if (icuPositions.get(b.symbol)?.mode === 'ICU' || icuForceExitSymbols.has(b.symbol)) {
+      effectiveSL = Math.max(effectiveSL, -ICU_STOP_LOSS_PCT);
+      effectiveTrailing = Math.max(effectiveTrailing, -ICU_STOP_LOSS_PCT);
+      if (icuForceExitSymbols.has(b.symbol)) {
+        // Scanner already confirmed exit — override threshold to trigger immediately
+        effectiveSL = 0; // any loss triggers exit
+        icuForceExitSymbols.delete(b.symbol);
+      }
+    }
+
     // v9.0: When ATR data available, use tighter of ATR-based vs flat
     if (atrLevels) {
       // ATR stop: use tighter (closer to 0) of ATR vs flat+sector
@@ -4463,6 +4497,157 @@ async function scanHotMovers(): Promise<void> {
     // Non-fatal — scan failure never blocks trading
   }
 }
+
+/**
+ * v21.13: ICU Watch Mode Scanner
+ * Runs every 2 minutes. For each position in ICU mode:
+ *   - Sends a Telegram progress update every 15 min
+ *   - Triggers immediate exit if loss exceeds ICU_STOP_LOSS_PCT
+ *   - Graduates to ESTABLISHED after ICU_GRADUATION_HOURS of stable performance
+ *
+ * Zero trading logic here — exit decisions are injected via icuForceExitSymbols
+ * and enforced in the existing stop-loss evaluation each cycle.
+ */
+async function scanICUPositions(): Promise<void> {
+  if (icuPositions.size === 0) return;
+
+  const now = Date.now();
+
+  for (const [symbol, icu] of icuPositions.entries()) {
+    try {
+      const cb = state.costBasis[symbol];
+
+      // Clean up stale entries — position was closed externally
+      if (!cb || cb.currentHolding <= 0.001) {
+        icuPositions.delete(symbol);
+        continue;
+      }
+
+      // Get live price from balance state
+      const balanceEntry = state.trading.balances?.find(b => b.symbol === symbol);
+      const livePrice = balanceEntry?.price ?? 0;
+      if (livePrice === 0 || cb.averageCostBasis === 0) continue;
+
+      const unrealizedPct = ((livePrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
+      const ageMs = now - icu.entryTime;
+      const ageMinutes = ageMs / 60_000;
+      const ageHours = ageMs / 3_600_000;
+      const direction = unrealizedPct >= 0 ? '📈' : '📉';
+
+      if (icu.mode === 'ICU') {
+        // ── Hard exit: loss exceeds ICU stop ──────────────────────────────────
+        if (unrealizedPct <= -ICU_STOP_LOSS_PCT) {
+          console.log(`\n🚨 [ICU EXIT] ${symbol} hit -${ICU_STOP_LOSS_PCT}% threshold (${unrealizedPct.toFixed(1)}%) — queuing immediate sell`);
+          icuForceExitSymbols.add(symbol);
+          icuPositions.delete(symbol);
+          telegramService.sendAlert({
+            severity: 'HIGH',
+            title: `🚨 ICU EXIT: ${symbol} ${unrealizedPct.toFixed(1)}%`,
+            message: `${symbol} hit the ICU stop loss.\n\nLoss: ${unrealizedPct.toFixed(1)}% | Held: ${ageMinutes.toFixed(0)}min\nEntry: $${cb.averageCostBasis.toFixed(6)} | Now: $${livePrice.toFixed(6)}\n\n⚔️ Cutting before deeper damage. Capital protected.`,
+          }).catch(() => {});
+          continue;
+        }
+
+        // ── Graduation: stable for 4h ─────────────────────────────────────────
+        if (ageHours >= ICU_GRADUATION_HOURS && unrealizedPct > ICU_STABLE_THRESHOLD_PCT) {
+          icu.mode = 'ESTABLISHED';
+          icu.graduatedAt = now;
+          console.log(`\n✅ [ICU] ${symbol} graduated ESTABLISHED after ${ageHours.toFixed(1)}h | ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%`);
+          telegramService.sendAlert({
+            severity: 'INFO',
+            title: `✅ ICU GRADUATED: ${symbol}`,
+            message: `${symbol} survived ICU and is now ESTABLISHED.\n\nHeld: ${ageHours.toFixed(1)}h | P&L: ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%\nPrice: $${livePrice.toFixed(6)}\n\nNormal stop-loss rules now apply. Well done.`,
+          }).catch(() => {});
+          continue;
+        }
+
+        // ── 15-min progress pulse ─────────────────────────────────────────────
+        if (now - icu.lastAlertAt >= ICU_ALERT_INTERVAL_MS) {
+          icu.lastAlertAt = now;
+          icu.alertCount++;
+          console.log(`\n👁 [ICU] ${symbol} | ${ageMinutes.toFixed(0)}m in | ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}% | exit at -${ICU_STOP_LOSS_PCT}% | graduates in ${Math.max(0, ICU_GRADUATION_HOURS * 60 - ageMinutes).toFixed(0)}m`);
+          telegramService.sendAlert({
+            severity: 'INFO',
+            title: `👁 ICU: ${symbol} ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%`,
+            message: `${direction} ${symbol} — ${ageMinutes.toFixed(0)}min in ICU\n\nP&L: ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%\nPrice: $${livePrice.toFixed(6)} | Entry: $${cb.averageCostBasis.toFixed(6)}\nExit trigger: -${ICU_STOP_LOSS_PCT}% | Graduates in ${Math.max(0, (ICU_GRADUATION_HOURS * 60 - ageMinutes)).toFixed(0)}min${icu.isHotMover ? '\n🔥 Hot mover entry' : ''}`,
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // Non-fatal — ICU scan never blocks trading
+    }
+  }
+}
+
+/**
+ * v21.13: Daily Fleet Health Digest
+ * Sent every day at 8 AM UTC alongside the payout settlement.
+ * Gives a clean snapshot of the bot's full state — P&L, positions,
+ * gas, blocked tokens, ICU positions, lifetime stats.
+ */
+async function sendFleetHealthDigest(): Promise<void> {
+  try {
+    const portfolio = state.trading;
+    const totalValue = portfolio.totalPortfolioValue || 0;
+    const initialValue = portfolio.initialValue || totalValue;
+    const allTimePnL = totalValue - initialValue;
+    const allTimePct = initialValue > 0 ? (allTimePnL / initialValue) * 100 : 0;
+
+    // Active positions (non-USDC, non-dust)
+    const positions = (portfolio.balances || [])
+      .filter(b => b.symbol !== 'USDC' && b.usdValue > 1)
+      .sort((a, b) => b.usdValue - a.usdValue);
+
+    // Yesterday's realized P&L
+    const yesterday = new Date();
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const dailyData = apiDailyPnL();
+    const yesterdayEntry = dailyData.days.find(d => d.date === yesterdayStr);
+    const dailyRealized = yesterdayEntry?.realized || 0;
+
+    // Blocked tokens
+    const blocked = Object.entries(state.tradeFailures || {})
+      .filter(([, v]) => (v as any).count >= 3)
+      .map(([sym]) => sym);
+
+    // ICU positions
+    const icuActive = Array.from(icuPositions.values()).filter(p => p.mode === 'ICU');
+
+    // Uptime
+    const uptimeHours = ((Date.now() - (state.startedAt ? new Date(state.startedAt).getTime() : Date.now())) / 3_600_000).toFixed(0);
+
+    const positionLines = positions.slice(0, 8).map(b => {
+      const cb = state.costBasis[b.symbol];
+      const unreal = cb ? ((b.price || 0) - cb.averageCostBasis) / cb.averageCostBasis * 100 : 0;
+      const icuTag = icuPositions.get(b.symbol)?.mode === 'ICU' ? ' 🏥' : '';
+      return `  ${b.symbol}${icuTag}: $${b.usdValue.toFixed(0)} (${unreal >= 0 ? '+' : ''}${unreal.toFixed(1)}%)`;
+    }).join('\n');
+
+    const message = [
+      `Portfolio: $${totalValue.toFixed(2)} | All-time: ${allTimePnL >= 0 ? '+' : ''}$${allTimePnL.toFixed(2)} (${allTimePct.toFixed(1)}%)`,
+      `Yesterday realized: ${dailyRealized >= 0 ? '+' : ''}$${dailyRealized.toFixed(2)}`,
+      ``,
+      `Positions (${positions.length}):`,
+      positionLines || '  No active positions',
+      ``,
+      `🤖 Cycles: ${state.totalCycles} | Trades: ${state.totalTrades || 0} | Uptime: ${uptimeHours}h`,
+      blocked.length > 0 ? `⛔ Blocked: ${blocked.join(', ')}` : `✅ No blocked tokens`,
+      icuActive.length > 0 ? `🏥 ICU: ${icuActive.map(p => p.symbol).join(', ')}` : ``,
+      `💰 Lifetime payouts: $${(state.totalDailyPayoutsUSD || 0).toFixed(2)} over ${state.dailyPayoutCount || 0} days`,
+    ].filter(Boolean).join('\n');
+
+    await telegramService.sendAlert({
+      severity: 'INFO',
+      title: `📊 Daily Health Digest`,
+      message,
+    });
+    console.log(`[Fleet Digest] Sent daily health digest`);
+  } catch (err: any) {
+    console.warn(`[Fleet Digest] Failed: ${err?.message?.slice(0, 100)}`);
+  }
+}
+
 
 // ============================================================================
 // v9.2: AUTO GAS REFUEL — Swap USDC→WETH when ETH gas balance is low
@@ -6476,6 +6661,9 @@ async function executeDailyPayout(): Promise<void> {
   console.log(`[Daily Payout] DONE: Sent $${totalSent.toFixed(2)} | Reinvested $${(realizedPnL - totalSent).toFixed(2)} (${reinvestPct}%)`);
   console.log(`[Daily Payout] Lifetime: $${state.totalDailyPayoutsUSD.toFixed(2)} over ${state.dailyPayoutCount} days`);
   console.log(`========================================\n`);
+
+  // v21.13: Fleet health digest — sent daily alongside payout settlement
+  await sendFleetHealthDigest();
 }
 
 // v11.4.18: Removed dead checkAutoHarvestTransfer() — replaced by executeDailyPayout() in v9.3
@@ -8307,6 +8495,38 @@ async function runTradingCycle() {
           if (decision.action === "BUY") {
             const slippageBuffer = decision.amountUSD * 0.02; // 2% buffer for slippage + gas
             remainingUSDC -= (decision.amountUSD + slippageBuffer);
+
+            // v21.13: ICU Watch Mode — tag new positions for intensive monitoring
+            const buyToken = decision.toToken;
+            if (buyToken && !ICU_EXEMPT_SYMBOLS.has(buyToken) && !icuPositions.has(buyToken)) {
+              const isHotMoverEntry = hotMoverAlerts.some(m => m.symbol === buyToken);
+              const cb = state.costBasis[buyToken];
+              const entryPrice = cb?.averageCostBasis || (decision.amountUSD / (decision.tokenAmount || 1));
+              icuPositions.set(buyToken, {
+                symbol: buyToken,
+                entryTime: Date.now(),
+                entryPrice,
+                mode: 'ICU',
+                lastAlertAt: Date.now(),
+                alertCount: 0,
+                isHotMover: isHotMoverEntry,
+              });
+              console.log(`\n🏥 [ICU] ${buyToken} entered ICU Watch Mode — ${isHotMoverEntry ? '🔥 hot mover' : 'new position'} | entry $${entryPrice.toFixed(6)} | stop -${ICU_STOP_LOSS_PCT}% | graduates in ${ICU_GRADUATION_HOURS}h`);
+              telegramService.sendAlert({
+                severity: 'INFO',
+                title: `🏥 ICU WATCH: ${buyToken}`,
+                message: `${buyToken} entered intensive monitoring.\n\nEntry: $${entryPrice.toFixed(6)} | Size: $${decision.amountUSD.toFixed(2)}\nTrigger: ${isHotMoverEntry ? '🔥 Hot mover breakout' : 'New position opened'}\n\n⚡ ICU rules:\n• -${ICU_STOP_LOSS_PCT}% → immediate exit (no AI deliberation)\n• Updates every 15min\n• Graduates after ${ICU_GRADUATION_HOURS}h stable`,
+              }).catch(() => {});
+            }
+          }
+          // Clean up ICU when position is fully sold
+          if (decision.action === "SELL" && tradeResult.success) {
+            const sellToken = decision.fromToken;
+            const cbAfter = state.costBasis[sellToken];
+            if (cbAfter && cbAfter.currentHolding <= 0.001) {
+              icuPositions.delete(sellToken);
+              icuForceExitSymbols.delete(sellToken);
+            }
           }
           anyTradeExecuted = true;
         }
@@ -9511,6 +9731,9 @@ async function main() {
 
   // v21.12: Hot Mover Scanner — polls GeckoTerminal cache every 90s, zero extra API calls
   setInterval(scanHotMovers, HOT_SCAN_INTERVAL_MS);
+
+  // v21.13: ICU Watch Mode Scanner — checks intensive positions every 2 min
+  setInterval(scanICUPositions, ICU_SCAN_INTERVAL_MS);
 
   // Safety net: keep the cron as a backup forced heavy cycle trigger
   const cronExpression = `*/${Math.max(CONFIG.trading.intervalMinutes, 15)} * * * *`;

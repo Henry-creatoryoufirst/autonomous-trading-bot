@@ -570,6 +570,25 @@ export const HOT_MOVER_COOLDOWN_MS = 25 * 60 * 1000;
 export const HOT_MOVER_URGENT_CYCLE_MS = 90_000;
 
 // ============================================================================
+// v21.13: ICU WATCH MODE — Intensive monitoring for new/small-cap positions
+// ============================================================================
+
+/** Loss % from entry price that triggers an immediate ICU exit (positive number, applied as negative) */
+export const ICU_STOP_LOSS_PCT = 15;
+
+/** Hours a position must survive at > ICU_STABLE_THRESHOLD_PCT before graduating to ESTABLISHED */
+export const ICU_GRADUATION_HOURS = 4;
+
+/** Minimum P&L % required to graduate out of ICU (position must not be deeply underwater) */
+export const ICU_STABLE_THRESHOLD_PCT = -5;
+
+/** How often to send a Telegram progress update while a position is in ICU (ms) */
+export const ICU_ALERT_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+
+/** How often the ICU scanner runs (ms) — tighter than the main cycle */
+export const ICU_SCAN_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+
+// ============================================================================
 // v9.3: DAILY PAYOUT — Scheduled profit distribution replacing opportunistic harvest
 // ============================================================================
 
