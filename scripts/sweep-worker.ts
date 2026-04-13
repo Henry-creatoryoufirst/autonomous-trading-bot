@@ -7,6 +7,7 @@ import { runReplay } from '../src/simulation/engine/replay-engine.js';
 import { calculateAggregateConfidence, calculateConfidence } from '../src/simulation/scoring/confidence-scorer.js';
 import { DEFAULT_STRATEGY_PARAMS, DEFAULT_CONFIDENCE_CONFIG } from '../src/simulation/types.js';
 
+const confluence = parseFloat(process.env.SWEEP_CONFLUENCE!);
 const stopLoss   = parseFloat(process.env.SWEEP_STOP!);
 const profitTake = parseFloat(process.env.SWEEP_PROFIT!);
 const maxPos     = parseFloat(process.env.SWEEP_MAXPOS!);
@@ -28,14 +29,14 @@ const datasets = SCENARIOS.map(s => generateSyntheticData({
   seed: s.seed,
 }));
 
-const params = { ...DEFAULT_STRATEGY_PARAMS, stopLossPercent: stopLoss, profitTakePercent: profitTake, maxPositionPercent: maxPos };
+const params = { ...DEFAULT_STRATEGY_PARAMS, confluenceBuyThreshold: confluence, stopLossPercent: stopLoss, profitTakePercent: profitTake, maxPositionPercent: maxPos };
 const results = datasets.map(ds => runReplay([ds], { strategy: params }));
 const config = { ...DEFAULT_CONFIDENCE_CONFIG, minimumConfidence: threshold };
 const score = calculateAggregateConfidence(results, config);
 const individual = results.map(r => calculateConfidence(r).overall);
 
 process.stdout.write(JSON.stringify({
-  params: { stopLoss, profitTake, maxPos },
+  params: { confluence, stopLoss, profitTake, maxPos },
   score: score.overall,
   bull:     score.byCondition.BULL,
   bear:     score.byCondition.BEAR,

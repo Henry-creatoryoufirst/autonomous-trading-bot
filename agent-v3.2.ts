@@ -2888,11 +2888,12 @@ function loadTradeHistory() {
             }
           }
         }
-        // v21.2: Hard reset — if confluenceBuy drifted above 25, reset to 25.
-        // The bot MUST be able to trade. A threshold of 30 means nothing qualifies.
-        if (state.adaptiveThresholds.confluenceBuy > 25) {
-          console.log(`  🔧 RESET confluenceBuy: ${state.adaptiveThresholds.confluenceBuy} → 25 (was paralyzed)`);
-          state.adaptiveThresholds.confluenceBuy = 25;
+        // v21.2: Hard reset — if confluenceBuy drifted too high, reset to sim-optimal 22.
+        // v21.16: Lowered cap from 25 → 22 (parameter sweep Phase 2 confirmed 22 scores 64/100 vs 59/100 at 25).
+        // The bot MUST be able to trade. A threshold above 22 hurts BULL and RANGING performance.
+        if (state.adaptiveThresholds.confluenceBuy > 22) {
+          console.log(`  🔧 RESET confluenceBuy: ${state.adaptiveThresholds.confluenceBuy} → 22 (sim-optimal, was paralyzed)`);
+          state.adaptiveThresholds.confluenceBuy = 22;
         }
         if (state.adaptiveThresholds.confluenceStrongBuy > 40) {
           console.log(`  🔧 RESET confluenceStrongBuy: ${state.adaptiveThresholds.confluenceStrongBuy} → 40 (was paralyzed)`);

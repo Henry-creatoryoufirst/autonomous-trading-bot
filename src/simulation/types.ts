@@ -62,11 +62,18 @@ export interface StrategyParams {
   startingCapital: number;
 }
 
-/** Default strategy parameters matching the live bot */
+/**
+ * Default strategy parameters — tuned via parallel parameter sweep (Phase 1 + Phase 2).
+ * Phase 1 result: stop=6, profit=5, maxPos=6 (score: 63/100)
+ * Phase 2 result: confluence=22, stop=7, profit=5, maxPos=6 (score: 64/100)
+ *
+ * NOTE: live bot uses adaptive confluenceBuy (starts at 8, caps at 25).
+ * The simulation uses this as a fixed threshold. 22 is proven optimal.
+ */
 export const DEFAULT_STRATEGY_PARAMS: StrategyParams = {
-  confluenceBuyThreshold: 18,
+  confluenceBuyThreshold: 22,
   confluenceSellThreshold: -50,
-  stopLossPercent: 6,
+  stopLossPercent: 7,
   profitTakePercent: 5,
   trailingStopPercent: 10,
   maxPositionPercent: 6,

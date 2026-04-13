@@ -10,7 +10,10 @@
  *   npx tsx scripts/fast-sweep.ts
  *   CONFIDENCE_MIN=65 npx tsx scripts/fast-sweep.ts
  *
- * ~90 min sequential → ~3-5 min parallel on M-series Mac
+ * Phase 1 (48 combos): stop × profit × maxPos         — found optimal: stop=6, profit=5, maxPos=6
+ * Phase 2 (42 combos): confluence × stop × profit     — maxPos fixed at 6 (optimal)
+ *
+ * ~90 min sequential → ~10-12 min parallel on M-series Mac
  */
 
 import { spawn } from 'child_process';
@@ -23,15 +26,18 @@ const WORKER_SCRIPT = resolve(__dirname, 'sweep-worker.ts');
 const CONFIDENCE_MIN = parseInt(process.env.CONFIDENCE_MIN || '60', 10);
 const CORES = Math.max(1, cpus().length - 1);
 
-const stopLosses   = [5, 6, 7, 8];
-const profitTakes  = [5, 6, 8];
-const maxPositions = [6, 8, 10, 12];
+// Phase 2: sweep confluenceBuyThreshold — the live bot uses 25, sim default is 18
+// maxPos fixed at 6 (proven optimal in Phase 1)
+const confluenceThresholds = [14, 16, 18, 20, 22, 25, 28];
+const stopLosses           = [5, 6, 7];
+const profitTakes          = [5, 6];
+const maxPos               = 6; // fixed
 
-const combos: Array<{ stopLoss: number; profitTake: number; maxPos: number }> = [];
-for (const stop of stopLosses)
-  for (const profit of profitTakes)
-    for (const maxPos of maxPositions)
-      combos.push({ stopLoss: stop, profitTake: profit, maxPos });
+const combos: Array<{ confluence: number; stopLoss: number; profitTake: number; maxPos: number }> = [];
+for (const confluence of confluenceThresholds)
+  for (const stop of stopLosses)
+    for (const profit of profitTakes)
+      combos.push({ confluence, stopLoss: stop, profitTake: profit, maxPos });
 
 const total = combos.length;
 
@@ -49,10 +55,11 @@ function runCombo(combo: typeof combos[0]): Promise<any> {
     const child = spawn('npx', ['tsx', WORKER_SCRIPT], {
       env: {
         ...process.env,
-        SWEEP_STOP:      String(combo.stopLoss),
-        SWEEP_PROFIT:    String(combo.profitTake),
-        SWEEP_MAXPOS:    String(combo.maxPos),
-        SWEEP_THRESHOLD: String(CONFIDENCE_MIN),
+        SWEEP_CONFLUENCE: String(combo.confluence),
+        SWEEP_STOP:       String(combo.stopLoss),
+        SWEEP_PROFIT:     String(combo.profitTake),
+        SWEEP_MAXPOS:     String(combo.maxPos),
+        SWEEP_THRESHOLD:  String(CONFIDENCE_MIN),
       },
       cwd: dirname(__dirname),
     });
@@ -107,7 +114,7 @@ for (let i = 0; i < Math.min(10, results.length); i++) {
   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
   const pass  = r.passed ? '✅ PASS' : '❌ FAIL';
   console.log(`\n${medal}  Score: ${r.score.toFixed(0)}/100  ${pass}`);
-  console.log(`    stop=${r.params.stopLoss}%  profit=${r.params.profitTake}%  maxPos=${r.params.maxPos}%`);
+  console.log(`    confluence=${r.params.confluence}  stop=${r.params.stopLoss}%  profit=${r.params.profitTake}%  maxPos=${r.params.maxPos}%`);
   console.log(`    BULL:${r.bull.toFixed(0)}  BEAR:${r.bear.toFixed(0)}  RANGING:${r.ranging.toFixed(0)}  VOLATILE:${r.volatile.toFixed(0)}`);
   console.log(`    Per-condition: ${r.individual.map((s: number) => s.toFixed(0)).join(' / ')}`);
 }
@@ -120,8 +127,9 @@ console.log(`Total time: ${elapsed} minutes`);
 if (results[0]?.passed) {
   const best = results[0];
   console.log(`\n💡 Recommended update for live bot (constants.ts + confidence-gate.ts):`);
-  console.log(`   stopLossPercent:    ${best.params.stopLoss}%`);
-  console.log(`   profitTakePercent:  ${best.params.profitTake}%`);
-  console.log(`   maxPositionPercent: ${best.params.maxPos}%`);
-  console.log(`   Score improvement:  ${results[results.length - 1]?.score.toFixed(0)} → ${best.score.toFixed(0)}`);
+  console.log(`   confluenceBuyThreshold: ${best.params.confluence}`);
+  console.log(`   stopLossPercent:        ${best.params.stopLoss}%`);
+  console.log(`   profitTakePercent:      ${best.params.profitTake}%`);
+  console.log(`   maxPositionPercent:     ${best.params.maxPos}%`);
+  console.log(`   Score improvement:      ${results[results.length - 1]?.score.toFixed(0)} → ${best.score.toFixed(0)}`);
 }
