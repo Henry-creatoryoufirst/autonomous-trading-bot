@@ -21,19 +21,19 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY", "DOGINME", "MIGGLES"],
   },
   DEFI: {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -132,6 +132,21 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "HIGHER", name: "Higher", coingeckoId: "higher",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
+  LUNA: {
+    address: "0x55cd6469f597452b5a7536e2cd98fde4c1247ee4",
+    symbol: "LUNA", name: "Luna by Virtuals", coingeckoId: "luna-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  CLANKER: {
+    address: "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
+    symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  VADER: {
+    address: "0x731814e491571a2e9ee3c5b1f7f3b962ee8f4870",
+    symbol: "VADER", name: "VaderAI by Virtuals", coingeckoId: "vaderai-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
@@ -148,9 +163,29 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
+  PEEZY: {
+    address: "0x1b6a569dd61edce3c383f6d565e2f79ec3a12980",
+    symbol: "PEEZY", name: "Young Peezy AKA Pepe", coingeckoId: "young-peezy-aka-pepe",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  DOGINME: {
+    address: "0x6921b130d297cc43754afba22e5eac0fbf8db75b",
+    symbol: "DOGINME", name: "doginme", coingeckoId: "doginme",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   KEYCAT: {
     address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
     symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  MIGGLES: {
+    address: "0xb1a03eda10342529bbf8eb700a06c60441fef25d",
+    symbol: "MIGGLES", name: "Mr. Miggles", coingeckoId: "mister-miggles",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  DRB: {
+    address: "0x3ec2156d4c0a9cbdab4a016633b7bcf6a8d68ea2",
+    symbol: "DRB", name: "DebtReliefBot", coingeckoId: "debtreliefbot",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === DEFI PROTOCOLS (15%) ===
@@ -207,6 +242,21 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
+  CLANKER: {
+    address: "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
+    symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  WIRE: {
+    address: "0x0b3ae50babe7ffa4e1a50569cee6bdefd4ccaee0",
+    symbol: "WIRE", name: "717ai by Virtuals", coingeckoId: "717ai-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  ZORA: {
+    address: "0x1111111111166b7fe7bd91427724b487980afc69",
+    symbol: "ZORA", name: "Zora", coingeckoId: "zora",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
@@ -217,6 +267,21 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  SEAM: {
+    address: "0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85",
+    symbol: "SEAM", name: "Seamless Protocol", coingeckoId: "seamless-protocol",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  HYDX: {
+    address: "0x00000e7efa313f4e11bfff432471ed9423ac6b30",
+    symbol: "HYDX", name: "Hydrex", coingeckoId: "hydrex",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  MEZO: {
+    address: "0x8e4cbbcc33db6c0a18561fde1f6ba35906d4848b",
+    symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {

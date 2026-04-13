@@ -212,10 +212,13 @@ import {
   GAS_REFUEL_AMOUNT_USDC,
   GAS_REFUEL_MIN_USDC,
   GAS_REFUEL_COOLDOWN_MS,
+  GAS_CRITICAL_THRESHOLD_ETH,
+  GAS_RESCUE_COOLDOWN_MS,
   // v9.2.1: Gas Bootstrap
   GAS_BOOTSTRAP_MIN_ETH_USD,
   GAS_BOOTSTRAP_SWAP_USD,
   GAS_BOOTSTRAP_MIN_USDC,
+  GAS_BOOTSTRAP_COOLDOWN_MS,
   // v9.3: Daily Payout
   DAILY_PAYOUT_CRON,
   DAILY_PAYOUT_MIN_TRANSFER_USD,
@@ -4413,6 +4416,8 @@ const getERC20Balance = _getERC20Balance;
 
 let lastGasRefuelTime = 0;
 let lastKnownETHBalance = 0;
+// v21.9: Throttle critical gas alerts — fire at most once per hour
+let lastCriticalGasAlertTime = 0;
 
 async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
   try {
@@ -4423,6 +4428,18 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
     const ethBalance = await getETHBalance(account.address);
     lastKnownETHBalance = ethBalance;
+
+    // v21.9: CRITICAL gas alert — fire Telegram immediately if ETH is near-zero
+    // This catches the deadlock scenario within minutes rather than 15+ hours
+    if (ethBalance < GAS_CRITICAL_THRESHOLD_ETH && Date.now() - lastCriticalGasAlertTime > 60 * 60 * 1000) {
+      lastCriticalGasAlertTime = Date.now();
+      console.error(`\n🚨 [GAS CRITICAL] ETH balance ${ethBalance.toFixed(8)} below critical threshold — bot may be deadlocked!`);
+      await telegramService.sendAlert({
+        severity: "CRITICAL",
+        title: "⛽ GAS CRITICAL: Bot may be deadlocked",
+        message: `ETH balance is critically low: ${ethBalance.toFixed(8)} ETH\n\nThreshold: ${GAS_CRITICAL_THRESHOLD_ETH} ETH\n\nBot cannot execute any trades or gas recovery swaps without ETH. Manual intervention may be required.\n\nWallet: ${account.address}`,
+      }).catch(() => {}); // Don't let Telegram failure block gas logic
+    }
 
     // Not low enough to refuel
     if (ethBalance >= GAS_REFUEL_THRESHOLD_ETH) {
@@ -4469,11 +4486,12 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
 // v9.2.1: GAS BOOTSTRAP — Auto-buy ETH on first startup when wallet has USDC but no ETH
 // ============================================================================
 
-// v19.3.3: One-time rescue — transfer ETH from nvr-trading (0xf129) to henry-trading-bot (0xB7c51b)
-let gasRescueAttempted = false;
+// v19.3.3: Gas rescue — transfer ETH from nvr-trading to main wallet
+// v21.9: Changed from one-shot flag to cooldown-based retry
+let lastGasRescueTime = 0;
 async function rescueGasFromNvrTrading(): Promise<void> {
-  if (gasRescueAttempted) return;
-  gasRescueAttempted = true;
+  if (Date.now() - lastGasRescueTime < GAS_RESCUE_COOLDOWN_MS) return;
+  lastGasRescueTime = Date.now();
   try {
     const mainAccount = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
     const mainETH = await getETHBalance(mainAccount.address);
@@ -4512,22 +4530,27 @@ async function rescueGasFromNvrTrading(): Promise<void> {
   }
 }
 
-let gasBootstrapAttempted = false;
+// v21.9: Replaced one-shot gasBootstrapAttempted flag with cooldown-based retry.
+// Bootstrap now fires whenever ETH is low, not just once at startup.
+let lastGasBootstrapTime = 0;
 
 async function bootstrapGas(): Promise<void> {
+  // Cooldown — don't hammer CDP if bootstrap keeps failing
+  if (Date.now() - lastGasBootstrapTime < GAS_BOOTSTRAP_COOLDOWN_MS) return;
+
   try {
     const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
     const walletAddr = CONFIG.walletAddress;
     const ethBalance = await getETHBalance(walletAddr);
     lastKnownETHBalance = ethBalance;
 
-    // Estimate ETH value in USD (~$2700 rough estimate, good enough for threshold check)
-    const ethPriceEstimate = 2700;
+    // Estimate ETH value in USD (~$2200 rough estimate, good enough for threshold check)
+    const ethPriceEstimate = 2200;
     const ethValueUSD = ethBalance * ethPriceEstimate;
 
     if (ethValueUSD >= GAS_BOOTSTRAP_MIN_ETH_USD) {
-      console.log(`  [GAS BOOTSTRAP] Gas OK — ETH balance ${ethBalance.toFixed(6)} (~$${ethValueUSD.toFixed(2)})`);
-      gasBootstrapAttempted = true;
+      // Gas is fine — no bootstrap needed, but update cooldown so we don't spam
+      lastGasBootstrapTime = Date.now();
       return;
     }
 
@@ -4535,6 +4558,7 @@ async function bootstrapGas(): Promise<void> {
 
     if (usdcBalance < GAS_BOOTSTRAP_MIN_USDC) {
       console.log(`  [GAS BOOTSTRAP] Insufficient USDC for gas bootstrap ($${usdcBalance.toFixed(2)} < $${GAS_BOOTSTRAP_MIN_USDC} minimum)`);
+      // Don't update cooldown — retry sooner in case USDC lands
       return;
     }
 
@@ -4552,15 +4576,15 @@ async function bootstrapGas(): Promise<void> {
 
     const newEthBalance = await getETHBalance(walletAddr);
     lastKnownETHBalance = newEthBalance;
-    gasBootstrapAttempted = true;
+    lastGasBootstrapTime = Date.now();
     lastGasRefuelTime = Date.now(); // Prevent immediate refuel after bootstrap
 
     console.log(`     ✅ [GAS BOOTSTRAP] Swapped $${GAS_BOOTSTRAP_SWAP_USD} USDC → ETH for gas fees`);
     console.log(`     ETH: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
   } catch (err: any) {
     const msg = err?.message?.substring(0, 200) || 'Unknown error';
-    console.warn(`  ⛽ [GAS BOOTSTRAP] Failed: ${msg} — will retry next cycle`);
-    // Don't set gasBootstrapAttempted so it retries next cycle
+    console.warn(`  ⛽ [GAS BOOTSTRAP] Failed: ${msg} — will retry after cooldown`);
+    lastGasBootstrapTime = Date.now(); // Set cooldown even on failure to avoid hammering
   }
 }
 
@@ -6925,8 +6949,8 @@ async function runTradingCycle() {
   let marketData: MarketData | null = null;
 
   try {
-    // v9.2.1: Gas bootstrap retry — if startup bootstrap failed, retry each heavy cycle
-    if (cdpClient && CONFIG.trading.enabled && !gasBootstrapAttempted) {
+    // v21.9: Gas bootstrap — runs each heavy cycle but self-throttles via lastGasBootstrapTime cooldown
+    if (cdpClient && CONFIG.trading.enabled) {
       try {
         await bootstrapGas();
       } catch (bErr: any) {

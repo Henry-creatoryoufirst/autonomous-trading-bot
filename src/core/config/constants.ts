@@ -336,7 +336,7 @@ export const DEFAULT_PROFIT_TIERS = [
 
 export const DEFAULT_REGIME_MULTIPLIERS = {
   TRENDING_UP: 1.3,     // v9.4: Raised — lean into uptrends harder
-  TRENDING_DOWN: 0.85,  // v9.4: Raised from 0.6 — still trade, just more selective (was too defensive)
+  TRENDING_DOWN: 0.75,  // v9.4: Raised from 0.6; auditor Apr-2026: lowered 0.85→0.75 — 46-day bear/extreme-fear tightens sizing without killing activity
   RANGING: 0.9,         // v9.4: Raised from 0.8 — ranges are opportunity, not risk
   VOLATILE: 0.7,        // v9.4: Raised from 0.5 — vol = opportunity for a bot that cycles fast
   UNKNOWN: 0.8,         // v9.4: Raised from 0.7
@@ -478,7 +478,7 @@ export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K g
  * Size = BaseSize × (TargetVol / CurrentVol)
  */
 export const VOL_TARGET_DAILY_PCT = 2;         // Target 2% daily portfolio volatility
-export const VOL_HIGH_THRESHOLD = 5;           // >5% daily vol → reduce size by 60%
+export const VOL_HIGH_THRESHOLD = 8;           // >8% daily vol → reduce size by 60% (was 5 — too aggressive in normal crypto vol)
 export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
 export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%
 export const VOL_LOW_BOOST = 1.5;              // Multiplier when vol < threshold
@@ -536,11 +536,13 @@ export const GAS_COST_MAX_PCT_OF_TRADE = 5;         // Skip if gas > 5% of trade
 // v9.2: AUTO GAS REFUEL — Keep ETH balance topped up for tx fees
 // ============================================================================
 
-/** ETH balance (in ETH) below which auto-refuel triggers */
-export const GAS_REFUEL_THRESHOLD_ETH = 0.0003; // ~$0.80 at $2700/ETH
+/** ETH balance (in ETH) below which auto-refuel triggers
+ *  v21.9: Raised from 0.0003 → 0.001 so refuel fires well before circular deadlock */
+export const GAS_REFUEL_THRESHOLD_ETH = 0.001; // ~$2.20 at $2200/ETH — 20–50 txs of headroom
 
-/** Amount of USDC to swap into WETH when refueling */
-export const GAS_REFUEL_AMOUNT_USDC = 1.00; // $1 USDC → ~0.00037 ETH
+/** Amount of USDC to swap into WETH when refueling
+ *  v21.9: Raised $1 → $3 so a single refuel covers more cycles */
+export const GAS_REFUEL_AMOUNT_USDC = 3.00;
 
 /** Minimum USDC balance required before refuel is allowed (don't drain last dollar) */
 export const GAS_REFUEL_MIN_USDC = 5.00;
@@ -548,13 +550,21 @@ export const GAS_REFUEL_MIN_USDC = 5.00;
 /** Cooldown between gas refuels to prevent rapid-fire refueling on errors */
 export const GAS_REFUEL_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
-// v9.2.1: GAS BOOTSTRAP — First-startup auto-buy ETH for gas
+/** ETH balance below which we consider gas CRITICAL and send Telegram alert immediately */
+export const GAS_CRITICAL_THRESHOLD_ETH = 0.0001; // ~$0.22 — near-deadlock zone
+
+/** Cooldown for gas rescue retries (not one-shot anymore — v21.9) */
+export const GAS_RESCUE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between rescue attempts
+
+// v9.2.1: GAS BOOTSTRAP — Auto-buy ETH for gas whenever balance is too low
 /** Trigger gas bootstrap if ETH balance is worth less than this (USD) */
 export const GAS_BOOTSTRAP_MIN_ETH_USD = 2;
 /** Amount of USDC to swap into ETH during bootstrap */
 export const GAS_BOOTSTRAP_SWAP_USD = 5;
 /** Minimum USDC balance required before bootstrap is allowed */
 export const GAS_BOOTSTRAP_MIN_USDC = 20;
+/** Cooldown between bootstrap attempts — replaces one-shot flag (v21.9) */
+export const GAS_BOOTSTRAP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // ============================================================================
 // v9.3: DAILY PAYOUT — Scheduled profit distribution replacing opportunistic harvest

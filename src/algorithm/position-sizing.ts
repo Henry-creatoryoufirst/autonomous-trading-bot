@@ -133,13 +133,18 @@ export function calculateKellyPositionSize(
     return { kellyUSD: fallback, kellyPct: (fallback / portfolioValue) * 100, rawKelly: 0, winRate: 0, avgWin: 0, avgLoss: 0 };
   }
 
-  const winRate = wins.length / (wins.length + losses.length);
+  // Cap win rate at 0.65 — no edge this strong is credible from a 20-50 trade sample;
+  // guards against Kelly over-betting during lucky streaks.
+  const winRate = Math.min(0.65, wins.length / (wins.length + losses.length));
   const avgWin = wins.length > 0 ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
   const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / losses.length : 0;
 
   const rawKelly = avgWin > 0 ? (winRate * avgWin - (1 - winRate) * avgLoss) / avgWin : 0;
 
-  const quarterKelly = Math.max(0, rawKelly * kc.KELLY_FRACTION);
+  // Sample confidence: sqrt(n/window) ramps from ~63% at KELLY_MIN_TRADES to 100% at full window.
+  // Prevents overconfident sizing when win-rate estimate has high statistical uncertainty.
+  const sampleConfidence = Math.min(1.0, Math.sqrt(sells.length / kc.KELLY_ROLLING_WINDOW));
+  const quarterKelly = Math.max(0, rawKelly * kc.KELLY_FRACTION * sampleConfidence);
   const kellyPct = Math.min(quarterKelly * 100, effectiveCeiling);
   const kellyUSD = Math.max(kc.KELLY_POSITION_FLOOR_USD, Math.min(portfolioValue * (kellyPct / 100), portfolioValue * (effectiveCeiling / 100)));
 
