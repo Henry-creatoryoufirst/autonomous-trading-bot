@@ -211,6 +211,13 @@ import {
   GAS_MIN_ETH_FOR_TRADE,
   GAS_INLINE_TOP_UP_USDC,
   GAS_RESERVOIR_DAILY_USD,
+  // v21.12: Hot mover scanner
+  HOT_MOVER_MIN_CHANGE_H1_PCT,
+  HOT_MOVER_MIN_VOLUME_H1_USD,
+  HOT_MOVER_MIN_LIQUIDITY_USD,
+  HOT_SCAN_INTERVAL_MS,
+  HOT_MOVER_COOLDOWN_MS,
+  HOT_MOVER_URGENT_CYCLE_MS,
   // v9.3: Daily Payout
   DAILY_PAYOUT_CRON,
   DAILY_PAYOUT_MIN_TRANSFER_USD,
@@ -481,7 +488,7 @@ import type { YieldState } from "./src/core/services/aave-yield.js";
 
 // === v11.0: GECKOTERMINAL DEX INTELLIGENCE ===
 import { geckoTerminalService } from "./src/core/services/gecko-terminal.js";
-import type { DexIntelligence } from "./src/core/services/gecko-terminal.js";
+import type { DexIntelligence, HotMoverAlert } from "./src/core/services/gecko-terminal.js";
 
 // === v15.0: MULTI-AGENT SWARM ARCHITECTURE ===
 import { runSwarm, formatSwarmForPrompt, setLatestSwarmDecisions, getLatestSwarmDecisions, getLastSwarmRunTime } from "./src/core/services/swarm/orchestrator.js";
@@ -2072,6 +2079,11 @@ let lastYieldRates: ProtocolYield[] = [];
 let lastDexIntelligence: DexIntelligence | null = null;
 let dexIntelFetchCount = 0;
 
+// === v21.12: HOT MOVER SCANNER STATE ===
+let hotMoverAlerts: HotMoverAlert[] = [];
+const hotMoverCooldowns = new Map<string, number>(); // token address → cooldown until ms
+let hotMoverUrgent = false; // when true, scheduleNextCycle fires in HOT_MOVER_URGENT_CYCLE_MS
+
 // === v14.1: MOMENTUM DECELERATION STATE (per-token) ===
 const decelStates: Record<string, DecelState> = {};
 const flowTimeframeState: FlowTimeframeState = createFlowTimeframeState();
@@ -2265,7 +2277,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 function scheduleNextCycle() {
   if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
 
-  const delayMs = adaptiveCycle.currentIntervalSec * 1000;
+  // v21.12: Hot Mover urgent path — compress cycle to 90s when breakout detected
+  const delayMs = (hotMoverUrgent && adaptiveCycle.currentIntervalSec > 120)
+    ? HOT_MOVER_URGENT_CYCLE_MS
+    : adaptiveCycle.currentIntervalSec * 1000;
+  if (hotMoverUrgent) hotMoverUrgent = false; // reset after we've consumed the urgency
   adaptiveCycleTimer = setTimeout(async () => {
     // v11.5: Stuck cycle detection — if cycleInProgress is true but cycle started >2× timeout ago,
     // force-reset it. This handles edge cases where withTimeout's rejection doesn't properly
@@ -4403,6 +4419,52 @@ const getETHBalance = _getETHBalance;
 const getERC20Balance = _getERC20Balance;
 
 // ============================================================================
+// ============================================================================
+// v21.12: HOT MOVER SCANNER — Always-on radar for breakout tokens on Base
+// ============================================================================
+
+/**
+ * Runs every HOT_SCAN_INTERVAL_MS. Zero extra API calls — reads from
+ * GeckoTerminal's cached trending pool data already fetched each cycle.
+ * When a breakout is detected, stores it in hotMoverAlerts[] so the next
+ * Claude prompt sees it as high-priority context. Sets hotMoverUrgent=true
+ * to accelerate the next cycle from 15min → 90s.
+ *
+ * Every existing guard (dedup, surge cap, risk reviewer, Kelly sizing,
+ * position limits) applies identically. This only adds a new signal input.
+ */
+async function scanHotMovers(): Promise<void> {
+  if (!CONFIG.trading.enabled) return;
+  try {
+    const raw = geckoTerminalService.getHotMovers(
+      HOT_MOVER_MIN_CHANGE_H1_PCT,
+      HOT_MOVER_MIN_VOLUME_H1_USD,
+      HOT_MOVER_MIN_LIQUIDITY_USD
+    );
+
+    // Filter tokens still on cooldown (prevents spam re-alerting the same mover)
+    const fresh = raw.filter(m => {
+      const coolUntil = hotMoverCooldowns.get(m.address.toLowerCase());
+      return !coolUntil || Date.now() > coolUntil;
+    });
+
+    if (fresh.length > 0) {
+      hotMoverAlerts = fresh;
+      hotMoverUrgent = true;
+      // Set cooldown so same token doesn't fire again for 25 min
+      for (const m of fresh) {
+        hotMoverCooldowns.set(m.address.toLowerCase(), Date.now() + HOT_MOVER_COOLDOWN_MS);
+      }
+      console.log(`\n🔥 [HOT SCAN] ${fresh.length} breakout(s): ${fresh.map(m => `${m.symbol} +${m.priceChangeH1.toFixed(1)}%`).join(' | ')}`);
+    } else {
+      hotMoverAlerts = [];
+    }
+  } catch {
+    // Non-fatal — scan failure never blocks trading
+  }
+}
+
+// ============================================================================
 // v9.2: AUTO GAS REFUEL — Swap USDC→WETH when ETH gas balance is low
 // ============================================================================
 
@@ -4705,6 +4767,21 @@ async function makeTradeDecision(
       ).join("\n")}\nThese are curated from ${tokenDiscoveryEngine?.getTradableTokens().length || 0} scanned tokens. Size discovered tokens at 50-75% of normal. Runners (🚀) show exceptional momentum — evaluate carefully.\n`
     : "";
 
+  // v21.12: Hot mover radar — breakout tokens detected in last scan cycle
+  const hotMoverIntel = hotMoverAlerts.length > 0
+    ? `\n🔥🔥🔥 HOT MOVERS — BREAKING NOW ON BASE (detected this cycle) 🔥🔥🔥\n` +
+      hotMoverAlerts.map(m =>
+        `  ${m.symbol} | +${m.priceChangeH1.toFixed(1)}% in 1h | Vol $${(m.volumeH1USD / 1000).toFixed(0)}K | ` +
+        `Liq $${(m.liquidityUSD / 1000).toFixed(0)}K | Buy pressure ${(m.buyRatioH1 * 100).toFixed(0)}% | ${m.dex} | $${m.priceUSD.toFixed(6)}\n  → ${m.address}`
+      ).join("\n") +
+      `\n\nThese tokens are in active 1h momentum breakout. Evaluate for LIGHT tier entry if:\n` +
+      `  1. Liquidity is real (already filtered to >${HOT_MOVER_MIN_LIQUIDITY_USD / 1000}K)\n` +
+      `  2. Buy pressure > 55% (organic buyers, not bot wash)\n` +
+      `  3. Move is not parabolic (still early in the move, not a blow-off top)\n` +
+      `  4. No known rug/scam signals\n` +
+      `Standard risk reviewer and position limits still apply.\n`
+    : "";
+
   // Build technical indicators summary for the AI
   const indicatorsSummary = formatIndicatorsForPrompt(marketData.indicators, marketData.tokens);
 
@@ -4882,7 +4959,7 @@ ${volumeSpikeSection}
 ═══ RECENT TRADE HISTORY ═══
 ${tradeHistoryContext}${tradeHistorySummary}
 
-${discoveryIntel}═══ TRADING LIMITS ═══
+${discoveryIntel}${hotMoverIntel}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 30%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}`;
 
@@ -9425,6 +9502,9 @@ async function main() {
 
   // Schedule first adaptive cycle
   scheduleNextCycle();
+
+  // v21.12: Hot Mover Scanner — polls GeckoTerminal cache every 90s, zero extra API calls
+  setInterval(scanHotMovers, HOT_SCAN_INTERVAL_MS);
 
   // Safety net: keep the cron as a backup forced heavy cycle trigger
   const cronExpression = `*/${Math.max(CONFIG.trading.intervalMinutes, 15)} * * * *`;

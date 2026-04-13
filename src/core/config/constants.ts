@@ -548,6 +548,28 @@ export const GAS_INLINE_TOP_UP_USDC = 3.00;
 export const GAS_RESERVOIR_DAILY_USD = 0.50;
 
 // ============================================================================
+// v21.12: HOT MOVER SCANNER — Gemma-era always-on market radar
+// ============================================================================
+
+/** Min 1h price gain to qualify as a hot mover (%) */
+export const HOT_MOVER_MIN_CHANGE_H1_PCT = 5;
+
+/** Min 1h volume to confirm the move is real (not illiquid pump) */
+export const HOT_MOVER_MIN_VOLUME_H1_USD = 150_000;
+
+/** Min pool liquidity — below this is a rug risk, skip it */
+export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
+
+/** How often to scan GeckoTerminal trending pools (ms) — reuses cached data, free */
+export const HOT_SCAN_INTERVAL_MS = 90_000;
+
+/** Cooldown per token after it fires a hot mover alert — prevents spam re-alerting */
+export const HOT_MOVER_COOLDOWN_MS = 25 * 60 * 1000;
+
+/** When hot movers are detected, override adaptive cycle to run within this many ms */
+export const HOT_MOVER_URGENT_CYCLE_MS = 90_000;
+
+// ============================================================================
 // v9.3: DAILY PAYOUT — Scheduled profit distribution replacing opportunistic harvest
 // ============================================================================
 

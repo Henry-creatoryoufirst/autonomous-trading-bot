@@ -117,6 +117,19 @@ export interface BuySellPressure {
   signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL';
 }
 
+/** A token showing breakout momentum on Base right now */
+export interface HotMoverAlert {
+  address: string;
+  symbol: string;
+  poolName: string;
+  priceUSD: number;
+  priceChangeH1: number;    // % gain in last 1h
+  volumeH1USD: number;      // $ volume in last 1h
+  liquidityUSD: number;     // pool liquidity depth
+  buyRatioH1: number;       // buys / (buys + sells) in h1 — 1.0 = all buys
+  dex: string;
+}
+
 export interface DexIntelligence {
   /** Top trending pools on Base right now */
   trendingPools: DexPoolData[];
@@ -609,6 +622,49 @@ export class GeckoTerminalService {
     } catch {
       return [];
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // HOT MOVER SCANNER — v21.12
+  // --------------------------------------------------------------------------
+
+  /**
+   * Extract hot movers from the cached trending pool data.
+   * Zero extra API calls — reuses whatever was last fetched by fetchIntelligence().
+   * Returns tokens with breakout momentum above the configured thresholds.
+   */
+  getHotMovers(
+    minChangeH1Pct: number,
+    minVolumeH1USD: number,
+    minLiquidityUSD: number
+  ): HotMoverAlert[] {
+    const pools = this.cache?.trendingPools || [];
+    if (pools.length === 0) return [];
+
+    return pools
+      .filter(p =>
+        p.priceChange.h1 >= minChangeH1Pct &&
+        p.volume.h1 >= minVolumeH1USD &&
+        p.liquidity >= minLiquidityUSD &&
+        p.baseToken?.address &&
+        (p.transactions.h1.buys + p.transactions.h1.sells) >= 5 // real activity
+      )
+      .map(p => {
+        const totalH1 = p.transactions.h1.buys + p.transactions.h1.sells;
+        return {
+          address: p.baseToken.address,
+          symbol: p.baseToken.symbol,
+          poolName: p.name,
+          priceUSD: p.priceUSD,
+          priceChangeH1: p.priceChange.h1,
+          volumeH1USD: p.volume.h1,
+          liquidityUSD: p.liquidity,
+          buyRatioH1: totalH1 > 0 ? p.transactions.h1.buys / totalH1 : 0.5,
+          dex: p.dex,
+        };
+      })
+      .sort((a, b) => b.priceChangeH1 - a.priceChangeH1)
+      .slice(0, 8);
   }
 
   // --------------------------------------------------------------------------
