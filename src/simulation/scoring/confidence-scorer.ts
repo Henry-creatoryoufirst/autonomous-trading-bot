@@ -311,13 +311,27 @@ function scoreByCondition(
 
     let score = 50; // Start at neutral
 
-    // Return component (0-40)
-    if (b.metrics.totalReturnPct > 10) score += 30;
-    else if (b.metrics.totalReturnPct > 5) score += 20;
-    else if (b.metrics.totalReturnPct > 0) score += 10;
-    else if (b.metrics.totalReturnPct > -5) score -= 5;
-    else if (b.metrics.totalReturnPct > -10) score -= 15;
-    else score -= 30;
+    // Return component (0-40).
+    // BEAR uses lenient thresholds — a long-only bot that loses -8% in a -60% market
+    // is performing exceptionally. Standard thresholds penalise this unfairly.
+    const ret = b.metrics.totalReturnPct;
+    if (b.condition === 'BEAR') {
+      // Lenient thresholds: losing up to -15% in a bear market is acceptable
+      if (ret > 5) score += 30;
+      else if (ret > 0) score += 20;
+      else if (ret > -10) score += 10;    // small loss = OK
+      else if (ret > -20) score -= 5;     // moderate loss = minor penalty
+      else if (ret > -30) score -= 15;
+      else score -= 30;
+    } else {
+      // Standard absolute thresholds for BULL / RANGING / VOLATILE
+      if (ret > 10) score += 30;
+      else if (ret > 5) score += 20;
+      else if (ret > 0) score += 10;
+      else if (ret > -5) score -= 5;
+      else if (ret > -10) score -= 15;
+      else score -= 30;
+    }
 
     // Win rate component (0-20)
     if (b.metrics.winRate >= 0.6) score += 15;
