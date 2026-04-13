@@ -8967,16 +8967,7 @@ async function main() {
       console.log(`  ⚠️ Balance check failed: ${balError.message?.substring(0, 150)}`);
     }
 
-    // v9.2.1: GAS BOOTSTRAP — Auto-buy ETH if wallet has USDC but no ETH
-    // Runs once at startup before the first trading cycle
-    if (CONFIG.trading.enabled) {
-      try {
-        await rescueGasFromNvrTrading(); // v19.3.3: Rescue ETH from wrong account first
-        await bootstrapGas();
-      } catch (bootstrapErr: any) {
-        console.warn(`  ⛽ [GAS BOOTSTRAP] Startup error: ${bootstrapErr?.message?.substring(0, 150)} — will retry on first cycle`);
-      }
-    }
+    // v21.11: Gas handled inline via ensureGasForTrade() — no startup bootstrap needed
 
     // v10.3: Warm up portfolio value on startup — prevents capital floor false trigger after redeploy.
     // Without this, totalPortfolioValue stays at $0 from persisted state until first heavy cycle,
@@ -9747,12 +9738,12 @@ const serverCtx: ServerContext = {
   BREAKER_CONSECUTIVE_LOSSES, BREAKER_PAUSE_HOURS,
   KELLY_FRACTION, KELLY_MIN_TRADES, KELLY_POSITION_CEILING_PCT,
   KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_FLOOR_USD,
-  GAS_REFUEL_THRESHOLD_ETH, ADAPTIVE_MIN_INTERVAL_SEC, ADAPTIVE_MAX_INTERVAL_SEC,
+  GAS_REFUEL_THRESHOLD_ETH: GAS_MIN_ETH_FOR_TRADE, ADAPTIVE_MIN_INTERVAL_SEC, ADAPTIVE_MAX_INTERVAL_SEC,
   EMERGENCY_INTERVAL_SEC, EMERGENCY_DROP_THRESHOLD, PORTFOLIO_SENSITIVITY_TIERS,
   SIGNAL_ENGINE,
   capitalPreservationMode, lastFearGreedValue, lastSuccessfulTradeAt,
   adaptiveCycle, cycleStats, lastSignalHealth, lastMomentumSignal,
-  lastKnownETHBalance, lastGasRefuelTime, lastDerivativesData,
+  lastKnownETHBalance: 0, lastGasRefuelTime: 0, lastDerivativesData,
   lastDexIntelligence, dexIntelFetchCount, lastYieldAction, yieldCycleCount,
   lastYieldRates, lastFamilyTradeResults, latestSignals, signalCycleNumber,
   signalHistory, signalMode, pendingConfigChanges, pendingWithdrawals,
