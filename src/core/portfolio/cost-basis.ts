@@ -103,7 +103,14 @@ export function updateCostBasisAfterSell(
 
   // Realized P&L = (sell price per token - avg cost) * tokens sold
   const sellPricePerToken = tokensSold > 0 ? amountUSD / tokensSold : 0;
-  const realizedPnL = (sellPricePerToken - cb.averageCostBasis) * tokensSold;
+  const rawPnL = (sellPricePerToken - cb.averageCostBasis) * tokensSold;
+  // Sanity clamp: can't lose more than the USDC invested in this position.
+  // Without this, a corrupted averageCostBasis can produce phantom losses of thousands of dollars per sell.
+  const impliedInvestment = cb.averageCostBasis * tokensSold;
+  const realizedPnL = impliedInvestment > 0 ? Math.max(rawPnL, -impliedInvestment) : rawPnL;
+  if (rawPnL !== realizedPnL) {
+    console.warn(`  ⚠️ P&L clamp: ${symbol} raw $${rawPnL.toFixed(2)} → clamped $${realizedPnL.toFixed(2)} (avgCost $${cb.averageCostBasis.toFixed(6)} may be corrupted)`);
+  }
   cb.realizedPnL += realizedPnL;
   // v11.4.17: Clamp proportionSold to [0,1]
   const proportionSold = Math.min(1, cb.totalTokensAcquired > 0 ? tokensSold / cb.totalTokensAcquired : 0);
@@ -178,7 +185,10 @@ export function rebuildCostBasisFromTrades(
       const tokens = trade.tokenAmount || 0;
       if (tokens > 0 && cb.totalTokensAcquired > 0) {
         const sellPrice = trade.amountUSD / tokens;
-        const realizedPnL = (sellPrice - cb.averageCostBasis) * tokens;
+        const rawPnL = (sellPrice - cb.averageCostBasis) * tokens;
+        // Sanity clamp: can't lose more than the capital invested in this tranche
+        const impliedInvestment = cb.averageCostBasis * tokens;
+        const realizedPnL = impliedInvestment > 0 ? Math.max(rawPnL, -impliedInvestment) : rawPnL;
         cb.realizedPnL += realizedPnL;
         const proportionSold = Math.min(1, tokens / cb.totalTokensAcquired);
         cb.totalInvestedUSD = Math.max(0, cb.totalInvestedUSD * (1 - proportionSold));

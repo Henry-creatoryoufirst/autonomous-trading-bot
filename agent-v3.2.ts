@@ -9664,6 +9664,25 @@ async function main() {
     console.log(`✅ MIGRATION v19.5.0: Reset realized P&L on ${resetCount} tokens. Clean slate.\n`);
   }
 
+  // v21.14: Second P&L reset — same corruption re-accumulated since v19.5.0.
+  // Root cause: averageCostBasis corruption from SANITY RESETs causes sells to record
+  // losses larger than the capital spent. Result: realizedPnL = -$532,004 on $3K portfolio.
+  // Fix: zero out and let the new sanity clamp (updateCostBasisAfterSell) prevent recurrence.
+  if (!(state as any)._migrationPnLResetV2114) {
+    console.log(`\n🔧 MIGRATION v21.14: Resetting corrupted realized P&L data (second occurrence)...`);
+    let resetCount = 0;
+    for (const [symbol, cb] of Object.entries(state.costBasis)) {
+      if (cb.realizedPnL !== 0) {
+        console.log(`   ${symbol}: realizedPnL $${cb.realizedPnL.toFixed(2)} → $0.00`);
+        cb.realizedPnL = 0;
+        resetCount++;
+      }
+    }
+    (state as any)._migrationPnLResetV2114 = true;
+    saveTradeHistory();
+    console.log(`✅ MIGRATION v21.14: Reset realized P&L on ${resetCount} tokens. Clean slate.\n`);
+  }
+
   // Restore discovery state if available
   if (tokenDiscoveryEngine) {
     try {
