@@ -207,18 +207,10 @@ import {
   SECTOR_ATR_MULTIPLIERS,
   ATR_PROFIT_TIERS,
   ATR_COMPARISON_LOG_COUNT,
-  // v9.2: Auto Gas Refuel
-  GAS_REFUEL_THRESHOLD_ETH,
-  GAS_REFUEL_AMOUNT_USDC,
-  GAS_REFUEL_MIN_USDC,
-  GAS_REFUEL_COOLDOWN_MS,
-  GAS_CRITICAL_THRESHOLD_ETH,
-  GAS_RESCUE_COOLDOWN_MS,
-  // v9.2.1: Gas Bootstrap
-  GAS_BOOTSTRAP_MIN_ETH_USD,
-  GAS_BOOTSTRAP_SWAP_USD,
-  GAS_BOOTSTRAP_MIN_USDC,
-  GAS_BOOTSTRAP_COOLDOWN_MS,
+  // v21.11: Raptor 3 gas — inline check, self-funding reservoir
+  GAS_MIN_ETH_FOR_TRADE,
+  GAS_INLINE_TOP_UP_USDC,
+  GAS_RESERVOIR_DAILY_USD,
   // v9.3: Daily Payout
   DAILY_PAYOUT_CRON,
   DAILY_PAYOUT_MIN_TRANSFER_USD,
@@ -4414,169 +4406,33 @@ const getERC20Balance = _getERC20Balance;
 // v9.2: AUTO GAS REFUEL — Swap USDC→WETH when ETH gas balance is low
 // ============================================================================
 
-let lastGasRefuelTime = 0;
-let lastKnownETHBalance = 0;
-
-async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
-  try {
-    // v10.1: Smart Account swaps are gasless — skip refuel if Smart Account active
-    // v10.1.1: Gas refuel remains active — wallet is a CoinbaseSmartWallet but
-    // account.swap() still routes through standard paths that may need gas
-
-    const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
-    const ethBalance = await getETHBalance(account.address);
-    lastKnownETHBalance = ethBalance;
-
-    // v21.10: Log critically low gas — system self-heals via bootstrap/rescue cooldown retries.
-    // No Telegram alert — does not scale to 100 bots. Higher threshold (0.005) is the real fix.
-    if (ethBalance < GAS_CRITICAL_THRESHOLD_ETH) {
-      console.error(`\n🚨 [GAS CRITICAL] ETH=${ethBalance.toFixed(8)} — near deadlock zone. Bootstrap/rescue will retry on cooldown.`);
-    }
-
-    // Not low enough to refuel
-    if (ethBalance >= GAS_REFUEL_THRESHOLD_ETH) {
-      return { refueled: false, ethBalance };
-    }
-
-    // Cooldown check — don't refuel too frequently
-    if (Date.now() - lastGasRefuelTime < GAS_REFUEL_COOLDOWN_MS) {
-      return { refueled: false, ethBalance, error: 'Gas refuel on cooldown' };
-    }
-
-    // Check USDC balance — don't drain the last few dollars
-    const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, account.address, 6);
-    if (usdcBalance < GAS_REFUEL_MIN_USDC) {
-      return { refueled: false, ethBalance, error: `USDC balance ($${usdcBalance.toFixed(2)}) below minimum for gas refuel` };
-    }
-
-    // Execute USDC → WETH swap for gas (EOA fallback only)
-    console.log(`\n  ⛽ AUTO GAS REFUEL: ETH balance ${ethBalance.toFixed(6)} below threshold ${GAS_REFUEL_THRESHOLD_ETH}`);
-    console.log(`     Swapping $${GAS_REFUEL_AMOUNT_USDC.toFixed(2)} USDC → WETH for gas...`);
-
-    const fromAmount = parseUnits(GAS_REFUEL_AMOUNT_USDC.toFixed(6), 6); // USDC has 6 decimals
-    await account.swap({
-      network: activeChain.cdpNetwork,
-      fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`, // USDC
-      toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`,   // WETH on Base
-      fromAmount,
-      slippageBps: 100, // 1% slippage — not critical, just need gas
-    });
-
-    lastGasRefuelTime = Date.now();
-    const newEthBalance = await getETHBalance(account.address);
-    lastKnownETHBalance = newEthBalance;
-    console.log(`     ✅ Gas refueled: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
-    return { refueled: true, ethBalance: newEthBalance };
-  } catch (err: any) {
-    const msg = err?.message?.substring(0, 200) || 'Unknown error';
-    console.warn(`  ⛽ Gas refuel failed: ${msg}`);
-    return { refueled: false, ethBalance: lastKnownETHBalance, error: msg };
-  }
-}
-
-// ============================================================================
-// v9.2.1: GAS BOOTSTRAP — Auto-buy ETH on first startup when wallet has USDC but no ETH
-// ============================================================================
-
-// v19.3.3: Gas rescue — transfer ETH from nvr-trading to main wallet
-// v21.9: Changed from one-shot flag to cooldown-based retry
-let lastGasRescueTime = 0;
-async function rescueGasFromNvrTrading(): Promise<void> {
-  if (Date.now() - lastGasRescueTime < GAS_RESCUE_COOLDOWN_MS) return;
-  lastGasRescueTime = Date.now();
-  try {
-    const mainAccount = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
-    const mainETH = await getETHBalance(mainAccount.address);
-
-    if (mainETH >= 0.001) {
-      console.log(`  [GAS RESCUE] Main wallet has ${mainETH.toFixed(6)} ETH — no rescue needed`);
-      return;
-    }
-
-    // Check if nvr-trading account has ETH we can rescue
-    const nvrAccount = await cdpClient.evm.getOrCreateAccount({ name: "nvr-trading" });
-    const nvrETH = await getETHBalance(nvrAccount.address);
-
-    if (nvrETH < 0.001) {
-      console.log(`  [GAS RESCUE] nvr-trading (${nvrAccount.address}) has ${nvrETH.toFixed(6)} ETH — nothing to rescue`);
-      return;
-    }
-
-    // Transfer 90% of nvr-trading ETH to main account (keep some for the tx fee)
-    const transferAmount = Math.floor((nvrETH * 0.9) * 1e18);
-    console.log(`\n  🚨 [GAS RESCUE] Transferring ${(transferAmount/1e18).toFixed(6)} ETH from nvr-trading → ${mainAccount.address}`);
-
-    const tx = await nvrAccount.sendTransaction({
-      network: activeChain.cdpNetwork,
-      transaction: {
-        to: mainAccount.address as `0x${string}`,
-        value: BigInt(transferAmount),
-      },
-    });
-
-    console.log(`  ✅ [GAS RESCUE] ETH transferred! TX: ${(tx as any).transactionHash || 'sent'}`);
-    const newBalance = await getETHBalance(mainAccount.address);
-    console.log(`  ✅ [GAS RESCUE] Main wallet ETH: ${newBalance.toFixed(6)}`);
-  } catch (err: any) {
-    console.warn(`  ⚠️ [GAS RESCUE] Failed: ${err?.message?.substring(0, 200) || 'Unknown'}`);
-  }
-}
-
-// v21.9: Replaced one-shot gasBootstrapAttempted flag with cooldown-based retry.
-// Bootstrap now fires whenever ETH is low, not just once at startup.
-let lastGasBootstrapTime = 0;
-
-async function bootstrapGas(): Promise<void> {
-  // Cooldown — don't hammer CDP if bootstrap keeps failing
-  if (Date.now() - lastGasBootstrapTime < GAS_BOOTSTRAP_COOLDOWN_MS) return;
-
+// v21.11: Raptor 3 — gas management in 20 lines, invisible inside trade execution.
+// Replaces bootstrapGas + rescueGasFromNvrTrading + checkAndRefuelGas (200 lines deleted).
+// No external service, no state, no cooldowns, no circular dependency.
+async function ensureGasForTrade(): Promise<boolean> {
   try {
     const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
-    const walletAddr = CONFIG.walletAddress;
-    const ethBalance = await getETHBalance(walletAddr);
-    lastKnownETHBalance = ethBalance;
+    const eth = await getETHBalance(account.address);
+    if (eth >= GAS_MIN_ETH_FOR_TRADE) return true;
 
-    // Estimate ETH value in USD (~$2200 rough estimate, good enough for threshold check)
-    const ethPriceEstimate = 2200;
-    const ethValueUSD = ethBalance * ethPriceEstimate;
-
-    if (ethValueUSD >= GAS_BOOTSTRAP_MIN_ETH_USD) {
-      // Gas is fine — no bootstrap needed, but update cooldown so we don't spam
-      lastGasBootstrapTime = Date.now();
-      return;
+    // Low gas — inline top-up before attempting the trade
+    const usdc = await getERC20Balance(TOKEN_REGISTRY.USDC.address, account.address, 6);
+    if (usdc < GAS_INLINE_TOP_UP_USDC + 2) {
+      console.warn(`  ⛽ Gas low (${eth.toFixed(6)} ETH) + USDC low ($${usdc.toFixed(2)}) — skipping trade`);
+      return false;
     }
-
-    const usdcBalance = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6);
-
-    if (usdcBalance < GAS_BOOTSTRAP_MIN_USDC) {
-      console.log(`  [GAS BOOTSTRAP] Insufficient USDC for gas bootstrap ($${usdcBalance.toFixed(2)} < $${GAS_BOOTSTRAP_MIN_USDC} minimum)`);
-      // Don't update cooldown — retry sooner in case USDC lands
-      return;
-    }
-
-    console.log(`\n  ⛽ [GAS BOOTSTRAP] ETH balance ${ethBalance.toFixed(6)} (~$${ethValueUSD.toFixed(2)}) below $${GAS_BOOTSTRAP_MIN_ETH_USD} threshold`);
-    console.log(`     Swapping $${GAS_BOOTSTRAP_SWAP_USD} USDC → WETH for gas fees...`);
-
-    const fromAmount = parseUnits(GAS_BOOTSTRAP_SWAP_USD.toFixed(6), 6);
+    console.log(`  ⛽ Gas low (${eth.toFixed(6)} ETH) — inline top-up $${GAS_INLINE_TOP_UP_USDC} USDC→ETH`);
     await account.swap({
       network: activeChain.cdpNetwork,
       fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`,
-      toToken: "0x4200000000000000000000000000000000000006" as `0x${string}`, // WETH on Base
-      fromAmount,
-      slippageBps: 100, // 1% slippage
+      toToken: activeChain.weth.address as `0x${string}`,
+      fromAmount: parseUnits(GAS_INLINE_TOP_UP_USDC.toFixed(6), 6),
+      slippageBps: 100,
     });
-
-    const newEthBalance = await getETHBalance(walletAddr);
-    lastKnownETHBalance = newEthBalance;
-    lastGasBootstrapTime = Date.now();
-    lastGasRefuelTime = Date.now(); // Prevent immediate refuel after bootstrap
-
-    console.log(`     ✅ [GAS BOOTSTRAP] Swapped $${GAS_BOOTSTRAP_SWAP_USD} USDC → ETH for gas fees`);
-    console.log(`     ETH: ${ethBalance.toFixed(6)} → ${newEthBalance.toFixed(6)} ETH`);
+    return true;
   } catch (err: any) {
-    const msg = err?.message?.substring(0, 200) || 'Unknown error';
-    console.warn(`  ⛽ [GAS BOOTSTRAP] Failed: ${msg} — will retry after cooldown`);
-    lastGasBootstrapTime = Date.now(); // Set cooldown even on failure to avoid hammering
+    console.warn(`  ⛽ Gas check failed: ${err?.message?.slice(0, 150)} — skipping trade`);
+    return false;
   }
 }
 
@@ -5185,6 +5041,12 @@ async function executeTrade(
   if ((state as any).withdrawPaused) {
     console.log(`  ⏸️ Trade blocked — withdrawal in progress`);
     return { success: false, error: 'Trading paused during withdrawal' };
+  }
+
+  // v21.11: Raptor 3 — gas check is invisible inside every trade, no external gas service
+  if (cdpClient) {
+    const gasReady = await ensureGasForTrade();
+    if (!gasReady) return { success: false, error: 'Insufficient gas — will retry next cycle' };
   }
 
   // v11.4.7: TRADE DEDUP GUARD — block same token/action/tier combo within window
@@ -6486,6 +6348,25 @@ async function executeDailyPayout(): Promise<void> {
     }
   }
 
+  // v21.11: Gas reservoir — bot funds its own gas from profits.
+  // On each profitable payout day, convert $0.50 USDC→ETH and keep in bot wallet.
+  // At ~200 profitable days/year this covers ~10,000+ Base L2 transactions. Self-sustaining.
+  if (totalSent > 0 && cdpClient) {
+    try {
+      await account.swap({
+        network: activeChain.cdpNetwork,
+        fromToken: TOKEN_REGISTRY.USDC.address as `0x${string}`,
+        toToken: activeChain.weth.address as `0x${string}`,
+        fromAmount: parseUnits(GAS_RESERVOIR_DAILY_USD.toFixed(6), 6),
+        slippageBps: 100,
+      });
+      console.log(`[Daily Payout] ⛽ Gas reservoir: +$${GAS_RESERVOIR_DAILY_USD} USDC→ETH (self-funding)`);
+    } catch (err: any) {
+      // Non-critical — bot still has gas from inline checks, log and continue
+      console.warn(`[Daily Payout] ⛽ Gas reservoir swap skipped: ${err?.message?.slice(0, 100)}`);
+    }
+  }
+
   // Record payout
   state.dailyPayouts.push({
     date: yesterdayStr, payoutDate: now.toISOString(), realizedPnL,
@@ -6941,22 +6822,7 @@ async function runTradingCycle() {
   let marketData: MarketData | null = null;
 
   try {
-    // v21.9: Gas bootstrap — runs each heavy cycle but self-throttles via lastGasBootstrapTime cooldown
-    if (cdpClient && CONFIG.trading.enabled) {
-      try {
-        await bootstrapGas();
-      } catch (bErr: any) {
-        console.warn(`  ⛽ [GAS BOOTSTRAP] Cycle retry failed: ${bErr?.message?.substring(0, 150)}`);
-      }
-    }
-
-    // v9.2: Auto gas refuel check — ensure ETH for tx fees before any trades
-    if (cdpClient && CONFIG.trading.enabled) {
-      const gasResult = await checkAndRefuelGas();
-      if (gasResult.error) {
-        console.log(`  ⛽ Gas: ${gasResult.ethBalance.toFixed(6)} ETH — ${gasResult.error}`);
-      }
-    }
+    // v21.11: Gas is managed inline inside executeTrade() — no cycle-level gas calls needed
 
     // v10.1.1: Fund migration removed — wallet IS the Smart Wallet at 0x55509
 
