@@ -4416,8 +4416,6 @@ const getERC20Balance = _getERC20Balance;
 
 let lastGasRefuelTime = 0;
 let lastKnownETHBalance = 0;
-// v21.9: Throttle critical gas alerts — fire at most once per hour
-let lastCriticalGasAlertTime = 0;
 
 async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: number; error?: string }> {
   try {
@@ -4429,16 +4427,10 @@ async function checkAndRefuelGas(): Promise<{ refueled: boolean; ethBalance: num
     const ethBalance = await getETHBalance(account.address);
     lastKnownETHBalance = ethBalance;
 
-    // v21.9: CRITICAL gas alert — fire Telegram immediately if ETH is near-zero
-    // This catches the deadlock scenario within minutes rather than 15+ hours
-    if (ethBalance < GAS_CRITICAL_THRESHOLD_ETH && Date.now() - lastCriticalGasAlertTime > 60 * 60 * 1000) {
-      lastCriticalGasAlertTime = Date.now();
-      console.error(`\n🚨 [GAS CRITICAL] ETH balance ${ethBalance.toFixed(8)} below critical threshold — bot may be deadlocked!`);
-      await telegramService.sendAlert({
-        severity: "CRITICAL",
-        title: "⛽ GAS CRITICAL: Bot may be deadlocked",
-        message: `ETH balance is critically low: ${ethBalance.toFixed(8)} ETH\n\nThreshold: ${GAS_CRITICAL_THRESHOLD_ETH} ETH\n\nBot cannot execute any trades or gas recovery swaps without ETH. Manual intervention may be required.\n\nWallet: ${account.address}`,
-      }).catch(() => {}); // Don't let Telegram failure block gas logic
+    // v21.10: Log critically low gas — system self-heals via bootstrap/rescue cooldown retries.
+    // No Telegram alert — does not scale to 100 bots. Higher threshold (0.005) is the real fix.
+    if (ethBalance < GAS_CRITICAL_THRESHOLD_ETH) {
+      console.error(`\n🚨 [GAS CRITICAL] ETH=${ethBalance.toFixed(8)} — near deadlock zone. Bootstrap/rescue will retry on cooldown.`);
     }
 
     // Not low enough to refuel

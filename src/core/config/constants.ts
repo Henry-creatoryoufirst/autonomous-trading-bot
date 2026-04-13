@@ -537,8 +537,9 @@ export const GAS_COST_MAX_PCT_OF_TRADE = 5;         // Skip if gas > 5% of trade
 // ============================================================================
 
 /** ETH balance (in ETH) below which auto-refuel triggers
- *  v21.9: Raised from 0.0003 → 0.001 so refuel fires well before circular deadlock */
-export const GAS_REFUEL_THRESHOLD_ETH = 0.001; // ~$2.20 at $2200/ETH — 20–50 txs of headroom
+ *  v21.10: Raised to 0.005 — bot always has gas headroom to pay for the refuel swap itself.
+ *  At ~$2200/ETH this is ~$11 — enough for 100+ transactions before hitting the danger zone. */
+export const GAS_REFUEL_THRESHOLD_ETH = 0.005;
 
 /** Amount of USDC to swap into WETH when refueling
  *  v21.9: Raised $1 → $3 so a single refuel covers more cycles */
@@ -550,17 +551,18 @@ export const GAS_REFUEL_MIN_USDC = 5.00;
 /** Cooldown between gas refuels to prevent rapid-fire refueling on errors */
 export const GAS_REFUEL_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
-/** ETH balance below which we consider gas CRITICAL and send Telegram alert immediately */
-export const GAS_CRITICAL_THRESHOLD_ETH = 0.0001; // ~$0.22 — near-deadlock zone
+/** ETH balance below which gas is critically low — used for logging only, no human alert.
+ *  System self-heals; alerts do not scale to 100 bots. */
+export const GAS_CRITICAL_THRESHOLD_ETH = 0.0005; // ~$1.10 — emergency zone, log loudly
 
 /** Cooldown for gas rescue retries (not one-shot anymore — v21.9) */
 export const GAS_RESCUE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between rescue attempts
 
 // v9.2.1: GAS BOOTSTRAP — Auto-buy ETH for gas whenever balance is too low
 /** Trigger gas bootstrap if ETH balance is worth less than this (USD) */
-export const GAS_BOOTSTRAP_MIN_ETH_USD = 2;
+export const GAS_BOOTSTRAP_MIN_ETH_USD = 5; // v21.10: raised from $2 — bootstrap fires earlier
 /** Amount of USDC to swap into ETH during bootstrap */
-export const GAS_BOOTSTRAP_SWAP_USD = 5;
+export const GAS_BOOTSTRAP_SWAP_USD = 8;    // v21.10: raised from $5 — buy more runway per swap
 /** Minimum USDC balance required before bootstrap is allowed */
 export const GAS_BOOTSTRAP_MIN_USDC = 20;
 /** Cooldown between bootstrap attempts — replaces one-shot flag (v21.9) */
