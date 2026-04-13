@@ -69,7 +69,10 @@ const BASE_CONFIG: ChainConfig = {
   name: 'Base',
   chainId: 8453,
   cdpNetwork: 'base',
+  // Prepend any private RPC URL from env so it gets first priority.
+  // Set BASE_RPC_URL in Railway vars to an Alchemy/QuickNode endpoint.
   rpcEndpoints: [
+    ...(process.env.BASE_RPC_URL ? [process.env.BASE_RPC_URL] : []),
     'https://rpc.flashbots.net/fast?chainId=8453',
     'https://mainnet-sequencer.base.org',
     'https://1rpc.io/base',
