@@ -536,11 +536,13 @@ export const GAS_COST_MAX_PCT_OF_TRADE = 5;         // Skip if gas > 5% of trade
 // v9.2: AUTO GAS REFUEL — Keep ETH balance topped up for tx fees
 // ============================================================================
 
-/** ETH balance (in ETH) below which auto-refuel triggers */
-export const GAS_REFUEL_THRESHOLD_ETH = 0.0003; // ~$0.80 at $2700/ETH
+/** ETH balance (in ETH) below which auto-refuel triggers
+ *  v21.9: Raised from 0.0003 → 0.001 so refuel fires well before circular deadlock */
+export const GAS_REFUEL_THRESHOLD_ETH = 0.001; // ~$2.20 at $2200/ETH — 20–50 txs of headroom
 
-/** Amount of USDC to swap into WETH when refueling */
-export const GAS_REFUEL_AMOUNT_USDC = 1.00; // $1 USDC → ~0.00037 ETH
+/** Amount of USDC to swap into WETH when refueling
+ *  v21.9: Raised $1 → $3 so a single refuel covers more cycles */
+export const GAS_REFUEL_AMOUNT_USDC = 3.00;
 
 /** Minimum USDC balance required before refuel is allowed (don't drain last dollar) */
 export const GAS_REFUEL_MIN_USDC = 5.00;
@@ -548,13 +550,21 @@ export const GAS_REFUEL_MIN_USDC = 5.00;
 /** Cooldown between gas refuels to prevent rapid-fire refueling on errors */
 export const GAS_REFUEL_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
-// v9.2.1: GAS BOOTSTRAP — First-startup auto-buy ETH for gas
+/** ETH balance below which we consider gas CRITICAL and send Telegram alert immediately */
+export const GAS_CRITICAL_THRESHOLD_ETH = 0.0001; // ~$0.22 — near-deadlock zone
+
+/** Cooldown for gas rescue retries (not one-shot anymore — v21.9) */
+export const GAS_RESCUE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between rescue attempts
+
+// v9.2.1: GAS BOOTSTRAP — Auto-buy ETH for gas whenever balance is too low
 /** Trigger gas bootstrap if ETH balance is worth less than this (USD) */
 export const GAS_BOOTSTRAP_MIN_ETH_USD = 2;
 /** Amount of USDC to swap into ETH during bootstrap */
 export const GAS_BOOTSTRAP_SWAP_USD = 5;
 /** Minimum USDC balance required before bootstrap is allowed */
 export const GAS_BOOTSTRAP_MIN_USDC = 20;
+/** Cooldown between bootstrap attempts — replaces one-shot flag (v21.9) */
+export const GAS_BOOTSTRAP_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // ============================================================================
 // v9.3: DAILY PAYOUT — Scheduled profit distribution replacing opportunistic harvest
