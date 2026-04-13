@@ -8264,9 +8264,15 @@ async function runTradingCycle() {
         // v19.3.1: Skip circuit breaker for "Insufficient balance" — these are transient sync issues,
         // not permanent routing failures. Blocking tokens for 6h over a balance mismatch is too aggressive.
         const tradeToken = decision.action === "SELL" ? decision.fromToken : decision.toToken;
-        // v21.8: "Insufficient balance" now always falls back to DEX (universal CDP fallback),
-        // so it no longer needs special-casing here. All CDP errors go to DEX automatically.
-        const isBalanceError = false; // v21.8: no longer skip-listed — universal CDP→DEX fallback handles it
+        // v21.13: Distinguish transient CDP sync errors from real routing failures.
+        // "Insufficient balance" and "Balance too small" are CDP SDK cache mismatches —
+        // the on-chain balance is fine, the SDK just has stale state. These should NEVER
+        // trigger the 6h circuit breaker. Only genuine swap failures count.
+        const errMsg = (tradeResult.error || "").toLowerCase();
+        const isBalanceError = errMsg.includes("insufficient balance") ||
+                               errMsg.includes("balance too small") ||
+                               errMsg.includes("insufficient funds") ||
+                               errMsg.includes("balance is insufficient");
         if (!tradeResult.success && !isBalanceError) {
           recordTradeFailure(tradeToken);
           // v21.8: Per-token consecutive failure alerting — 3 / 5 / 10 thresholds
