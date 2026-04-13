@@ -153,6 +153,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  // === AI & AGENT TOKENS (expanded) ===
+  CLANKER: {
+    address: "0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb",
+    symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
