@@ -8172,6 +8172,15 @@ async function runTradingCycle() {
           }
         }
 
+        // [auditor v21.9]: Extreme-fear BUY reduction — F&G < 20 → 75% size to protect capital
+        // Research: VIX-rank adjusted Kelly allocates smaller fraction during elevated volatility,
+        // retaining ~75% of growth while cutting drawdown (arxiv 2508.16598, Medium Jan 2026).
+        if (lastFearGreedValue > 0 && lastFearGreedValue < 20 && decision.action === 'BUY') {
+          const preXFear = decision.amountUSD;
+          decision.amountUSD = Math.max(KELLY_POSITION_FLOOR_USD, Math.round(decision.amountUSD * 0.75 * 100) / 100);
+          console.log(`   😱 XFEAR-SIZE: F&G=${lastFearGreedValue} (Extreme Fear) → 75% BUY size ($${preXFear.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+        }
+
         // v20.5.4: Small portfolio minimum — after all multipliers (vol, ATR, fear, confluence),
         // ensure trades stay above a useful size. Without this, multiplicative reductions stack
         // to produce $1-3 trades that waste gas. For portfolios <$5K, enforce a $10 floor on buys
