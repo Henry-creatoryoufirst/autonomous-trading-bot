@@ -168,6 +168,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "MIGGLES", name: "Mr. Miggles", coingeckoId: "mister-miggles",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  DRB: {
+    address: "0x3ec2156d4c0a9cbdab4a016633b7bcf6a8d68ea2",
+    symbol: "DRB", name: "DebtReliefBot", coingeckoId: "debtreliefbot",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
