@@ -4907,7 +4907,9 @@ async function makeTradeDecision(
   heavyCycleReason?: string,
 ): Promise<TradeDecision[]> {
   const usdcBalance = balances.find(b => b.symbol === "USDC");
-  const availableUSDC = usdcBalance?.balance || 0;
+  // v21.15: Subtract pending fee so reserved payout USDC is never re-deployed
+  const pendingFee = (state as any).pendingFeeUSDC || 0;
+  const availableUSDC = Math.max(0, (usdcBalance?.balance || 0) - pendingFee);
 
   const holdingsBySector: Record<string, string[]> = {};
   for (const allocation of sectorAllocations) {
@@ -5987,6 +5989,14 @@ async function executeDirectDexSwap(
       const tPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
       const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tPrice));
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
+      // v21.15: Harvest-on-sell — reserve fee USDC at moment of profitable sell
+      // so it can't be re-deployed before the 8AM payout runs.
+      if (tradeRealizedPnL > 0 && CONFIG.autoHarvest.enabled && CONFIG.autoHarvest.recipients.length > 0) {
+        const totalPct = CONFIG.autoHarvest.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+        const feeAccrued = tradeRealizedPnL * (totalPct / 100);
+        (state as any).pendingFeeUSDC = ((state as any).pendingFeeUSDC || 0) + feeAccrued;
+        console.log(`  💰 Fee reserved: +$${feeAccrued.toFixed(2)} on $${tradeRealizedPnL.toFixed(2)} profit → pending $${((state as any).pendingFeeUSDC).toFixed(2)}`);
+      }
       // v20.0: Clean up trailing stop after sell
       removeTrailingStop(decision.fromToken);
       // v20.8.1: Add cooldown to prevent re-buying recently stopped-out tokens
@@ -6472,13 +6482,24 @@ async function executeDailyPayout(): Promise<void> {
   const yesterdayEntry = dailyData.days.find(d => d.date === yesterdayStr);
   const realizedPnL = yesterdayEntry?.realized || 0;
 
-  console.log(`[Daily Payout] Realized P&L: $${realizedPnL.toFixed(2)}`);
+  // v21.15: Harvest-on-sell — use per-trade accumulated fee as the authoritative basis.
+  // pendingFeeUSDC was reserved at sell time so it's guaranteed available (not re-deployed).
+  // Fall back to recalculated realizedPnL if no pending accumulation (e.g. first run after deploy).
+  const pendingFeeUSDC = (state as any).pendingFeeUSDC || 0;
+  const totalPct = CONFIG.autoHarvest.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+  const recalculatedFee = realizedPnL * (totalPct / 100);
+  // Use whichever is higher — pendingFee is more accurate, recalc is fallback
+  const effectiveRealizedPnL = pendingFeeUSDC > 0
+    ? pendingFeeUSDC / Math.max(totalPct / 100, 0.001)  // back-calculate realizedPnL from reserved fee
+    : realizedPnL;
+
+  console.log(`[Daily Payout] Realized P&L: $${realizedPnL.toFixed(2)} | Pending fee reserved: $${pendingFeeUSDC.toFixed(2)} | Effective P&L: $${effectiveRealizedPnL.toFixed(2)}`);
   if (yesterdayEntry) {
     console.log(`   Trades: ${yesterdayEntry.trades} | Sells: ${yesterdayEntry.sells} | Wins: ${yesterdayEntry.wins}`);
   }
 
   // Negative day — record and skip
-  if (realizedPnL <= 0) {
+  if (effectiveRealizedPnL <= 0) {
     console.log(`[Daily Payout] No profit ($${realizedPnL.toFixed(2)}) — no payout`);
     state.dailyPayouts.push({
       date: yesterdayStr, payoutDate: now.toISOString(), realizedPnL,
@@ -6540,7 +6561,7 @@ async function executeDailyPayout(): Promise<void> {
   let totalSent = 0;
 
   for (const recipient of recipients) {
-    const share = realizedPnL * (recipient.percent / 100);
+    const share = effectiveRealizedPnL * (recipient.percent / 100);
 
     if (share < DAILY_PAYOUT_MIN_TRANSFER_USD) {
       transferResults.push({
@@ -6564,7 +6585,7 @@ async function executeDailyPayout(): Promise<void> {
       continue;
     }
 
-    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${realizedPnL.toFixed(2)}) → ${recipient.wallet.slice(0, 6)}...${recipient.wallet.slice(-4)}`);
+    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${effectiveRealizedPnL.toFixed(2)}) → ${recipient.wallet.slice(0, 6)}...${recipient.wallet.slice(-4)}`);
 
     // v10.4: Retry once on failure — transient nonce/gas issues shouldn't cause missed payouts
     let txHash: string | null = null;
@@ -6641,6 +6662,8 @@ async function executeDailyPayout(): Promise<void> {
   if (totalSent > 0) state.dailyPayoutCount++;
   // lastDailyPayoutDate already persisted above (pre-transfer idempotency guard)
   state.lastAutoHarvestTime = now.toISOString();
+  // v21.15: Reset pending fee accumulator — funds were sent (or attempted)
+  (state as any).pendingFeeUSDC = 0;
 
   // v11.4.2: Adjust peakValue downward after payouts — payouts are intentional capital
   // outflows, NOT drawdowns. Without this, peakValue stays at pre-payout highs and
