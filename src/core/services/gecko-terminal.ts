@@ -11,7 +11,14 @@
  */
 
 import axios from 'axios';
-import { BASE_USDC_ADDRESS, activeChain } from '../config/constants.js';
+import {
+  BASE_USDC_ADDRESS,
+  activeChain,
+  HOT_MOVER_MIN_FDV_USD,
+  HOT_MOVER_MAX_FDV_USD,
+  HOT_MOVER_MIN_POOL_AGE_HOURS,
+  HOT_MOVER_MIN_BUY_RATIO,
+} from '../config/constants.js';
 
 // ============================================================================
 // CONSTANTS
@@ -128,6 +135,8 @@ export interface HotMoverAlert {
   liquidityUSD: number;     // pool liquidity depth
   buyRatioH1: number;       // buys / (buys + sells) in h1 — 1.0 = all buys
   dex: string;
+  fdvUSD: number;
+  poolCreatedAt: string | null;
 }
 
 export interface DexIntelligence {
@@ -642,13 +651,31 @@ export class GeckoTerminalService {
     if (pools.length === 0) return [];
 
     return pools
-      .filter(p =>
-        p.priceChange.h1 >= minChangeH1Pct &&
-        p.volume.h1 >= minVolumeH1USD &&
-        p.liquidity >= minLiquidityUSD &&
-        p.baseToken?.address &&
-        (p.transactions.h1.buys + p.transactions.h1.sells) >= 5 // real activity
-      )
+      .filter(p => {
+        const totalH1 = p.transactions.h1.buys + p.transactions.h1.sells;
+        const buyRatioH1 = totalH1 > 0 ? p.transactions.h1.buys / totalH1 : 0;
+
+        // Basic volume / price / liquidity thresholds
+        if (p.priceChange.h1 < minChangeH1Pct) return false;
+        if (p.volume.h1 < minVolumeH1USD) return false;
+        if (p.liquidity < minLiquidityUSD) return false;
+        if (!p.baseToken?.address) return false;
+        if (totalH1 < 5) return false; // real activity gate
+
+        // Quality gate: FDV — allow 0 (unknown) but reject known micro/mega caps
+        if (p.fdvUSD !== 0 && (p.fdvUSD < HOT_MOVER_MIN_FDV_USD || p.fdvUSD > HOT_MOVER_MAX_FDV_USD)) return false;
+
+        // Quality gate: pool age — reject brand-new pools (rug risk)
+        if (p.poolCreatedAt !== null) {
+          const poolAgeHours = (Date.now() - new Date(p.poolCreatedAt).getTime()) / (1000 * 60 * 60);
+          if (poolAgeHours < HOT_MOVER_MIN_POOL_AGE_HOURS) return false;
+        }
+
+        // Quality gate: buy ratio — genuine demand, not a sell-off
+        if (buyRatioH1 < HOT_MOVER_MIN_BUY_RATIO) return false;
+
+        return true;
+      })
       .map(p => {
         const totalH1 = p.transactions.h1.buys + p.transactions.h1.sells;
         return {
@@ -661,6 +688,8 @@ export class GeckoTerminalService {
           liquidityUSD: p.liquidity,
           buyRatioH1: totalH1 > 0 ? p.transactions.h1.buys / totalH1 : 0.5,
           dex: p.dex,
+          fdvUSD: p.fdvUSD,
+          poolCreatedAt: p.poolCreatedAt,
         };
       })
       .sort((a, b) => b.priceChangeH1 - a.priceChangeH1)

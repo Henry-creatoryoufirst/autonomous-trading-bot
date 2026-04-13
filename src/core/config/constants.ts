@@ -75,6 +75,22 @@ export const GEMMA_ESCALATION_CONFIG = {
 } as const;
 
 // ============================================================================
+// GROQ INTEGRATION (v21.14) — OpenAI-compatible, cloud-hosted, near-zero cost
+// ============================================================================
+
+/** Groq API base URL (OpenAI-compatible) */
+export const GROQ_BASE_URL = 'https://api.groq.com/openai';
+
+/** Fast cheap model for routine pre-screening (~$0.05/1M tokens, 750 tokens/s) */
+export const GROQ_MODEL_FAST = 'llama-3.1-8b-instant';
+
+/** Smarter model for moderate-confidence decisions (~$0.59/1M tokens) */
+export const GROQ_MODEL_SMART = 'llama-3.3-70b-versatile';
+
+/** Timeout for Groq requests */
+export const GROQ_REQUEST_TIMEOUT_MS = 30_000;
+
+// ============================================================================
 // TRADING CYCLE TIMING
 // ============================================================================
 
@@ -568,6 +584,18 @@ export const HOT_MOVER_COOLDOWN_MS = 25 * 60 * 1000;
 
 /** When hot movers are detected, override adaptive cycle to run within this many ms */
 export const HOT_MOVER_URGENT_CYCLE_MS = 90_000;
+
+/** Hot mover quality gate: minimum FDV ($500K — reject micro-cap rugs) */
+export const HOT_MOVER_MIN_FDV_USD = 500_000;
+
+/** Hot mover quality gate: maximum FDV ($300M — not already fully mooned) */
+export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
+
+/** Hot mover quality gate: pool must be at least this old in hours (reject brand-new pools = rug risk) */
+export const HOT_MOVER_MIN_POOL_AGE_HOURS = 24;
+
+/** Hot mover quality gate: minimum buy ratio in h1 (55%+ buys = genuine demand, not sell-off) */
+export const HOT_MOVER_MIN_BUY_RATIO = 0.55;
 
 // ============================================================================
 // v21.13: ICU WATCH MODE — Intensive monitoring for new/small-cap positions
