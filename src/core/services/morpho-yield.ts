@@ -1,19 +1,20 @@
 /**
  * Never Rest Capital — Morpho Blue Yield Service
- * v21.2: Park idle USDC in Morpho MetaMorpho vaults on Base for yield (~3.5-5% APY)
+ * v21.17: Park idle USDC in Morpho MetaMorpho vaults on Base for yield (4-7% APY)
  *
- * Uses ERC-4626 standard via the Steakhouse Prime USDC vault — the largest
- * Morpho USDC vault on Base ($455M+ TVL, 0% fee, curated by Steakhouse Financial).
+ * Uses ERC-4626 standard via the Moonwell Flagship USDC vault — curated by
+ * Gauntlet/Steakhouse/RE7, risk-assessed, 4-7% APY. Upgraded from Steakhouse Prime
+ * (3.5-5% APY) on April 13, 2026.
  *
  * Architecture mirrors aave-yield.ts: deposit/withdraw calldata builders,
  * state tracking, and balance refresh. The yield optimizer selects between
  * Aave and Morpho based on current rates.
  *
  * Contracts (Base Mainnet):
- *   Morpho Blue Core:          0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb
- *   Steakhouse Prime Vault:    0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2
- *   USDC:                      0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
- *   Share token:               = vault address (ERC-4626, vault IS the share token)
+ *   Morpho Blue Core:             0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb
+ *   Moonwell Flagship USDC Vault: 0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca
+ *   USDC:                         0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
+ *   Share token:                  = vault address (ERC-4626, vault IS the share token)
  */
 
 import axios from 'axios';
@@ -23,8 +24,8 @@ import { BASE_RPC_ENDPOINTS, BASE_USDC_ADDRESS } from '../config/constants.js';
 // CONTRACT ADDRESSES (Base Mainnet)
 // ============================================================================
 
-/** Steakhouse Prime USDC — highest TVL, 0% fee, 3.5-5% APY */
-const MORPHO_VAULT = '0xBEEFE94c8aD530842bfE7d8B397938fFc1cb83b2';
+/** Moonwell Flagship USDC — curated by Gauntlet/Steakhouse/RE7, 4-7% APY */
+const MORPHO_VAULT = '0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca';
 const USDC_ADDRESS = BASE_USDC_ADDRESS;
 const USDC_DECIMALS = 6;
 
@@ -106,7 +107,7 @@ export class MorphoYieldService {
     withdrawCount: 0,
     lastSupply: null,
     lastWithdraw: null,
-    estimatedAPY: 3.75,
+    estimatedAPY: 5.5,
     operations: [],
   };
 
