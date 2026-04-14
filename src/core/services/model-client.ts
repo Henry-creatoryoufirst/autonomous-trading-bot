@@ -24,6 +24,9 @@ import {
   GROQ_BASE_URL,
   GROQ_MODEL_FAST,
   GROQ_REQUEST_TIMEOUT_MS,
+  CEREBRAS_BASE_URL,
+  CEREBRAS_MODEL,
+  CEREBRAS_REQUEST_TIMEOUT_MS,
 } from '../config/constants.js';
 
 // ============================================================================
@@ -34,7 +37,7 @@ import {
 export interface ModelResponse {
   text: string;
   model: string;
-  backend: 'anthropic' | 'ollama' | 'groq';
+  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
   usage: { inputTokens: number; outputTokens: number };
   latencyMs: number;
 }
@@ -48,7 +51,7 @@ export interface ModelRequestOptions {
 }
 
 /** Model routing tiers */
-export type ModelTier = 'GROQ' | 'GEMMA' | 'HAIKU' | 'SONNET';
+export type ModelTier = 'CEREBRAS' | 'GROQ' | 'GEMMA' | 'HAIKU' | 'SONNET';
 
 /** Gemma operating mode */
 export type GemmaMode = 'disabled' | 'shadow' | 'supervised' | 'graduated' | 'production';
@@ -58,7 +61,7 @@ export interface ModelTelemetry {
   timestamp: string;
   tier: ModelTier;
   model: string;
-  backend: 'anthropic' | 'ollama' | 'groq';
+  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
@@ -77,7 +80,7 @@ export interface ModelTelemetry {
 interface RoutingDecision {
   tier: ModelTier;
   model: string;
-  backend: 'anthropic' | 'ollama' | 'groq';
+  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
   reason: string;
 }
 
@@ -294,6 +297,93 @@ export async function callGroq(options: ModelRequestOptions): Promise<ModelRespo
 }
 
 // ============================================================================
+// CEREBRAS BACKEND (OpenAI-compatible, ~2000 tokens/s, llama-3.3-70b)
+// ============================================================================
+
+/**
+ * Check if Cerebras is available (verifies CEREBRAS_API_KEY is set).
+ */
+export async function isCerebrasAvailable(): Promise<boolean> {
+  return typeof process.env.CEREBRAS_API_KEY === 'string' && process.env.CEREBRAS_API_KEY.length > 0;
+}
+
+/**
+ * Call Cerebras inference API (OpenAI-compatible).
+ * Ultra-fast: ~2000 tokens/s on llama-3.3-70b. Cost: <$1/1M tokens.
+ */
+export async function callCerebras(options: ModelRequestOptions): Promise<ModelResponse> {
+  const startMs = Date.now();
+  const apiKey = process.env.CEREBRAS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('CEREBRAS_API_KEY is not set');
+  }
+
+  const messages = [
+    {
+      role: 'system' as const,
+      content: 'Respond ONLY with a valid JSON array of trade decisions. No markdown fences, no prose, no explanation outside the JSON. If no action needed, return [{"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"no action"}].',
+    },
+    ...options.messages,
+  ];
+
+  const body: Record<string, unknown> = {
+    model: CEREBRAS_MODEL,
+    messages,
+    stream: false,
+    temperature: 0.1,
+    max_tokens: options.maxTokens,
+  };
+
+  if (options.jsonMode) {
+    body.response_format = { type: 'json_object' };
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? CEREBRAS_REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${CEREBRAS_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      throw new Error(`Cerebras returned ${res.status}: ${await res.text()}`);
+    }
+
+    const data = await res.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const latencyMs = Date.now() - startMs;
+
+    return {
+      text,
+      model: CEREBRAS_MODEL,
+      backend: 'cerebras',
+      usage: {
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
+      },
+      latencyMs,
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+// ============================================================================
 // ANTHROPIC BACKEND (wraps existing SDK)
 // ============================================================================
 
@@ -357,22 +447,28 @@ export async function resolveModelRouting(
     return { tier: 'SONNET', model: AI_MODEL_HEAVY, backend: 'anthropic', reason: 'Difficult market → Sonnet required' };
   }
 
-  // Routine cycle: Groq → Ollama → Haiku
-  // Groq first — it's a managed cloud API, no health check latency needed
+  // Routine cycle priority: Cerebras → Groq → Ollama → Haiku
+  // Cerebras first: llama-3.3-70b at ~2000 tokens/s, <$1/1M tokens
+  const cerebrasReady = await isCerebrasAvailable();
+  if (cerebrasReady) {
+    return { tier: 'CEREBRAS', model: CEREBRAS_MODEL, backend: 'cerebras', reason: 'Routine cycle → Cerebras (CEREBRAS_API_KEY set)' };
+  }
+
+  // Cerebras not configured — try Groq
   const groqReady = await isGroqAvailable();
   if (groqReady) {
-    return { tier: 'GROQ', model: GROQ_MODEL_FAST, backend: 'groq', reason: 'Routine cycle → Groq (GROQ_API_KEY set)' };
+    return { tier: 'GROQ', model: GROQ_MODEL_FAST, backend: 'groq', reason: 'Routine cycle → Groq (no Cerebras key)' };
   }
 
-  // Groq not configured — try local Ollama
+  // Neither cloud backend configured — try local Ollama
   const ollamaReady = await isOllamaAvailable();
   if (ollamaReady) {
-    return { tier: 'GEMMA', model: AI_MODEL_GEMMA, backend: 'ollama', reason: 'Routine cycle → Gemma (no Groq key)' };
+    return { tier: 'GEMMA', model: AI_MODEL_GEMMA, backend: 'ollama', reason: 'Routine cycle → Gemma (no cloud keys)' };
   }
 
-  // Both cheap backends unavailable — fall back to Claude Haiku
-  console.warn('[Model] Groq not configured and Ollama unreachable, falling back to Claude Haiku');
-  return { tier: 'HAIKU', model: AI_MODEL_ROUTINE, backend: 'anthropic', reason: 'Groq not set + Ollama unreachable → Haiku fallback' };
+  // All cheap backends unavailable — fall back to Claude Haiku
+  console.warn('[Model] Cerebras/Groq not configured and Ollama unreachable, falling back to Claude Haiku');
+  return { tier: 'HAIKU', model: AI_MODEL_ROUTINE, backend: 'anthropic', reason: 'No cheap backend available → Haiku fallback' };
 }
 
 // ============================================================================
@@ -551,10 +647,11 @@ async function callShadowMode(
   // Claude is authoritative; cheap model (Groq preferred, Ollama fallback) runs in parallel for comparison
   const claudeModel = context.needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
 
-  // Select shadow backend: Groq if key is set, else Ollama
-  const groqReady = await isGroqAvailable();
-  const cheapCall = groqReady ? callGroq(options) : callOllama(options);
-  const shadowBackendLabel = groqReady ? 'Groq' : 'Gemma';
+  // Select shadow backend: Cerebras → Groq → Ollama
+  const cerebrasReady = await isCerebrasAvailable();
+  const groqReady = !cerebrasReady && await isGroqAvailable();
+  const cheapCall = cerebrasReady ? callCerebras(options) : groqReady ? callGroq(options) : callOllama(options);
+  const shadowBackendLabel = cerebrasReady ? 'Cerebras' : groqReady ? 'Groq' : 'Gemma';
 
   const [claudeResult, gemmaResult] = await Promise.allSettled([
     callAnthropic(options, anthropicClient, claudeModel),
@@ -624,11 +721,12 @@ async function callGemmaPrimary(
 
   // Determine which cheap backend to use based on routing
   const routing = await resolveModelRouting(context, gemmaMode);
+  const useCerebras = routing.backend === 'cerebras';
   const useGroq = routing.backend === 'groq';
-  const cheapBackendLabel = useGroq ? 'Groq' : 'Gemma';
+  const cheapBackendLabel = useCerebras ? 'Cerebras' : useGroq ? 'Groq' : 'Gemma';
 
   try {
-    gemmaResponse = useGroq ? await callGroq(options) : await callOllama(options);
+    gemmaResponse = useCerebras ? await callCerebras(options) : useGroq ? await callGroq(options) : await callOllama(options);
   } catch (err) {
     // Cheap backend failed — fall back to Claude
     console.warn(`[Model] ${cheapBackendLabel} failed (${(err as Error).message}), falling back to Claude`);
