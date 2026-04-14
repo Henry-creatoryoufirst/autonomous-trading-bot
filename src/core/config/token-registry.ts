@@ -21,13 +21,13 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "ELSA"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "KEYCAT"],
   },
   DEFI: {
     name: "DeFi Protocols",
@@ -148,6 +148,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "TOSHI", name: "Toshi", coingeckoId: "toshi",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
+  KEYCAT: {
+    address: "0x9a26F5433671751C3276a065f57e5a02D2817973",
+    symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
@@ -201,6 +206,16 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  CLANKER: {
+    address: "0x1bc0c42215582d5A085795f4bAdbAC3ff36d1Bcb",
+    symbol: "CLANKER", name: "tokenbot", coingeckoId: "clanker-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  ELSA: {
+    address: "0x4B974e866746958FDc9471cC59bDb980a196b420",
+    symbol: "ELSA", name: "HeyElsa", coingeckoId: "elsa",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   // === DEFI (expanded) ===
   WELL: {
