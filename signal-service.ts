@@ -47,6 +47,8 @@ import type {
   ServiceHealth,
 } from './src/signal/types.js';
 import { TokenDiscoveryEngine } from './src/core/services/token-discovery.js';
+import { outcomeTracker } from './src/core/services/outcome-tracker.js';
+import { updateWalletWeight } from './src/core/services/smart-wallet-tracker.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -562,6 +564,21 @@ const server = http.createServer((req, res) => {
           return b.compositeScore - a.compositeScore;
         });
 
+        // Record each ranked candidate for outcome tracking
+        for (const candidate of ranked) {
+          outcomeTracker.record({
+            address: candidate.address,
+            symbol: candidate.symbol,
+            priceUSD: candidate.priceUSD ?? 0,
+            compositeScore: candidate.compositeScore,
+            haikuRecommendation: candidate.haiku?.recommendation,
+            smartWalletIds: [], // wired in when smart wallet data is available per candidate
+            lpLocked: candidate.lpLocked,
+            holderConcentration: candidate.holderConcentration,
+            priceChange24h: candidate.priceChange24h,
+          });
+        }
+
         sendJSON(res, 200, {
           candidates: ranked.slice(0, 5),
           totalScanned: alphaDiscovery.getDiscoveredTokens().length,
@@ -572,6 +589,22 @@ const server = http.createServer((req, res) => {
         sendJSON(res, 500, { error: err.message });
       }
     })();
+    return;
+  }
+
+  // GET /outcomes — recursive learning data: recent outcomes, wallet hit rates, signal accuracy
+  if (path === '/outcomes') {
+    const walletHitRates = outcomeTracker.getWalletHitRates();
+    // Sync learned wallet weights back into the smart-wallet tracker
+    for (const whr of walletHitRates) {
+      updateWalletWeight(whr.walletId, whr.hitRate4h, whr.totalSignals);
+    }
+    sendJSON(res, 200, {
+      recentOutcomes: outcomeTracker.getRecentOutcomes(20),
+      walletHitRates,
+      signalAccuracy: outcomeTracker.getSignalAccuracy(),
+      totalTracked: outcomeTracker.getTotalTracked(),
+    });
     return;
   }
 
@@ -607,6 +640,7 @@ server.listen(PORT, () => {
   console.log('    GET /history     — 24h signal history');
   console.log('    GET /config/:id  — per-bot strategy profile');
   console.log('    GET /alpha       — top alpha candidates with Haiku pre-filter scores');
+  console.log('    GET /outcomes    — recursive learning: outcome history, wallet hit rates, signal accuracy');
   console.log('');
 });
 
@@ -621,6 +655,11 @@ runRefreshCycle().then(() => {
 
 // Start alpha discovery engine
 alphaDiscovery.start();
+
+// Outcome tracker — restore from disk and schedule background price checks
+outcomeTracker.load();
+setTimeout(() => outcomeTracker.checkPendingOutcomes(), 5 * 60 * 1000);       // first check after 5 min
+setInterval(() => outcomeTracker.checkPendingOutcomes(), 30 * 60 * 1000);     // then every 30 min
 
 // Gas monitor — first check after 5 min (let bots check in first), then every 30 min
 setTimeout(() => {

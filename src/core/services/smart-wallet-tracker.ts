@@ -78,15 +78,87 @@ const BASE_RPC_URL = 'https://mainnet.base.org';
 const BATCH_SIZE = 3;           // concurrent wallet checks
 const BATCH_DELAY_MS = 250;     // 250 ms between batches
 
+// Minimum number of signals a wallet must have before its weight is used
+const MIN_SIGNALS_FOR_WEIGHT = 5;
+
+// ============================================================================
+// WALLET WEIGHTS — updated by outcome tracker based on historical hit rates
+// ============================================================================
+
+/**
+ * Stores per-wallet hit rates (0-1) as learned from historical outcomes.
+ * Populated by updateWalletWeight() called from the outcome tracker.
+ * Default weight 0.5 (neutral) used for wallets without sufficient history.
+ */
+const WALLET_WEIGHTS: Map<string, number> = new Map();
+
+// Track how many signals each wallet has contributed (to gate on MIN_SIGNALS_FOR_WEIGHT)
+const WALLET_SIGNAL_COUNTS: Map<string, number> = new Map();
+
+/**
+ * Update a wallet's weight based on its observed 4h hit rate.
+ * Called periodically by the outcome tracker after computing WalletHitRates.
+ *
+ * @param walletId    Key from SMART_WALLETS (e.g. 'base-smart-01')
+ * @param hitRate4h   Fraction of signals where token went up >10% in 4h (0-1)
+ * @param totalSignals Total number of times this wallet appeared in a surfaced token
+ */
+export function updateWalletWeight(walletId: string, hitRate4h: number, totalSignals: number): void {
+  WALLET_WEIGHTS.set(walletId, hitRate4h);
+  WALLET_SIGNAL_COUNTS.set(walletId, totalSignals);
+}
+
+/**
+ * Get the learned weight for a wallet.
+ * Returns 0.5 (neutral) when the wallet has insufficient history.
+ */
+export function getWalletWeight(walletId: string): number {
+  const signals = WALLET_SIGNAL_COUNTS.get(walletId) ?? 0;
+  if (signals < MIN_SIGNALS_FOR_WEIGHT) return 0.5; // not enough data yet
+  return WALLET_WEIGHTS.get(walletId) ?? 0.5;
+}
+
 // ============================================================================
 // HELPERS
 // ============================================================================
 
-function mapSignalStrength(walletCount: number): SmartWalletSignal['signalStrength'] {
-  if (walletCount >= 3) return 'STRONG';
-  if (walletCount === 2) return 'MODERATE';
-  if (walletCount === 1) return 'WEAK';
-  return 'NONE';
+/**
+ * Compute the average hit-rate-weighted signal strength for a set of active wallets.
+ * Returns the signal strength, potentially downgraded if wallets have poor track records.
+ *
+ * Downgrade rules (only applied when wallets have >= MIN_SIGNALS_FOR_WEIGHT history):
+ *   - STRONG from wallets with avg hitRate4h < 0.3  → MODERATE
+ *   - STRONG from wallets with avg hitRate4h > 0.6  → stays STRONG
+ *   - MODERATE and WEAK are not upgraded/downgraded (insufficient data impact)
+ */
+function mapSignalStrength(
+  walletCount: number,
+  activeWalletIds?: string[],
+): SmartWalletSignal['signalStrength'] {
+  const rawStrength: SmartWalletSignal['signalStrength'] =
+    walletCount >= 3 ? 'STRONG' :
+    walletCount === 2 ? 'MODERATE' :
+    walletCount === 1 ? 'WEAK' :
+    'NONE';
+
+  // Only apply weight-based adjustment to STRONG signals
+  if (rawStrength !== 'STRONG' || !activeWalletIds || activeWalletIds.length === 0) {
+    return rawStrength;
+  }
+
+  // Check if any wallet has enough history to influence the signal
+  const qualifiedWeights = activeWalletIds
+    .filter(id => (WALLET_SIGNAL_COUNTS.get(id) ?? 0) >= MIN_SIGNALS_FOR_WEIGHT)
+    .map(id => WALLET_WEIGHTS.get(id) ?? 0.5);
+
+  // If no wallet has sufficient history, return raw strength unchanged
+  if (qualifiedWeights.length === 0) return rawStrength;
+
+  const avgWeight = qualifiedWeights.reduce((s, w) => s + w, 0) / qualifiedWeights.length;
+
+  if (avgWeight < 0.3) return 'MODERATE'; // known poor predictors — downgrade
+  // avgWeight > 0.6 stays STRONG (no upgrade needed, already at max)
+  return rawStrength;
 }
 
 /**
@@ -226,11 +298,13 @@ export async function checkSmartWalletActivity(
   const earliestActivityMs =
     results.length > 0 ? Math.min(...results.map((r) => r.firstBuyTimestamp)) : 0;
 
+  const activeWalletIds = results.map((r) => r.walletId);
+
   return {
     tokenAddress: tokenAddress.toLowerCase(),
     activeWallets: results,
     walletCount: results.length,
-    signalStrength: mapSignalStrength(results.length),
+    signalStrength: mapSignalStrength(results.length, activeWalletIds),
     totalVolumeUSD,
     earliestActivityMs,
   };

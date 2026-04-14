@@ -7077,12 +7077,57 @@ async function runTradingCycle() {
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
             }).catch(() => {});
           } else if (tokenFailCount === 5) {
+            // v21.x: FORCE SELL — bypass price gate after 5 consecutive failures.
+            // Better to exit at an unknown price than hold a position we can never sell.
+            const lastKnownPrice = lastKnownPrices[tradeToken]?.price || 0;
+            const cbForForce = state.costBasis[tradeToken];
+            const forceAmountUSD = lastKnownPrice > 0 && cbForForce?.currentHolding > 0
+              ? cbForForce.currentHolding * lastKnownPrice
+              : Math.max(cbForForce?.totalInvestedUSD || 1, 1);
+            const forceSellDecision: TradeDecision = {
+              action: 'SELL',
+              fromToken: tradeToken,
+              toToken: 'USDC',
+              amountUSD: forceAmountUSD,
+              tokenAmount: cbForForce?.currentHolding || undefined,
+              reasoning: `FORCE_SELL: bypassing price gate after 5 consecutive failures. Last error: ${tradeResult.error?.substring(0, 150) || 'unknown'}`,
+              isForced: true,
+            };
             telegramService.sendAlert({
               severity: "CRITICAL",
-              title: `CRITICAL: 5 consecutive sell failures for ${tradeToken}`,
-              message: `CRITICAL: 5 consecutive sell failures for ${tradeToken}. Manual intervention may be needed.`,
+              title: `[Henry] FORCE SELL: ${tradeToken}`,
+              message: `[Henry] FORCE SELL: ${tradeToken} — bypassing price gate after 5 consecutive failures. Last error: ${tradeResult.error?.substring(0, 200) || 'unknown'}`,
+              data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastKnownPrice, forceAmountUSD },
+            }).catch(() => {});
+            console.log(`\n🚨 [FORCE SELL] ${tradeToken} — ${tokenFailCount} consecutive failures, attempting force exit at last known price $${lastKnownPrice.toFixed(6)} (~$${forceAmountUSD.toFixed(2)})`);
+            executeTrade(forceSellDecision, marketData).then(forceResult => {
+              if (forceResult.success) {
+                console.log(`  ✅ [FORCE SELL] ${tradeToken} — succeeded, position cleared`);
+                clearTradeFailures(tradeToken);
+              } else {
+                console.warn(`  ⚠️ [FORCE SELL] ${tradeToken} — force sell also failed: ${forceResult.error}`);
+              }
+            }).catch(err => {
+              console.error(`  ❌ [FORCE SELL] ${tradeToken} — unexpected error: ${err}`);
+            });
+          } else if (tokenFailCount === 7) {
+            // v21.x: WRITE OFF — 7 consecutive failures means the token is truly illiquid/dead.
+            // Zero out the position in state so the bot stops trying and moves on.
+            const cbWrite = state.costBasis[tradeToken];
+            if (cbWrite) {
+              cbWrite.currentHolding = 0;
+              cbWrite.totalTokensAcquired = 0;
+              cbWrite.unrealizedPnL = 0;
+            }
+            clearTradeFailures(tradeToken);
+            markStateDirty();
+            telegramService.sendAlert({
+              severity: "CRITICAL",
+              title: `[Henry] WRITE OFF: ${tradeToken}`,
+              message: `[Henry] WRITE OFF: ${tradeToken} — 7 consecutive failures, position written off as total loss`,
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
             }).catch(() => {});
+            console.log(`\n💀 [WRITE OFF] ${tradeToken} — 7 consecutive failures, position written off as total loss`);
           } else if (tokenFailCount >= 10) {
             telegramService.sendAlert({
               severity: "CRITICAL",

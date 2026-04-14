@@ -20,3 +20,6 @@ Thumbs.db
 dist/
 build/
 .vercel
+
+# Outcome tracker persistence (runtime data, not source)
+data/*.json
