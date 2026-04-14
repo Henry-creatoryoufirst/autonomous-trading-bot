@@ -21,7 +21,7 @@ import { fileURLToPath } from 'url';
 // Config
 // ---------------------------------------------------------------------------
 
-const BASESCAN_BASE_URL = 'https://api.etherscan.io/v2/api?chainid=8453';
+const BASESCAN_BASE_URL = 'https://api.basescan.org/v2/api';
 const RATE_LIMIT_MS = 200; // 200ms between requests → safe under 5 req/sec free tier
 const EARLY_TX_COUNT = 100; // grab first 100 transfers per token
 
