@@ -494,3 +494,86 @@ export interface MetaLearningReport {
   }>;
   recommendations: string[];
 }
+
+// ============================================================================
+// WALK-FORWARD VALIDATION (arXiv 2602.10785)
+// ============================================================================
+
+export interface WalkForwardConfig {
+  /** Number of candles in each in-sample (training) window */
+  trainPeriodCandles: number;
+  /** Number of candles in each out-of-sample (test) window */
+  testPeriodCandles: number;
+  /** How many candles to advance between windows (overlap control) */
+  stepCandles: number;
+  /** Strategy params to test. If omitted, uses DEFAULT_STRATEGY_PARAMS */
+  strategy?: StrategyParams;
+  /**
+   * If true, run a mini parameter sweep on IS data before each OOS window.
+   * Finds IS-optimal params, then tests them OOS to detect overfitting.
+   * If false, uses fixed strategy params throughout.
+   */
+  optimizeOnIS?: boolean;
+}
+
+export interface WalkForwardWindow {
+  /** 0-indexed window number */
+  windowIndex: number;
+  /** In-sample (training) period timestamps */
+  isStartTime: number;
+  isEndTime: number;
+  /** Out-of-sample (test) period timestamps */
+  oosStartTime: number;
+  oosEndTime: number;
+  /** Number of candles in each period */
+  isCandles: number;
+  oosCandles: number;
+  /** Performance on in-sample data */
+  isMetrics: PerformanceMetrics;
+  /** Performance on out-of-sample data (the real test) */
+  oosMetrics: PerformanceMetrics;
+  /** Strategy params actually used for this window */
+  params: StrategyParams;
+  /**
+   * Walk-forward efficiency ratio: OOS return / IS return.
+   * > 0.5 = generalizes well; < 0.2 = likely overfit.
+   */
+  efficiency: number;
+}
+
+export interface WalkForwardResult {
+  /** Per-window results */
+  windows: WalkForwardWindow[];
+  /** Aggregated OOS-only metrics (the ground truth) */
+  aggregateOOS: {
+    totalReturnPct: number;
+    avgSharpe: number;
+    avgWinRate: number;
+    maxDrawdownPct: number;
+    consistencyScore: number;   // % of windows where OOS was profitable
+    profitFactor: number;
+  };
+  /**
+   * Walk-Forward Efficiency (WFE): mean(OOS return / IS return).
+   * Healthy: > 0.5. Overfit: < 0.2. Per Pardo (2008) and arXiv 2602.10785.
+   */
+  walkForwardEfficiency: number;
+  /**
+   * Overfitting penalty: IS Sharpe - OOS Sharpe averaged across windows.
+   * < 0.3 = acceptable. > 1.0 = severe overfitting.
+   */
+  overfittingPenalty: number;
+  /** Whether this strategy passes deployment criteria */
+  passesValidation: boolean;
+  /** Human-readable summary */
+  summary: string[];
+  /** Metadata */
+  meta: {
+    symbol: string;
+    totalCandles: number;
+    windowCount: number;
+    trainPeriodCandles: number;
+    testPeriodCandles: number;
+    durationMs: number;
+  };
+}
