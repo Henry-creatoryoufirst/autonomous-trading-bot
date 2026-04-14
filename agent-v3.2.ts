@@ -2732,6 +2732,64 @@ function getCachedPriceHistory(symbol: string): { prices: number[]; volumes: num
 }
 
 // ============================================================================
+// SIGNAL SERVICE — centralized intel poll (v21.7)
+// ============================================================================
+
+/**
+ * Poll the NVR Signal Service for centralized macro intelligence.
+ * Called at the start of each heavy cycle.
+ *
+ * Returns the IntelPayload if service is reachable and data is fresh (ageSec < 600).
+ * Returns null on any error — bot falls back to local computation seamlessly.
+ *
+ * Set SIGNAL_SERVICE_URL env var to the Railway service URL.
+ * If unset, returns null immediately (local mode).
+ */
+async function fetchSignalIntel(): Promise<{
+  regime: 'BULL' | 'RANGING' | 'BEAR';
+  score: number;
+  fearGreed: number;
+  btcDominance: number;
+  btcDominanceTrend: number | null;
+  btcPrice: number;
+  inBearMode: boolean;
+  consecutiveBearChecks: number;
+  stale: boolean;
+  ageSec: number;
+} | null> {
+  const serviceUrl = process.env.SIGNAL_SERVICE_URL;
+  if (!serviceUrl) return null;
+
+  const botId = process.env.BOT_INSTANCE_NAME || 'unknown';
+  const url = `${serviceUrl}/intel?botId=${encodeURIComponent(botId)}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500); // 2.5s hard timeout
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    if (data.stale || data.ageSec > 600) return null; // too old — use local
+    return {
+      regime: data.regime,
+      score: data.score,
+      fearGreed: data.fearGreed,
+      btcDominance: data.btcDominance,
+      btcDominanceTrend: data.btcDominanceTrend ?? null,
+      btcPrice: data.btcPrice,
+      inBearMode: data.inBearMode,
+      consecutiveBearChecks: data.consecutiveBearChecks,
+      stale: false,
+      ageSec: data.ageSec,
+    };
+  } catch {
+    return null; // timeout or network error — fall back silently
+  }
+}
+
+// ============================================================================
 // TECHNICAL INDICATORS — delegated to src/algorithm/indicators.ts
 // ============================================================================
 const calculateRSI = _calculateRSI;
@@ -5560,37 +5618,45 @@ async function runTradingCycle() {
     lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
     lastFearGreedValue = marketData.fearGreed.value;
 
-    // === Bear Mode: Compute macro regime (v21.7) ===
-    // Only runs in heavy cycles where we have fresh F&G + dominance data.
+    // === Bear Mode: Macro Regime (v21.7) — Signal Service first, local fallback ===
     {
-      const btcCurrentDominance = marketData.globalMarket?.btcDominance || 0;
-      if (btcCurrentDominance > 0) {
-        btcDominanceBuffer.push(btcCurrentDominance);
-        if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344); // keep 14d at 15-min cadence
-      }
+      // Try centralized Signal Service first (2.5s timeout — never blocks the cycle)
+      const signalIntel = await fetchSignalIntel();
 
-      // 14-day dominance trend: compare to reading from ~7 days ago (672 cycles × 15min = 7 days)
-      // Using 7-day lookback because CMC data can have gaps; shorter window = more reliable
-      let btcDominanceTrend: number | undefined;
-      if (btcDominanceBuffer.length >= 96) { // need at least 24h of history before using dominance
-        const lookback = Math.min(672, btcDominanceBuffer.length - 1); // up to 7 days
-        const oldDominance = btcDominanceBuffer[btcDominanceBuffer.length - 1 - lookback];
-        if (oldDominance > 0) {
-          btcDominanceTrend = btcCurrentDominance - oldDominance; // percentage-point change
+      if (signalIntel) {
+        // ── PATH A: Signal Service is live — use authoritative centralized data ──
+        lastFearGreedValue = signalIntel.fearGreed; // override with signal service value
+        consecutiveBearChecks = signalIntel.consecutiveBearChecks;
+        currentMacroRegime = { regime: signalIntel.regime, score: signalIntel.score };
+        const inBearMode = signalIntel.inBearMode;
+        console.log(`🛰️  Regime from Signal Service: ${signalIntel.regime} (score: ${signalIntel.score}, age: ${signalIntel.ageSec}s, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE' : ''}`);
+      } else {
+        // ── PATH B: Signal Service unavailable — compute locally (existing logic) ──
+        const btcCurrentDominance = marketData.globalMarket?.btcDominance || 0;
+        if (btcCurrentDominance > 0) {
+          btcDominanceBuffer.push(btcCurrentDominance);
+          if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344);
         }
-      }
 
-      const btcPrices = getCachedPriceHistory('cbBTC').prices;
-      if (btcPrices.length >= 50) {
-        const regimeResult = computeMacroRegime(btcPrices, btcDominanceTrend, lastFearGreedValue);
-        if (regimeResult.regime === 'BEAR') {
-          consecutiveBearChecks = Math.min(consecutiveBearChecks + 1, 10);
-        } else {
-          consecutiveBearChecks = 0;
+        let btcDominanceTrend: number | undefined;
+        if (btcDominanceBuffer.length >= 96) {
+          const lookback = Math.min(672, btcDominanceBuffer.length - 1);
+          const oldDominance = btcDominanceBuffer[btcDominanceBuffer.length - 1 - lookback];
+          if (oldDominance > 0) btcDominanceTrend = btcCurrentDominance - oldDominance;
         }
-        currentMacroRegime = { regime: regimeResult.regime, score: regimeResult.score };
-        const inBearMode = consecutiveBearChecks >= 3;
-        console.log(`🔭 Macro Regime: ${regimeResult.regime} (score: ${regimeResult.score}, F&G: ${lastFearGreedValue}, dom_trend: ${btcDominanceTrend !== undefined ? btcDominanceTrend.toFixed(1) + 'pp' : 'n/a'}, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE — buys paused' : ''}`);
+
+        const btcPrices = getCachedPriceHistory('cbBTC').prices;
+        if (btcPrices.length >= 50) {
+          const regimeResult = computeMacroRegime(btcPrices, btcDominanceTrend, lastFearGreedValue);
+          if (regimeResult.regime === 'BEAR') {
+            consecutiveBearChecks = Math.min(consecutiveBearChecks + 1, 10);
+          } else {
+            consecutiveBearChecks = 0;
+          }
+          currentMacroRegime = { regime: regimeResult.regime, score: regimeResult.score };
+          const inBearMode = consecutiveBearChecks >= 3;
+          console.log(`🔭 Regime (local fallback): ${regimeResult.regime} (score: ${regimeResult.score}, F&G: ${lastFearGreedValue}, dom: ${btcDominanceTrend !== undefined ? btcDominanceTrend.toFixed(1) + 'pp' : 'n/a'}, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE' : ''}`);
+        }
       }
     }
 
