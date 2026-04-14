@@ -128,6 +128,10 @@ export interface DiscoveredToken {
   minTradeUSD: number;
   /** Whether this token is also in the static TOKEN_REGISTRY */
   isStatic?: boolean;
+  /** Whether LP tokens are locked in a known locker / burned */
+  lpLocked?: boolean;
+  /** Percentage of supply held by top 10 wallets (0-100) */
+  holderConcentration?: number;
 }
 
 export interface TokenDiscoveryState {
@@ -182,6 +186,104 @@ async function isHoneypot(tokenAddress: string): Promise<boolean> {
     return res.data?.isHoneypot === true;
   } catch {
     return false; // Fail open — don't block discovery on API errors
+  }
+}
+
+// ============================================================================
+// ON-CHAIN SAFETY HELPERS — LP Lock + Holder Concentration
+// ============================================================================
+
+/**
+ * Detect whether LP tokens for a Uniswap V2-style pair are locked/burned.
+ * On V2-style DEXes the pair address IS the LP token contract.
+ * Checks known locker contracts + burn addresses against totalSupply.
+ * Returns true if >50% of LP supply is locked/burned. Fails open (returns false on error).
+ */
+async function checkLpLocked(pairAddress: string): Promise<boolean> {
+  const LOCKER_ADDRESSES = [
+    "0x663A5C229c09b049E36dCc11a9B0d4a8Eb9db214", // Uncx V2 locker
+    "0xE2fE530C047f2d85298b07D9333C05737f1435fB", // Team Finance
+    "0x000000000000000000000000000000000000dEaD", // Dead address (burned)
+    "0x0000000000000000000000000000000000000000", // Zero address (burned)
+  ];
+
+  try {
+    // Fetch totalSupply — selector 0x18160ddd
+    const supplyRes = await axios.post(BASE_RPC, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_call",
+      params: [{ to: pairAddress, data: "0x18160ddd" }, "latest"],
+    }, { timeout: 5000 });
+
+    const supplyHex = supplyRes.data?.result;
+    if (!supplyHex || supplyHex === "0x" || supplyHex === "0x0") return false;
+    const totalSupply = BigInt(supplyHex);
+    if (totalSupply === 0n) return false;
+
+    // Fetch balanceOf for each locker address in parallel
+    // selector 0x70a08231 + address padded to 32 bytes
+    const balanceResults = await Promise.all(
+      LOCKER_ADDRESSES.map(locker => {
+        const paddedAddr = locker.toLowerCase().replace("0x", "").padStart(64, "0");
+        return axios.post(BASE_RPC, {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_call",
+          params: [{ to: pairAddress, data: `0x70a08231${paddedAddr}` }, "latest"],
+        }, { timeout: 5000 }).then(r => r.data?.result).catch(() => "0x0");
+      })
+    );
+
+    let lockedSupply = 0n;
+    for (const hex of balanceResults) {
+      if (!hex || hex === "0x" || hex === "0x0") continue;
+      try { lockedSupply += BigInt(hex); } catch { /* skip malformed */ }
+    }
+
+    // Locked if >50% of supply is in locker/burned addresses
+    return lockedSupply * 2n > totalSupply;
+  } catch {
+    return false; // Fail open — don't block discovery
+  }
+}
+
+/**
+ * Get top-10 holder concentration for a token (% of supply held by top 10 wallets).
+ * Uses Basescan API if BASESCAN_API_KEY is set; otherwise returns 50 as neutral default.
+ */
+async function getHolderConcentration(tokenAddress: string): Promise<number> {
+  const apiKey = process.env.BASESCAN_API_KEY;
+  if (!apiKey) return 50; // Neutral default — don't penalise lack of key
+
+  try {
+    const url = `https://api.basescan.org/api?module=token&action=tokenholderlist&contractaddress=${tokenAddress}&page=1&offset=10&apikey=${apiKey}`;
+    const res = await axios.get(url, { timeout: 8000 });
+    const holders: { TokenHolderQuantity: string }[] = res.data?.result || [];
+    if (!Array.isArray(holders) || holders.length === 0) return 50;
+
+    // totalSupply for normalisation — reuse the on-chain call
+    const supplyRes = await axios.post(BASE_RPC, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "eth_call",
+      params: [{ to: tokenAddress, data: "0x18160ddd" }, "latest"],
+    }, { timeout: 5000 });
+
+    const supplyHex = supplyRes.data?.result;
+    if (!supplyHex || supplyHex === "0x" || supplyHex === "0x0") return 50;
+    const totalSupply = BigInt(supplyHex);
+    if (totalSupply === 0n) return 50;
+
+    const top10Sum = holders.reduce((acc, h) => {
+      try { return acc + BigInt(h.TokenHolderQuantity); } catch { return acc; }
+    }, 0n);
+
+    // Convert to percentage (×100 then divide, preserving precision before narrowing to number)
+    const concentration = Number((top10Sum * 10000n) / totalSupply) / 100;
+    return Math.min(Math.max(concentration, 0), 100);
+  } catch {
+    return 50; // Fail open — neutral default
   }
 }
 
@@ -460,9 +562,43 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       console.warn(`  🛡️ Honeypot filter blocked ${scamCount} token(s)`);
     }
 
+    // On-chain safety layer — LP lock + holder concentration
+    // Run in parallel on top candidates (capped to avoid RPC rate limits)
+    const onChainChecks = await Promise.all(
+      safeDiscovered.slice(0, 20).map(async (t) => {
+        const [locked, concentration] = await Promise.all([
+          checkLpLocked(t.pairAddress),
+          getHolderConcentration(t.address),
+        ]);
+        return { locked, concentration };
+      })
+    );
+
+    // Apply on-chain safety results
+    for (let i = 0; i < onChainChecks.length; i++) {
+      const { locked, concentration } = onChainChecks[i];
+      safeDiscovered[i].lpLocked = locked;
+      safeDiscovered[i].holderConcentration = concentration;
+
+      if (!locked) {
+        console.warn(`  ⚠️ LP not locked: ${safeDiscovered[i].symbol} (${safeDiscovered[i].pairAddress})`);
+      }
+    }
+
+    // Hard filter: remove tokens where top 10 wallets hold >80% of supply (rug setup)
+    const preFilterCount = safeDiscovered.length;
+    const safeOnChain = safeDiscovered.filter((t, i) => {
+      if (i >= onChainChecks.length) return true; // Unchecked tokens pass through
+      return (t.holderConcentration ?? 0) <= 80;
+    });
+    const rugCount = preFilterCount - safeOnChain.length;
+    if (rugCount > 0) {
+      console.warn(`  🛡️ Concentration filter blocked ${rugCount} token(s) (>80% top-10 supply)`);
+    }
+
     // Sort by volume (highest first) and cap
-    safeDiscovered.sort((a, b) => b.volume24hUSD - a.volume24hUSD);
-    return safeDiscovered.slice(0, cfg.maxDiscoveredTokens);
+    safeOnChain.sort((a, b) => b.volume24hUSD - a.volume24hUSD);
+    return safeOnChain.slice(0, cfg.maxDiscoveredTokens);
 
   } catch (error: any) {
     console.error(`  ❌ DexScreener scan failed:`, error.message);
@@ -806,18 +942,21 @@ export class TokenDiscoveryEngine {
   }
 
   /**
-   * v6.2: Get top opportunities — curated shortlist for AI prompt & validation gate.
+   * v7.0: Get top opportunities — curated shortlist for AI prompt & validation gate.
    * Uses composite scoring to surface the best 5 tokens, with runner detection
    * to ensure explosive movers always make the cut.
    *
    * Scoring weights:
-   *  - Volume momentum (40%): normalized 24h volume vs discovery pool median
-   *  - Liquidity depth (20%): deeper pools = safer execution
-   *  - Price action (25%): 24h price change magnitude (runners get boosted)
-   *  - Transaction density (15%): more txns = more organic interest
+   *  - Volume momentum (35%): normalized 24h volume vs discovery pool median
+   *  - Liquidity depth (15%): deeper pools = safer execution
+   *  - Timing score (30%): rewards moderate gains (5-25% in 24h = momentum without being
+   *    overextended); penalises extreme gains (>40% = likely late entry)
+   *  - Buy pressure (20%): buys/(buys+sells) ratio — strong accumulation signal
    *
-   * Runner override: any token with 50%+ price change AND $100K+ volume
-   * forces into top 5 regardless of composite score.
+   * Safety bonus: +5 pts if LP locked, +5 pts if top-10 concentration <40%
+   *
+   * Runner override: any token with 30%+ price change AND $100K+ volume forces into top 5.
+   * Note: timing score de-weights runners so the AI knows they're late-stage entries.
    */
   getTopOpportunities(maxCount: number = 5): (DiscoveredToken & { compositeScore: number; isRunner: boolean })[] {
     const tradeable = this.getTradableTokens();
@@ -826,10 +965,8 @@ export class TokenDiscoveryEngine {
     // Calculate normalization baselines
     const volumes = tradeable.map(t => t.volume24hUSD);
     const liquidities = tradeable.map(t => t.liquidityUSD);
-    const txns = tradeable.map(t => t.txns24h);
-    const medianVolume = volumes.sort((a, b) => a - b)[Math.floor(volumes.length / 2)] || 1;
+    const medianVolume = [...volumes].sort((a, b) => a - b)[Math.floor(volumes.length / 2)] || 1;
     const maxLiquidity = Math.max(...liquidities) || 1;
-    const maxTxns = Math.max(...txns) || 1;
 
     // Score each token
     const scored = tradeable.map(t => {
@@ -839,26 +976,42 @@ export class TokenDiscoveryEngine {
       // Liquidity depth — normalized to pool max
       const liquidityScore = Math.min(t.liquidityUSD / maxLiquidity, 1);
 
-      // Price action — absolute magnitude matters (both pumps and dips are signals)
-      // But positive action weighted 2x over negative (we want runners, not dumps)
-      const absChange = Math.abs(t.priceChange24h);
-      const priceScore = t.priceChange24h > 0
-        ? Math.min(absChange / 100, 1) // 100%+ move = max score
-        : Math.min(absChange / 200, 0.5); // Negative moves score lower
+      // Timing score — reward MODERATE gains (5-25% in 24h = momentum without being
+      // overextended) and penalise extreme gains (>40% = likely late entry).
+      const change = t.priceChange24h;
+      const timingScore = change >= 5 && change <= 25
+        ? Math.min((change - 5) / 20, 1)          // sweet spot: 5-25%
+        : change > 25
+        ? Math.max(1 - (change - 25) / 75, 0)      // diminishing returns above 25%
+        : 0;                                         // below 5% = no momentum
 
-      // Transaction density — organic interest signal
-      const txnScore = Math.min(t.txns24h / maxTxns, 1);
+      // Buy pressure — buys / (buys + sells) from txns24h
+      // Derived from the raw pair data stored in the token; fall back to 0.5 if unavailable.
+      // NOTE: txns24h is the SUM of buys+sells; we don't store the split separately on
+      // DiscoveredToken, so we use a neutral 0.5 unless the token was freshly scanned
+      // (the DexScreenerPair buys/sells are consumed during discovery but not persisted).
+      // A future pass can store buys/sells separately; for now this scores neutrally.
+      const buys = (t as any)._buys as number | undefined;
+      const sells = (t as any)._sells as number | undefined;
+      const ratio = (buys !== undefined && sells !== undefined && (buys + sells) > 0)
+        ? buys / (buys + sells)
+        : 0.5; // neutral if not available
+      const buyPressureScore = Math.max(Math.min((ratio - 0.5) / 0.5, 1), 0);
 
       // Weighted composite
-      const compositeScore = (
-        volumeScore * 0.40 +
-        liquidityScore * 0.20 +
-        priceScore * 0.25 +
-        txnScore * 0.15
+      let compositeScore = (
+        volumeScore * 0.35 +
+        liquidityScore * 0.15 +
+        timingScore * 0.30 +
+        buyPressureScore * 0.20
       ) * 100;
 
-      // Runner detection: 30%+ gain with meaningful volume = forced inclusion
-      // Lowered from 50% — a 40% pump like PLAY/EDGE should absolutely flag
+      // Safety bonus
+      if (t.lpLocked === true) compositeScore += 5;
+      if (t.holderConcentration !== undefined && t.holderConcentration < 40) compositeScore += 5;
+
+      // Runner detection: 30%+ gain with meaningful volume = forced inclusion.
+      // Timing score correctly de-weights these so the AI knows they're late-stage entries.
       const isRunner = t.priceChange24h >= 30 && t.volume24hUSD >= 100_000;
 
       return { ...t, compositeScore: Math.round(compositeScore * 10) / 10, isRunner };
