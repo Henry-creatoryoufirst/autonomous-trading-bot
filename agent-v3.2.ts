@@ -580,7 +580,7 @@ const CONFIG = {
 
   // Trading Parameters
   trading: {
-    enabled: process.env.TRADING_ENABLED === "true",
+    enabled: process.env.TRADING_ENABLED !== "false",
     maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "250"), // v11.4.6: raised from $100 to $250 — deploy capital faster
     maxSellPercent: parseFloat(process.env.MAX_SELL_PERCENT || "50"),
     intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || String(DEFAULT_TRADING_INTERVAL_MINUTES)),
@@ -8534,7 +8534,7 @@ async function main() {
   // === v21.3: STARTUP STATUS ALERT — Never silently run in dry-run mode again ===
   // Send Telegram alert on every startup so we KNOW if trading is live or disabled.
   const startupBlockers: string[] = [];
-  if (!CONFIG.trading.enabled) startupBlockers.push("TRADING_ENABLED env var is not 'true'");
+  if (!CONFIG.trading.enabled) startupBlockers.push("Trading explicitly disabled (TRADING_ENABLED=false)");
   if (!cdpClient) startupBlockers.push("CDP client failed to initialize");
   const portfolioVal = state.trading.totalPortfolioValue || 0;
   if (portfolioVal > 0 && portfolioVal < CAPITAL_FLOOR_ABSOLUTE_USD) startupBlockers.push(`Portfolio $${portfolioVal.toFixed(2)} below $${CAPITAL_FLOOR_ABSOLUTE_USD} capital floor`);
