@@ -84,7 +84,7 @@ interface BasescanResponse {
 // CONSTANTS
 // ============================================================================
 
-const BASESCAN_API_BASE = 'https://api.basescan.org/api';
+const BASESCAN_API_BASE = 'https://api.etherscan.io/v2/api?chainid=8453';
 const BATCH_SIZE = 3;           // Basescan free tier: 5 req/sec, use 3 for headroom
 const BATCH_DELAY_MS = 250;     // 250 ms between batches
 const REQUEST_TIMEOUT_MS = 8000;
@@ -113,7 +113,7 @@ async function checkSingleWallet(
   apiKey: string,
 ): Promise<SmartWalletActivity | null> {
   try {
-    const url = `${BASESCAN_API_BASE}?module=account&action=tokentx` +
+    const url = `${BASESCAN_API_BASE}&module=account&action=tokentx` +
       `&address=${walletAddress}` +
       `&contractaddress=${tokenAddress}` +
       `&page=1&offset=20&sort=desc` +
