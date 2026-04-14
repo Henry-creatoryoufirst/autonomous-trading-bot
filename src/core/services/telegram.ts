@@ -295,6 +295,7 @@ export class TelegramAlertService {
     preservationMode?: boolean;
     uptime: string;
     version: string;
+    alphaBudgetPct?: number;
   }): Promise<void> {
     const pnlSign = data.hourlyPnL >= 0 ? "+" : "";
     const pnlEmoji = data.hourlyPnL >= 0 ? "\u{2705}" : "\u{1F534}"; // ✅ or 🔴
@@ -326,6 +327,7 @@ export class TelegramAlertService {
         topPositions || "  No active positions",
         "",
         `<b>Stats:</b> ${data.totalTrades} total trades | ${data.totalCycles} cycles | ${data.uptime} uptime`,
+        data.alphaBudgetPct !== undefined ? `<b>Alpha Budget:</b> ${data.alphaBudgetPct.toFixed(1)}% deployed (budget: 15%)` : "",
         statusFlags.length > 0 ? `\n<b>Flags:</b> ${statusFlags.join(" | ")}` : "",
         `<i>v${data.version}</i>`,
       ].filter(Boolean).join("\n"),

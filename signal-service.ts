@@ -46,6 +46,7 @@ import type {
   BotProfile,
   ServiceHealth,
 } from './src/signal/types.js';
+import { TokenDiscoveryEngine } from './src/core/services/token-discovery.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -76,6 +77,12 @@ const history: SignalHistoryEntry[] = [];
 const lastGasAlertMs = new Map<string, number>();
 let refreshCount = 0;
 let lastRefreshAt: string | null = null;
+
+// Alpha discovery engine — tracks token momentum for the /alpha endpoint
+const alphaDiscovery = new TokenDiscoveryEngine([
+  // Static symbols the fleet already holds — passed so discovery can track their momentum
+  'ETH', 'WETH', 'CBBTC', 'USDC', 'AERO', 'VIRTUAL', 'DEGEN', 'BRETT',
+]);
 
 // ============================================================================
 // PER-BOT CONFIG PROFILES
@@ -266,6 +273,104 @@ async function runRefreshCycle(): Promise<void> {
 }
 
 // ============================================================================
+// ALPHA PRE-FILTER — Haiku scores each discovery candidate
+// ============================================================================
+
+interface AlphaCandidate {
+  symbol: string;
+  address: string;
+  compositeScore: number;
+  isRunner: boolean;
+  priceChange24h: number;
+  volume24hUSD: number;
+  liquidityUSD: number;
+  txns24h: number;
+  lpLocked?: boolean;
+  holderConcentration?: number;
+  sector: string;
+  haiku?: {
+    accumulationScore: number;   // 0-10: pre-move setup quality
+    narrativeScore: number;      // 0-10: narrative/sector fit
+    riskScore: number;           // 0-10: lower = more risky
+    recommendation: 'WATCH' | 'ENTRY_ZONE' | 'AVOID';
+    reasoning: string;           // one sentence
+    entryCondition: string;      // what to wait for before entering
+  };
+}
+
+async function runHaikuPreFilter(candidates: any[]): Promise<AlphaCandidate[]> {
+  if (candidates.length === 0) return [];
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicKey) return candidates.map(c => ({ ...c }));
+
+  // Run Haiku on each candidate in parallel (they're independent)
+  const results = await Promise.all(candidates.map(async (candidate) => {
+    try {
+      const prompt = `You are a crypto alpha analyst scoring a Base chain token as a potential short-term trade setup.
+
+Token: ${candidate.symbol} (${candidate.sector})
+24h Price Change: ${candidate.priceChange24h.toFixed(1)}%
+24h Volume: $${(candidate.volume24hUSD / 1000).toFixed(0)}K
+Liquidity: $${(candidate.liquidityUSD / 1000).toFixed(0)}K
+Transactions 24h: ${candidate.txns24h}
+LP Locked: ${candidate.lpLocked ?? 'unknown'}
+Top-10 Holder Concentration: ${candidate.holderConcentration !== undefined ? candidate.holderConcentration.toFixed(0) + '%' : 'unknown'}
+Composite Discovery Score: ${candidate.compositeScore}/100
+
+Score this token on three dimensions (0-10 each):
+1. accumulationScore: Is this token in a pre-move accumulation phase (high = accumulating, low = already pumped or dead)
+2. narrativeScore: Does this fit a current market narrative or hot sector? (high = strong narrative, low = no story)
+3. riskScore: Safety/risk quality (high = safer, low = risky/suspicious)
+
+Then give:
+- recommendation: WATCH (interesting, wait for setup), ENTRY_ZONE (good setup right now), or AVOID (too risky or too late)
+- reasoning: one sentence explaining your call
+- entryCondition: what specific condition to wait for before entering (e.g. "pull back to $X support", "volume confirmation on second leg")
+
+Respond ONLY with valid JSON:
+{
+  "accumulationScore": <0-10>,
+  "narrativeScore": <0-10>,
+  "riskScore": <0-10>,
+  "recommendation": "<WATCH|ENTRY_ZONE|AVOID>",
+  "reasoning": "<one sentence>",
+  "entryCondition": "<specific condition>"
+}`;
+
+      const response = await axios.post(
+        'https://api.anthropic.com/v1/messages',
+        {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 256,
+          messages: [{ role: 'user', content: prompt }],
+        },
+        {
+          headers: {
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          timeout: 15000,
+        }
+      );
+
+      const text = response.data?.content?.[0]?.text || '';
+      // Extract JSON from response (handle markdown code blocks)
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return { ...candidate };
+
+      const haiku = JSON.parse(jsonMatch[0]);
+      return { ...candidate, haiku };
+    } catch {
+      return { ...candidate }; // Return without haiku scores on failure
+    }
+  }));
+
+  return results;
+}
+
+// ============================================================================
 // HTTP HELPERS
 // ============================================================================
 
@@ -441,6 +546,35 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /alpha — top alpha candidates with Haiku pre-filter scores
+  if (req.method === 'GET' && path === '/alpha') {
+    (async () => {
+      try {
+        const raw = alphaDiscovery.getTopOpportunities(10);
+        const candidates = await runHaikuPreFilter(raw);
+
+        // Sort: ENTRY_ZONE first, then WATCH, then others. Within each group, by composite score.
+        const ranked = [...candidates].sort((a, b) => {
+          const recOrder: Record<string, number> = { ENTRY_ZONE: 0, WATCH: 1, AVOID: 2 };
+          const aOrder = recOrder[a.haiku?.recommendation ?? 'WATCH'] ?? 1;
+          const bOrder = recOrder[b.haiku?.recommendation ?? 'WATCH'] ?? 1;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return b.compositeScore - a.compositeScore;
+        });
+
+        sendJSON(res, 200, {
+          candidates: ranked.slice(0, 5),
+          totalScanned: alphaDiscovery.getDiscoveredTokens().length,
+          lastScan: alphaDiscovery.getState().lastScanTime,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        sendJSON(res, 500, { error: err.message });
+      }
+    })();
+    return;
+  }
+
   send404(res);
 });
 
@@ -472,6 +606,7 @@ server.listen(PORT, () => {
   console.log('    GET /gas         — fleet ETH gas balances (checked every 30 min)');
   console.log('    GET /history     — 24h signal history');
   console.log('    GET /config/:id  — per-bot strategy profile');
+  console.log('    GET /alpha       — top alpha candidates with Haiku pre-filter scores');
   console.log('');
 });
 
@@ -483,6 +618,9 @@ runRefreshCycle().then(() => {
   console.error('[Signal] Initial refresh failed:', err);
   setInterval(runRefreshCycle, REFRESH_INTERVAL_MS);
 });
+
+// Start alpha discovery engine
+alphaDiscovery.start();
 
 // Gas monitor — first check after 5 min (let bots check in first), then every 30 min
 setTimeout(() => {

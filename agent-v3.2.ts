@@ -575,6 +575,12 @@ console.error = (...args: any[]) => {
 // CHAINLINK_FEEDS_BASE, CHAINLINK_ABI_FRAGMENT — imported from config/chainlink-feeds.ts
 // ============================================================================
 
+// Alpha Budget — capital reserved for short-duration discovery plays
+// Distinct from sector-weighted core holdings. Small size, fast exits.
+const ALPHA_BUDGET_PERCENT = 0.15;      // 15% of portfolio for alpha plays
+const ALPHA_MAX_SINGLE_POSITION = 0.05; // Max 5% per alpha position (1/3 of budget)
+const ALPHA_KELLY_MULTIPLIER = 0.5;     // Half-Kelly for alpha trades (more conservative)
+
 // CONFIGURATION V3.2
 // ============================================================================
 
@@ -877,6 +883,25 @@ let equityEnabled = false;
 
 // === v6.1: TOKEN DISCOVERY STATE ===
 let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
+
+/**
+ * Calculate total capital currently deployed in alpha (discovery) positions.
+ * Used to enforce the alpha budget ceiling.
+ */
+function getAlphaExposure(balances: any[], totalPortfolioValue: number): number {
+  // Alpha positions are non-static discovered tokens
+  const alphaSymbols = tokenDiscoveryEngine
+    ? tokenDiscoveryEngine.getDiscoveredTokens()
+        .filter((t: DiscoveredToken) => !t.isStatic)
+        .map((t: DiscoveredToken) => t.symbol.toUpperCase())
+    : [];
+
+  const alphaValue = balances
+    .filter((b: any) => alphaSymbols.includes(b.symbol?.toUpperCase()))
+    .reduce((sum: number, b: any) => sum + (b.usdValue || 0), 0);
+
+  return totalPortfolioValue > 0 ? alphaValue / totalPortfolioValue : 0;
+}
 
 // === v11.0: FAMILY PLATFORM STATE ===
 let familyWalletManager: WalletManager | null = null;
@@ -6820,6 +6845,26 @@ async function runTradingCycle() {
           decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
           console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
 
+          // Alpha Budget: cap discovered (non-static) tokens to ALPHA_MAX_SINGLE_POSITION
+          // and block entirely if the alpha budget is already full.
+          const isAlphaToken = tokenDiscoveryEngine
+            ? tokenDiscoveryEngine.getDiscoveredTokens()
+                .some((t: DiscoveredToken) => !t.isStatic && t.symbol.toUpperCase() === (decision.toToken || '').toUpperCase())
+            : false;
+          if (isAlphaToken) {
+            const currentAlphaExposure = getAlphaExposure(balances, state.trading.totalPortfolioValue);
+            const alphaCap = state.trading.totalPortfolioValue * ALPHA_MAX_SINGLE_POSITION;
+            if (currentAlphaExposure >= ALPHA_BUDGET_PERCENT) {
+              console.log(`   🚫 ALPHA BUDGET FULL: ${(currentAlphaExposure * 100).toFixed(1)}% deployed (budget: ${(ALPHA_BUDGET_PERCENT * 100).toFixed(0)}%) — skipping ${decision.toToken}`);
+              decision.action = "HOLD";
+              decision.reasoning = `Alpha budget full: ${(currentAlphaExposure * 100).toFixed(1)}% of portfolio in discovery tokens (max ${(ALPHA_BUDGET_PERCENT * 100).toFixed(0)}%).`;
+            } else {
+              // Apply half-Kelly multiplier and per-position cap for alpha trades
+              decision.amountUSD = Math.min(decision.amountUSD * ALPHA_KELLY_MULTIPLIER, alphaCap, remainingUSDC);
+              console.log(`   🔬 ALPHA SIZING: ${decision.toToken} capped at $${decision.amountUSD.toFixed(2)} (${(ALPHA_MAX_SINGLE_POSITION * 100).toFixed(0)}% max, half-Kelly, budget: ${(currentAlphaExposure * 100).toFixed(1)}%/${(ALPHA_BUDGET_PERCENT * 100).toFixed(0)}% used)`);
+            }
+          }
+
           // v20.0: Enhanced volatility-adjusted position sizing
           // Goal: each position contributes equal RISK to the portfolio.
           // Higher ATR → more volatile → smaller position (and vice versa).
@@ -8473,6 +8518,8 @@ async function main() {
             return { symbol: b.symbol, usdValue: b.usdValue, pnlPct };
           });
 
+        const alphaExposurePct = getAlphaExposure(balances, pv) * 100;
+
         await telegramService.sendHourlyReport({
           portfolioValue: pv,
           hourlyPnL,
@@ -8487,6 +8534,7 @@ async function main() {
           preservationMode: capitalPreservationMode.isActive,
           uptime: uptimeStr,
           version: BOT_VERSION,
+          alphaBudgetPct: alphaExposurePct,
         });
       } catch (err: any) {
         console.warn(`[Telegram Hourly] Error: ${err?.message?.substring(0, 200)}`);
