@@ -206,7 +206,10 @@ export function runReplay(
 
       if (idx < warmup) continue;
 
-      const histSlice = closePrices.slice(0, idx);
+      // Cap to last 100 candles — all indicators (RSI14, MACD26, BB20, SMA50, ADX14, ATR14)
+      // need at most 50 candles; 100 gives comfortable headroom and turns O(n²) → O(n).
+      const histStart = Math.max(0, idx - 100);
+      const histSlice = closePrices.slice(histStart, idx);
       const confluence = calculateSimConfluence(histSlice);
 
       const pos = positions.get(sym);
@@ -223,6 +226,7 @@ export function runReplay(
         }
 
         // 1. Hard stop loss — ATR-adaptive: widen in volatile markets
+        // histSlice is already capped at 100 candles.
         const atrData = calculateATR(histSlice);
         const atrPct = atrData?.atrPercent ?? 0;
         const adaptiveStopLoss = atrPct > 3
@@ -255,9 +259,9 @@ export function runReplay(
 
         // 3. Tiered profit-taking — partial sells at milestones
         const tier1Pct = strategy.profitTakePercent;
-        const tier2Pct = tier1Pct * 1.875;               // ~15%
-        const tier3Pct = tier1Pct * 3.125;               // ~25%
-        const tier4Pct = tier1Pct * 5;                   // ~40%
+        const tier2Pct = tier1Pct * 1.875;               // ~9.4% at base=5
+        const tier3Pct = tier1Pct * 3.125;               // ~15.6%
+        const tier4Pct = tier1Pct * 5;                   // ~25%
         const tiers = [
           { level: 1, threshold: tier1Pct, sellFrac: 0.30 },
           { level: 2, threshold: tier2Pct, sellFrac: 0.40 },
@@ -330,6 +334,7 @@ export function runReplay(
         const kellyPct = Math.max(0, (winRate - (1 - winRate) / avgWinLoss) * strategy.kellyFraction * 100);
         const sizePct = Math.min(kellyPct, strategy.maxPositionPercent - currentPosPct);
         let sizeUSD = (sizePct / 100) * portfolioValue;
+
         sizeUSD = Math.min(sizeUSD, cash);
         if (sizeUSD < strategy.minPositionUSD) continue;
 

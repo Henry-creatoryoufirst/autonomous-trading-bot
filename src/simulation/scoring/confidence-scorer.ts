@@ -92,37 +92,73 @@ export function calculateConfidence(
 
 /**
  * Score returns (0-25).
- * Based on total return vs buy-and-hold and absolute performance.
+ *
+ * Uses max(Sharpe score, beat-hold score) as the primary component (0-15 pts).
+ *
+ * Rationale: either metric alone is incomplete —
+ *   • A strategy with Sharpe 2.2 but missing a 100% bull-run deserves credit
+ *     for outstanding risk-adjusted performance (Sharpe path wins).
+ *   • A strategy with near-zero Sharpe that preserves capital in a -50% crash
+ *     deserves credit for massive alpha vs hold (beat-hold path wins).
+ * Taking the max rewards the strategy for whichever kind of excellence it shows.
  */
 function scoreReturns(
   metrics: PerformanceMetrics,
   config: ConfidenceScorerConfig,
   reasoning: string[]
 ): number {
-  let score = 0;
-
-  // Beat hold baseline?
-  const holdBeatPct = metrics.totalReturnPct - metrics.holdBaselinePct;
-  if (holdBeatPct >= config.holdBeatThresholdPct * 2) {
-    score += 15;
-    reasoning.push(`Strong returns: beat hold by ${holdBeatPct.toFixed(1)}%`);
-  } else if (holdBeatPct >= config.holdBeatThresholdPct) {
-    score += 10;
-    reasoning.push(`Good returns: beat hold by ${holdBeatPct.toFixed(1)}%`);
-  } else if (holdBeatPct >= 0) {
-    score += 5;
-    reasoning.push(`Marginal returns: beat hold by ${holdBeatPct.toFixed(1)}%`);
+  // 1. Sharpe-based sub-score (0-15)
+  let sharpeScore = 0;
+  if (metrics.sharpeRatio >= 2.0) {
+    sharpeScore = 15;
+    reasoning.push(`Excellent Sharpe: ${metrics.sharpeRatio.toFixed(2)}`);
+  } else if (metrics.sharpeRatio >= 1.0) {
+    sharpeScore = 11;
+    reasoning.push(`Strong Sharpe: ${metrics.sharpeRatio.toFixed(2)}`);
+  } else if (metrics.sharpeRatio >= config.minimumSharpe) {
+    sharpeScore = 7;
+    reasoning.push(`Good Sharpe: ${metrics.sharpeRatio.toFixed(2)}`);
+  } else if (metrics.sharpeRatio >= 0) {
+    sharpeScore = 4;
+    reasoning.push(`Positive Sharpe: ${metrics.sharpeRatio.toFixed(2)}`);
   } else {
-    reasoning.push(`Underperformed hold by ${Math.abs(holdBeatPct).toFixed(1)}%`);
+    reasoning.push(`Negative Sharpe: ${metrics.sharpeRatio.toFixed(2)}`);
   }
 
-  // Absolute return
-  if (metrics.totalReturnPct > 20) score += 10;
-  else if (metrics.totalReturnPct > 10) score += 7;
-  else if (metrics.totalReturnPct > 0) score += 4;
-  else if (metrics.totalReturnPct > -5) score += 1;
+  // 2. Beat-hold sub-score (0-15)
+  const holdBeatPct = metrics.totalReturnPct - metrics.holdBaselinePct;
+  let holdBeatScore = 0;
+  if (holdBeatPct >= config.holdBeatThresholdPct * 2) {
+    holdBeatScore = 15;
+    reasoning.push(`Beat hold by ${holdBeatPct.toFixed(1)}% (strong alpha)`);
+  } else if (holdBeatPct >= config.holdBeatThresholdPct) {
+    holdBeatScore = 10;
+    reasoning.push(`Beat hold by ${holdBeatPct.toFixed(1)}%`);
+  } else if (holdBeatPct >= 0) {
+    holdBeatScore = 5;
+    reasoning.push(`Marginally beat hold (${holdBeatPct.toFixed(1)}%)`);
+  } else {
+    reasoning.push(`Hold outperformed by ${Math.abs(holdBeatPct).toFixed(1)}%`);
+  }
 
-  return Math.min(25, score);
+  // Take the higher of Sharpe or beat-hold — reward the form of excellence achieved
+  const primaryScore = Math.max(sharpeScore, holdBeatScore);
+
+  // 3. Absolute return (0-10)
+  let absoluteScore = 0;
+  if (metrics.totalReturnPct > 20) {
+    absoluteScore = 10;
+    reasoning.push(`High absolute return: ${metrics.totalReturnPct.toFixed(1)}%`);
+  } else if (metrics.totalReturnPct > 10) {
+    absoluteScore = 7;
+  } else if (metrics.totalReturnPct > 0) {
+    absoluteScore = 4;
+    reasoning.push(`Positive return: ${metrics.totalReturnPct.toFixed(1)}%`);
+  } else if (metrics.totalReturnPct > -5) {
+    absoluteScore = 1;
+  }
+
+  return Math.min(25, primaryScore + absoluteScore);
 }
 
 /**
