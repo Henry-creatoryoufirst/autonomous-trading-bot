@@ -90,6 +90,15 @@ export const GROQ_MODEL_SMART = 'llama-3.3-70b-versatile';
 /** Timeout for Groq requests */
 export const GROQ_REQUEST_TIMEOUT_MS = 30_000;
 
+/** Cerebras API base URL (OpenAI-compatible, ~2000 tokens/s at <$1/1M) */
+export const CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1';
+
+/** Llama 3.3-70B via Cerebras — high quality, ultra-fast inference */
+export const CEREBRAS_MODEL = 'llama-3.3-70b';
+
+/** Timeout for Cerebras requests (fast inference — 15s is generous) */
+export const CEREBRAS_REQUEST_TIMEOUT_MS = 15_000;
+
 // ============================================================================
 // TRADING CYCLE TIMING
 // ============================================================================
