@@ -1,5 +1,5 @@
 /**
- * Token Discovery Service — v6.1
+ * Token Discovery Service — v7.0
  *
  * Dynamically discovers and ranks tradeable tokens on Base chain.
  * Uses DexScreener API (free, no auth) to find high-liquidity tokens.
@@ -166,6 +166,26 @@ function classifyRisk(liquidityUSD: number, ageHours: number, fdvUSD: number): D
 }
 
 // ============================================================================
+// HONEYPOT DETECTION
+// ============================================================================
+
+/**
+ * Check if a token is a honeypot (buy-but-can't-sell scam) via honeypot.is API.
+ * Fails open — if the API is unavailable, returns false so we don't block discovery.
+ */
+async function isHoneypot(tokenAddress: string): Promise<boolean> {
+  try {
+    const res = await axios.get(
+      `https://api.honeypot.is/v2/IsHoneypot?address=${tokenAddress}&chainID=${activeChain.chainId}`,
+      { timeout: 5000 }
+    );
+    return res.data?.isHoneypot === true;
+  } catch {
+    return false; // Fail open — don't block discovery on API errors
+  }
+}
+
+// ============================================================================
 // DEXSCREENER API — Primary Discovery Source
 // ============================================================================
 
@@ -268,42 +288,103 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       } catch { /* skip page failures */ }
     }
 
-    // SECONDARY: DexScreener boosted tokens (already existed)
-    console.log(`  📊 GeckoTerminal found ${basePairs.length} unique ${chainId} tokens`);
+    // SECONDARY: GeckoTerminal gainers — tokens sorted by 24h price change.
+    // This is organic alpha: real momentum, not paid promotion.
+    console.log(`  📊 GeckoTerminal trending: ${basePairs.length} unique ${chainId} tokens`);
 
-    // Also try the top boosted tokens endpoint
-    let boostedPairs: DexScreenerPair[] = [];
     try {
-      const boostedResponse = await axios.get(
-        "https://api.dexscreener.com/token-boosts/top/v1",
-        { timeout: 10000 }
-      );
-      if (Array.isArray(boostedResponse.data)) {
-        const baseBoosted = boostedResponse.data
-          .filter((t: any) => t.chainId === activeChain.dexScreenerChainId)
-          .map((t: any) => t.tokenAddress);
-        // Fetch pair data for boosted tokens
-        for (const addr of baseBoosted.slice(0, 10)) {
-          try {
-            const pairRes = await axios.get(
-              `${cfg.baseDexScreenerUrl}/tokens/${addr}`,
-              { timeout: 10000 }
-            );
-            const tokenPairs = (pairRes.data?.pairs || []).filter((p: DexScreenerPair) => p.chainId === activeChain.dexScreenerChainId);
-            boostedPairs.push(...tokenPairs);
-          } catch { /* skip */ }
-        }
-      }
-    } catch { /* boosted endpoint optional */ }
+      const gainersUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_price_change_percentage_desc&page=1`;
+      const gainersRes = await axios.get(gainersUrl, { timeout: 10000 });
+      const gainerPools = gainersRes.data?.data || [];
+      let gainerCount = 0;
 
-    // Merge boosted pairs into the main deduplicated pool
-    for (const bp of boostedPairs) {
-      const addr = bp.baseToken.address.toLowerCase();
-      if (!seenAddresses.has(addr)) {
-        seenAddresses.add(addr);
-        basePairs.push(bp);
+      for (const pool of gainerPools) {
+        const attrs = pool.attributes || {};
+        const name = attrs.name || '';
+        const parts = name.split(' / ');
+        const symbol = parts[0]?.trim() || '';
+        const rawId = pool.relationships?.base_token?.data?.id || '';
+        const address = rawId.includes('_') ? rawId.split('_').slice(1).join('_') : rawId;
+
+        if (!address || !symbol || !address.startsWith('0x')) continue;
+        if (seenAddresses.has(address.toLowerCase())) continue;
+        seenAddresses.add(address.toLowerCase());
+
+        const volObj = attrs.volume_usd || {};
+        const vol24h = parseFloat(volObj.h24 || volObj.h6 || '0');
+        const liq = parseFloat(attrs.reserve_in_usd || '0');
+        const txObj = attrs.transactions?.h24 || {};
+
+        basePairs.push({
+          chainId,
+          dexId: attrs.dex_id || 'unknown',
+          url: '',
+          pairAddress: attrs.address || '',
+          baseToken: { address, name: symbol, symbol },
+          quoteToken: { address: '', name: '', symbol: '' },
+          priceNative: '0',
+          priceUsd: attrs.base_token_price_usd || '0',
+          txns: { h24: { buys: txObj.buys || 0, sells: txObj.sells || 0 } },
+          volume: { h24: vol24h },
+          priceChange: { h24: parseFloat(attrs.price_change_percentage?.h24 || attrs.price_change_percentage?.h6 || '0') },
+          liquidity: { usd: liq },
+          fdv: parseFloat(String(attrs.fdv_usd ?? '0')) || 0,
+          pairCreatedAt: attrs.pool_created_at ? new Date(attrs.pool_created_at).getTime() : 0,
+        });
+        gainerCount++;
       }
-    }
+      console.log(`  📈 GeckoTerminal gainers: +${gainerCount} new tokens`);
+    } catch { /* gainers endpoint optional */ }
+
+    // TERTIARY: GeckoTerminal new pools — catch funded fresh launches before they trend.
+    // Higher liquidity bar so we only surface launches with real capital behind them.
+    try {
+      const newPoolsUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/new_pools?page=1`;
+      const newPoolsRes = await axios.get(newPoolsUrl, { timeout: 10000 });
+      const freshPools = newPoolsRes.data?.data || [];
+      let newPoolCount = 0;
+
+      for (const pool of freshPools) {
+        const attrs = pool.attributes || {};
+        const liq = parseFloat(attrs.reserve_in_usd || '0');
+        if (liq < cfg.minLiquidityUSD * 2) continue; // 2x bar: new pools must prove capital
+
+        const name = attrs.name || '';
+        const parts = name.split(' / ');
+        const symbol = parts[0]?.trim() || '';
+        const rawId = pool.relationships?.base_token?.data?.id || '';
+        const address = rawId.includes('_') ? rawId.split('_').slice(1).join('_') : rawId;
+
+        if (!address || !symbol || !address.startsWith('0x')) continue;
+        if (seenAddresses.has(address.toLowerCase())) continue;
+        seenAddresses.add(address.toLowerCase());
+
+        const volObj = attrs.volume_usd || {};
+        const vol24h = parseFloat(volObj.h24 || volObj.h6 || '0');
+        const txObj = attrs.transactions?.h24 || {};
+
+        basePairs.push({
+          chainId,
+          dexId: attrs.dex_id || 'unknown',
+          url: '',
+          pairAddress: attrs.address || '',
+          baseToken: { address, name: symbol, symbol },
+          quoteToken: { address: '', name: '', symbol: '' },
+          priceNative: '0',
+          priceUsd: attrs.base_token_price_usd || '0',
+          txns: { h24: { buys: txObj.buys || 0, sells: txObj.sells || 0 } },
+          volume: { h24: vol24h },
+          priceChange: { h24: parseFloat(attrs.price_change_percentage?.h24 || attrs.price_change_percentage?.h6 || '0') },
+          liquidity: { usd: liq },
+          fdv: parseFloat(String(attrs.fdv_usd ?? '0')) || 0,
+          pairCreatedAt: attrs.pool_created_at ? new Date(attrs.pool_created_at).getTime() : 0,
+        });
+        newPoolCount++;
+      }
+      if (newPoolCount > 0) {
+        console.log(`  🆕 GeckoTerminal new pools: +${newPoolCount} fresh tokens`);
+      }
+    } catch { /* new pools endpoint optional */ }
 
     for (const pair of basePairs) {
       const token = pair.baseToken;
@@ -366,9 +447,22 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       discovered[i].decimals = decimalResults[i] ?? 18;
     }
 
+    // Honeypot filter — parallel batch check against honeypot.is API.
+    // Cap at 30 concurrent checks to stay within free-tier rate limits.
+    // Fails open: if honeypot.is is down, we don't block discovery.
+    const toCheck = discovered.slice(0, 30);
+    const honeypotFlags = await Promise.all(
+      toCheck.map(t => isHoneypot(t.address))
+    );
+    const safeDiscovered = discovered.filter((_, i) => !honeypotFlags[i]);
+    const scamCount = discovered.length - safeDiscovered.length;
+    if (scamCount > 0) {
+      console.warn(`  🛡️ Honeypot filter blocked ${scamCount} token(s)`);
+    }
+
     // Sort by volume (highest first) and cap
-    discovered.sort((a, b) => b.volume24hUSD - a.volume24hUSD);
-    return discovered.slice(0, cfg.maxDiscoveredTokens);
+    safeDiscovered.sort((a, b) => b.volume24hUSD - a.volume24hUSD);
+    return safeDiscovered.slice(0, cfg.maxDiscoveredTokens);
 
   } catch (error: any) {
     console.error(`  ❌ DexScreener scan failed:`, error.message);
@@ -387,84 +481,69 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
   const chainId = activeChain.dexScreenerChainId;
 
   try {
-    console.log(`  ⚡ Momentum scan: checking gainers & boosted tokens...`);
+    console.log(`  ⚡ Momentum scan: GeckoTerminal gainers (organic price momentum)...`);
 
-    // 1. Fetch boosted tokens (DexScreener promoted — high visibility)
-    const endpoints = [
-      { url: "https://api.dexscreener.com/token-boosts/top/v1", label: "boosted" },
-    ];
+    // Single call to GeckoTerminal price-change-sorted pools.
+    // Replaces the old 2-step pattern (boosted addresses → individual DexScreener lookups)
+    // which surfaced paid promotions rather than real momentum.
+    const geckoNetwork = activeChain.geckoTerminalNetwork;
+    const gainersRes = await axios.get(
+      `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_price_change_percentage_desc&page=1`,
+      { timeout: 10000 }
+    );
+    const gainerPools = gainersRes.data?.data || [];
 
-    const tokenAddresses: string[] = [];
+    for (const pool of gainerPools) {
+      const attrs = pool.attributes || {};
+      const name = attrs.name || '';
+      const parts = name.split(' / ');
+      const symbol = parts[0]?.trim() || '';
+      const rawId = pool.relationships?.base_token?.data?.id || '';
+      const address = rawId.includes('_') ? rawId.split('_').slice(1).join('_') : rawId;
 
-    for (const ep of endpoints) {
-      try {
-        const res = await axios.get(ep.url, { timeout: 10000 });
-        if (Array.isArray(res.data)) {
-          const chainTokens = res.data
-            .filter((t: any) => t.chainId === chainId)
-            .map((t: any) => t.tokenAddress)
-            .filter(Boolean);
-          tokenAddresses.push(...chainTokens);
-        }
-      } catch { /* endpoint optional */ }
+      if (!address || !symbol || !address.startsWith('0x')) continue;
+
+      const liquidity = parseFloat(attrs.reserve_in_usd || '0');
+      const volObj = attrs.volume_usd || {};
+      const vol24h = parseFloat(volObj.h24 || volObj.h6 || '0');
+      const fdv = parseFloat(String(attrs.fdv_usd ?? '0')) || 0;
+      const txObj = attrs.transactions?.h24 || {};
+      const txns = (txObj.buys || 0) + (txObj.sells || 0);
+      const priceChange = parseFloat(attrs.price_change_percentage?.h24 || attrs.price_change_percentage?.h6 || '0');
+      const pairAge = attrs.pool_created_at
+        ? (Date.now() - new Date(attrs.pool_created_at).getTime()) / (1000 * 60 * 60)
+        : 0;
+
+      // Safety filters — more lenient than full scan (momentum plays, not long-term holds)
+      if (cfg.excludeSymbols.has(symbol.toUpperCase())) continue;
+      if (liquidity < 25_000) continue;   // Min $25K liquidity
+      if (vol24h < 50_000) continue;       // Min $50K volume for momentum
+      if (pairAge < 24) continue;          // At least 24h old
+      if (txns < 50) continue;             // Organic activity required
+
+      discovered.push({
+        address,
+        symbol: symbol.toUpperCase(),
+        name: symbol,
+        decimals: 18,
+        coingeckoId: '',
+        sector: classifySector(symbol, symbol),
+        riskLevel: classifyRisk(liquidity, pairAge, fdv),
+        liquidityUSD: liquidity,
+        volume24hUSD: vol24h,
+        priceUSD: parseFloat(attrs.base_token_price_usd || '0'),
+        fdvUSD: fdv,
+        priceChange24h: priceChange,
+        txns24h: txns,
+        discoveredAt: new Date().toISOString(),
+        pairCreatedAt: attrs.pool_created_at || '',
+        dexName: attrs.dex_id || 'unknown',
+        pairAddress: attrs.address || '',
+        minTradeUSD: liquidity > 200_000 ? 5 : 3,
+      });
     }
 
-    // 2. Deduplicate and fetch pair data
-    const uniqueAddresses = [...new Set(tokenAddresses)].slice(0, 30);
-
-    for (const addr of uniqueAddresses) {
-      try {
-        const pairRes = await axios.get(
-          `${cfg.baseDexScreenerUrl}/tokens/${addr}`,
-          { timeout: 8000 }
-        );
-        const pairs = (pairRes.data?.pairs || [])
-          .filter((p: DexScreenerPair) => p.chainId === chainId)
-          .sort((a: DexScreenerPair, b: DexScreenerPair) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
-
-        const bestPair = pairs[0];
-        if (!bestPair) continue;
-
-        const token = bestPair.baseToken;
-        const address = token.address.toLowerCase();
-        const liquidity = bestPair.liquidity?.usd || 0;
-        const volume = bestPair.volume?.h24 || 0;
-        const fdv = bestPair.fdv || 0;
-        const txns = (bestPair.txns?.h24?.buys || 0) + (bestPair.txns?.h24?.sells || 0);
-        const priceChange = bestPair.priceChange?.h24 || 0;
-        const pairAge = bestPair.pairCreatedAt ? (Date.now() - bestPair.pairCreatedAt) / (1000 * 60 * 60) : 0;
-
-        // Safety filters (more lenient than full scan for momentum plays)
-        if (cfg.excludeSymbols.has(token.symbol.toUpperCase())) continue;
-        if (liquidity < 25_000) continue;   // Min $25K liquidity
-        if (volume < 50_000) continue;       // Min $50K volume for momentum
-        if (pairAge < 24) continue;          // At least 24h old
-        if (txns < 50) continue;             // Some organic activity
-
-        discovered.push({
-          address: token.address,
-          symbol: token.symbol.toUpperCase(),
-          name: token.name,
-          decimals: 18,
-          coingeckoId: "",
-          sector: classifySector(token.symbol, token.name),
-          riskLevel: classifyRisk(liquidity, pairAge, fdv),
-          liquidityUSD: liquidity,
-          volume24hUSD: volume,
-          priceUSD: parseFloat(bestPair.priceUsd || "0"),
-          fdvUSD: fdv,
-          priceChange24h: priceChange,
-          txns24h: txns,
-          discoveredAt: new Date().toISOString(),
-          pairCreatedAt: bestPair.pairCreatedAt ? new Date(bestPair.pairCreatedAt).toISOString() : "",
-          dexName: bestPair.dexId || "unknown",
-          pairAddress: bestPair.pairAddress,
-          minTradeUSD: liquidity > 200_000 ? 5 : 3,
-        });
-      } catch { /* skip individual token failures */ }
-    }
-
-    console.log(`  ⚡ Momentum scan found ${discovered.length} candidates`);
+    console.log(`  ⚡ Momentum scan found ${discovered.length} gainers`);
     return discovered;
 
   } catch (error: any) {
