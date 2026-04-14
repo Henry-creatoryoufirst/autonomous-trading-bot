@@ -46,12 +46,18 @@ export const REGIME_OVERLAYS: Record<SimRegime, RegimeOverlay> = {
     kellyFraction: 0.25,
   },
   VOLATILE: {
-    confluenceBuyThreshold: 25,
-    stopLossPercent: 9,
-    profitTakePercent: 6,
-    trailingStopPercent: 13,
-    maxPositionPercent: 4,
-    kellyFraction: 0.2,
+    // Survival mode — extreme selectivity, tiny size, wide stops.
+    // ATR spikes in volatile markets easily exceed 10%, so 9% stops
+    // are noise. Raise threshold to 32 so we only enter on the
+    // strongest multi-indicator confluence. 2% max position means
+    // even a bad entry barely dents capital. Wide stops (14%) + wide
+    // trail (18%) let winners run through the noise before cutting.
+    confluenceBuyThreshold: 32,
+    stopLossPercent: 14,
+    profitTakePercent: 5,
+    trailingStopPercent: 18,
+    maxPositionPercent: 2,
+    kellyFraction: 0.1,
   },
   BREAKOUT: {
     confluenceBuyThreshold: 15,
