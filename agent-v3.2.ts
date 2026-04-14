@@ -581,6 +581,10 @@ const ALPHA_BUDGET_PERCENT = 0.15;      // 15% of portfolio for alpha plays
 const ALPHA_MAX_SINGLE_POSITION = 0.05; // Max 5% per alpha position (1/3 of budget)
 const ALPHA_KELLY_MULTIPLIER = 0.5;     // Half-Kelly for alpha trades (more conservative)
 
+// Capital Liberation — sell weakest positions to fund high-conviction entries
+const MIN_USDC_RESERVE_FOR_LIBERATION = 50;  // Below this, liberation triggers
+const MAX_LIBERATION_SELLS = 3;              // Never sell more than 3 positions per event
+
 // CONFIGURATION V3.2
 // ============================================================================
 
@@ -883,6 +887,108 @@ let equityEnabled = false;
 
 // === v6.1: TOKEN DISCOVERY STATE ===
 let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
+
+/**
+ * Capital Liberation — sell weakest positions to fund a high-conviction trade.
+ *
+ * Called when USDC is too low to fund a strong signal. Ranks all held positions
+ * by a "dead weight" score and queues sells for the weakest ones.
+ *
+ * Returns an array of TradeDecision objects (SELL actions) to execute before the buy.
+ * Callers must execute these sells and wait for them before the buy.
+ *
+ * @param balances         Current portfolio balances
+ * @param state            Agent state (for costBasis, ICU status)
+ * @param targetAmountUSD  How much USDC we want to free up
+ * @param excludeSymbols   Symbols to never touch (the token we want to buy + any with active buy signal this cycle)
+ */
+function liberateCapital(
+  balances: any[],
+  state: any,
+  targetAmountUSD: number,
+  excludeSymbols: string[],
+): TradeDecision[] {
+  const now = Date.now();
+  const excludeSet = new Set(excludeSymbols.map(s => s.toUpperCase()));
+
+  // Hard exclusions that never participate in liberation
+  const NEVER_LIBERATE = new Set(['USDC', 'ETH', 'WETH']);
+
+  // Score each candidate position by dead-weight — higher = more expendable
+  const candidates: Array<{
+    symbol: string;
+    usdValue: number;
+    score: number;
+  }> = [];
+
+  for (const b of balances) {
+    const symbol = (b.symbol || '').toUpperCase();
+
+    // Hard exclusions
+    if (NEVER_LIBERATE.has(symbol)) continue;
+    if (excludeSet.has(symbol)) continue;
+
+    // Skip ICU positions (actively monitored, hands-off)
+    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
+
+    // Skip dust — dust cleanup handles those separately
+    if (!b.usdValue || b.usdValue < 5) continue;
+
+    const cb = state.costBasis[b.symbol];
+
+    // Need cost basis data to score meaningfully
+    if (!cb) continue;
+
+    // Age guard: skip positions younger than 4 hours — they may still be finding footing
+    const firstBuyDate = cb.firstBuyDate ? new Date(cb.firstBuyDate).getTime() : now;
+    const ageHours = (now - firstBuyDate) / (1000 * 60 * 60);
+    if (ageHours < 4) continue;
+
+    // --- Dead weight scoring ---
+
+    // Age penalty: 40 pts max for positions held 7+ days without graduating
+    const agePenalty = Math.min(ageHours / 168, 1.0) * 40;
+
+    // P&L penalty: up to 50 pts for losing positions (-20% → 10 pts, -100% → 50 pts)
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    const unrealizedPnlPct = cb.averageCostBasis > 0
+      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
+      : 0;
+    const pnlPenalty = Math.max(0, -unrealizedPnlPct) * 0.5;
+
+    // Size penalty: up to 10 pts for small positions (under $100 → partial, $0 → 10 pts)
+    const sizePenalty = Math.max(0, 1 - (b.usdValue / 100)) * 10;
+
+    const score = agePenalty + pnlPenalty + sizePenalty;
+
+    candidates.push({ symbol: b.symbol, usdValue: b.usdValue, score });
+  }
+
+  // Sort highest dead-weight first
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Take positions until we cover targetAmountUSD, cap at MAX_LIBERATION_SELLS
+  const selected: typeof candidates = [];
+  let coveredUSD = 0;
+
+  for (const candidate of candidates) {
+    if (selected.length >= MAX_LIBERATION_SELLS) break;
+    if (coveredUSD >= targetAmountUSD) break;
+    selected.push(candidate);
+    coveredUSD += candidate.usdValue;
+  }
+
+  // Build SELL decisions — 90% of position to avoid rounding/dust errors
+  return selected.map(pos => ({
+    action: 'SELL' as const,
+    fromToken: pos.symbol,
+    toToken: 'USDC',
+    amountUSD: pos.usdValue * 0.9,
+    percent: 90,
+    reasoning: `Capital liberation: freeing $${pos.usdValue.toFixed(0)} to fund high-conviction entry`,
+    sector: TOKEN_REGISTRY[pos.symbol]?.sector,
+  }));
+}
 
 /**
  * Calculate total capital currently deployed in alpha (discovery) positions.
@@ -6741,6 +6847,59 @@ async function runTradingCycle() {
     let anyTradeExecuted = false;
     let crashBuyEntriesThisCycle = 0; // v11.2: Track crash-buy entries to enforce max cap
 
+    // === Capital Liberation — free dead-weight positions to fund high-conviction entries ===
+    // Triggers when USDC is critically low AND a strong signal exists this cycle.
+    if (remainingUSDC < MIN_USDC_RESERVE_FOR_LIBERATION) {
+      const discoveredTokenSymbols = tokenDiscoveryEngine
+        ? tokenDiscoveryEngine.getDiscoveredTokens().map((t: DiscoveredToken) => t.symbol.toUpperCase())
+        : [];
+
+      const hasHighConvictionBuy = decisions.some(d => {
+        if (d.action !== 'BUY') return false;
+        // STRONG_BUY signals from the central signal service (confluence >= 40)
+        if (d.reasoning?.includes('STRONG_BUY')) return true;
+        // Discovered alpha tokens — the discovery engine already vets these
+        if (d.toToken && discoveredTokenSymbols.includes(d.toToken.toUpperCase())) return true;
+        return false;
+      });
+
+      if (hasHighConvictionBuy) {
+        const buyTargets = decisions
+          .filter(d => d.action === 'BUY' && d.toToken)
+          .map(d => d.toToken);
+        const excludeFromLib = [...buyTargets];
+
+        const liberationSells = liberateCapital(balances, state, 80, excludeFromLib);
+
+        if (liberationSells.length > 0) {
+          const targetSymbol = buyTargets[0] || 'high-conviction entry';
+          console.log(`\n💸 [CAPITAL LIBERATION] Freeing capital from ${liberationSells.length} weak positions to fund ${targetSymbol}`);
+
+          const soldLines: string[] = [];
+          for (const sellDecision of liberationSells) {
+            console.log(`   💸 Liberating ${sellDecision.fromToken}: $${sellDecision.amountUSD.toFixed(2)} → USDC`);
+            const libResult = await executeTrade(sellDecision, marketData);
+            if (libResult.success) {
+              soldLines.push(`• ${sellDecision.fromToken}: $${sellDecision.amountUSD.toFixed(2)} freed`);
+              clearTradeFailures(sellDecision.fromToken);
+              remainingUSDC += sellDecision.amountUSD;
+              console.log(`   ✅ Liberated ${sellDecision.fromToken} — +$${sellDecision.amountUSD.toFixed(2)} USDC`);
+            } else {
+              console.log(`   ❌ Liberation failed for ${sellDecision.fromToken}: ${libResult.error}`);
+            }
+          }
+
+          if (soldLines.length > 0) {
+            telegramService.sendAlert({
+              severity: 'INFO',
+              title: `[Capital Liberation]`,
+              message: `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${targetSymbol}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`,
+            }).catch(() => {});
+          }
+        }
+      }
+    }
+
     for (let di = 0; di < decisions.length; di++) {
       const decision = decisions[di];
       const dedupTier = decision.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
@@ -8392,8 +8551,8 @@ async function main() {
     console.log(`\n✅ STARTUP: Trading is LIVE — no blockers detected`);
     await telegramService.sendAlert({
       severity: "INFO",
-      title: "Bot Started — Trading LIVE 🟢",
-      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min`,
+      title: "Bot Started v21.9 — Trading LIVE 🟢",
+      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min\n\nv21.9: Capital liberation + smart wallet exit detection`,
     });
   }
 

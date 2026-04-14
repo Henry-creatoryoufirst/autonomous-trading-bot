@@ -60,6 +60,15 @@ export interface SmartWalletActivity {
   lastBuyTimestamp: number;     // most recent buy (ms)
 }
 
+export interface WalletExitActivity {
+  walletId: string;
+  walletAddress: string;
+  tokenAddress: string;
+  sellCount: number;            // number of outgoing transfers in window
+  firstSellTimestamp: number;
+  lastSellTimestamp: number;
+}
+
 export interface SmartWalletSignal {
   tokenAddress: string;
   activeWallets: SmartWalletActivity[];
@@ -68,6 +77,9 @@ export interface SmartWalletSignal {
   // STRONG = 3+ wallets, MODERATE = 2 wallets, WEAK = 1 wallet, NONE = 0
   totalVolumeUSD: number;
   earliestActivityMs: number;   // when did the first smart wallet enter
+  exitingWallets: WalletExitActivity[];   // wallets sending tokens OUT (selling signal)
+  exitSignalStrength: 'STRONG' | 'MODERATE' | 'WEAK' | 'NONE';
+  // STRONG = 3+ wallets exiting, MODERATE = 2, WEAK = 1, NONE = 0
 }
 
 // ============================================================================
@@ -236,6 +248,72 @@ async function checkSingleWallet(
   }
 }
 
+/**
+ * Check a single wallet for token SELL (exit) activity within the lookback window.
+ * Mirrors checkSingleWallet() but flips the topic filter:
+ *   topics[1] = paddedWallet (from: this wallet = outgoing)
+ *   topics[2] = null         (to: any)
+ * Returns null on any failure — callers filter nulls.
+ */
+async function checkSingleWalletExit(
+  walletId: string,
+  walletAddress: string,
+  tokenAddress: string,
+  lookbackHours: number,
+): Promise<WalletExitActivity | null> {
+  try {
+    // Get current block
+    const blockNumRes = await axios.post(BASE_RPC_URL, {
+      jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: []
+    }, { timeout: 8000 });
+    const currentBlock = parseInt(blockNumRes.data.result, 16);
+
+    const blocksBack = Math.floor(lookbackHours * 1800); // ~2s/block → 1800 blocks/hour
+    const fromBlock = currentBlock - blocksBack;
+
+    // Query Transfer events FROM this wallet for this token
+    // topic[1] = from (wallet address padded), topic[2] = to (null = any)
+    const paddedWallet = '0x' + walletAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+
+    const logsRes = await axios.post(BASE_RPC_URL, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_getLogs',
+      params: [{
+        fromBlock: `0x${fromBlock.toString(16)}`,
+        toBlock: `0x${currentBlock.toString(16)}`,
+        address: tokenAddress,
+        topics: [
+          '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+          paddedWallet, // from: this wallet
+          null,         // to: any
+        ],
+      }],
+    }, { timeout: 12000 });
+
+    const logs = logsRes.data?.result || [];
+    if (logs.length === 0) return null;
+
+    // Parse timestamps from block numbers
+    const timestamps = logs.map((log: any) => {
+      const blockNum = parseInt(log.blockNumber, 16);
+      return Date.now() - (currentBlock - blockNum) * 2000;
+    });
+
+    return {
+      walletId,
+      walletAddress,
+      tokenAddress: tokenAddress.toLowerCase(),
+      sellCount: logs.length,
+      firstSellTimestamp: Math.min(...timestamps),
+      lastSellTimestamp: Math.max(...timestamps),
+    };
+  } catch {
+    // Swallow per-wallet errors — fail open
+    return null;
+  }
+}
+
 // ============================================================================
 // PRIMARY EXPORT
 // ============================================================================
@@ -264,22 +342,33 @@ export async function checkSmartWalletActivity(
     signalStrength: 'NONE',
     totalVolumeUSD: 0,
     earliestActivityMs: 0,
+    exitingWallets: [],
+    exitSignalStrength: 'NONE',
   };
 
   const walletEntries = Object.entries(SMART_WALLETS);
   const results: SmartWalletActivity[] = [];
+  const exitResults: WalletExitActivity[] = [];
 
-  // Batch wallet checks in groups to avoid overwhelming the public RPC
+  // Batch wallet checks in groups to avoid overwhelming the public RPC.
+  // Buy and exit checks run concurrently per wallet — total time stays ~= current,
+  // not 2x, because both directions are fetched in parallel inside each batch.
   for (let i = 0; i < walletEntries.length; i += BATCH_SIZE) {
     const batch = walletEntries.slice(i, i + BATCH_SIZE);
 
-    const batchResults = await Promise.all(
+    const batchPairs = await Promise.all(
       batch.map(([id, addr]) =>
-        checkSingleWallet(id, addr, tokenAddress, tokenPriceUSD, lookbackHours),
+        Promise.all([
+          checkSingleWallet(id, addr, tokenAddress, tokenPriceUSD, lookbackHours),
+          checkSingleWalletExit(id, addr, tokenAddress, lookbackHours),
+        ]),
       ),
     );
 
-    results.push(...(batchResults.filter((r) => r !== null) as SmartWalletActivity[]));
+    for (const [buyResult, exitResult] of batchPairs) {
+      if (buyResult !== null) results.push(buyResult);
+      if (exitResult !== null) exitResults.push(exitResult);
+    }
 
     // Delay between batches (skip after final batch)
     if (i + BATCH_SIZE < walletEntries.length) {
@@ -287,10 +376,8 @@ export async function checkSmartWalletActivity(
     }
   }
 
-  // If every single wallet check failed, warn once and return NONE
-  if (results.length === 0 && walletEntries.length > 0) {
-    // Only warn when we had an API key but got zero results from all wallets
-    // (normal to get zero when a token has no smart wallet activity)
+  // If every single wallet check failed, return NONE
+  if (results.length === 0 && exitResults.length === 0 && walletEntries.length > 0) {
     return NONE_SIGNAL;
   }
 
@@ -307,6 +394,8 @@ export async function checkSmartWalletActivity(
     signalStrength: mapSignalStrength(results.length, activeWalletIds),
     totalVolumeUSD,
     earliestActivityMs,
+    exitingWallets: exitResults,
+    exitSignalStrength: mapSignalStrength(exitResults.length),
   };
 }
 

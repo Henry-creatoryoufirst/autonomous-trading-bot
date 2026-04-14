@@ -48,7 +48,7 @@ import type {
 } from './src/signal/types.js';
 import { TokenDiscoveryEngine } from './src/core/services/token-discovery.js';
 import { outcomeTracker } from './src/core/services/outcome-tracker.js';
-import { updateWalletWeight } from './src/core/services/smart-wallet-tracker.js';
+import { updateWalletWeight, checkSmartWalletActivity } from './src/core/services/smart-wallet-tracker.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -564,15 +564,45 @@ const server = http.createServer((req, res) => {
           return b.compositeScore - a.compositeScore;
         });
 
-        // Record each ranked candidate for outcome tracking
-        for (const candidate of ranked) {
+        // Smart wallet checks — run in parallel for top 5 candidates.
+        // Each check queries eth_getLogs for both buy (incoming) and exit (outgoing)
+        // transfers from our 20 tracked wallets. Fail-open: null on any RPC error.
+        const top5 = ranked.slice(0, 5);
+        const walletSignals = await Promise.all(
+          top5.map(c =>
+            checkSmartWalletActivity(c.address, c.priceUSD ?? 0, 24).catch(() => null)
+          )
+        );
+
+        // Merge wallet signals into candidates and record outcomes
+        const enriched = top5.map((candidate, i) => {
+          const ws = walletSignals[i];
+          return {
+            ...candidate,
+            smartWallet: ws
+              ? {
+                  walletCount: ws.walletCount,
+                  signalStrength: ws.signalStrength,
+                  totalVolumeUSD: ws.totalVolumeUSD,
+                  earliestActivityMs: ws.earliestActivityMs,
+                  exitingWalletCount: ws.exitingWallets.length,
+                  exitSignalStrength: ws.exitSignalStrength,
+                }
+              : null,
+          };
+        });
+
+        // Record each enriched candidate for outcome tracking
+        for (let i = 0; i < top5.length; i++) {
+          const candidate = top5[i];
+          const ws = walletSignals[i];
           outcomeTracker.record({
             address: candidate.address,
             symbol: candidate.symbol,
             priceUSD: candidate.priceUSD ?? 0,
             compositeScore: candidate.compositeScore,
             haikuRecommendation: candidate.haiku?.recommendation,
-            smartWalletIds: [], // wired in when smart wallet data is available per candidate
+            smartWalletIds: ws?.activeWallets.map(w => w.walletId) ?? [],
             lpLocked: candidate.lpLocked,
             holderConcentration: candidate.holderConcentration,
             priceChange24h: candidate.priceChange24h,
@@ -580,7 +610,7 @@ const server = http.createServer((req, res) => {
         }
 
         sendJSON(res, 200, {
-          candidates: ranked.slice(0, 5),
+          candidates: enriched,
           totalScanned: alphaDiscovery.getDiscoveredTokens().length,
           lastScan: alphaDiscovery.getState().lastScanTime,
           timestamp: new Date().toISOString(),
