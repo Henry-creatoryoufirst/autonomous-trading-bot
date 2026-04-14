@@ -7266,8 +7266,10 @@ async function runTradingCycle() {
 
         // v14.0: "Catching Fire" momentum multiplier — 1.5x size when on-chain order flow
         // shows buy ratio > 60% with significant volume (>50 trades in lookback window)
+        // v21.11: Gate off in confirmed Bear Mode — brief buy surges during 3+ bear readings
+        // are more likely dead-cat bounces than genuine momentum. Source: 2026 Kelly research.
         const tokenFlow = marketData.indicators[decision.toToken]?.orderFlow;
-        if (tokenFlow) {
+        if (tokenFlow && consecutiveBearChecks < 3) {
           const totalFlowVol = tokenFlow.buyVolumeUSD + tokenFlow.sellVolumeUSD;
           const tokenBuyRatio = totalFlowVol > 0 ? tokenFlow.buyVolumeUSD / totalFlowVol : 0.5;
           if (tokenBuyRatio > 0.60 && tokenFlow.tradeCount > 50) {
