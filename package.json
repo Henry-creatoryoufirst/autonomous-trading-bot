@@ -6,7 +6,9 @@
   "main": "agent-v3.2.ts",
   "scripts": {
     "start": "npx tsx agent-v3.2.ts",
+    "start:signal": "npx tsx signal-service.ts",
     "dev": "npx tsx watch agent-v3.2.ts",
+    "dev:signal": "npx tsx watch signal-service.ts",
     "arb": "npx tsx scripts/scan-arbitrage.ts",
     "status": "npx tsx scripts/status.ts",
     "test": "vitest run",
