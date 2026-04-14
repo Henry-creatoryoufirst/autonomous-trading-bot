@@ -838,6 +838,30 @@ export const DUST_CLEANUP_MIN_AGE_HOURS = 24;
 export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 
 // ============================================================================
+// v21.9: POSITION GRADUATION / STALE RESEARCH CULL
+// Auto-exit research positions ($5–$100) that have sat >7 days with no momentum.
+// This is the middle tier between dust cleanup (<$5) and meaningful holds (>$100).
+// ============================================================================
+
+/** Minimum position age in hours before culling is considered (7 days) */
+export const CULL_MIN_AGE_HOURS = 168;
+
+/** Only cull positions under this USD value — don't touch meaningful holds */
+export const CULL_MAX_USD = 100;
+
+/** Position must be flat or losing to qualify — don't cull winners */
+export const CULL_MIN_PNL_PCT = -5;
+
+/** If 24h price change exceeds this %, skip — token still has momentum */
+export const CULL_MAX_MOMENTUM = 3;
+
+/** How often (in cycles) to run the culling pass (~5h at 15min intervals) */
+export const CULL_INTERVAL_CYCLES = 20;
+
+/** Max positions to sell per culling pass */
+export const CULL_MAX_PER_RUN = 3;
+
+// ============================================================================
 // v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely
 // ============================================================================
 

@@ -311,6 +311,13 @@ import {
   DUST_CLEANUP_THRESHOLD_USD,
   DUST_CLEANUP_MIN_AGE_HOURS,
   DUST_CLEANUP_INTERVAL_CYCLES,
+  // v21.9: Position graduation / stale research cull
+  CULL_MIN_AGE_HOURS,
+  CULL_MAX_USD,
+  CULL_MIN_PNL_PCT,
+  CULL_MAX_MOMENTUM,
+  CULL_INTERVAL_CYCLES,
+  CULL_MAX_PER_RUN,
   // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
   MAX_CONSECUTIVE_FAILURES,
   FAILURE_COOLDOWN_HOURS,
@@ -988,6 +995,77 @@ function liberateCapital(
     reasoning: `Capital liberation: freeing $${pos.usdValue.toFixed(0)} to fund high-conviction entry`,
     sector: TOKEN_REGISTRY[pos.symbol]?.sector,
   }));
+}
+
+/**
+ * v21.10: Position Graduation / Auto-Culling
+ * Identifies stale research positions ($5-$100, held 7+ days, flat/losing, no momentum)
+ * and builds SELL decisions for them. Runs every CULL_INTERVAL_CYCLES cycles.
+ * Does NOT touch meaningful holds (>$100), recent buys (<7d), or active winners.
+ */
+function cullStalePositions(
+  balances: any[],
+  state: any,
+  marketTokens: MarketData["tokens"],
+): TradeDecision[] {
+  const now = Date.now();
+  const NEVER_CULL = new Set(['USDC', 'ETH', 'WETH']);
+  const decisions: TradeDecision[] = [];
+
+  // Build a quick price-change lookup from market data
+  const priceChange24h = new Map<string, number>();
+  for (const token of marketTokens) {
+    if (token.symbol) {
+      priceChange24h.set(token.symbol.toUpperCase(), token.priceChange24h ?? 0);
+    }
+  }
+
+  for (const b of balances) {
+    if (decisions.length >= CULL_MAX_PER_RUN) break;
+
+    const symbol = (b.symbol || '').toUpperCase();
+    if (NEVER_CULL.has(symbol)) continue;
+
+    const usdValue = b.usdValue || 0;
+    // Only cull the research-position band: $5–$100
+    if (usdValue < 5 || usdValue > CULL_MAX_USD) continue;
+
+    // Skip ICU positions — those are being actively managed
+    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
+
+    // Must have cost basis to evaluate
+    const cb = state.costBasis[b.symbol];
+    if (!cb?.firstBuyDate) continue;
+
+    // Age gate: must be held at least CULL_MIN_AGE_HOURS (7 days)
+    const ageHours = (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60);
+    if (ageHours < CULL_MIN_AGE_HOURS) continue;
+
+    // P&L gate: must be flat or losing (not a quiet winner)
+    const currentPrice = b.price || (b.balance > 0 ? usdValue / b.balance : 0);
+    const unrealizedPnlPct = cb.averageCostBasis > 0
+      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
+      : 0;
+    if (unrealizedPnlPct > CULL_MIN_PNL_PCT) continue; // skip if UP more than threshold
+
+    // Momentum gate: skip if token is showing signs of life
+    const change24h = priceChange24h.get(symbol) ?? 0;
+    if (Math.abs(change24h) > CULL_MAX_MOMENTUM) continue;
+
+    // Skip circuit-breaker-blocked tokens (already being handled)
+    if (isTokenBlocked(symbol)) continue;
+
+    decisions.push({
+      action: 'SELL' as const,
+      fromToken: b.symbol,
+      toToken: 'USDC',
+      amountUSD: usdValue,
+      reasoning: `CULL: Research position stale — $${usdValue.toFixed(2)}, held ${ageHours.toFixed(0)}h, ${unrealizedPnlPct.toFixed(1)}% P&L, ${change24h.toFixed(1)}% 24h momentum. Freeing capital for higher-conviction opportunities.`,
+      sector: TOKEN_REGISTRY[b.symbol]?.sector,
+    });
+  }
+
+  return decisions;
 }
 
 /**
@@ -3424,6 +3502,67 @@ function calculateSectorAllocations(
 }
 
 // ============================================================================
+// SECTOR ROTATION DETECTION
+// ============================================================================
+
+interface SectorMomentum {
+  sector: string;
+  activeTokens: number;   // tokens with price data in this sector
+  risingCount: number;    // tokens with 24h change > 5%
+  risingPct: number;      // risingCount / activeTokens
+  avgChange24h: number;   // average 24h change across sector tokens
+  isRotating: boolean;    // risingPct >= 0.6 AND risingCount >= 3
+  strongestToken: string; // symbol with highest 24h change in sector
+}
+
+function detectSectorRotation(
+  marketTokens: MarketData["tokens"],
+): SectorMomentum[] {
+  const results: SectorMomentum[] = [];
+
+  for (const [, sectorInfo] of Object.entries(SECTORS)) {
+    const sectorSymbols = new Set<string>(sectorInfo.tokens as readonly string[]);
+
+    // find tokens in this sector that have price data
+    const sectorTokens = marketTokens.filter(t => sectorSymbols.has(t.symbol));
+    if (sectorTokens.length === 0) continue;
+
+    const rising = sectorTokens.filter(t => t.priceChange24h > 5);
+    const risingPct = rising.length / sectorTokens.length;
+    const avgChange24h =
+      sectorTokens.reduce((sum, t) => sum + t.priceChange24h, 0) / sectorTokens.length;
+
+    // strongest token by 24h gain
+    const strongest = sectorTokens.reduce((best, t) =>
+      t.priceChange24h > best.priceChange24h ? t : best, sectorTokens[0]);
+
+    results.push({
+      sector: sectorInfo.name,
+      activeTokens: sectorTokens.length,
+      risingCount: rising.length,
+      risingPct,
+      avgChange24h,
+      isRotating: risingPct >= 0.6 && rising.length >= 3,
+      strongestToken: strongest.symbol,
+    });
+  }
+
+  // Sort by avgChange24h descending so highest-momentum sectors appear first
+  results.sort((a, b) => b.avgChange24h - a.avgChange24h);
+  return results;
+}
+
+function formatSectorRotationSummary(rotations: SectorMomentum[]): string {
+  const rotating = rotations.filter(r => r.isRotating);
+  if (rotating.length === 0) return "Markets mixed — no clear sector rotation";
+  return rotating
+    .map(r =>
+      `🔥 ${r.sector.toUpperCase()} ROTATION: ${r.risingCount}/${r.activeTokens} tokens rising (avg ${r.avgChange24h >= 0 ? "+" : ""}${r.avgChange24h.toFixed(1)}%). Leader: ${r.strongestToken}. Consider increasing sector weighting.`
+    )
+    .join("\n");
+}
+
+// ============================================================================
 // AI TRADING DECISION - V3.1 with Sector Awareness
 // ============================================================================
 
@@ -3717,6 +3856,10 @@ async function makeTradeDecision(
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
+  // v21.10: Sector rotation signal — detect correlated momentum across sector peers
+  const sectorRotations = detectSectorRotation(marketData.tokens);
+  const rotationSummary = formatSectorRotationSummary(sectorRotations);
+
   // v20.6: Build dynamic data sections (always included regardless of prompt tier)
   const dynamicData = `
 ═══ PORTFOLIO ═══
@@ -3744,6 +3887,9 @@ ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
 ═══ MARKET SENTIMENT ═══
 - Trending: ${marketData.trendingTokens.join(", ") || "None"}
 - Momentum: score=${lastMomentumSignal.score} bias=${lastMomentumSignal.deploymentBias} | BTC 24h: ${lastMomentumSignal.btcChange24h >= 0 ? '+' : ''}${lastMomentumSignal.btcChange24h.toFixed(1)}% | ETH 24h: ${lastMomentumSignal.ethChange24h >= 0 ? '+' : ''}${lastMomentumSignal.ethChange24h.toFixed(1)}%
+
+═══ SECTOR ROTATION SIGNALS ═══
+${rotationSummary}
 
 ═══ TECHNICAL INDICATORS ═══
 ${indicatorsSummary || "  No indicator data available"}
@@ -6353,6 +6499,39 @@ async function runTradingCycle() {
       }
     }
 
+    // === v21.10: STALE RESEARCH POSITION CULLING ===
+    // Every CULL_INTERVAL_CYCLES cycles (~5h), auto-sell research positions that have gone dormant:
+    // $5–$100, held 7+ days, flat/losing, no 24h momentum. Prevents capital fragmentation.
+    if (state.totalCycles % CULL_INTERVAL_CYCLES === 0) {
+      const cullDecisions = cullStalePositions(balances, state, marketData.tokens);
+      if (cullDecisions.length > 0) {
+        console.log(`\n🔪 CULL: Found ${cullDecisions.length} stale research position(s) to graduate`);
+        const culledSymbols: string[] = [];
+        for (const cd of cullDecisions) {
+          console.log(`   🔪 Culling: ${cd.fromToken} $${cd.amountUSD?.toFixed(2)} — ${cd.reasoning?.slice(0, 80)}`);
+          const cullResult = await executeTrade(cd, marketData);
+          if (cullResult.success) {
+            clearTradeFailures(cd.fromToken!);
+            culledSymbols.push(cd.fromToken!);
+            console.log(`   ✅ Culled: ${cd.fromToken}`);
+          } else {
+            console.log(`   ❌ Cull failed: ${cd.fromToken}`);
+          }
+        }
+        if (culledSymbols.length > 0) {
+          // Refresh balances after culling
+          const refreshedAfterCull = await getBalances();
+          if (refreshedAfterCull && refreshedAfterCull.length > 0) balances = refreshedAfterCull;
+          markStateDirty(true);
+          await telegramService.sendAlert({
+            severity: "INFO",
+            title: `✅ Position Cull Complete`,
+            message: `Graduated ${culledSymbols.length} stale research position(s) → USDC:\n${culledSymbols.map(s => `• ${s}`).join('\n')}\n\nCapital freed and ready for higher-conviction entries.`,
+          }).catch(() => {});
+        }
+      }
+    }
+
     // === v21.8: HARD CIRCUIT BREAKER — Emergency exit for severe losses or persistent failures ===
     // Safety net that fires EVERY cycle regardless of normal algo decisions.
     // Triggers for: (1) any position down >50% from cost basis, OR
@@ -7021,6 +7200,22 @@ async function runTradingCycle() {
               // Apply half-Kelly multiplier and per-position cap for alpha trades
               decision.amountUSD = Math.min(decision.amountUSD * ALPHA_KELLY_MULTIPLIER, alphaCap, remainingUSDC);
               console.log(`   🔬 ALPHA SIZING: ${decision.toToken} capped at $${decision.amountUSD.toFixed(2)} (${(ALPHA_MAX_SINGLE_POSITION * 100).toFixed(0)}% max, half-Kelly, budget: ${(currentAlphaExposure * 100).toFixed(1)}%/${(ALPHA_BUDGET_PERCENT * 100).toFixed(0)}% used)`);
+            }
+          }
+
+          // v21.10: Sector rotation boost — if 60%+ of this token's sector peers are
+          // rising >5% simultaneously, that's a rotation signal worth 1.2x sizing.
+          if (decision.toToken) {
+            const tokenSectorKey = TOKEN_REGISTRY[decision.toToken]?.sector;
+            const tokenSectorName = tokenSectorKey ? SECTORS[tokenSectorKey]?.name : undefined;
+            if (tokenSectorName) {
+              const liveRotations = detectSectorRotation(marketData.tokens);
+              const rotatingForToken = liveRotations.find(r => r.sector === tokenSectorName && r.isRotating);
+              if (rotatingForToken) {
+                const preSectorBoost = decision.amountUSD;
+                decision.amountUSD = Math.min(Math.round(decision.amountUSD * 1.2 * 100) / 100, remainingUSDC);
+                console.log(`   🔄 SECTOR BOOST: ${rotatingForToken.sector} rotating (${(rotatingForToken.risingPct * 100).toFixed(0)}% tokens rising) → +20% sizing ($${preSectorBoost.toFixed(2)} → $${decision.amountUSD.toFixed(2)})`);
+              }
             }
           }
 
@@ -8551,8 +8746,8 @@ async function main() {
     console.log(`\n✅ STARTUP: Trading is LIVE — no blockers detected`);
     await telegramService.sendAlert({
       severity: "INFO",
-      title: "Bot Started v21.9 — Trading LIVE 🟢",
-      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min\n\nv21.9: Capital liberation + smart wallet exit detection`,
+      title: "Bot Started v21.10 — Trading LIVE 🟢",
+      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min\n\nv21.10: Position culling + sector rotation + holder concentration`,
     });
   }
 

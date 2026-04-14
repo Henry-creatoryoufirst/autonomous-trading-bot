@@ -257,7 +257,8 @@ async function getHolderConcentration(tokenAddress: string): Promise<number> {
   if (!apiKey) return 50; // Neutral default — don't penalise lack of key
 
   try {
-    const url = `https://api.basescan.org/v2/api?module=token&action=tokenholderlist&contractaddress=${tokenAddress}&page=1&offset=10&apikey=${apiKey}`;
+    // V2 multi-chain endpoint — works with Etherscan.io keys across all supported chains (chainid=8453 = Base)
+    const url = `https://api.etherscan.io/v2/api?chainid=8453&module=token&action=tokenholderlist&contractaddress=${tokenAddress}&page=1&offset=10&apikey=${apiKey}`;
     const res = await axios.get(url, { timeout: 8000 });
     const holders: { TokenHolderQuantity: string }[] = res.data?.result || [];
     if (!Array.isArray(holders) || holders.length === 0) return 50;
