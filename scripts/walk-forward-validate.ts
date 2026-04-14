@@ -1,22 +1,22 @@
 /**
  * Walk-Forward Validation — Real BTC + ETH Data
  *
- * Fetches 6 months of hourly OHLCV data from CoinGecko (free tier),
+ * Fetches ~16 months of daily OHLCV data from Binance public API (no key required),
  * then runs walk-forward validation using the current strategy params.
  *
  * Usage:
  *   npx tsx scripts/walk-forward-validate.ts
  *   npx tsx scripts/walk-forward-validate.ts --optimize   # IS optimization per window
  *
- * Window sizing (per arXiv 2602.10785 rolling WFV approach):
- *   - Training (IS): 720 candles = 30 days of hourly data
- *   - Test (OOS):    168 candles = 7 days of hourly data
- *   - Step:          168 candles (non-overlapping OOS windows, overlapping IS)
+ * Window sizing (per arXiv 2602.10785 rolling WFV approach, daily candles):
+ *   - Training (IS): 90 candles  = 3 months of daily data
+ *   - Test (OOS):    30 candles  = 1 month of daily data
+ *   - Step:          30 candles  (non-overlapping OOS, rolling IS)
  *
- * This gives ~17 OOS windows over 6 months — enough for statistical significance.
+ * ~500 daily candles → 12+ OOS windows — strong statistical confidence.
  */
 
-import { fetchHistoricalData } from '../src/simulation/data/historical-data.js';
+import { fetchFromKraken } from '../src/simulation/data/historical-data.js';
 import { runWalkForward } from '../src/simulation/walk-forward/engine.js';
 import { DEFAULT_STRATEGY_PARAMS } from '../src/simulation/types.js';
 import type { WalkForwardWindow } from '../src/simulation/types.js';
@@ -26,10 +26,10 @@ const COINS = [
   { id: 'bitcoin',  symbol: 'BTC' },
   { id: 'ethereum', symbol: 'ETH' },
 ];
-const DAYS = 180;          // 6 months of data
-const TRAIN_CANDLES = 720; // 30 days @ 1h
-const TEST_CANDLES  = 168; // 7 days  @ 1h
-const STEP_CANDLES  = 168; // non-overlapping OOS windows
+const CANDLE_LIMIT  = 500;  // ~16 months of daily candles
+const TRAIN_CANDLES = 90;   // 3 months IS window
+const TEST_CANDLES  = 30;   // 1 month OOS window
+const STEP_CANDLES  = 30;   // 1 month step (non-overlapping OOS)
 const DO_OPTIMIZE   = process.argv.includes('--optimize');
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -51,16 +51,16 @@ async function main() {
   console.log('║  Real BTC + ETH data | arXiv 2602.10785 rolling WFV method  ║');
   console.log('╚══════════════════════════════════════════════════════════════╝\n');
 
-  console.log(`Config: IS=${TRAIN_CANDLES}h (${TRAIN_CANDLES/24}d) / OOS=${TEST_CANDLES}h (${TEST_CANDLES/24}d) / Step=${STEP_CANDLES}h`);
+  console.log(`Config: IS=${TRAIN_CANDLES}d / OOS=${TEST_CANDLES}d / Step=${STEP_CANDLES}d`);
   console.log(`Mode: ${DO_OPTIMIZE ? 'IS-optimized params per window' : 'Fixed strategy params (DEFAULT_STRATEGY_PARAMS)'}`);
-  console.log(`Data: ${DAYS} days of hourly OHLCV via CoinGecko free tier\n`);
+  console.log(`Data: ${CANDLE_LIMIT} daily candles (~${Math.round(CANDLE_LIMIT / 30)}mo) via Kraken public API\n`);
 
   // ── Fetch data ──
-  console.log('Fetching historical data...');
+  console.log('Fetching historical data from Kraken...');
   const datasets = await Promise.all(
     COINS.map(async ({ id, symbol }) => {
-      process.stdout.write(`  ${symbol} (${id})...`);
-      const ds = await fetchHistoricalData({ coinId: id, days: DAYS });
+      process.stdout.write(`  ${symbol}...`);
+      const ds = await fetchFromKraken(id, CANDLE_LIMIT, 'daily');
       console.log(` ${ds.candles.length} candles (${fmtDate(ds.startTime)} – ${fmtDate(ds.endTime)})`);
       return ds;
     })

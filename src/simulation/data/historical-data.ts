@@ -129,6 +129,139 @@ export async function fetchHistoricalData(config: DataFetchConfig): Promise<Hist
 }
 
 // ============================================================================
+// BINANCE FETCHER — no API key, reliable OHLCV, up to 1000 candles/call
+// ============================================================================
+
+const BINANCE_BASE = 'https://api.binance.com/api/v3';
+const BINANCE_SYMBOL_MAP: Record<string, string> = {
+  bitcoin:  'BTCUSDT',
+  ethereum: 'ETHUSDT',
+  BTC:      'BTCUSDT',
+  ETH:      'ETHUSDT',
+  BTCUSDT:  'BTCUSDT',
+  ETHUSDT:  'ETHUSDT',
+};
+
+/**
+ * Fetch daily OHLCV candles from Binance public API (no auth required).
+ *
+ * @param coinId - CoinGecko-style ID ('bitcoin', 'ethereum') or direct Binance symbol ('BTCUSDT')
+ * @param limit  - Number of daily candles to fetch (max 1000). Default 500 (~16 months).
+ */
+export async function fetchFromBinance(
+  coinId: string,
+  limit = 500,
+  interval: '1d' | '4h' | '1h' = '1d',
+): Promise<HistoricalDataset> {
+  const symbol = BINANCE_SYMBOL_MAP[coinId] ?? coinId.toUpperCase();
+
+  const url = `${BINANCE_BASE}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+
+  if (!res.ok) {
+    throw new Error(`Binance klines fetch failed: ${res.status} for ${symbol}`);
+  }
+
+  // Binance kline format: [openTime, open, high, low, close, volume, closeTime, ...]
+  const raw: string[][] = await res.json();
+
+  const intervalMs = interval === '1d' ? 86_400_000 : interval === '4h' ? 14_400_000 : 3_600_000;
+
+  const candles: OHLCVCandle[] = raw.map(k => ({
+    timestamp: Number(k[0]),
+    open:      parseFloat(k[1]),
+    high:      parseFloat(k[2]),
+    low:       parseFloat(k[3]),
+    close:     parseFloat(k[4]),
+    volume:    parseFloat(k[5]),
+  }));
+
+  candles.sort((a, b) => a.timestamp - b.timestamp);
+
+  return {
+    symbol: symbol.replace('USDT', ''),
+    candles,
+    startTime: candles[0]?.timestamp ?? 0,
+    endTime:   candles[candles.length - 1]?.timestamp ?? 0,
+    intervalMs,
+  };
+}
+
+// ============================================================================
+// KRAKEN FETCHER — no API key, US-accessible, up to 720 daily candles/call
+// ============================================================================
+
+const KRAKEN_BASE = 'https://api.kraken.com/0/public';
+const KRAKEN_SYMBOL_MAP: Record<string, string> = {
+  bitcoin:  'XBTUSD',
+  ethereum: 'ETHUSD',
+  BTC:      'XBTUSD',
+  ETH:      'ETHUSD',
+  BTCUSDT:  'XBTUSD',
+  ETHUSDT:  'ETHUSD',
+};
+
+/**
+ * Fetch daily OHLCV candles from Kraken public REST API (no auth, US-accessible).
+ * Kraken returns up to 720 rows per call at daily (1440 min) granularity.
+ *
+ * @param coinId  - CoinGecko-style ID ('bitcoin', 'ethereum') or 'BTC'/'ETH'
+ * @param limit   - Approximate number of candles (Kraken always returns ≤720 from current time)
+ * @param interval - 'daily' | '4h' | '1h' (maps to Kraken minute values)
+ */
+export async function fetchFromKraken(
+  coinId: string,
+  limit = 500,
+  interval: 'daily' | '4h' | '1h' = 'daily',
+): Promise<HistoricalDataset> {
+  const pair = KRAKEN_SYMBOL_MAP[coinId] ?? coinId.toUpperCase();
+  const intervalMin = interval === 'daily' ? 1440 : interval === '4h' ? 240 : 60;
+  const intervalMs  = intervalMin * 60 * 1000;
+
+  // Compute `since` so we get ~limit candles back from now
+  const sinceUnix = Math.floor((Date.now() - limit * intervalMs) / 1000);
+
+  const url = `${KRAKEN_BASE}/OHLC?pair=${pair}&interval=${intervalMin}&since=${sinceUnix}`;
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+
+  if (!res.ok) {
+    throw new Error(`Kraken OHLC fetch failed: ${res.status} for ${pair}`);
+  }
+
+  const json = await res.json();
+
+  if (json.error && json.error.length > 0) {
+    throw new Error(`Kraken API error: ${json.error.join(', ')}`);
+  }
+
+  // Kraken returns data under result[pairKey] — key may differ from requested pair
+  const resultKey = Object.keys(json.result).find(k => k !== 'last');
+  if (!resultKey) throw new Error(`Kraken returned no data for ${pair}`);
+
+  // Kraken OHLC row: [time(s), open, high, low, close, vwap, volume, count]
+  const raw: (string | number)[][] = json.result[resultKey];
+
+  const candles: OHLCVCandle[] = raw.map(row => ({
+    timestamp: Number(row[0]) * 1000,          // seconds → ms
+    open:      parseFloat(String(row[1])),
+    high:      parseFloat(String(row[2])),
+    low:       parseFloat(String(row[3])),
+    close:     parseFloat(String(row[4])),
+    volume:    parseFloat(String(row[6])),
+  }));
+
+  candles.sort((a, b) => a.timestamp - b.timestamp);
+
+  return {
+    symbol: pair.replace('USD', '').replace('XBT', 'BTC'),
+    candles,
+    startTime: candles[0]?.timestamp ?? 0,
+    endTime:   candles[candles.length - 1]?.timestamp ?? 0,
+    intervalMs,
+  };
+}
+
+// ============================================================================
 // PRICE HISTORY CONVERTER
 // ============================================================================
 

@@ -434,6 +434,8 @@ import {
   computeAtrStopLevels as _computeAtrStopLevels,
 } from "./src/algorithm/index.js";
 import type { TechnicalIndicators, DerivativesData, DefiLlamaData, AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence, MarketMomentumSignal } from "./src/algorithm/index.js";
+// Bear Mode: Macro regime detection (real F&G + BTC dominance — no proxy signals)
+import { computeMacroRegime } from "./src/algorithm/macro-regime.js";
 // Phase 9: Extracted reporting/formatting module
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
@@ -781,6 +783,13 @@ let lastPriceSnapshot: Map<string, number> = new Map();
 let lastVolumeSnapshot: Map<string, number> = new Map();
 let lastFearGreedValue = 0;
 let lastMarketRegime = 'UNKNOWN'; // v20.3.1: Track for hourly Telegram reports
+
+// === Bear Mode: Macro Regime Detection (v21.7) ===
+// Real BTC dominance + Fear & Greed only — no noisy proxies.
+// Require 3 consecutive BEAR readings before blocking buys (hysteresis).
+let btcDominanceBuffer: number[] = [];         // rolling dominance readings (15-min cadence)
+let consecutiveBearChecks = 0;                 // hysteresis counter
+let currentMacroRegime: { regime: 'BULL' | 'RANGING' | 'BEAR'; score: number } = { regime: 'RANGING', score: 0 };
 // chainlinkDeviations — moved to src/core/data/on-chain-prices.ts (Phase 2a), access via getChainlinkDeviations()
 
 // === v19.3: CAPITAL PRESERVATION MODE ===
@@ -3662,6 +3671,13 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
             continue; // Skip invalid entries, don't block valid ones
           }
 
+          // Bear Mode (v21.7): Block new buys when macro regime is confirmed BEAR (3+ consecutive checks)
+          if (consecutiveBearChecks >= 3 && (decision.action === "BUY" || decision.action === "REBALANCE")) {
+            console.log(`   🐻 Bear Mode active (${consecutiveBearChecks} consecutive BEAR readings, score: ${currentMacroRegime.score}) — converting ${decision.action} to HOLD`);
+            validatedDecisions.push({ action: "HOLD", fromToken: "NONE", toToken: "NONE", amountUSD: 0, reasoning: `Bear Mode: macro regime score ${currentMacroRegime.score} for ${consecutiveBearChecks} consecutive checks — preserving capital` });
+            continue;
+          }
+
           if (decision.action === "BUY" || decision.action === "REBALANCE") {
             decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
             if (decision.amountUSD < 5.00) {
@@ -5543,6 +5559,40 @@ async function runTradingCycle() {
     lastHeavyCycleAt = Date.now();
     lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
     lastFearGreedValue = marketData.fearGreed.value;
+
+    // === Bear Mode: Compute macro regime (v21.7) ===
+    // Only runs in heavy cycles where we have fresh F&G + dominance data.
+    {
+      const btcCurrentDominance = marketData.globalMarket?.btcDominance || 0;
+      if (btcCurrentDominance > 0) {
+        btcDominanceBuffer.push(btcCurrentDominance);
+        if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344); // keep 14d at 15-min cadence
+      }
+
+      // 14-day dominance trend: compare to reading from ~7 days ago (672 cycles × 15min = 7 days)
+      // Using 7-day lookback because CMC data can have gaps; shorter window = more reliable
+      let btcDominanceTrend: number | undefined;
+      if (btcDominanceBuffer.length >= 96) { // need at least 24h of history before using dominance
+        const lookback = Math.min(672, btcDominanceBuffer.length - 1); // up to 7 days
+        const oldDominance = btcDominanceBuffer[btcDominanceBuffer.length - 1 - lookback];
+        if (oldDominance > 0) {
+          btcDominanceTrend = btcCurrentDominance - oldDominance; // percentage-point change
+        }
+      }
+
+      const btcPrices = getCachedPriceHistory('cbBTC').prices;
+      if (btcPrices.length >= 50) {
+        const regimeResult = computeMacroRegime(btcPrices, btcDominanceTrend, lastFearGreedValue);
+        if (regimeResult.regime === 'BEAR') {
+          consecutiveBearChecks = Math.min(consecutiveBearChecks + 1, 10);
+        } else {
+          consecutiveBearChecks = 0;
+        }
+        currentMacroRegime = { regime: regimeResult.regime, score: regimeResult.score };
+        const inBearMode = consecutiveBearChecks >= 3;
+        console.log(`🔭 Macro Regime: ${regimeResult.regime} (score: ${regimeResult.score}, F&G: ${lastFearGreedValue}, dom_trend: ${btcDominanceTrend !== undefined ? btcDominanceTrend.toFixed(1) + 'pp' : 'n/a'}, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE — buys paused' : ''}`);
+      }
+    }
 
     // v19.3: Update capital preservation mode state
     updateCapitalPreservationMode(marketData.fearGreed.value);

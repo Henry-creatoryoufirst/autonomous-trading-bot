@@ -54,6 +54,7 @@ function zeroMetrics(): PerformanceMetrics {
     profitFactor: 0, avgWin: 0, avgLoss: 0,
     sharpeRatio: 0, sortinoRatio: 0, calmarRatio: 0,
     holdBaseline: 0, holdBaselinePct: 0, avgTradesPerMonth: 0,
+    yieldEarned: 0, bearCandles: 0,
   };
 }
 
@@ -133,9 +134,15 @@ export function runWalkForward(
       break;
     }
 
-    // Slice datasets for IS and OOS periods
+    // Slice IS dataset
     const isDatasets = datasets.map(ds => sliceDataset(ds, isStart, isEnd));
-    const oosDatasets = datasets.map(ds => sliceDataset(ds, isEnd, oosEnd));
+
+    // OOS dataset: prepend trailing IS candles as indicator warmup so MACD/SMA50
+    // buffers are filled before the first OOS trade decision fires.
+    const INDICATOR_WARMUP = 50;
+    const oosPadStart = Math.max(isStart, isEnd - INDICATOR_WARMUP);
+    const oosDatasets  = datasets.map(ds => sliceDataset(ds, oosPadStart, oosEnd));
+    const oosWarmup    = isEnd - oosPadStart; // candles to skip before trading
 
     // Determine params: fixed or IS-optimized
     const params: StrategyParams = doISOptimization
@@ -151,10 +158,12 @@ export function runWalkForward(
       isMetrics = zeroMetrics();
     }
 
-    // Run OOS replay with the same params (this is the real test)
+    // Run OOS replay with the same params (this is the real test).
+    // warmupCandles tells the replay engine to ignore the prepended IS candles
+    // for trade decisions — they are only used to warm up indicators.
     let oosMetrics: PerformanceMetrics;
     try {
-      const oosResult = runReplay(oosDatasets, { strategy: params });
+      const oosResult = runReplay(oosDatasets, { strategy: params, warmupCandles: oosWarmup });
       oosMetrics = oosResult.metrics;
     } catch {
       oosMetrics = zeroMetrics();

@@ -12,6 +12,8 @@
  */
 
 import { calculateRSI, calculateMACD, calculateBollingerBands, calculateSMA, calculateATR, calculateADX } from '../../algorithm/indicators.js';
+import { computeMacroRegime } from '../../algorithm/macro-regime.js';
+import type { MacroRegimeResult } from '../../algorithm/macro-regime.js';
 import type {
   HistoricalDataset,
   ReplayConfig,
@@ -176,6 +178,22 @@ export function runReplay(
   let lastBuyTime = 0;
   const MIN_BUY_INTERVAL_CANDLES = 6; // minimum 6 hours between buys
 
+  // ── Macro Regime (Bear Mode) ──────────────────────────────────────────────
+  const enableRegime = strategy.enableMacroRegime !== false; // default true
+  const bearYieldAPY = strategy.bearYieldAPY ?? 0.06;
+  const bearSellThreshold = strategy.bearSellThreshold ?? -20;
+  // candlesPerYear: use dataset intervalMs if available, else assume hourly
+  const intervalMs = datasets[0]?.intervalMs ?? 3_600_000;
+  const candlesPerYear = (365.25 * 24 * 3_600_000) / intervalMs;
+
+  let currentRegime: MacroRegimeResult = { regime: 'RANGING', score: 0, confidence: 0, signals: { trend: 0, dominance: 0, sentiment: 0 } };
+  let yieldCapital = 0;   // USDC parked in Aave during BEAR
+  let yieldEarned  = 0;   // cumulative yield earned
+  let bearCandles  = 0;   // candles spent in BEAR regime
+  let consecutiveBearChecks = 0;  // hysteresis: require N consecutive BEAR readings
+  const REGIME_UPDATE_INTERVAL = 5;   // recompute regime every 5 candles
+  const BEAR_CONFIRM_CHECKS    = 3;   // require 3 consecutive BEAR readings (~15 candles) before acting
+
   for (let ti = 0; ti < timeline.length; ti += stepSize) {
     const tick = timeline[ti];
     candlesProcessed++;
@@ -190,6 +208,51 @@ export function runReplay(
         if (!firstPrices.has(sym)) firstPrices.set(sym, price);
       }
     }
+
+    // ── Macro Regime update (every N candles after warmup) ─────────────────
+    if (enableRegime && candlesProcessed >= warmup && candlesProcessed % REGIME_UPDATE_INTERVAL === 0) {
+      // Use primary symbol price history for regime detection
+      const primarySym = symbols[0];
+      const primaryClosePrices = closePricesBySymbol.get(primarySym);
+      const primaryIndexMap = timestampIndexBySymbol.get(primarySym);
+      if (primaryClosePrices && primaryIndexMap) {
+        const primaryIdx = primaryIndexMap.get(tick) ?? 0;
+        // Use full price history (not capped at 100) so SMA140 can compute
+        const regimePrices = primaryClosePrices.slice(0, primaryIdx);
+        if (regimePrices.length >= 20) {
+          currentRegime = computeMacroRegime(regimePrices);
+        }
+      }
+
+      // Hysteresis: track consecutive BEAR readings before acting
+      if (currentRegime.regime === 'BEAR') {
+        consecutiveBearChecks = Math.min(consecutiveBearChecks + 1, BEAR_CONFIRM_CHECKS + 1);
+      } else {
+        consecutiveBearChecks = 0;
+      }
+      const bearConfirmed = consecutiveBearChecks >= BEAR_CONFIRM_CHECKS;
+
+      // Regime transition: BEAR confirmed → park idle cash in yield
+      if (bearConfirmed && yieldCapital === 0 && cash > 10) {
+        const parkAmount = cash * 0.90; // keep 10% as gas/buffer
+        yieldCapital += parkAmount;
+        cash -= parkAmount;
+      }
+      // Regime transition: BEAR exited → withdraw yield capital back to cash
+      if (!bearConfirmed && yieldCapital > 0) {
+        cash += yieldCapital;
+        yieldCapital = 0;
+      }
+    }
+
+    // Yield accrual: earn APY on parked capital each candle
+    if (yieldCapital > 0) {
+      const yieldThisTick = yieldCapital * (bearYieldAPY / candlesPerYear);
+      yieldEarned += yieldThisTick;
+      yieldCapital += yieldThisTick; // compound
+    }
+
+    if (currentRegime.regime === 'BEAR') bearCandles++;
 
     // For each symbol, run the decision pipeline
     for (const sym of symbols) {
@@ -289,7 +352,7 @@ export function runReplay(
         }
         if (harvested) continue;
 
-        // 4. Confluence sell signal — sell 50%
+        // 4. Confluence sell signal — use standard threshold (stop loss handles BEAR exits)
         if (confluence <= strategy.confluenceSellThreshold) {
           const sellQty = pos.qty * 0.5;
           const sellUSD = sellQty * price;
@@ -311,7 +374,9 @@ export function runReplay(
       if (drawdownPct >= DRAWDOWN_PAUSE_PCT) buyingPaused = true;
       if (buyingPaused && drawdownPct < DRAWDOWN_RESUME_PCT) buyingPaused = false;
 
-      if (!buyingPaused && confluence >= strategy.confluenceBuyThreshold
+      // Skip new buys only when BEAR is confirmed (3+ consecutive readings)
+      const inBearMode = enableRegime && consecutiveBearChecks >= BEAR_CONFIRM_CHECKS;
+      if (!buyingPaused && !inBearMode && confluence >= strategy.confluenceBuyThreshold
           && cashPct >= strategy.cashDeployThreshold
           && (candlesProcessed - lastBuyTime) >= MIN_BUY_INTERVAL_CANDLES) {
         const currentPosValue = pos ? pos.qty * price : 0;
@@ -360,6 +425,12 @@ export function runReplay(
     equityTimestamps.push(tick);
   }
 
+  // Flush any remaining yield capital back into cash for final valuation
+  if (yieldCapital > 0) {
+    cash += yieldCapital;
+    yieldCapital = 0;
+  }
+
   // Compute metrics
   const metrics = computeMetrics(
     strategy.startingCapital,
@@ -372,6 +443,10 @@ export function runReplay(
     symbols,
     timeline
   );
+
+  // Attach bear mode telemetry
+  metrics.yieldEarned = yieldEarned;
+  metrics.bearCandles = bearCandles;
 
   // Compute condition breakdown
   const conditionBreakdown = computeConditionBreakdown(

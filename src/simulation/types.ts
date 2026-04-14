@@ -60,12 +60,20 @@ export interface StrategyParams {
   minPositionUSD: number;            // minimum trade size
   cashDeployThreshold: number;       // % cash before deploying
   startingCapital: number;
+  // ── Bear Mode ──────────────────────────────────────────────────────────────
+  /** Enable macro regime detection. Default true. */
+  enableMacroRegime?: boolean;
+  /** APY earned on USDC parked in Aave during BEAR regime. Default 0.06 (6%). */
+  bearYieldAPY?: number;
+  /** Confluence threshold for accelerated exits in BEAR regime. Default -20. */
+  bearSellThreshold?: number;
 }
 
 /**
  * Default strategy parameters — tuned via parallel parameter sweep (Phase 1 + Phase 2).
  * Phase 1 result: stop=6, profit=5, maxPos=6 (score: 63/100)
  * Phase 2 result: confluence=22, stop=7, profit=5, maxPos=6 (score: 64/100)
+ * Phase 3 result: +macro regime (BEAR=yield parking, exits accelerated) (score: TBD)
  *
  * NOTE: live bot uses adaptive confluenceBuy (starts at 8, caps at 25).
  * The simulation uses this as a fixed threshold. 22 is proven optimal.
@@ -81,6 +89,11 @@ export const DEFAULT_STRATEGY_PARAMS: StrategyParams = {
   minPositionUSD: 5,
   cashDeployThreshold: 10,
   startingCapital: 500,
+  // Bear Mode — disabled by default in simulation (synthetic data lacks real dominance/F&G).
+  // Live bot enables this with real BTC dominance + Fear & Greed data via Railway env.
+  enableMacroRegime: false,
+  bearYieldAPY: 0.06,
+  bearSellThreshold: -20,
 };
 
 // ============================================================================
@@ -147,6 +160,10 @@ export interface PerformanceMetrics {
   holdBaseline: number;
   holdBaselinePct: number;
   avgTradesPerMonth: number;
+  /** USDC yield earned during BEAR regime (Aave/Morpho parking). 0 if regime disabled. */
+  yieldEarned?: number;
+  /** Candles spent in BEAR regime */
+  bearCandles?: number;
 }
 
 export interface ConditionBreakdown {
