@@ -27,6 +27,7 @@
 
 import http from 'http';
 import { URL } from 'url';
+import axios from 'axios';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -51,10 +52,15 @@ import type {
 // ============================================================================
 
 const PORT = parseInt(process.env.PORT || '3001');
-const VERSION = '1.0.0';
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000;  // 5 minutes
-const HISTORY_MAX = 288;                     // 24h @ 5-min cadence
-const FLEET_ONLINE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes = "online"
+const VERSION = '1.1.0';
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;       // 5 minutes
+const HISTORY_MAX = 288;                          // 24h @ 5-min cadence
+const FLEET_ONLINE_WINDOW_MS = 30 * 60 * 1000;   // 30 minutes = "online"
+const GAS_CHECK_INTERVAL_MS = 30 * 60 * 1000;    // 30 minutes
+const GAS_ALERT_THRESHOLD_ETH = 0.002;            // below bot's self-preservation floor (0.003)
+const GAS_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // re-alert after 6h max
+const GAS_ACTIVE_WINDOW_MS = 2 * 60 * 60 * 1000; // only alert bots seen in last 2h
+const BASE_RPC_URL = 'https://mainnet.base.org';
 
 // Telegram config (optional — alerts fire only when configured)
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -67,6 +73,7 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const startedAt = Date.now();
 const fleet = new Map<string, BotHeartbeat>();
 const history: SignalHistoryEntry[] = [];
+const lastGasAlertMs = new Map<string, number>();
 let refreshCount = 0;
 let lastRefreshAt: string | null = null;
 
@@ -161,6 +168,70 @@ function buildRegimeAlertMessage(
 }
 
 // ============================================================================
+// GAS MONITOR — checks ETH balances of all known bot wallets every 30 min
+// ============================================================================
+
+async function getEthBalanceRPC(address: string): Promise<number | null> {
+  try {
+    const res = await axios.post(
+      BASE_RPC_URL,
+      { jsonrpc: '2.0', method: 'eth_getBalance', params: [address, 'latest'], id: 1 },
+      { timeout: 5000, headers: { 'Content-Type': 'application/json' } }
+    );
+    const hex = res.data?.result;
+    if (!hex) return null;
+    return Number(BigInt(hex)) / 1e18;
+  } catch {
+    return null;
+  }
+}
+
+function buildGasAlertMessage(botId: string, ethBalance: number, wallet: string): string {
+  return [
+    `⛽ <b>NVR Fleet — Gas Alert</b>`,
+    '',
+    `<b>${botId}</b> is critically low on ETH gas`,
+    `Balance: <b>${ethBalance.toFixed(6)} ETH</b>`,
+    `Threshold: ${GAS_ALERT_THRESHOLD_ETH} ETH (bot cannot self-refuel below this)`,
+    `Wallet: <code>${wallet.slice(0, 10)}...${wallet.slice(-6)}</code>`,
+    '',
+    `Send <b>0.01 ETH</b> to the wallet to restore autonomous operation.`,
+  ].join('\n');
+}
+
+async function checkGasBalances(): Promise<void> {
+  const now = Date.now();
+  const activeBots = Array.from(fleet.values()).filter(
+    b => b.walletAddress && now - b.lastSeenMs < GAS_ACTIVE_WINDOW_MS
+  );
+  if (activeBots.length === 0) return;
+
+  console.log(`[Signal] ⛽ Checking gas for ${activeBots.length} active bot(s)...`);
+
+  for (const bot of activeBots) {
+    const eth = await getEthBalanceRPC(bot.walletAddress!);
+    if (eth === null) continue;
+
+    // Update fleet record with latest balance
+    const existing = fleet.get(bot.botId);
+    if (existing) {
+      fleet.set(bot.botId, { ...existing, gasEth: eth, gasCheckedAt: new Date().toISOString() });
+    }
+
+    const status = eth < GAS_ALERT_THRESHOLD_ETH ? '🔴 LOW' : '✅';
+    console.log(`[Signal] ⛽ ${bot.botId}: ${eth.toFixed(6)} ETH ${status}`);
+
+    if (eth < GAS_ALERT_THRESHOLD_ETH) {
+      const lastAlert = lastGasAlertMs.get(bot.botId) ?? 0;
+      if (now - lastAlert > GAS_ALERT_COOLDOWN_MS) {
+        lastGasAlertMs.set(bot.botId, now);
+        await sendTelegramAlert(buildGasAlertMessage(bot.botId, eth, bot.walletAddress!));
+      }
+    }
+  }
+}
+
+// ============================================================================
 // REFRESH LOOP
 // ============================================================================
 
@@ -241,8 +312,9 @@ function handleHealth(res: http.ServerResponse): void {
 }
 
 function handleIntel(res: http.ServerResponse, url: URL): void {
-  // Track bot heartbeat
+  // Track bot heartbeat — capture wallet address for gas monitoring
   const botId = url.searchParams.get('botId');
+  const wallet = url.searchParams.get('wallet');
   if (botId) {
     const existing = fleet.get(botId);
     fleet.set(botId, {
@@ -250,6 +322,9 @@ function handleIntel(res: http.ServerResponse, url: URL): void {
       lastSeenAt: new Date().toISOString(),
       lastSeenMs: Date.now(),
       totalPolls: (existing?.totalPolls ?? 0) + 1,
+      walletAddress: wallet || existing?.walletAddress,
+      gasEth: existing?.gasEth,
+      gasCheckedAt: existing?.gasCheckedAt,
     });
   }
 
@@ -287,6 +362,26 @@ function handleConfig(res: http.ServerResponse, botId: string): void {
     return;
   }
   sendJSON(res, 200, getBotConfig(botId));
+}
+
+function handleGas(res: http.ServerResponse): void {
+  const now = Date.now();
+  const bots = Array.from(fleet.values())
+    .filter(b => b.walletAddress)
+    .map(b => ({
+      botId: b.botId,
+      walletAddress: b.walletAddress,
+      gasEth: b.gasEth ?? null,
+      gasCheckedAt: b.gasCheckedAt ?? null,
+      isLow: b.gasEth != null ? b.gasEth < GAS_ALERT_THRESHOLD_ETH : null,
+      online: now - b.lastSeenMs < FLEET_ONLINE_WINDOW_MS,
+    }));
+  sendJSON(res, 200, {
+    bots,
+    threshold: GAS_ALERT_THRESHOLD_ETH,
+    checkIntervalMin: GAS_CHECK_INTERVAL_MS / 60000,
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 // ============================================================================
@@ -340,6 +435,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /gas
+  if (path === '/gas') {
+    handleGas(res);
+    return;
+  }
+
   send404(res);
 });
 
@@ -366,8 +467,9 @@ server.listen(PORT, () => {
   console.log('');
   console.log('  Routes:');
   console.log('    GET /health      — service status');
-  console.log('    GET /intel       — latest intel payload (add ?botId=<name>)');
+  console.log('    GET /intel       — latest intel payload (add ?botId=<name>&wallet=<addr>)');
   console.log('    GET /fleet       — bot heartbeat status');
+  console.log('    GET /gas         — fleet ETH gas balances (checked every 30 min)');
   console.log('    GET /history     — 24h signal history');
   console.log('    GET /config/:id  — per-bot strategy profile');
   console.log('');
@@ -379,9 +481,14 @@ runRefreshCycle().then(() => {
   setInterval(runRefreshCycle, REFRESH_INTERVAL_MS);
 }).catch((err) => {
   console.error('[Signal] Initial refresh failed:', err);
-  // Still schedule — will succeed once connectivity is available
   setInterval(runRefreshCycle, REFRESH_INTERVAL_MS);
 });
+
+// Gas monitor — first check after 5 min (let bots check in first), then every 30 min
+setTimeout(() => {
+  checkGasBalances();
+  setInterval(checkGasBalances, GAS_CHECK_INTERVAL_MS);
+}, 5 * 60 * 1000);
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

@@ -2761,7 +2761,8 @@ async function fetchSignalIntel(): Promise<{
   if (!serviceUrl) return null;
 
   const botId = process.env.BOT_INSTANCE_NAME || 'unknown';
-  const url = `${serviceUrl}/intel?botId=${encodeURIComponent(botId)}`;
+  const wallet = CONFIG.walletAddress;
+  const url = `${serviceUrl}/intel?botId=${encodeURIComponent(botId)}&wallet=${encodeURIComponent(wallet)}`;
 
   try {
     const controller = new AbortController();

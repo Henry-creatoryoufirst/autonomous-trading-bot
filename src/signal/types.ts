@@ -51,6 +51,9 @@ export interface BotHeartbeat {
   lastSeenAt: string;     // ISO timestamp
   lastSeenMs: number;     // unix ms — for computing "online" status
   totalPolls: number;     // how many times this bot has polled us
+  walletAddress?: string; // bot's on-chain wallet — reported via ?wallet= param
+  gasEth?: number;        // last known ETH gas balance (checked every 30 min)
+  gasCheckedAt?: string;  // ISO timestamp of last gas check
 }
 
 export interface FleetStatus {
