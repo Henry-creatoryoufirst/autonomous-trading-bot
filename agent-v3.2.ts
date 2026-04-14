@@ -448,7 +448,9 @@ import { fetchPoolLiquidity as _fetchPoolLiquidity, checkLiquidity as _checkLiqu
 // Phase 14: Extracted on-chain capital flows module
 import { detectOnChainCapitalFlows as _detectOnChainCapitalFlows, fetchBlockscoutTransfers as _fetchBlockscoutTransfers, pairTransfersIntoTrades as _pairTransfersIntoTrades } from "./src/core/chain/index.js";
 // Phase 3c: Centralized state store
-import { setState as _storeSetState, setBreakerState as _storeSetBreakerState, markStateDirty as _storeMarkStateDirty, isStateDirty as _storeIsStateDirty, isCriticalPending as _storeIsCriticalPending, clearDirtyFlag as _storeClearDirtyFlag } from "./src/core/state/index.js";
+import { setState as _storeSetState, setBreakerState as _storeSetBreakerState } from "./src/core/state/index.js";
+// Phase 2b: Extracted state/persistence module
+import { loadTradeHistory, saveTradeHistory, markStateDirty, flushStateIfDirty, initPersistence, DEFAULT_BREAKER_STATE } from './src/core/persistence/index.js';
 // Phase 2: Extracted config modules
 import { TOKEN_REGISTRY, SECTORS, CDP_UNSUPPORTED_TOKENS, DEX_SWAP_TOKENS, QUOTE_DECIMALS, WETH_ADDRESS, USDC_ADDRESS, CBBTC_ADDRESS, VIRTUAL_ADDRESS } from "./src/core/config/token-registry.js";
 import type { SectorKey } from "./src/core/config/token-registry.js";
@@ -1463,381 +1465,6 @@ setInterval(() => {
 // HELPER FUNCTIONS
 // ============================================================================
 
-function loadTradeHistory() {
-  try {
-    // Try v3.3 log first, then v3.1
-    const logFiles = [CONFIG.logFile, "./logs/trades-v3.1.json"];
-    for (const file of logFiles) {
-      if (fs.existsSync(file)) {
-        const data = fs.readFileSync(file, "utf-8");
-        const parsed = JSON.parse(data);
-        state.tradeHistory = parsed.trades || [];
-        // v13.0: Restore initialValue and peakValue from state file. Fresh bots start at $0.
-        // initialValue is set on first deposit detection or from persisted state.
-        state.trading.initialValue = parsed.initialValue || 0;
-        state.trading.peakValue = parsed.peakValue || 0;
-        state.trading.maxDrawdownPercent = parsed.maxDrawdownPercent || 0; // v21.4: Restore lifetime max drawdown
-        state.trading.totalTrades = parsed.totalTrades || 0;
-        state.trading.successfulTrades = parsed.successfulTrades || 0;
-        // v11.4.24: Restore lifetime trade counters (persisted separately from capped trade array)
-        if (parsed.lifetimeTotalTrades && parsed.lifetimeTotalTrades > state.trading.totalTrades) {
-          state.trading.totalTrades = parsed.lifetimeTotalTrades;
-        }
-        if (parsed.lifetimeSuccessfulTrades && parsed.lifetimeSuccessfulTrades > state.trading.successfulTrades) {
-          state.trading.successfulTrades = parsed.lifetimeSuccessfulTrades;
-        }
-        // v11.4.12: Restore fields that were saved but never loaded back
-        if (parsed.currentValue && parsed.currentValue > 0) state.trading.totalPortfolioValue = parsed.currentValue;
-        if (parsed.sectorAllocations) state.trading.sectorAllocations = parsed.sectorAllocations;
-        state.costBasis = parsed.costBasis || {};
-        state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
-        state.stopLossCooldowns = parsed.stopLossCooldowns || {};
-        state.tradeFailures = parsed.tradeFailures || {};
-        // v11.4.11: Clear stale circuit breaker entries on startup — unsupported tokens
-        // are now skipped via CDP_UNSUPPORTED_TOKENS, so old failures won't recur
-        // v20.4.2: Preserve trade failures across restarts — don't clear on startup.
-        // If a token's swap routes are broken, restarting shouldn't retry them immediately.
-        // The cooldown timer (FAILURE_COOLDOWN_HOURS) handles expiry automatically.
-        if (Object.keys(state.tradeFailures).length > 0) {
-          const active = Object.entries(state.tradeFailures).filter(([, f]) => {
-            const hours = (Date.now() - new Date(f.lastFailure).getTime()) / 3600000;
-            return hours < FAILURE_COOLDOWN_HOURS && f.count >= MAX_CONSECUTIVE_FAILURES;
-          });
-          if (active.length > 0) {
-            console.log(`  🚫 ${active.length} token(s) still blocked: ${active.map(([s, f]) => `${s}(${f.count} fails)`).join(', ')}`);
-          }
-          // Clear expired entries
-          for (const [sym, f] of Object.entries(state.tradeFailures)) {
-            const hours = (Date.now() - new Date(f.lastFailure).getTime()) / 3600000;
-            if (hours >= FAILURE_COOLDOWN_HOURS) delete state.tradeFailures[sym];
-          }
-        }
-        state.harvestedProfits = parsed.harvestedProfits || { totalHarvested: 0, harvestCount: 0, harvests: [] };
-        // Phase 3 fields
-        state.strategyPatterns = parsed.strategyPatterns || {};
-        if (parsed.adaptiveThresholds) {
-          state.adaptiveThresholds = { ...DEFAULT_ADAPTIVE_THRESHOLDS, ...parsed.adaptiveThresholds };
-        }
-        // v12.2.2: Clamp stop-loss thresholds to new wider bounds — persisted state may have
-        // self-tightened to -6% which causes churn (buy → immediate stop → buy again loop).
-        if (state.adaptiveThresholds.stopLossPercent > -12) {
-          console.log(`  🔧 Widening persisted stop-loss from ${state.adaptiveThresholds.stopLossPercent}% → -15% (was too tight)`);
-          state.adaptiveThresholds.stopLossPercent = -15;
-        }
-        if (state.adaptiveThresholds.trailingStopPercent > -10) {
-          console.log(`  🔧 Widening persisted trailing stop from ${state.adaptiveThresholds.trailingStopPercent}% → -12% (was too tight)`);
-          state.adaptiveThresholds.trailingStopPercent = -12;
-        }
-        // v11.4.22: Force lower confluence thresholds until self-improvement has enough data.
-        // Persisted state may have the old confluenceBuy=15 which blocks trades when RSI/MACD are null.
-        if (state.trading.totalTrades < KELLY_MIN_TRADES) {
-          state.adaptiveThresholds.confluenceBuy = Math.min(state.adaptiveThresholds.confluenceBuy, 8);
-          state.adaptiveThresholds.confluenceSell = Math.max(state.adaptiveThresholds.confluenceSell, -8);
-          state.adaptiveThresholds.confluenceStrongBuy = Math.min(state.adaptiveThresholds.confluenceStrongBuy, 30);
-          state.adaptiveThresholds.confluenceStrongSell = Math.max(state.adaptiveThresholds.confluenceStrongSell, -30);
-          // Also force updated regime multipliers
-          state.adaptiveThresholds.regimeMultipliers = { ...DEFAULT_ADAPTIVE_THRESHOLDS.regimeMultipliers };
-          console.log(`  📊 Bootstrap mode: Lowered confluence thresholds (buy≥${state.adaptiveThresholds.confluenceBuy}, sell≤${state.adaptiveThresholds.confluenceSell}) until ${KELLY_MIN_TRADES} trades reached`);
-        }
-        state.performanceReviews = (parsed.performanceReviews || []).slice(-30);
-        state.explorationState = parsed.explorationState || { ...DEFAULT_EXPLORATION_STATE };
-        state.lastReviewTradeIndex = parsed.lastReviewTradeIndex || 0;
-        state.lastReviewTimestamp = parsed.lastReviewTimestamp || null;
-        // v9.1: Restore auto-harvest transfer state (multi-wallet)
-        state.autoHarvestTransfers = (parsed.autoHarvestTransfers || []).slice(-100);
-        state.totalAutoHarvestedUSD = parsed.totalAutoHarvestedUSD || 0;
-        state.totalAutoHarvestedETH = parsed.totalAutoHarvestedETH || 0;
-        state.lastAutoHarvestTime = parsed.lastAutoHarvestTime || null;
-        state.autoHarvestCount = parsed.autoHarvestCount || 0;
-        state.autoHarvestByRecipient = parsed.autoHarvestByRecipient || {};
-        // v9.1: Backfill per-recipient tracking from existing transfer records
-        if (Object.keys(state.autoHarvestByRecipient).length === 0 && state.autoHarvestTransfers.length > 0) {
-          for (const t of state.autoHarvestTransfers) {
-            const lbl = (t as any).label || 'Owner';
-            state.autoHarvestByRecipient[lbl] = (state.autoHarvestByRecipient[lbl] || 0) + (t.amountUSD || 0);
-          }
-        }
-        // v9.3: Restore daily payout state
-        state.dailyPayouts = (parsed.dailyPayouts || []).slice(-90);
-        state.totalDailyPayoutsUSD = parsed.totalDailyPayoutsUSD || 0;
-        state.dailyPayoutCount = parsed.dailyPayoutCount || 0;
-        state.lastDailyPayoutDate = parsed.lastDailyPayoutDate || null;
-        state.dailyPayoutByRecipient = parsed.dailyPayoutByRecipient || {};
-        // v5.2: Restore shadow proposals
-        if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
-          shadowProposals = parsed.shadowProposals;
-          console.log(`  🔬 Restored ${shadowProposals.length} shadow proposals`);
-        }
-        // v8.0: Restore institutional breaker state
-        // v20.1: Reset stale breaker state if pause has already expired or losses are from a previous deploy
-        if (parsed.breakerState) {
-          breakerState = { ...DEFAULT_BREAKER_STATE, ...parsed.breakerState };
-          // If the breaker was triggered but the pause period has expired, clear it
-          if (breakerState.lastBreakerTriggered) {
-            const pauseEnd = new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000);
-            if (Date.now() > pauseEnd) {
-              console.log(`  ✅ Breaker pause expired — clearing stale breaker state (was: ${breakerState.consecutiveLosses} losses, rolling: ${breakerState.rollingTradeResults?.length || 0} entries, triggered ${breakerState.lastBreakerTriggered})`);
-              breakerState = { ...DEFAULT_BREAKER_STATE };
-            } else {
-              console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses, last triggered ${breakerState.lastBreakerTriggered}`);
-            }
-          } else if (breakerState.consecutiveLosses > 0) {
-            // Losses recorded but no breaker triggered — check if they're stale (no trades in 24h = reset)
-            const lastResult = breakerState.rollingTradeResults.length > 0;
-            if (!lastResult && breakerState.consecutiveLosses >= BREAKER_CONSECUTIVE_LOSSES) {
-              console.log(`  ✅ Resetting stale consecutive losses (${breakerState.consecutiveLosses}) — no recent trade activity`);
-              breakerState.consecutiveLosses = 0;
-              breakerState.rollingTradeResults = [];
-            } else {
-              console.log(`  🚨 Breaker state: ${breakerState.consecutiveLosses} consecutive losses`);
-            }
-          }
-        }
-        // v10.0: Restore Market Intelligence Engine historical data
-        if (parsed.fundingRateHistory) {
-          fundingRateHistory = parsed.fundingRateHistory;
-          state.fundingRateHistory = parsed.fundingRateHistory;
-        }
-        if (parsed.btcDominanceHistory) {
-          btcDominanceHistory = parsed.btcDominanceHistory;
-          state.btcDominanceHistory = parsed.btcDominanceHistory;
-        }
-        if (parsed.stablecoinSupplyHistory) {
-          setStablecoinSupplyHistory(parsed.stablecoinSupplyHistory);
-          state.stablecoinSupplyHistory = parsed.stablecoinSupplyHistory;
-        }
-        // v11.0: Restore Aave yield state
-        if (parsed.aaveYieldState) {
-          aaveYieldService.restoreState(parsed.aaveYieldState);
-          const ys = aaveYieldService.getState();
-          console.log(`  🏦 Aave yield restored: $${ys.depositedUSDC.toFixed(2)} deposited, $${ys.totalYieldEarned.toFixed(4)} earned, ${ys.supplyCount} supplies`);
-        }
-        // v21.2: Restore Morpho yield state
-        if (parsed.morphoYieldState) {
-          morphoYieldService.restoreState(parsed.morphoYieldState);
-          const ms = morphoYieldService.getState();
-          console.log(`  🏦 Morpho yield restored: $${ms.depositedUSDC.toFixed(2)} deposited, $${ms.totalYieldEarned.toFixed(4)} earned, ${ms.supplyCount} supplies`);
-        }
-        // v11.4.5-6: Restore migration flags
-        if (parsed._migrationCostBasisV1145) {
-          (state as any)._migrationCostBasisV1145 = true;
-        }
-        if (parsed._migrationCostBasisV1146) {
-          (state as any)._migrationCostBasisV1146 = true;
-        }
-        if (parsed._migrationPnLResetV1950) {
-          (state as any)._migrationPnLResetV1950 = true;
-        }
-        // v11.4.7: Restore safety guard state (v11.4.17: bound to last 100)
-        state.sanityAlerts = (parsed.sanityAlerts || []).slice(-100);
-        state.tradeDedupLog = parsed.tradeDedupLog || {};
-        // Clean up expired dedup entries (older than 2 hours)
-        if (state.tradeDedupLog) {
-          const now = Date.now();
-          for (const key of Object.keys(state.tradeDedupLog)) {
-            if (now - new Date(state.tradeDedupLog[key]).getTime() > 2 * 60 * 60 * 1000) {
-              delete state.tradeDedupLog[key];
-            }
-          }
-        }
-        // v19.5.0: Restore deposit tracking from state file (will be overwritten by on-chain truth on first cycle)
-        state.totalDeposited = parsed.totalDeposited || 0;
-        state.onChainWithdrawn = parsed.onChainWithdrawn || 0;
-        state.lastKnownUSDCBalance = parsed.lastKnownUSDCBalance || 0;
-        state.depositHistory = parsed.depositHistory || [];
-        if (state.totalDeposited > 0) {
-          console.log(`  💵 Deposit tracking: $${state.totalDeposited.toFixed(2)} deposited, $${state.onChainWithdrawn.toFixed(2)} withdrawn (${state.depositHistory.length} deposits)`);
-        }
-        // NVR-NL: Restore user directives and config directives
-        state.userDirectives = parsed.userDirectives || [];
-        state.configDirectives = parsed.configDirectives || [];
-        const activeDir = (state.userDirectives || []).length + (state.configDirectives || []).filter((d: ConfigDirective) => d.active).length;
-        if (activeDir > 0) {
-          console.log(`  📝 Restored ${activeDir} active directives (${state.userDirectives.length} user, ${state.configDirectives.filter((d: ConfigDirective) => d.active).length} config)`);
-        }
-        // v9.0: Migrate existing cost basis entries — backfill ATR fields
-        for (const sym of Object.keys(state.costBasis)) {
-          const cb = state.costBasis[sym];
-          if (cb.atrStopPercent === undefined) cb.atrStopPercent = null;
-          if (cb.atrTrailPercent === undefined) cb.atrTrailPercent = null;
-          if (cb.atrAtEntry === undefined) cb.atrAtEntry = null;
-          if (cb.trailActivated === undefined) cb.trailActivated = false;
-          if (cb.lastAtrUpdate === undefined) cb.lastAtrUpdate = null;
-        }
-        // v9.0: Ensure adaptive thresholds have ATR multiplier fields
-        // v11.4.17: Clamp to THRESHOLD_BOUNDS to prevent corrupted state from widening stops infinitely
-        if ((state.adaptiveThresholds as any).atrStopMultiplier === undefined) {
-          state.adaptiveThresholds.atrStopMultiplier = ATR_STOP_LOSS_MULTIPLIER;
-        } else {
-          state.adaptiveThresholds.atrStopMultiplier = Math.max(1.5, Math.min(4.0, state.adaptiveThresholds.atrStopMultiplier));
-        }
-        if ((state.adaptiveThresholds as any).atrTrailMultiplier === undefined) {
-          state.adaptiveThresholds.atrTrailMultiplier = ATR_TRAILING_STOP_MULTIPLIER;
-        } else {
-          state.adaptiveThresholds.atrTrailMultiplier = Math.max(1.5, Math.min(4.0, state.adaptiveThresholds.atrTrailMultiplier));
-        }
-        // v21.2: Clamp ALL adaptive thresholds to THRESHOLD_BOUNDS on restore.
-        // The shadow proposal system drifted confluenceBuy to 30 and confluenceStrongBuy to 60,
-        // which paralyzed the bot (zero trades for 15+ hours). Force back within safe bounds.
-        for (const [field, bounds] of Object.entries(THRESHOLD_BOUNDS)) {
-          const val = (state.adaptiveThresholds as any)[field];
-          if (val !== undefined && typeof val === 'number') {
-            const clamped = Math.max(bounds.min, Math.min(bounds.max, val));
-            if (clamped !== val) {
-              console.log(`  ⚠️ Clamped ${field}: ${val} → ${clamped} (bounds: ${bounds.min}–${bounds.max})`);
-              (state.adaptiveThresholds as any)[field] = clamped;
-            }
-          }
-        }
-        // v21.2: Hard reset — if confluenceBuy drifted too high, reset to sim-optimal 22.
-        // v21.16: Lowered cap from 25 → 22 (parameter sweep Phase 2 confirmed 22 scores 64/100 vs 59/100 at 25).
-        // The bot MUST be able to trade. A threshold above 22 hurts BULL and RANGING performance.
-        if (state.adaptiveThresholds.confluenceBuy > 22) {
-          console.log(`  🔧 RESET confluenceBuy: ${state.adaptiveThresholds.confluenceBuy} → 22 (sim-optimal, was paralyzed)`);
-          state.adaptiveThresholds.confluenceBuy = 22;
-        }
-        if (state.adaptiveThresholds.confluenceStrongBuy > 40) {
-          console.log(`  🔧 RESET confluenceStrongBuy: ${state.adaptiveThresholds.confluenceStrongBuy} → 40 (was paralyzed)`);
-          state.adaptiveThresholds.confluenceStrongBuy = 40;
-        }
-        console.log(`  📂 Loaded ${state.tradeHistory.length} trades, ${Object.keys(state.costBasis).length} cost basis entries from ${file}`);
-        console.log(`  🧠 Phase 3: ${Object.keys(state.strategyPatterns).length} patterns, ${state.performanceReviews.length} reviews, ${state.adaptiveThresholds.adaptationCount} adaptations`);
-        // v20.0: Restore trailing stops from disk
-        loadTrailingStops();
-        return;
-      }
-    }
-    console.log("  📂 No existing trade history found, starting fresh");
-  } catch (e) {
-    console.log("  📂 No existing trade history found, starting fresh");
-  }
-}
-
-function saveTradeHistory() {
-  try {
-    const data = {
-      version: BOT_VERSION,
-      lastUpdated: new Date().toISOString(),
-      initialValue: state.trading.initialValue,
-      peakValue: state.trading.peakValue,
-      maxDrawdownPercent: state.trading.maxDrawdownPercent || 0, // v21.4: Persist lifetime max drawdown
-      currentValue: state.trading.totalPortfolioValue,
-      totalTrades: state.trading.totalTrades,
-      successfulTrades: state.trading.successfulTrades,
-      sectorAllocations: state.trading.sectorAllocations,
-      trades: state.tradeHistory.slice(-2500), // v11.4.24: Raised from 1000 to 2500 — Kelly needs full rolling window
-      lifetimeTotalTrades: state.trading.totalTrades,
-      lifetimeSuccessfulTrades: state.trading.successfulTrades,
-      costBasis: state.costBasis,
-      profitTakeCooldowns: state.profitTakeCooldowns,
-      stopLossCooldowns: state.stopLossCooldowns,
-      tradeFailures: state.tradeFailures,
-      harvestedProfits: state.harvestedProfits,
-      // v9.1: Auto-harvest transfer persistence (multi-wallet)
-      autoHarvestTransfers: state.autoHarvestTransfers,
-      totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,
-      totalAutoHarvestedETH: state.totalAutoHarvestedETH,
-      lastAutoHarvestTime: state.lastAutoHarvestTime,
-      autoHarvestCount: state.autoHarvestCount,
-      autoHarvestByRecipient: state.autoHarvestByRecipient,
-      // v9.3: Daily Payout persistence
-      dailyPayouts: state.dailyPayouts.slice(-90),
-      totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
-      dailyPayoutCount: state.dailyPayoutCount,
-      lastDailyPayoutDate: state.lastDailyPayoutDate,
-      dailyPayoutByRecipient: state.dailyPayoutByRecipient,
-      // Phase 3: Self-Improvement Engine
-      strategyPatterns: state.strategyPatterns,
-      adaptiveThresholds: state.adaptiveThresholds,
-      performanceReviews: state.performanceReviews.slice(-30),
-      explorationState: state.explorationState,
-      lastReviewTradeIndex: state.lastReviewTradeIndex,
-      lastReviewTimestamp: state.lastReviewTimestamp,
-      // v5.2: Persist shadow proposals so they survive restarts
-      shadowProposals: shadowProposals.filter(p => p.status === "PENDING").slice(-50),
-      // v6.1: Persist token discovery state
-      tokenDiscovery: tokenDiscoveryEngine?.getState() || null,
-      // v8.0: Persist institutional breaker state
-      breakerState,
-      // v19.5.0: On-chain deposit/withdrawal tracking
-      totalDeposited: state.totalDeposited,
-      onChainWithdrawn: state.onChainWithdrawn,
-      lastKnownUSDCBalance: state.lastKnownUSDCBalance,
-      depositHistory: state.depositHistory.slice(-50),
-      // v10.0: Market Intelligence Engine historical data
-      fundingRateHistory,
-      btcDominanceHistory: { values: btcDominanceHistory.values.slice(-504) },
-      stablecoinSupplyHistory: { values: getStablecoinSupplyHistory().values.slice(-504) },
-      // v11.0: Aave V3 yield state persistence
-      aaveYieldState: aaveYieldService.getState(),
-      // v21.2: Morpho yield state persistence
-      morphoYieldState: morphoYieldService.getState(),
-      // v11.4.5-6: Migration flags
-      _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
-      _migrationCostBasisV1146: (state as any)._migrationCostBasisV1146 || false,
-      _migrationPnLResetV1950: (state as any)._migrationPnLResetV1950 || false,
-      // v11.4.7: Safety guards
-      sanityAlerts: (state.sanityAlerts || []).slice(-50),
-      tradeDedupLog: state.tradeDedupLog || {},
-      // NVR-NL: Persist user directives and config directives
-      userDirectives: (state.userDirectives || []).slice(-30),
-      configDirectives: (state.configDirectives || []).filter((d: ConfigDirective) => d.active).slice(-30),
-    };
-    // v20.0: Save trailing stops alongside main state
-    saveTrailingStops();
-    // Write to persistent volume path, creating directory if needed
-    const dir = CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf("/"));
-    if (dir && !fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    // v11.4.17: Atomic write — write to temp file then rename to prevent corruption on crash
-    const tmpFile = CONFIG.logFile + '.tmp';
-    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2));
-    fs.renameSync(tmpFile, CONFIG.logFile);
-  } catch (e: any) {
-    console.error("Failed to save trade history:", e.message);
-  }
-}
-
-// ============================================================================
-// v20.5: BATCHED STATE PERSISTENCE — dirty-flag system to reduce disk I/O
-// Instead of writing on every state mutation (~33 call sites), we mark state
-// as dirty and flush periodically. Critical saves (post-trade) flush within 5s.
-// Non-critical saves (HOLD, status updates) batch into 30s windows.
-// Shutdown handlers still save immediately for data safety.
-// ============================================================================
-// Phase 3c: Dirty-flag state now delegates to src/state/store.ts.
-// Local variables kept only for the critical-timer and flush-interval logic.
-let lastSaveAt = Date.now();
-let criticalSaveTimer: ReturnType<typeof setTimeout> | null = null;
-const SAVE_INTERVAL_MS = 30_000;          // Flush every 30s if dirty
-const SAVE_CRITICAL_INTERVAL_MS = 5_000;  // Flush within 5s after trade execution
-
-function markStateDirty(critical?: boolean): void {
-  _storeMarkStateDirty(critical);
-  if (critical && !criticalSaveTimer) {
-    criticalSaveTimer = setTimeout(() => {
-      criticalSaveTimer = null;
-      flushStateIfDirty('critical-timer');
-    }, SAVE_CRITICAL_INTERVAL_MS);
-  }
-}
-
-function flushStateIfDirty(reason: string = 'periodic'): void {
-  if (!_storeIsStateDirty()) return;
-  const elapsed = Date.now() - lastSaveAt;
-  // For periodic flushes, respect the interval; for explicit calls, always flush
-  if (reason === 'periodic' && elapsed < SAVE_INTERVAL_MS) return;
-  saveTradeHistory();
-  _storeClearDirtyFlag();
-  lastSaveAt = Date.now();
-  if (criticalSaveTimer) {
-    clearTimeout(criticalSaveTimer);
-    criticalSaveTimer = null;
-  }
-  console.log(`[State] Flushed state (reason: ${reason}, dirty for ${elapsed}ms)`);
-}
-
 // ============================================================================
 // v11.4.22: ON-CHAIN TRADE HISTORY RECOVERY
 // Reconstructs trade history from Basescan ERC20 transfer logs.
@@ -2541,16 +2168,6 @@ loadPriceCache();
 const BREAKER_ROLLING_WINDOW_SIZE = 8;     // Track last 8 trades
 const BREAKER_ROLLING_LOSS_THRESHOLD = 5;  // 5+ losses in 8 trades = trigger breaker
 
-const DEFAULT_BREAKER_STATE: BreakerState = {
-  consecutiveLosses: 0,
-  lastBreakerTriggered: null,
-  lastBreakerReason: null,
-  breakerSizeReductionUntil: null,
-  dailyBaseline: { date: '', value: 0 },
-  dailyBaselineValidated: false,
-  weeklyBaseline: { weekStart: '', value: 0 },
-  rollingTradeResults: [],
-};
 
 let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
 
@@ -8316,6 +7933,21 @@ async function main() {
   tokenDiscoveryEngine.start();
   console.log(`  ✅ Discovery engine active. Static pool: ${staticTokens.length} tokens. Dynamic discovery every 6h.`);
 
+  // Phase 2b: Wire service dependencies into persistence module
+  initPersistence({
+    logFile: CONFIG.logFile,
+    fallbackLogFiles: ['./logs/trades-v3.1.json'],
+    aaveYieldService,
+    morphoYieldService,
+    getTokenDiscoveryState: () => tokenDiscoveryEngine?.getState() ?? null,
+    loadTrailingStops,
+    saveTrailingStops,
+    rebuildCostBasisFromTrades,
+    getFundingRateHistory: () => fundingRateHistory,
+    setFundingRateHistory: (h) => { fundingRateHistory = h; state.fundingRateHistory = h; },
+    getBtcDominanceHistory: () => btcDominanceHistory,
+    setBtcDominanceHistory: (h) => { btcDominanceHistory = h; state.btcDominanceHistory = h; },
+  });
   loadTradeHistory();
 
   // v20.7: STATE_BACKUP_URL fallback — if disk state is empty and a backup URL is configured,
