@@ -54,6 +54,7 @@ function zeroMetrics(): PerformanceMetrics {
     profitFactor: 0, avgWin: 0, avgLoss: 0,
     sharpeRatio: 0, sortinoRatio: 0, calmarRatio: 0,
     holdBaseline: 0, holdBaselinePct: 0, avgTradesPerMonth: 0,
+    yieldEarned: 0, bearCandles: 0,
   };
 }
 
