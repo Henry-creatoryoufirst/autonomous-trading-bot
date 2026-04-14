@@ -5,8 +5,7 @@
  * For any token candidate, checks if these wallets have recently bought it.
  * 2+ smart wallets accumulating the same token = strong pre-movement signal.
  *
- * Data source: Basescan token transfer API (free tier, 5 req/sec).
- * Requires: BASESCAN_API_KEY env var. Returns NONE signal gracefully if absent.
+ * Uses Base RPC — no API key required. Queries eth_getLogs for ERC-20 Transfer events.
  */
 
 import axios from 'axios';
@@ -60,34 +59,12 @@ export interface SmartWalletSignal {
 }
 
 // ============================================================================
-// INTERNAL TYPES (Basescan API response)
-// ============================================================================
-
-interface BasescanTokenTx {
-  blockNumber: string;
-  timeStamp: string;    // Unix seconds as string
-  hash: string;
-  from: string;
-  to: string;
-  value: string;        // token amount in smallest unit (needs decimals)
-  tokenDecimal: string;
-  contractAddress: string;
-}
-
-interface BasescanResponse {
-  status: string;
-  message: string;
-  result: BasescanTokenTx[] | string; // string on error (e.g. "No transactions found")
-}
-
-// ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const BASESCAN_API_BASE = 'https://api.basescan.org/v2/api';
-const BATCH_SIZE = 3;           // Basescan free tier: 5 req/sec, use 3 for headroom
+const BASE_RPC_URL = 'https://mainnet.base.org';
+const BATCH_SIZE = 3;           // concurrent wallet checks
 const BATCH_DELAY_MS = 250;     // 250 ms between batches
-const REQUEST_TIMEOUT_MS = 8000;
 
 // ============================================================================
 // HELPERS
@@ -103,6 +80,7 @@ function mapSignalStrength(walletCount: number): SmartWalletSignal['signalStreng
 /**
  * Check a single wallet for token buy activity within the lookback window.
  * Returns null on any failure — callers filter nulls.
+ * Uses Base RPC — no API key required.
  */
 async function checkSingleWallet(
   walletId: string,
@@ -110,53 +88,60 @@ async function checkSingleWallet(
   tokenAddress: string,
   tokenPriceUSD: number,
   lookbackHours: number,
-  apiKey: string,
 ): Promise<SmartWalletActivity | null> {
   try {
-    const url = `${BASESCAN_API_BASE}&module=account&action=tokentx` +
-      `&address=${walletAddress}` +
-      `&contractaddress=${tokenAddress}` +
-      `&page=1&offset=20&sort=desc` +
-      `&apikey=${apiKey}`;
+    // Get current block
+    const blockNumRes = await axios.post(BASE_RPC_URL, {
+      jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: []
+    }, { timeout: 8000 });
+    const currentBlock = parseInt(blockNumRes.data.result, 16);
 
-    const response = await axios.get<BasescanResponse>(url, {
-      timeout: REQUEST_TIMEOUT_MS,
+    const blocksBack = Math.floor(lookbackHours * 1800); // ~2s/block → 1800 blocks/hour
+    const fromBlock = currentBlock - blocksBack;
+
+    // Query Transfer events TO this wallet for this token
+    // topic[1] = from (null = any), topic[2] = to (wallet address padded)
+    const paddedWallet = '0x' + walletAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+
+    const logsRes = await axios.post(BASE_RPC_URL, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_getLogs',
+      params: [{
+        fromBlock: `0x${fromBlock.toString(16)}`,
+        toBlock: `0x${currentBlock.toString(16)}`,
+        address: tokenAddress,
+        topics: [
+          '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+          null,        // from: any
+          paddedWallet // to: this wallet
+        ],
+      }],
+    }, { timeout: 12000 });
+
+    const logs = logsRes.data?.result || [];
+    if (logs.length === 0) return null;
+
+    // Parse timestamps from block numbers
+    const timestamps = logs.map((log: any) => {
+      const blockNum = parseInt(log.blockNumber, 16);
+      // Approximate timestamp: currentBlock is now, each block ~2s
+      return Date.now() - (currentBlock - blockNum) * 2000;
     });
 
-    const { status, result } = response.data;
-
-    // Basescan returns status "0" with a string message when nothing is found
-    if (status !== '1' || !Array.isArray(result)) {
-      return null;
+    // Estimate volume: each log's data field contains the token amount
+    let totalTokens = BigInt(0);
+    for (const log of logs) {
+      try { totalTokens += BigInt(log.data); } catch { /* skip */ }
     }
-
-    const cutoffMs = Date.now() - lookbackHours * 60 * 60 * 1000;
-    const walletLower = walletAddress.toLowerCase();
-
-    // Filter to buy transactions within the lookback window.
-    // A buy = the wallet is the `to` address on the ERC-20 transfer.
-    const buys = result.filter((tx) => {
-      const txMs = parseInt(tx.timeStamp, 10) * 1000;
-      return txMs >= cutoffMs && tx.to.toLowerCase() === walletLower;
-    });
-
-    if (buys.length === 0) return null;
-
-    // Estimate USD volume: sum token amounts accounting for decimals
-    let estimatedVolumeUSD = 0;
-    for (const tx of buys) {
-      const decimals = parseInt(tx.tokenDecimal, 10) || 18;
-      const tokenAmount = Number(tx.value) / Math.pow(10, decimals);
-      estimatedVolumeUSD += tokenAmount * tokenPriceUSD;
-    }
-
-    const timestamps = buys.map((tx) => parseInt(tx.timeStamp, 10) * 1000);
+    // Rough USD estimate (tokenPriceUSD is per whole token, decimals unknown → use 1e18)
+    const estimatedVolumeUSD = Number(totalTokens) / 1e18 * tokenPriceUSD;
 
     return {
       walletId,
       walletAddress,
       tokenAddress: tokenAddress.toLowerCase(),
-      buyCount: buys.length,
+      buyCount: logs.length,
       estimatedVolumeUSD,
       firstBuyTimestamp: Math.min(...timestamps),
       lastBuyTimestamp: Math.max(...timestamps),
@@ -197,22 +182,16 @@ export async function checkSmartWalletActivity(
     earliestActivityMs: 0,
   };
 
-  // Guard: require API key — return NONE gracefully if absent
-  const apiKey = process.env.BASESCAN_API_KEY;
-  if (!apiKey) {
-    return NONE_SIGNAL;
-  }
-
   const walletEntries = Object.entries(SMART_WALLETS);
   const results: SmartWalletActivity[] = [];
 
-  // Batch wallet checks in groups of 3 to respect Basescan free tier rate limits
+  // Batch wallet checks in groups to avoid overwhelming the public RPC
   for (let i = 0; i < walletEntries.length; i += BATCH_SIZE) {
     const batch = walletEntries.slice(i, i + BATCH_SIZE);
 
     const batchResults = await Promise.all(
       batch.map(([id, addr]) =>
-        checkSingleWallet(id, addr, tokenAddress, tokenPriceUSD, lookbackHours, apiKey),
+        checkSingleWallet(id, addr, tokenAddress, tokenPriceUSD, lookbackHours),
       ),
     );
 

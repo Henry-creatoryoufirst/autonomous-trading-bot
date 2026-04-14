@@ -8,7 +8,7 @@
  * Usage:
  *   npx tsx scripts/bootstrap-smart-wallets.ts
  *
- * Requires: BASESCAN_API_KEY in environment (https://basescan.org/myapikey)
+ * Uses Base RPC (no API key required) — queries eth_getLogs for Transfer events.
  * Output:   Console table + scripts/smart-wallets-discovered.json
  */
 
@@ -21,9 +21,9 @@ import { fileURLToPath } from 'url';
 // Config
 // ---------------------------------------------------------------------------
 
-const BASESCAN_BASE_URL = 'https://api.basescan.org/v2/api';
-const RATE_LIMIT_MS = 200; // 200ms between requests → safe under 5 req/sec free tier
-const EARLY_TX_COUNT = 100; // grab first 100 transfers per token
+const BASE_RPC_URL = 'https://mainnet.base.org';
+const RATE_LIMIT_MS = 200; // 200ms between chunks
+const EARLY_TX_COUNT = 100; // grab first 100 transfers per token (kept for output labeling)
 
 // Known DEX routers / infrastructure addresses to exclude
 const EXCLUDED_ADDRESSES = new Set([
@@ -55,28 +55,6 @@ const KNOWN_BASE_MOVERS: BaseMover[] = [
   { symbol: 'TOSHI',   address: '0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4', launchApprox: '2023-09-01' },
   { symbol: 'MOCHI',   address: '0xf6e932ca12afa26665dc4dde7e27be02a7c02e50', launchApprox: '2023-10-01' },
 ];
-
-// ---------------------------------------------------------------------------
-// Basescan API types
-// ---------------------------------------------------------------------------
-
-interface BasescanTokenTx {
-  blockNumber: string;
-  timeStamp: string;
-  hash: string;
-  from: string;
-  to: string;
-  value: string;
-  tokenDecimal: string;
-  contractAddress: string;
-  tokenSymbol: string;
-}
-
-interface BasescanResponse {
-  status: string;
-  message: string;
-  result: BasescanTokenTx[] | string;
-}
 
 // ---------------------------------------------------------------------------
 // Output types
@@ -125,32 +103,52 @@ function isExcluded(address: string, tokenAddress: string): boolean {
   return false;
 }
 
-async function fetchEarlyBuyers(
-  apiKey: string,
-  mover: BaseMover
-): Promise<string[]> {
-  const url = `${BASESCAN_BASE_URL}&module=account&action=tokentx` +
-    `&contractaddress=${mover.address}` +
-    `&page=1&offset=${EARLY_TX_COUNT}&sort=asc` +
-    `&apikey=${apiKey}`;
+async function fetchEarlyBuyers(mover: BaseMover): Promise<string[]> {
+  // Get current block
+  const blockNumRes = await axios.post(BASE_RPC_URL, {
+    jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: []
+  }, { timeout: 10000 });
+  const currentBlock = parseInt(blockNumRes.data.result, 16);
 
-  const response = await axios.get<BasescanResponse>(url, { timeout: 15000 });
-  const data = response.data;
+  // Query last 48 hours of Transfer events (2s/block → 86400 blocks/48h)
+  // Split into 2000-block chunks (public RPC limit)
+  const BLOCKS_48H = 86_400;
+  const CHUNK_SIZE = 2_000;
+  const fromBlock = currentBlock - BLOCKS_48H;
 
-  if (data.status !== '1' || !Array.isArray(data.result)) {
-    const msg = typeof data.result === 'string' ? data.result : data.message;
-    throw new Error(`Basescan error for ${mover.symbol}: ${msg}`);
+  const recipients = new Set<string>();
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+  for (let start = fromBlock; start < currentBlock; start += CHUNK_SIZE) {
+    const end = Math.min(start + CHUNK_SIZE - 1, currentBlock);
+    try {
+      const logsRes = await axios.post(BASE_RPC_URL, {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getLogs',
+        params: [{
+          fromBlock: `0x${start.toString(16)}`,
+          toBlock: `0x${end.toString(16)}`,
+          address: mover.address,
+          topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'],
+        }],
+      }, { timeout: 15000 });
+
+      const logs = logsRes.data?.result || [];
+      for (const log of logs) {
+        // topics[2] = to address (padded to 32 bytes)
+        if (log.topics?.[2]) {
+          const addr = '0x' + log.topics[2].slice(26); // strip leading zeros
+          if (addr !== ZERO_ADDRESS && !EXCLUDED_ADDRESSES.has(addr)) {
+            recipients.add(addr);
+          }
+        }
+      }
+      await sleep(100); // 100ms between chunks
+    } catch { /* skip failed chunks */ }
   }
 
-  const buyers: string[] = [];
-  for (const tx of data.result) {
-    const to = tx.to?.toLowerCase();
-    if (!to) continue;
-    if (isExcluded(tx.to, mover.address)) continue;
-    buyers.push(to);
-  }
-
-  return buyers;
+  return [...recipients];
 }
 
 // ---------------------------------------------------------------------------
@@ -158,18 +156,8 @@ async function fetchEarlyBuyers(
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  // Step 0 — check for API key
-  const apiKey = process.env.BASESCAN_API_KEY;
-  if (!apiKey) {
-    console.error('\n[ERROR] BASESCAN_API_KEY is not set.\n');
-    console.error('How to get one:');
-    console.error('  1. Go to https://basescan.org/myapikey');
-    console.error('  2. Create a free account and generate a key');
-    console.error('  3. Run: BASESCAN_API_KEY=your_key npx tsx scripts/bootstrap-smart-wallets.ts\n');
-    process.exit(1);
-  }
-
   console.log('\n=== NVR Capital — Smart Wallet Bootstrap ===');
+  console.log('Using Base RPC (no API key required)');
   console.log(`Analyzing ${KNOWN_BASE_MOVERS.length} known Base movers for early buyers...\n`);
 
   // Step 1 & 2 — for each mover, collect early buyers
@@ -177,10 +165,10 @@ async function main(): Promise<void> {
   const walletMap = new Map<string, Set<string>>();
 
   for (const mover of KNOWN_BASE_MOVERS) {
-    process.stdout.write(`[${mover.symbol}] Fetching first ${EARLY_TX_COUNT} transfers... `);
+    process.stdout.write(`[${mover.symbol}] Fetching Transfer events via RPC... `);
 
     try {
-      const buyers = await fetchEarlyBuyers(apiKey, mover);
+      const buyers = await fetchEarlyBuyers(mover);
 
       for (const addr of buyers) {
         if (!walletMap.has(addr)) {
