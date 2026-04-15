@@ -188,6 +188,16 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "DRB", name: "DebtReliefBot", coingeckoId: "debtreliefbot",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  SPX: {
+    address: "0x50da645f148798f68ef2d7db7c1cb22a6819bb2c",
+    symbol: "SPX", name: "SPX6900", coingeckoId: "spx6900",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  MOG: {
+    address: "0x2da56acb9ea78330f947bd57c54119debda7af71",
+    symbol: "MOG", name: "Mog Coin", coingeckoId: "mog-coin",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
