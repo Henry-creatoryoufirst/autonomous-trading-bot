@@ -147,6 +147,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VADER", name: "VaderAI by Virtuals", coingeckoId: "vaderai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  CLAWNCH: {
+    address: "0xa1f72459dfa10bad200ac160ecd78c6b77a747be",
+    symbol: "CLAWNCH", name: "CLAWNCH AI Launchpad", coingeckoId: "clawnch",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
