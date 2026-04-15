@@ -117,7 +117,6 @@ import {
   createPaperPortfolio, getPaperPortfolio, getAllPaperPortfolios,
   evaluatePaperTrade, updatePaperPortfolio, getPaperPortfolioSummary,
   savePaperPortfolios, loadPaperPortfolios,
-  createPaperPortfolio, getPaperPortfolio,
   type PaperPortfolio, type TokenSignal,
 } from "./src/simulation/paper-trader.js";
 import { runAllVersionBacktestsFromDisk, summarizeBacktestResults } from "./src/simulation/version-backtester.js";
@@ -525,6 +524,18 @@ import type { SwarmDecision } from "./src/core/services/swarm/agent-framework.js
 import { SIGNAL_ENGINE } from "./src/core/config/constants.js";
 
 dotenv.config();
+
+// ============================================================================
+// LOG LEVEL SYSTEM — set LOG_LEVEL=DEBUG in Railway env for verbose output
+// Default (INFO): trades, errors, cycle summaries, important events only
+// DEBUG: all intermediate steps, balance reads, indicator values
+// ============================================================================
+const LOG_LEVEL = (process.env.LOG_LEVEL || 'INFO').toUpperCase();
+const LOG_DEBUG = LOG_LEVEL === 'DEBUG';
+function botLog(msg: string, level: 'INFO' | 'DEBUG' = 'INFO') {
+  if (level === 'DEBUG' && !LOG_DEBUG) return;
+  console.log(msg);
+}
 
 // ============================================================================
 // v14.2: EXPLORATION TRADE GUARDRAILS — prevent exploration from fighting the trend
@@ -1401,6 +1412,20 @@ let cycleInProgress = false;
 let cycleStartedAt = 0; // v11.5: Timestamp when cycle started — for stuck detection
 const CYCLE_TIMEOUT_MS = 5 * 60 * 1000; // v11.4.21: 5-minute hard timeout per cycle
 
+// Retry / polling timing constants — tune here to adjust all retry behavior in one place
+const RETRY_BASE_DELAY_MS = 1000;           // Base for exponential backoff: 1s, 2s, 3s...
+const RETRY_COOLDOWN_DELAY_MS = 3000;       // Standard cooldown between retry attempts
+const POST_SWAP_POLL_INITIAL_MS = 2000;     // Wait before first post-swap balance check (chain needs time)
+const POST_SWAP_POLL_RETRY_MS = 3000;       // Wait between subsequent post-swap balance polls
+const APPROVAL_PROPAGATION_WAIT_MS = 10000; // CDP API needs this long to see on-chain approval state
+
+// Bot heartbeat — all polling intervals in one place (tune here, applies everywhere)
+const POLLING = {
+  priceStreamMs: 10_000,      // DexScreener price stream — high-frequency HTTP polling
+  cooldownCheckMs: 60_000,    // Cooldown token re-check — less frequent, they rarely unblock sooner
+  fullDiscoveryMs: 5 * 60_000, // Full registry discovery sweep — every 5 minutes
+} as const;
+
 // v11.4.21: Wrap a promise with a timeout — rejects if the promise doesn't resolve in time.
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -1421,16 +1446,24 @@ function scheduleNextCycle() {
     : adaptiveCycle.currentIntervalSec * 1000;
   if (hotMoverUrgent) hotMoverUrgent = false; // reset after we've consumed the urgency
   adaptiveCycleTimer = setTimeout(async () => {
-    // v11.5: Stuck cycle detection — if cycleInProgress is true but cycle started >2× timeout ago,
+    // v11.5: Stuck cycle detection — if cycleInProgress is true but cycle started >timeout+1min ago,
     // force-reset it. This handles edge cases where withTimeout's rejection doesn't properly
     // clear the flag (e.g., unhandled rejection in finally block, or process.nextTick race).
+    // Threshold: CYCLE_TIMEOUT_MS + 60s grace (6 min total) — down from 2× (10 min)
     if (cycleInProgress) {
       const stuckDuration = Date.now() - cycleStartedAt;
-      if (stuckDuration > CYCLE_TIMEOUT_MS * 2) {
-        console.error(`[Adaptive Cycle] ⚠️ STUCK CYCLE DETECTED — flag stuck for ${(stuckDuration / 1000).toFixed(0)}s, force-resetting`);
+      if (stuckDuration > CYCLE_TIMEOUT_MS + 60_000) {
+        const stuckSec = (stuckDuration / 1000).toFixed(0);
+        console.error(`[Adaptive Cycle] ⚠️ STUCK CYCLE DETECTED — flag stuck for ${stuckSec}s, force-resetting`);
         cycleInProgress = false;
+        // Alert via Telegram — stuck cycle means the bot was dark; this is critical to know
+        telegramService.sendAlert({
+          severity: 'HIGH',
+          title: `⚠️ Stuck Cycle Detected & Recovered`,
+          message: `Trading cycle was stuck for ${stuckSec}s (threshold: ${((CYCLE_TIMEOUT_MS + 60_000) / 1000).toFixed(0)}s).\n\nForce-reset applied. Next cycle will run normally.\n\nThis may indicate a hung API call or network issue — check Railway logs.`,
+        }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
       } else {
-        console.log(`[Adaptive Cycle] Skipped — previous cycle still running (${(stuckDuration / 1000).toFixed(0)}s elapsed)`);
+        botLog(`[Adaptive Cycle] Skipped — previous cycle still running (${(stuckDuration / 1000).toFixed(0)}s elapsed)`, 'DEBUG');
         scheduleNextCycle();
         return;
       }
@@ -1490,9 +1523,9 @@ function initPriceStream() {
   // HTTP polling approach with a dedicated interval (every 10s) for real-time awareness.
   // This is more reliable than WebSocket for DexScreener and avoids connection issues.
 
-  const STREAM_INTERVAL = 10000; // 10 seconds
-  const COOLDOWN_POLL_INTERVAL = 60000; // 60 seconds — poll cooldown tokens less often
-  const FULL_SWEEP_INTERVAL = 5 * 60 * 1000; // 5 minutes — full registry discovery
+  const STREAM_INTERVAL = POLLING.priceStreamMs;
+  const COOLDOWN_POLL_INTERVAL = POLLING.cooldownCheckMs;
+  const FULL_SWEEP_INTERVAL = POLLING.fullDiscoveryMs;
 
   let lastCooldownPollAt = 0;
   let lastFullPollAt = 0;
@@ -2634,7 +2667,7 @@ function triggerCircuitBreaker(reason: string) {
   console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
   console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
   // v19.6: Telegram alert on circuit breaker
-  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(() => {});
+  telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
 }
 
 /**
@@ -2649,7 +2682,7 @@ function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDet
     console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
   }
   // v19.6: Telegram trade failure tracking
-  telegramService.onTradeResult(success, tradeDetails).catch(() => {});
+  telegramService.onTradeResult(success, tradeDetails).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
 
   // v10.4: Rolling window — track last N trade results regardless of outcome
   breakerState.rollingTradeResults.push(isWin);
@@ -3335,7 +3368,7 @@ async function scanICUPositions(): Promise<void> {
             severity: 'HIGH',
             title: `🚨 ICU EXIT: ${symbol} ${unrealizedPct.toFixed(1)}%`,
             message: `${symbol} hit the ICU stop loss.\n\nLoss: ${unrealizedPct.toFixed(1)}% | Held: ${ageMinutes.toFixed(0)}min\nEntry: $${cb.averageCostBasis.toFixed(6)} | Now: $${livePrice.toFixed(6)}\n\n⚔️ Cutting before deeper damage. Capital protected.`,
-          }).catch(() => {});
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           continue;
         }
 
@@ -3348,7 +3381,7 @@ async function scanICUPositions(): Promise<void> {
             severity: 'INFO',
             title: `✅ ICU GRADUATED: ${symbol}`,
             message: `${symbol} survived ICU and is now ESTABLISHED.\n\nHeld: ${ageHours.toFixed(1)}h | P&L: ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%\nPrice: $${livePrice.toFixed(6)}\n\nNormal stop-loss rules now apply. Well done.`,
-          }).catch(() => {});
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           continue;
         }
 
@@ -3361,7 +3394,7 @@ async function scanICUPositions(): Promise<void> {
             severity: 'INFO',
             title: `👁 ICU: ${symbol} ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%`,
             message: `${direction} ${symbol} — ${ageMinutes.toFixed(0)}min in ICU\n\nP&L: ${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%\nPrice: $${livePrice.toFixed(6)} | Entry: $${cb.averageCostBasis.toFixed(6)}\nExit trigger: -${ICU_STOP_LOSS_PCT}% | Graduates in ${Math.max(0, (ICU_GRADUATION_HOURS * 60 - ageMinutes)).toFixed(0)}min${icu.isHotMover ? '\n🔥 Hot mover entry' : ''}`,
-          }).catch(() => {});
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
         }
       }
     } catch {
@@ -3501,7 +3534,7 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
         break;
       } catch (err: any) {
         if (attempt < 2) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          await new Promise(resolve => setTimeout(resolve, RETRY_BASE_DELAY_MS * (attempt + 1)));
         } else {
           console.warn(`  ⚠️ Failed to read ${symbol} after 3 attempts: ${err?.message || err}`);
           failedTokens.push(symbol);
@@ -3522,7 +3555,7 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
   // If any tokens failed, retry them after a longer pause
   if (failedTokens.length > 0) {
     console.log(`  🔄 Retrying ${failedTokens.length} failed tokens after cooldown...`);
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, RETRY_COOLDOWN_DELAY_MS));
     for (const symbol of failedTokens) {
       const token = TOKEN_REGISTRY[symbol];
       try {
@@ -4832,14 +4865,14 @@ async function executeDirectDexSwap(
     let actualTokens = 0;
     for (let balAttempt = 1; balAttempt <= 5; balAttempt++) {
       try {
-        await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? 2000 : 3000));
+        await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? POST_SWAP_POLL_INITIAL_MS : POST_SWAP_POLL_RETRY_MS));
         postSwapBalance = await getTokenBalance(balanceToken) ?? 0;
         actualTokens = Math.abs(postSwapBalance - preSwapBalance);
         if (actualTokens > 0) {
           console.log(`     📊 Actual tokens ${isSell ? 'sent' : 'received'}: ${actualTokens.toFixed(8)} ${balanceToken} (${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
           break;
         }
-        if (balAttempt < 5) console.log(`     ⏳ Balance unchanged (attempt ${balAttempt}/5), retrying...`);
+        if (balAttempt < 5) botLog(`     ⏳ Balance unchanged (attempt ${balAttempt}/5), retrying...`, 'DEBUG');
       } catch (e: any) {
         if (balAttempt === 5) console.warn(`     ⚠️ Post-swap balance check failed: ${e.message?.substring(0, 60)} — using estimate`);
       }
@@ -5034,7 +5067,7 @@ async function executeSingleSwap(
       justApproved = true;
       // Wait for the approval to propagate — CDP API needs time to see the on-chain state
       console.log(`     ⏳ Waiting 10s for approval to propagate...`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      await new Promise(resolve => setTimeout(resolve, APPROVAL_PROPAGATION_WAIT_MS));
     } else {
       console.log(`     ✅ Permit2 already approved for ${decision.fromToken}`);
     }
@@ -5077,7 +5110,7 @@ async function executeSingleSwap(
     let cdpSwapFailed = false;
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`     🔄 Swap attempt ${attempt}/${maxRetries}...`);
+        botLog(`     🔄 Swap attempt ${attempt}/${maxRetries}...`, 'DEBUG');
 
         result = await account.swap({
           network: activeChain.cdpNetwork,
@@ -5091,7 +5124,7 @@ async function executeSingleSwap(
       } catch (swapError: any) {
         const swapMsg = swapError?.message || "";
         if (swapMsg.includes("Insufficient token allowance") && attempt < maxRetries) {
-          console.log(`     ⏳ Allowance not yet visible to API, retrying in 15s... (attempt ${attempt}/${maxRetries})`);
+          botLog(`     ⏳ Allowance not yet visible to API, retrying in 15s... (attempt ${attempt}/${maxRetries})`, 'DEBUG');
           await new Promise(resolve => setTimeout(resolve, 15000));
         } else if (swapMsg.includes("slippage") && adaptiveSlippage < CONFIG.trading.slippageBps && attempt < maxRetries) {
           // v5.1: If slippage too tight, relax slightly and retry (but never above base config)
@@ -5142,14 +5175,14 @@ async function executeSingleSwap(
     let actualTokens = 0;
     for (let balAttempt = 1; balAttempt <= 5; balAttempt++) {
       try {
-        await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? 2000 : 3000));
+        await new Promise(resolve => setTimeout(resolve, balAttempt === 1 ? POST_SWAP_POLL_INITIAL_MS : POST_SWAP_POLL_RETRY_MS));
         postSwapBalance = await getTokenBalance(balanceToken) ?? 0;
         actualTokens = Math.abs(postSwapBalance - preSwapBalance);
         if (actualTokens > 0) {
           console.log(`     📊 Actual tokens ${decision.action === 'BUY' ? 'received' : 'sent'}: ${actualTokens.toFixed(8)} ${balanceToken} (balance: ${preSwapBalance.toFixed(8)} → ${postSwapBalance.toFixed(8)})`);
           break; // Got a real balance change
         }
-        if (balAttempt < 5) console.log(`     ⏳ Balance unchanged (attempt ${balAttempt}/5), retrying...`);
+        if (balAttempt < 5) botLog(`     ⏳ Balance unchanged (attempt ${balAttempt}/5), retrying...`, 'DEBUG');
       } catch (e: any) {
         if (balAttempt === 5) console.warn(`     ⚠️ Post-swap balance check failed: ${e.message?.substring(0, 60)} — using estimate`);
       }
@@ -5467,7 +5500,7 @@ async function executeDailyPayout(): Promise<void> {
         console.error(`[Daily Payout] ❌ ${recipient.label} attempt ${attempt}/2: ${lastError}`);
         if (attempt < 2) {
           console.log(`[Daily Payout] ⏳ Retrying ${recipient.label} in 3s...`);
-          await new Promise(r => setTimeout(r, 3000));
+          await new Promise(r => setTimeout(r, RETRY_COOLDOWN_DELAY_MS));
         }
       }
     }
@@ -6330,7 +6363,7 @@ async function runTradingCycle() {
     // Skip update during phantom moves — prevents false drop alerts AND prevents
     // inflating Telegram's lastKnownBalance baseline during phantom spikes
     if (!isPhantomMove) {
-      telegramService.onBalanceUpdate(newPortfolioValue).catch(() => {});
+      telegramService.onBalanceUpdate(newPortfolioValue).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
     }
 
     // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
@@ -6622,7 +6655,7 @@ async function runTradingCycle() {
             severity: "INFO",
             title: `✅ Position Cull Complete`,
             message: `Graduated ${culledSymbols.length} stale research position(s) → USDC:\n${culledSymbols.map(s => `• ${s}`).join('\n')}\n\nCapital freed and ready for higher-conviction entries.`,
-          }).catch(() => {});
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
         }
       }
     }
@@ -6662,7 +6695,7 @@ async function runTradingCycle() {
             severity: "INFO",
             title: `💧 Dry Powder Restored`,
             message: `Capital availability restored from ${usdcPct}% → ${(newUsdc / newTotal * 100).toFixed(1)}% USDC.\n\nSold: ${freedSymbols.join(', ')}\nNow ready to deploy into the next alpha signal.`,
-          }).catch(() => {});
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
         }
       }
     }
@@ -6714,7 +6747,7 @@ async function runTradingCycle() {
             currentPrice: `$${tokenPrice.toFixed(6)}`,
             positionUSD: `$${positionUSD.toFixed(2)}`,
           },
-        }).catch(() => {});
+        }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
 
         const emergencyDecision: TradeDecision = {
           action: 'SELL',
@@ -6752,7 +6785,7 @@ async function runTradingCycle() {
                 positionUSD: `$${positionUSD.toFixed(2)}`,
                 triggerReason,
               },
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           }
         }
 
@@ -7208,7 +7241,7 @@ async function runTradingCycle() {
               severity: 'INFO',
               title: `[Capital Liberation]`,
               message: `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${targetSymbol}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`,
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           }
         }
       }
@@ -7564,7 +7597,7 @@ async function runTradingCycle() {
               title: `WARNING: 3 consecutive sell failures for ${tradeToken}`,
               message: `WARNING: 3 consecutive sell failures for ${tradeToken}. Investigating...`,
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           } else if (tokenFailCount === 5) {
             // v21.x: FORCE SELL — bypass price gate after 5 consecutive failures.
             // Better to exit at an unknown price than hold a position we can never sell.
@@ -7587,7 +7620,7 @@ async function runTradingCycle() {
               title: `[Henry] FORCE SELL: ${tradeToken}`,
               message: `[Henry] FORCE SELL: ${tradeToken} — bypassing price gate after 5 consecutive failures. Last error: ${tradeResult.error?.substring(0, 200) || 'unknown'}`,
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastKnownPrice, forceAmountUSD },
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
             console.log(`\n🚨 [FORCE SELL] ${tradeToken} — ${tokenFailCount} consecutive failures, attempting force exit at last known price $${lastKnownPrice.toFixed(6)} (~$${forceAmountUSD.toFixed(2)})`);
             executeTrade(forceSellDecision, marketData).then(forceResult => {
               if (forceResult.success) {
@@ -7615,7 +7648,7 @@ async function runTradingCycle() {
               title: `[Henry] WRITE OFF: ${tradeToken}`,
               message: `[Henry] WRITE OFF: ${tradeToken} — 7 consecutive failures, position written off as total loss`,
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
             console.log(`\n💀 [WRITE OFF] ${tradeToken} — 7 consecutive failures, position written off as total loss`);
           } else if (tokenFailCount >= 10) {
             telegramService.sendAlert({
@@ -7623,7 +7656,7 @@ async function runTradingCycle() {
               title: `CRITICAL: 10+ failures for ${tradeToken} — emergency exit queued`,
               message: `CRITICAL: ${tokenFailCount} consecutive sell failures for ${tradeToken}. Emergency circuit breaker will fire next cycle regardless of loss percentage.`,
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           }
         } else if (!tradeResult.success && isBalanceError) {
           console.log(`  ℹ️ Balance error for ${tradeToken} — NOT triggering circuit breaker (transient issue)`);
@@ -7654,7 +7687,7 @@ async function runTradingCycle() {
                 severity: 'INFO',
                 title: `🏥 ICU WATCH: ${buyToken}`,
                 message: `${buyToken} entered intensive monitoring.\n\nEntry: $${entryPrice.toFixed(6)} | Size: $${decision.amountUSD.toFixed(2)}\nTrigger: ${isHotMoverEntry ? '🔥 Hot mover breakout' : 'New position opened'}\n\n⚡ ICU rules:\n• -${ICU_STOP_LOSS_PCT}% → immediate exit (no AI deliberation)\n• Updates every 15min\n• Graduates after ${ICU_GRADUATION_HOURS}h stable`,
-              }).catch(() => {});
+              }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
             }
           }
           // Clean up ICU when position is fully sold
@@ -7698,7 +7731,7 @@ async function runTradingCycle() {
               token: decision.toToken || decision.fromToken || '?',
               error: tradeResult.error || 'unknown',
               action: decision.action,
-            }).catch(() => {});
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           }
         }
 
@@ -9154,7 +9187,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 
   // v19.6: Telegram shutdown notification (best-effort, 3s timeout)
-  telegramService.onShutdown(`Received ${signal}`).catch(() => {}).finally(() => {
+  telegramService.onShutdown(`Received ${signal}`).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80))).finally(() => {
     console.log("   Goodbye.");
     process.exit(0);
   });
@@ -9506,7 +9539,7 @@ healthServer.listen(process.env.PORT || 3000, () => {
     BOT_VERSION,
     state.trading.totalPortfolioValue,
     CONFIG.walletAddress
-  ).catch(() => {});
+  ).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
 
   // v21.7: Background on-chain trade recovery — runs 30s after server starts so
   // healthcheck passes first. Merges any on-chain trades missing from persisted state
