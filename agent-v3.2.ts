@@ -143,6 +143,9 @@ import { runLightCycle } from "./src/core/cycle/index.js";
 // Phase 5b: setup stage extracted
 import { setupStage } from "./src/core/cycle/stages/setup.js";
 import type { SetupDeps } from "./src/core/cycle/stages/setup.js";
+// Phase 5c: intelligence stage extracted
+import { intelligenceStage } from "./src/core/cycle/stages/intelligence.js";
+import type { IntelligenceDeps } from "./src/core/cycle/stages/intelligence.js";
 import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
@@ -2675,6 +2678,62 @@ function buildCycleServices(): CycleServices {
       setRawCooldown:  (sym, dur)  => cooldownManager.setRawCooldown(sym, dur),
     },
     ...(shi ? { shi: { processIncident: (t, c) => shi!.processIncident(t, c) } } : {}),
+  };
+}
+
+// ============================================================================
+// Phase 5c: buildIntelligenceDeps — boxes module-level vars + singletons
+// into the IntelligenceDeps interface for intelligenceStage.
+// ============================================================================
+function buildIntelligenceDeps(): IntelligenceDeps {
+  return {
+    // ── Macro regime ────────────────────────────────────────────────────────
+    fetchSignalIntel,
+    getCachedPriceHistory,
+    computeMacroRegime,
+    updateCapitalPreservationMode,
+
+    // ── Module-level state boxes ─────────────────────────────────────────────
+    macroState: {
+      getLastFearGreedValue:    () => lastFearGreedValue,
+      setLastFearGreedValue:    (v) => { lastFearGreedValue = v; },
+      getConsecutiveBearChecks: () => consecutiveBearChecks,
+      setConsecutiveBearChecks: (v) => { consecutiveBearChecks = v; },
+      setCurrentMacroRegime:    (v) => { currentMacroRegime = v; },
+      getBtcDominanceBuffer:    () => btcDominanceBuffer,
+      pushBtcDominance:         (v) => {
+        btcDominanceBuffer.push(v);
+        if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344);
+      },
+    },
+    intelState: {
+      getDexIntelligence:          () => lastDexIntelligence,
+      setDexIntelligence:          (v) => { lastDexIntelligence = v; },
+      getDexIntelFetchCount:       () => dexIntelFetchCount,
+      incrementDexIntelFetchCount: () => { dexIntelFetchCount++; },
+      getDexScreenerTxnCache:      () => dexScreenerTxnCache,
+      setLastVolumeSnapshot:       (v) => { lastVolumeSnapshot = v; },
+      setLastIntelligenceData:     (v) => { lastIntelligenceData = v; },
+    },
+    flowTimeframeState,
+    recordFlowReading,
+
+    // ── DEX intelligence ─────────────────────────────────────────────────────
+    fetchDexIntelligence: () => geckoTerminalService.fetchIntelligence(),
+
+    // ── Dust consolidation ───────────────────────────────────────────────────
+    consolidateDustPositions: async (b, m) => { await consolidateDustPositions(b, m); },
+
+    // ── Self-improvement ─────────────────────────────────────────────────────
+    calculateTradePerformance: () => calculateTradePerformance() as unknown as Record<string, unknown>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    runPerformanceReview: (r) => runPerformanceReview(r) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    adaptThresholds: (review, regime) => adaptThresholds(review as any, regime),
+    analyzeStrategyPatterns,
+
+    // ── Constants ────────────────────────────────────────────────────────────
+    volumeSpikeThreshold: VOLUME_SPIKE_THRESHOLD,
   };
 }
 
@@ -6133,232 +6192,13 @@ async function runTradingCycle() {
     lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
     lastFearGreedValue = marketData.fearGreed.value;
 
-    // === Bear Mode: Macro Regime (v21.7) — Signal Service first, local fallback ===
-    {
-      // Try centralized Signal Service first (2.5s timeout — never blocks the cycle)
-      const signalIntel = await fetchSignalIntel();
-
-      if (signalIntel) {
-        // ── PATH A: Signal Service is live — use authoritative centralized data ──
-        lastFearGreedValue = signalIntel.fearGreed; // override with signal service value
-        consecutiveBearChecks = signalIntel.consecutiveBearChecks;
-        currentMacroRegime = { regime: signalIntel.regime, score: signalIntel.score };
-        const inBearMode = signalIntel.inBearMode;
-        console.log(`🛰️  Regime from Signal Service: ${signalIntel.regime} (score: ${signalIntel.score}, age: ${signalIntel.ageSec}s, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE' : ''}`);
-      } else {
-        // ── PATH B: Signal Service unavailable — compute locally (existing logic) ──
-        const btcCurrentDominance = marketData.globalMarket?.btcDominance || 0;
-        if (btcCurrentDominance > 0) {
-          btcDominanceBuffer.push(btcCurrentDominance);
-          if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344);
-        }
-
-        let btcDominanceTrend: number | undefined;
-        if (btcDominanceBuffer.length >= 96) {
-          const lookback = Math.min(672, btcDominanceBuffer.length - 1);
-          const oldDominance = btcDominanceBuffer[btcDominanceBuffer.length - 1 - lookback];
-          if (oldDominance > 0) btcDominanceTrend = btcCurrentDominance - oldDominance;
-        }
-
-        const btcPrices = getCachedPriceHistory('cbBTC').prices;
-        if (btcPrices.length >= 50) {
-          const regimeResult = computeMacroRegime(btcPrices, btcDominanceTrend, lastFearGreedValue);
-          if (regimeResult.regime === 'BEAR') {
-            consecutiveBearChecks = Math.min(consecutiveBearChecks + 1, 10);
-          } else {
-            consecutiveBearChecks = 0;
-          }
-          currentMacroRegime = { regime: regimeResult.regime, score: regimeResult.score };
-          const inBearMode = consecutiveBearChecks >= 3;
-          console.log(`🔭 Regime (local fallback): ${regimeResult.regime} (score: ${regimeResult.score}, F&G: ${lastFearGreedValue}, dom: ${btcDominanceTrend !== undefined ? btcDominanceTrend.toFixed(1) + 'pp' : 'n/a'}, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE' : ''}`);
-        }
-      }
-    }
-
-    // v19.3: Update capital preservation mode state
-    updateCapitalPreservationMode(marketData.fearGreed.value);
-
-    // v11.4: Volume spike detection — flag tokens with volume ≥ VOLUME_SPIKE_THRESHOLD × 7d avg
-    const volumeSpikes: { symbol: string; volumeChange: number }[] = [];
-    for (const token of marketData.tokens) {
-      const ind = marketData.indicators[token.symbol];
-      if (ind?.volumeChange24h !== null && ind?.volumeChange24h !== undefined) {
-        const volumeMultiple = 1 + (ind.volumeChange24h / 100);
-        if (volumeMultiple >= VOLUME_SPIKE_THRESHOLD) {
-          volumeSpikes.push({ symbol: token.symbol, volumeChange: ind.volumeChange24h });
-        }
-      }
-    }
-    if (volumeSpikes.length > 0) {
-      console.log(`  📊 VOLUME SPIKES (≥${VOLUME_SPIKE_THRESHOLD}x 7d avg): ${volumeSpikes.map(v => `${v.symbol} +${v.volumeChange.toFixed(0)}%`).join(', ')}`);
-    }
-    lastVolumeSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.volume24h]));
-
-    // v5.2: Consolidate dust positions every 10 cycles
-    if (state.totalCycles % 10 === 1) {
-      await consolidateDustPositions(balances, marketData);
-    }
-
-    // V4.5: Store intelligence data for API endpoint (now includes news + macro + v10.0)
-    lastIntelligenceData = {
-      defi: marketData.defiLlama,
-      derivatives: marketData.derivatives,
-      news: marketData.newsSentiment,
-      macro: marketData.macroData,
-      regime: marketData.marketRegime,
-      performance: calculateTradePerformance(),
-      // v10.0: Market Intelligence Engine
-      globalMarket: marketData.globalMarket,
-      smartRetailDivergence: marketData.smartRetailDivergence,
-      fundingMeanReversion: marketData.fundingMeanReversion,
-      tvlPriceDivergence: marketData.tvlPriceDivergence,
-      stablecoinSupply: marketData.stablecoinSupply,
-    };
-
-    // === v11.0: DEX INTELLIGENCE (GeckoTerminal) ===
-    try {
-      console.log('🦎 Fetching DEX intelligence (GeckoTerminal)...');
-      lastDexIntelligence = await geckoTerminalService.fetchIntelligence();
-      dexIntelFetchCount++;
-      const spikes = lastDexIntelligence.volumeSpikes.length;
-      const pressure = lastDexIntelligence.buySellPressure.filter(p => p.signal !== 'NEUTRAL').length;
-      console.log(`  ✅ DEX intel: ${lastDexIntelligence.tokenMetrics.length} tokens | ${spikes} volume spikes | ${pressure} pressure signals | ${lastDexIntelligence.errors.length} errors`);
-    } catch (dexErr: any) {
-      console.warn(`  ⚠️ DEX intelligence fetch failed: ${dexErr.message?.substring(0, 150)} — continuing without`);
-    }
-
-    // === v19.2: MERGE DEXSCREENER TXN DATA INTO BUYSELLPRESSURE ===
-    // GeckoTerminal only covers ~7 tokens via rotation. DexScreener price stream
-    // already fetches txn data for ALL 24 tokens every 10s. Merge to fill gaps.
-    if (lastDexIntelligence) {
-      const geckoSymbols = new Set(lastDexIntelligence.buySellPressure.map(p => p.symbol));
-      let mergedCount = 0;
-      for (const [sym, txn] of Object.entries(dexScreenerTxnCache)) {
-        if (geckoSymbols.has(sym)) continue; // GeckoTerminal already has this token
-        if (Date.now() - txn.updatedAt > 120_000) continue; // stale (>2min old)
-        const totalH1 = txn.h1Buys + txn.h1Sells;
-        const totalH24 = txn.h24Buys + txn.h24Sells;
-        if (totalH1 < 5 && totalH24 < 20) continue; // too low activity
-
-        const buyRatioH1 = totalH1 > 0 ? txn.h1Buys / totalH1 : 0.5;
-        const buyRatioH24 = totalH24 > 0 ? txn.h24Buys / totalH24 : 0.5;
-
-        let signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL' = 'NEUTRAL';
-        if (buyRatioH1 > 0.65 && buyRatioH24 > 0.55) signal = 'STRONG_BUY';
-        else if (buyRatioH1 > 0.55) signal = 'BUY_PRESSURE';
-        else if (buyRatioH1 < 0.35 && buyRatioH24 < 0.45) signal = 'STRONG_SELL';
-        else if (buyRatioH1 < 0.45) signal = 'SELL_PRESSURE';
-
-        lastDexIntelligence.buySellPressure.push({
-          symbol: sym,
-          h1Buys: txn.h1Buys, h1Sells: txn.h1Sells,
-          h1Buyers: txn.h1Buyers, h1Sellers: txn.h1Sellers,
-          h24Buys: txn.h24Buys, h24Sells: txn.h24Sells,
-          buyRatioH1: Math.round(buyRatioH1 * 100) / 100,
-          buyRatioH24: Math.round(buyRatioH24 * 100) / 100,
-          signal,
-        });
-        mergedCount++;
-      }
-      if (mergedCount > 0) {
-        console.log(`  📡 Flow coverage: ${geckoSymbols.size} GeckoTerminal + ${mergedCount} DexScreener = ${lastDexIntelligence.buySellPressure.length} total tokens with flow data`);
-      }
-    } else {
-      // GeckoTerminal completely failed — build buySellPressure entirely from DexScreener cache
-      const buySellPressure: any[] = [];
-      for (const [sym, txn] of Object.entries(dexScreenerTxnCache)) {
-        if (Date.now() - txn.updatedAt > 120_000) continue;
-        const totalH1 = txn.h1Buys + txn.h1Sells;
-        const totalH24 = txn.h24Buys + txn.h24Sells;
-        if (totalH1 < 5 && totalH24 < 20) continue;
-
-        const buyRatioH1 = totalH1 > 0 ? txn.h1Buys / totalH1 : 0.5;
-        const buyRatioH24 = totalH24 > 0 ? txn.h24Buys / totalH24 : 0.5;
-
-        let signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL' = 'NEUTRAL';
-        if (buyRatioH1 > 0.65 && buyRatioH24 > 0.55) signal = 'STRONG_BUY';
-        else if (buyRatioH1 > 0.55) signal = 'BUY_PRESSURE';
-        else if (buyRatioH1 < 0.35 && buyRatioH24 < 0.45) signal = 'STRONG_SELL';
-        else if (buyRatioH1 < 0.45) signal = 'SELL_PRESSURE';
-
-        buySellPressure.push({
-          symbol: sym,
-          h1Buys: txn.h1Buys, h1Sells: txn.h1Sells,
-          h1Buyers: txn.h1Buyers, h1Sellers: txn.h1Sellers,
-          h24Buys: txn.h24Buys, h24Sells: txn.h24Sells,
-          buyRatioH1: Math.round(buyRatioH1 * 100) / 100,
-          buyRatioH24: Math.round(buyRatioH24 * 100) / 100,
-          signal,
-        });
-      }
-      if (buySellPressure.length > 0) {
-        lastDexIntelligence = {
-          trendingPools: [], tokenMetrics: [], volumeSpikes: [],
-          buySellPressure, newPools: [], aiSummary: '',
-          timestamp: new Date().toISOString(), errors: ['GeckoTerminal failed — using DexScreener txn cache'],
-        };
-        console.log(`  📡 Flow coverage: 0 GeckoTerminal (failed) + ${buySellPressure.length} DexScreener = ${buySellPressure.length} total tokens with flow data`);
-      }
-    }
-
-    // === v19.0: RECORD FLOW READINGS FOR MULTI-TIMEFRAME AGGREGATION ===
-    // Store buy ratio from DEX intelligence and on-chain flow for all tracked tokens
-    if (lastDexIntelligence) {
-      for (const pressure of lastDexIntelligence.buySellPressure) {
-        if (pressure.buyRatioH1 !== undefined) {
-          recordFlowReading(flowTimeframeState, pressure.symbol, pressure.buyRatioH1 * 100);
-        }
-      }
-    }
-    // Also record from on-chain order flow (higher fidelity when available)
-    for (const [symbol, ind] of Object.entries(marketData.indicators)) {
-      if (ind?.orderFlow) {
-        const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
-        if (totalFlow > 0) {
-          recordFlowReading(flowTimeframeState, symbol, (ind.orderFlow.buyVolumeUSD / totalFlow) * 100);
-        }
-      }
-    }
-
-    // === PHASE 3: PERFORMANCE REVIEW TRIGGER ===
-    // Run review every 10 trades or every 24 hours
-    const tradesSinceReview = state.tradeHistory.length - state.lastReviewTradeIndex;
-    const hoursSinceReview = state.lastReviewTimestamp
-      ? (Date.now() - new Date(state.lastReviewTimestamp).getTime()) / (1000 * 60 * 60)
-      : 999;
-    if (tradesSinceReview >= 10 || hoursSinceReview >= 24) {
-      const reason = tradesSinceReview >= 10 ? "TRADE_COUNT" as const : "TIME_ELAPSED" as const;
-      console.log(`\n🧪 SELF-IMPROVEMENT: Running performance review (${reason})...`);
-      const review = runPerformanceReview(reason);
-      console.log(`   Generated ${review.insights.length} insights, ${review.recommendations.length} recommendations`);
-
-      // Store the review
-      state.performanceReviews.push(review);
-      if (state.performanceReviews.length > 30) {
-        state.performanceReviews = state.performanceReviews.slice(-30);
-      }
-
-      // Update review tracking state
-      state.lastReviewTradeIndex = state.tradeHistory.length;
-      state.lastReviewTimestamp = new Date().toISOString();
-
-      // Adapt thresholds based on review findings — pass current regime for walk-forward validation
-      adaptThresholds(review, marketData.marketRegime);
-      console.log(`   Thresholds adapted (${state.adaptiveThresholds.adaptationCount} total adaptations)`);
-
-      // Persist everything
-      markStateDirty();
-      console.log(`   Review #${state.performanceReviews.length} stored | Next review after ${state.lastReviewTradeIndex + 10} trades or 24h`);
-    }
-
-    // === PHASE 3: ANALYZE STRATEGY PATTERNS ===
-    // v10.2: Rebuild every 50 heavy cycles (not just cycle 1) so patterns reflect recent trading
-    if (state.tradeHistory.length > 0 && (state.totalCycles <= 1 || state.totalCycles % 50 === 0)) {
-      console.log(`\n🧬 SELF-IMPROVEMENT: Building strategy pattern memory from ${state.tradeHistory.length} trades...`);
-      analyzeStrategyPatterns();
-      const validPatterns = Object.values(state.strategyPatterns).filter(p => !p.patternId.startsWith("UNKNOWN"));
-      console.log(`   Identified ${Object.keys(state.strategyPatterns).length} patterns (${validPatterns.length} with signal data)`);
-      markStateDirty();
+    // === Phase 5c: intelligence stage — macro regime, DEX intel, self-improvement ===
+    // Module-level vars (lastFearGreedValue, currentMacroRegime, lastDexIntelligence, etc.)
+    // are updated in-place by the IntelligenceDeps accessor boxes — no explicit pull-back needed.
+    cycleCtx = await intelligenceStage(cycleCtx, buildIntelligenceDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Intelligence stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
 
     // Update USD values
