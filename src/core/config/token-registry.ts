@@ -283,6 +283,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === DEFI (expanded) ===
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61BE2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
