@@ -29,10 +29,12 @@ import type { CycleContext } from '../types/cycle.js';
 import type { SetupDeps } from './stages/setup.js';
 import type { IntelligenceDeps } from './stages/intelligence.js';
 import type { MetricsDeps } from './stages/metrics.js';
+import type { DeploymentCtxDeps } from './stages/deployment-ctx.js';
 import {
   setupStage,
   intelligenceStage,
   metricsStage,
+  deploymentCtxStage,
   decisionStage,
   filtersStage,
   executionStage,
@@ -45,9 +47,10 @@ import {
 // ============================================================================
 
 export interface HeavyCycleDeps {
-  setup:        SetupDeps;
-  intelligence: IntelligenceDeps;
-  metrics:      MetricsDeps;
+  setup:          SetupDeps;
+  intelligence:   IntelligenceDeps;
+  metrics:        MetricsDeps;
+  deploymentCtx:  DeploymentCtxDeps;
 }
 
 /**
@@ -66,6 +69,9 @@ export async function runHeavyCycle(ctx: CycleContext, deps: HeavyCycleDeps): Pr
   if (ctx.halted) return ctx;
 
   ctx = await metricsStage(ctx, deps.metrics);
+  if (ctx.halted) return ctx;
+
+  ctx = await deploymentCtxStage(ctx, deps.deploymentCtx);
   if (ctx.halted) return ctx;
 
   ctx = await decisionStage(ctx);

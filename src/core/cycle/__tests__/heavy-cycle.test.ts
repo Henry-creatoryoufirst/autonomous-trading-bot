@@ -26,6 +26,7 @@ import type { AgentState, BreakerState } from '../../types/state.js';
 import type { MetricsDeps, RiskRewardStats } from '../stages/metrics.js';
 import type { IntelligenceDeps } from '../stages/intelligence.js';
 import type { SetupDeps, BalanceEntry } from '../stages/setup.js';
+import type { DeploymentCtxDeps } from '../stages/deployment-ctx.js';
 import type { DexIntelligence } from '../../services/gecko-terminal.js';
 import { intelligenceStage } from '../stages/intelligence.js';
 
@@ -77,7 +78,11 @@ function makeCtx(overrides: Partial<CycleContext> = {}): CycleContext {
     tradeResults: [],
     halted: false,
     stagesCompleted: [],
-    services: {} as CycleContext['services'],
+    services: {
+      stateManager: {
+        getState: vi.fn(() => makeAgentState()),
+      },
+    } as unknown as CycleContext['services'],
     ...overrides,
   };
 }
@@ -210,11 +215,20 @@ function makeMetricsDeps(overrides: Partial<MetricsDeps> = {}): MetricsDeps {
   };
 }
 
+function makeDeploymentCtxDeps(overrides: Partial<DeploymentCtxDeps> = {}): DeploymentCtxDeps {
+  return {
+    calculateSectorAllocations: vi.fn(() => []),
+    checkCashDeploymentMode: vi.fn(() => ({ shouldDeploy: false, reason: 'test stub' }) as any),
+    ...overrides,
+  };
+}
+
 function makeDeps(overrides: Partial<HeavyCycleDeps> = {}): HeavyCycleDeps {
   return {
-    setup: makeSetupDeps(),
-    intelligence: makeIntelligenceDeps(),
-    metrics: makeMetricsDeps(),
+    setup:         makeSetupDeps(),
+    intelligence:  makeIntelligenceDeps(),
+    metrics:       makeMetricsDeps(),
+    deploymentCtx: makeDeploymentCtxDeps(),
     ...overrides,
   };
 }
@@ -227,8 +241,9 @@ const ALL_STAGES = [
   'SETUP',
   'INTELLIGENCE',
   'METRICS',
-  'AI_DECISION',   // decisionStage pushes 'AI_DECISION', not 'DECISION'
-  'PRESERVATION',  // Phase 5f: filtersStage pushes 4 real stage names
+  'DEPLOYMENT_CTX', // deploymentCtxStage
+  'AI_DECISION',    // decisionStage pushes 'AI_DECISION', not 'DECISION'
+  'PRESERVATION',   // Phase 5f: filtersStage pushes 4 real stage names
   'DIRECTIVES',
   'TRADE_CAP',
   'RISK_REWARD',
@@ -348,15 +363,16 @@ describe('runHeavyCycle — halted guards', () => {
 });
 
 describe('HeavyCycleDeps type', () => {
-  it('is exported with setup, intelligence, and metrics keys', () => {
+  it('is exported with setup, intelligence, metrics, and deploymentCtx keys', () => {
     // TS-level assertion — compiles iff HeavyCycleDeps has exactly these keys
     // with the expected per-stage deps types.
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('setup');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('intelligence');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('metrics');
+    expectTypeOf<HeavyCycleDeps>().toHaveProperty('deploymentCtx');
 
-    // Runtime assertion — a valid HeavyCycleDeps instance must carry all three.
+    // Runtime assertion — a valid HeavyCycleDeps instance must carry all four.
     const deps = makeDeps();
-    expect(Object.keys(deps).sort()).toEqual(['intelligence', 'metrics', 'setup']);
+    expect(Object.keys(deps).sort()).toEqual(['deploymentCtx', 'intelligence', 'metrics', 'setup']);
   });
 });

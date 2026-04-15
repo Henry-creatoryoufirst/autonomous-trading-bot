@@ -152,6 +152,9 @@ import type { MetricsDeps } from "./src/core/cycle/stages/metrics.js";
 // Phase 5f: filters stage extracted
 import { filtersStage } from "./src/core/cycle/stages/filters.js";
 import type { FiltersStageDeps } from "./src/core/cycle/stages/filters.js";
+// Phase deployment-ctx: sector allocations + cash deployment check
+import { deploymentCtxStage } from "./src/core/cycle/stages/deployment-ctx.js";
+import type { DeploymentCtxDeps } from "./src/core/cycle/stages/deployment-ctx.js";
 import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
@@ -2754,6 +2757,19 @@ function buildMetricsDeps(): MetricsDeps {
       calculateSectorAllocations(balances as any, totalValue),
     updateUnrealizedPnL:        (balances) => updateUnrealizedPnL(balances as any),
     calculateRiskRewardMetrics: () => calculateRiskRewardMetrics(),
+  };
+}
+
+// ============================================================================
+// Phase deployment-ctx: buildDeploymentCtxDeps — boxes calculateSectorAllocations
+// + checkCashDeploymentMode into DeploymentCtxDeps
+// ============================================================================
+function buildDeploymentCtxDeps(): DeploymentCtxDeps {
+  return {
+    calculateSectorAllocations: (balances, totalValue) =>
+      calculateSectorAllocations(balances as any, totalValue),
+    checkCashDeploymentMode: (usdcBalance, totalPortfolioValue, fearGreedValue) =>
+      checkCashDeploymentMode(usdcBalance, totalPortfolioValue, fearGreedValue),
   };
 }
 
@@ -6503,6 +6519,13 @@ async function runTradingCycle() {
     cycleCtx = await metricsStage(cycleCtx, buildMetricsDeps());
     if (cycleCtx.halted) {
       console.error(`  ❌ Metrics stage halted: ${cycleCtx.haltReason}`);
+      return;
+    }
+
+    // === Phase deployment-ctx: sector allocations + cash deployment check ===
+    cycleCtx = await deploymentCtxStage(cycleCtx, buildDeploymentCtxDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ DeploymentCtx stage halted: ${cycleCtx.haltReason}`);
       return;
     }
 
