@@ -242,6 +242,24 @@ export class CooldownManager {
       return `${entries.length} cooldowns: ${entries.join(', ')}`;
   }
 
+  /**
+   * Set a cooldown with an explicit duration in milliseconds.
+   * Used by the Self-Healing Intelligence to impose cooling periods
+   * on tokens that are causing repeated failures, without needing a
+   * specific CooldownDecision type.
+   */
+  setRawCooldown(symbol: string, durationMs: number): void {
+    this.cooldowns.set(symbol, {
+      symbol,
+      decision: 'HOLD',
+      decidedAt: Date.now(),
+      cooldownMs: durationMs,
+      priceAtDecision: 0,
+    });
+    const mins = (durationMs / 60000).toFixed(0);
+    console.log(` ⏱️ [SHI] Healing cooldown: ${symbol} → ${mins}m`);
+  }
+
   // ---- Private helpers ----
 
   private getCooldownDuration(decision: CooldownDecision): number {

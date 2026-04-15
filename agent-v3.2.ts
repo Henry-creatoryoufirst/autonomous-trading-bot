@@ -133,6 +133,8 @@ const PAPER_GATE_PORTFOLIO_ID = 'paper-gate-shadow';
 // === v19.6: STARTUP VALIDATION + TELEGRAM ALERTS ===
 import { runPreFlightChecks } from "./src/core/services/startup-checks.js";
 import { telegramService } from "./src/core/services/telegram.js";
+import { SelfHealingIntelligence } from "./src/core/services/self-healing/index.js";
+import type { BotInterface } from "./src/core/services/self-healing/types.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
@@ -536,6 +538,15 @@ function botLog(msg: string, level: 'INFO' | 'DEBUG' = 'INFO') {
   if (level === 'DEBUG' && !LOG_DEBUG) return;
   console.log(msg);
 }
+
+// ============================================================================
+// SELF-HEALING INTELLIGENCE — initialized after state loads (see healthServer.listen)
+// ============================================================================
+let shi: SelfHealingIntelligence | null = null;
+
+// Healing overrides — set by SHI playbook actions, consumed in trade path
+let shiSizeMultiplier = 1.0;  // Reduced to 0.5 when SHI detects consecutive failures
+let shiConfluenceDelta = 0;   // Raised by +15 when SHI wants higher conviction bar
 
 // ============================================================================
 // v14.2: EXPLORATION TRADE GUARDRAILS — prevent exploration from fighting the trend
@@ -1462,6 +1473,8 @@ function scheduleNextCycle() {
           title: `⚠️ Stuck Cycle Detected & Recovered`,
           message: `Trading cycle was stuck for ${stuckSec}s (threshold: ${((CYCLE_TIMEOUT_MS + 60_000) / 1000).toFixed(0)}s).\n\nForce-reset applied. Next cycle will run normally.\n\nThis may indicate a hung API call or network issue — check Railway logs.`,
         }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
+        // Self-Healing Intelligence — diagnose what caused the hang
+        shi?.processIncident('STUCK_CYCLE', { stuckSec, cycleNumber: state.totalCycles });
       } else {
         botLog(`[Adaptive Cycle] Skipped — previous cycle still running (${(stuckDuration / 1000).toFixed(0)}s elapsed)`, 'DEBUG');
         scheduleNextCycle();
@@ -2517,6 +2530,95 @@ const BREAKER_ROLLING_LOSS_THRESHOLD = 5;  // 5+ losses in 8 trades = trigger br
 
 let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
 
+// ============================================================================
+// BOT INTERFACE — clean bridge between Self-Healing Intelligence and bot internals
+// All healing actions go through this surface — no direct state mutation from SHI.
+// ============================================================================
+const botInterface: BotInterface = {
+  getCycleNumber:   () => state.totalCycles,
+  getPortfolioValue: () => state.trading.totalPortfolioValue,
+
+  getTradeHistory: (limit) => state.tradeHistory.slice(-limit).map(t => ({
+    token:     (t as any).toToken || (t as any).fromToken || 'UNKNOWN',
+    action:    t.action,
+    success:   t.success,
+    pnlUSD:    (t as any).realizedPnlUSD,
+    timestamp: t.timestamp,
+  })),
+
+  getErrorLog: (limit) => ((state as any).errorLog || []).slice(-limit).map((e: any) => ({
+    type:      e.type,
+    message:   e.message,
+    timestamp: e.timestamp,
+  })),
+
+  getMarketRegime: () => lastMarketRegime,
+
+  getActivePositions: () => state.trading.balances
+    .filter(b => b.symbol !== 'USDC' && (b.usdValue || 0) > 1)
+    .map(b => {
+      const cb = state.costBasis[b.symbol];
+      const unrealizedPct = (cb?.averageCostBasis && b.price && cb.averageCostBasis > 0)
+        ? ((b.price - cb.averageCostBasis) / cb.averageCostBasis) * 100
+        : 0;
+      return { symbol: b.symbol, usdValue: b.usdValue || 0, unrealizedPct };
+    }),
+
+  getCircuitBreakerState: () => {
+    const triggered = breakerState.lastBreakerTriggered;
+    const active = !!triggered &&
+      Date.now() < new Date(triggered).getTime() + BREAKER_PAUSE_HOURS * 3600000;
+    return { active, reason: breakerState.lastBreakerReason, triggeredAt: triggered };
+  },
+
+  // Healing actions — all safe, no trade execution
+  addTokenCooldown: (symbol, durationMs) => {
+    cooldownManager.setRawCooldown(symbol, durationMs);
+  },
+
+  invalidatePriceCache: (symbol?) => {
+    if (symbol) {
+      delete lastKnownPrices[symbol];
+    }
+    // If no symbol, clearing everything would starve the bot — only clear per-token
+  },
+
+  setPositionSizeMultiplier: (multiplier) => {
+    shiSizeMultiplier = Math.max(0.25, Math.min(1.0, multiplier)); // clamp 25–100%
+    markStateDirty(true);
+    console.log(`[SHI] Position size multiplier set to ${(shiSizeMultiplier * 100).toFixed(0)}%`);
+  },
+
+  setConfluenceThresholdOverride: (delta) => {
+    shiConfluenceDelta = Math.max(0, Math.min(40, delta)); // clamp 0–40pts
+    markStateDirty(true);
+    console.log(`[SHI] Confluence threshold raised by +${shiConfluenceDelta} points`);
+  },
+
+  resetCircuitBreaker: () => {
+    breakerState.lastBreakerTriggered = null;
+    breakerState.lastBreakerReason    = null;
+    breakerState.breakerSizeReductionUntil = null;
+    breakerState.consecutiveLosses    = 0;
+    breakerState.rollingTradeResults  = [];
+    markStateDirty(true);
+    console.log('[SHI] Circuit breaker cleared by Self-Healing Intelligence');
+  },
+
+  extendCircuitBreaker: (additionalHours) => {
+    if (breakerState.lastBreakerTriggered) {
+      const currentPauseEnd = new Date(breakerState.lastBreakerTriggered).getTime()
+        + BREAKER_PAUSE_HOURS * 3600000;
+      breakerState.breakerSizeReductionUntil =
+        new Date(currentPauseEnd + additionalHours * 3600000).toISOString();
+      markStateDirty(true);
+      console.log(`[SHI] Circuit breaker extended by ${additionalHours}h`);
+    }
+  },
+
+  markStateDirty: () => markStateDirty(true),
+};
+
 /**
  * v10.3: Effective Kelly ceiling — scales up for small portfolios.
  * Under $10K, use 12% ceiling (more capital per trade to overcome minimums and fees).
@@ -2668,6 +2770,8 @@ function triggerCircuitBreaker(reason: string) {
   console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
   // v19.6: Telegram alert on circuit breaker
   telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
+  // Self-Healing Intelligence — diagnose root cause and apply playbook
+  shi?.processIncident('CIRCUIT_BREAKER', { reason, portfolioValue: state.trading.totalPortfolioValue });
 }
 
 /**
@@ -7572,6 +7676,13 @@ async function runTradingCycle() {
       }
 
       if (["BUY", "SELL", "REBALANCE"].includes(decision.action) && decision.amountUSD >= 1.00) {
+        // Self-Healing size override — SHI may reduce to 50% after consecutive failures
+        if (shiSizeMultiplier < 1.0 && decision.action === 'BUY') {
+          const original = decision.amountUSD;
+          decision.amountUSD = Math.max(1.0, decision.amountUSD * shiSizeMultiplier);
+          botLog(`[SHI] Size reduced: $${original.toFixed(2)} → $${decision.amountUSD.toFixed(2)} (${(shiSizeMultiplier * 100).toFixed(0)}% multiplier)`, 'DEBUG');
+          shiSizeMultiplier = 1.0; // Reset after one application — healing is one-cycle conservative
+        }
         const tradeResult = await executeTrade(decision, marketData);
 
         // v5.3.3: Track consecutive failures / clear on success
@@ -7589,6 +7700,13 @@ async function runTradingCycle() {
                                errMsg.includes("balance is insufficient");
         if (!tradeResult.success && !isBalanceError) {
           recordTradeFailure(tradeToken);
+          // Self-Healing Intelligence — route trade failures for diagnosis
+          shi?.processIncident('TRADE_FAILURE', {
+            token:  tradeToken,
+            action: decision.action,
+            error:  tradeResult.error || 'unknown',
+            consecutive: state.tradeFailures[tradeToken]?.count || 0,
+          });
           // v21.8: Per-token consecutive failure alerting — 3 / 5 / 10 thresholds
           const tokenFailCount = state.tradeFailures[tradeToken]?.count || 0;
           if (tokenFailCount === 3) {
@@ -9534,6 +9652,11 @@ const healthServer = http.createServer(async (req, res) => {
 });
 healthServer.listen(process.env.PORT || 3000, () => {
   console.log('Dashboard + API server running on port', process.env.PORT || 3000);
+
+  // Self-Healing Intelligence — initialize after state is fully loaded
+  shi = SelfHealingIntelligence.create(botInterface, telegramService);
+  console.log(`[SHI] Self-Healing Intelligence initialized | enabled=${process.env.SELF_HEALING_ENABLED !== 'false'}`);
+
   // v19.6: Telegram startup notification (fire-and-forget)
   telegramService.onStartup(
     BOT_VERSION,
