@@ -77,7 +77,8 @@ describe('simulateCycle — full pipeline', () => {
     const idx = (s: string) => result.stagesCompleted.indexOf(s);
     expect(idx('SETUP')).toBeLessThan(idx('INTELLIGENCE'));
     expect(idx('INTELLIGENCE')).toBeLessThan(idx('METRICS'));
-    expect(idx('METRICS')).toBeLessThan(idx('AI_DECISION'));
+    expect(idx('METRICS')).toBeLessThan(idx('DEPLOYMENT_CTX'));
+    expect(idx('DEPLOYMENT_CTX')).toBeLessThan(idx('AI_DECISION'));
     expect(idx('AI_DECISION')).toBeLessThan(idx('PRESERVATION'));
     expect(idx('RISK_REWARD')).toBeLessThan(idx('EXECUTION'));
     expect(idx('EXECUTION')).toBeLessThan(idx('REPORTING'));

@@ -13,7 +13,7 @@
  *   3. Detect regressions when new stages are extracted or wired
  *
  * Expected stages on completion:
- *   SETUP → INTELLIGENCE → METRICS → AI_DECISION →
+ *   SETUP → INTELLIGENCE → METRICS → DEPLOYMENT_CTX → AI_DECISION →
  *   PRESERVATION → DIRECTIVES → TRADE_CAP → RISK_REWARD →
  *   EXECUTION → REPORTING → SCHEDULING
  *
@@ -33,6 +33,7 @@ import type { MarketData } from '../types/market-data.js';
 import type { SetupDeps } from '../cycle/stages/setup.js';
 import type { IntelligenceDeps } from '../cycle/stages/intelligence.js';
 import type { MetricsDeps } from '../cycle/stages/metrics.js';
+import type { DeploymentCtxDeps } from '../cycle/stages/deployment-ctx.js';
 
 // ============================================================================
 // EXPECTED STAGES — full 8-stage pipeline
@@ -42,8 +43,9 @@ export const EXPECTED_STAGES = [
   'SETUP',
   'INTELLIGENCE',
   'METRICS',
+  'DEPLOYMENT_CTX', // deploymentCtxStage
   'AI_DECISION',
-  'PRESERVATION',  // Phase 5f: filtersStage pushes 4 real stage names
+  'PRESERVATION',   // Phase 5f: filtersStage pushes 4 real stage names
   'DIRECTIVES',
   'TRADE_CAP',
   'RISK_REWARD',
@@ -163,6 +165,21 @@ function makeMockIntelligenceDeps(): IntelligenceDeps {
   };
 }
 
+function makeMockDeploymentCtxDeps(): DeploymentCtxDeps {
+  return {
+    calculateSectorAllocations: (_balances, _totalValue) => [],
+    checkCashDeploymentMode: (_usdcBalance, _totalValue, _fearGreed) => ({
+      active:             false,
+      cashPercent:        20,
+      excessCash:         0,
+      deployBudget:       0,
+      confluenceDiscount: 0,
+      tier:               'NONE',
+      maxEntries:         0,
+    }),
+  };
+}
+
 function makeMockMetricsDeps(bot: ReturnType<typeof createBot>): MetricsDeps {
   return {
     getState:       () => bot.getStateManager().getState() as any,
@@ -186,9 +203,10 @@ export function makeMockHeavyCycleDeps(
   md: MarketData,
 ): HeavyCycleDeps {
   return {
-    setup:        makeMockSetupDeps(md),
-    intelligence: makeMockIntelligenceDeps(),
-    metrics:      makeMockMetricsDeps(bot),
+    setup:         makeMockSetupDeps(md),
+    intelligence:  makeMockIntelligenceDeps(),
+    metrics:       makeMockMetricsDeps(bot),
+    deploymentCtx: makeMockDeploymentCtxDeps(),
   };
 }
 
