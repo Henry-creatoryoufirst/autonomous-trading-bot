@@ -136,6 +136,8 @@ import { telegramService } from "./src/core/services/telegram.js";
 import { SelfHealingIntelligence } from "./src/core/services/self-healing/index.js";
 import type { BotInterface } from "./src/core/services/self-healing/types.js";
 import { StateManager, createStateManager } from "./src/core/state/state-manager.js";
+import { CircuitBreaker, PreservationMode } from "./src/core/risk/index.js";
+import type { BreakerConfig, PreservationConfig } from "./src/core/types/risk.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
@@ -878,21 +880,34 @@ const capitalPreservationMode: {
  * v19.3.1: On first call (startup), if F&G is in extreme fear, pre-fill the ring buffer
  * so preservation mode activates immediately instead of waiting 6 hours after every restart.
  */
+/**
+ * Phase 3: delegates to PreservationMode.update().
+ * v20.8: forceDisabled=true in config — mode stays DISABLED regardless of F&G.
+ *
+ * The legacy `capitalPreservationMode` module-level variable is kept in sync
+ * for backward compat with the ~11 sites still reading `.isActive`, `.fearReadings`,
+ * `.tradesBlocked`, `.tradesPassed`. P5 (cycle extraction) migrates those call
+ * sites to consume `preservationMode.getMode()` directly.
+ */
 function updateCapitalPreservationMode(fgValue: number): void {
-  // v20.8: F&G demoted to info-only. Preservation mode is DISABLED.
-  // The bot follows price physics (momentum, volume, capital flows), not sentiment surveys.
-  // F&G is still tracked for logging/dashboard display.
+  preservationMode.update(fgValue, lastMarketRegime);
+
+  // Mirror state into the legacy variable for call-site compat
   capitalPreservationMode.fearReadings.push(fgValue);
   if (capitalPreservationMode.fearReadings.length > PRESERVATION_RING_BUFFER_SIZE) {
     capitalPreservationMode.fearReadings.shift();
   }
   capitalPreservationMode.lastUpdated = Date.now();
+  const snapshot = preservationMode.getMode();
+  const wasActive = capitalPreservationMode.isActive;
+  capitalPreservationMode.isActive = snapshot.label === 'ACTIVE';
+  // Legacy variable uses epoch-ms; snapshot uses ISO string → convert
+  capitalPreservationMode.activatedAt = snapshot.activatedAt
+    ? new Date(snapshot.activatedAt).getTime()
+    : null;
 
-  // Force deactivation if somehow still active from before this update
-  if (capitalPreservationMode.isActive) {
-    console.log(`\n🟢 PRESERVATION MODE DISABLED (v20.8) — F&G=${fgValue} logged as info-only`);
-    capitalPreservationMode.isActive = false;
-    capitalPreservationMode.activatedAt = null;
+  if (wasActive && !capitalPreservationMode.isActive) {
+    console.log(`\n🟢 PRESERVATION MODE DISABLED — F&G=${fgValue} logged as info-only`);
   }
 }
 
@@ -2541,6 +2556,43 @@ let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
 const stateManager: StateManager = createStateManager(state, breakerState);
 
 // ============================================================================
+// RISK MODULES — Phase 3 of refactor
+// CircuitBreaker centralizes the 70 scattered breakerState.* mutations.
+// PreservationMode centralizes the Fear & Greed state machine (v20.8:
+// force-disabled by default — "price physics, not sentiment surveys").
+// Both consume StateManager so all mutations flow through the same
+// reference as direct `state.foo` / `breakerState.foo` accesses.
+// ============================================================================
+const _breakerConfig: BreakerConfig = {
+  consecutiveLossLimit:       BREAKER_CONSECUTIVE_LOSSES,
+  rollingWindowSize:          BREAKER_ROLLING_WINDOW_SIZE,
+  rollingLossThreshold:       BREAKER_ROLLING_LOSS_THRESHOLD,
+  pauseHours:                 BREAKER_PAUSE_HOURS,
+  sizeReductionPercent:       BREAKER_SIZE_REDUCTION,
+  sizeReductionHours:         BREAKER_SIZE_REDUCTION_HOURS,
+  dailyDrawdownPercent:       BREAKER_DAILY_DD_PCT,
+  weeklyDrawdownPercent:      BREAKER_WEEKLY_DD_PCT,
+  capitalFloorUSD:            CAPITAL_FLOOR_ABSOLUTE_USD,
+  capitalFloorPercentOfPeak:  0.6,
+  emergencyExitLossPercent:   -(BREAKER_SINGLE_TRADE_LOSS_PCT / 100),
+  emergencyExitFailureCount:  10,
+};
+const _preservationConfig: PreservationConfig = {
+  activationFearGreed:        PRESERVATION_FG_ACTIVATE,
+  deactivationFearGreed:      PRESERVATION_FG_DEACTIVATE,
+  ringBufferSize:             PRESERVATION_RING_BUFFER_SIZE,
+  minSustainedReadings:       PRESERVATION_RING_BUFFER_SIZE, // Full buffer = sustained
+  sizeMultiplier:             PRESERVATION_SIZE_MULTIPLIER,
+  minConfluence:              PRESERVATION_MIN_CONFLUENCE,
+  minSwarmConsensus:          PRESERVATION_MIN_SWARM_CONSENSUS,
+  cycleIntervalMultiplier:    PRESERVATION_CYCLE_MULTIPLIER,
+  targetCashPercent:          PRESERVATION_TARGET_CASH_PCT,
+  forceDisabled:              true, // v20.8: disabled by default, SHI can re-enable
+};
+const circuitBreaker = new CircuitBreaker({ stateManager, config: _breakerConfig });
+const preservationMode = new PreservationMode({ stateManager, config: _preservationConfig });
+
+// ============================================================================
 // BOT INTERFACE — clean bridge between Self-Healing Intelligence and bot internals
 // Phase 2: delegates reads to stateManager; healing writes still touch shared
 // module-level overrides (shiSizeMultiplier / shiConfluenceDelta / lastKnownPrices)
@@ -2636,111 +2688,48 @@ function calculateInstitutionalPositionSize(portfolioValue: number) {
 /**
  * Update daily/weekly baselines if date has changed.
  */
+/**
+ * Phase 3: delegates to CircuitBreaker.updateBaselines().
+ * Monolith contract preserved: callers invoke this as a fire-and-forget
+ * side-effect function that updates daily/weekly drawdown baselines.
+ */
 function updateDrawdownBaselines(portfolioValue: number) {
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-
-  // Daily reset
-  if (breakerState.dailyBaseline.date !== todayStr) {
-    breakerState.dailyBaseline = { date: todayStr, value: portfolioValue };
-    // v21.3: Mark baseline as validated — this function is only called from real cycles
-    // with fully-priced balances (not from startup warmup which only prices USDC).
-    breakerState.dailyBaselineValidated = true;
-  }
-  // v21.3: If baseline exists for today but wasn't validated yet, validate it now
-  // (happens when baseline was set by startup warmup, then first real cycle runs)
+  circuitBreaker.updateBaselines(portfolioValue);
+  // v21.3: Ensure baseline is validated on every call (in case a prior warmup
+  // set it without validation). CircuitBreaker handles the date-rollover path.
   if (!breakerState.dailyBaselineValidated) {
-    breakerState.dailyBaselineValidated = true;
-  }
-
-  // Weekly reset (Monday)
-  const dayOfWeek = now.getUTCDay();
-  const mondayDate = new Date(now);
-  mondayDate.setUTCDate(now.getUTCDate() - ((dayOfWeek + 6) % 7));
-  const weekStr = mondayDate.toISOString().split('T')[0];
-  if (breakerState.weeklyBaseline.weekStart !== weekStr) {
-    breakerState.weeklyBaseline = { weekStart: weekStr, value: portfolioValue };
+    stateManager.setDailyBaselineValidated(true);
   }
 }
 
 /**
  * Check all circuit breaker conditions.
  * Returns null if clear, or a reason string if breaker should fire.
+ *
+ * Phase 3: delegates to CircuitBreaker.evaluate(). Return-type contract
+ * preserved for monolith call sites (null = clear, string = pause reason
+ * or trigger reason). Note: CircuitBreaker.evaluate() now ALSO triggers
+ * the breaker internally if conditions fire — we no longer rely on the
+ * caller to invoke triggerCircuitBreaker() separately.
  */
 function checkCircuitBreaker(portfolioValue: number, lastTradeResult?: { success: boolean; pnlUSD?: number }): string | null {
-  // Update baselines
-  updateDrawdownBaselines(portfolioValue);
-
-  // Check if still in pause from previous breaker
-  if (breakerState.lastBreakerTriggered) {
-    const pauseEnd = new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000);
-    if (Date.now() < pauseEnd) {
-      const remaining = Math.ceil((pauseEnd - Date.now()) / 60000);
-      return `PAUSED: ${breakerState.lastBreakerReason} (${remaining}m remaining)`;
-    }
-    // v20.4.2: Pause expired — clear the rolling window and consecutive losses so the bot can trade again.
-    // Without this, the stale 8/8 losses would immediately re-trip the breaker.
-    console.log(`  ✅ Breaker pause expired — resetting rolling window (${breakerState.rollingTradeResults.length} entries) and consecutive losses (${breakerState.consecutiveLosses})`);
-    breakerState.lastBreakerTriggered = null;
-    breakerState.lastBreakerReason = null;
-    breakerState.consecutiveLosses = 0;
-    breakerState.rollingTradeResults = [];
+  const decision = circuitBreaker.evaluate(portfolioValue, lastTradeResult);
+  if (decision.severity === 'NONE' || decision.severity === 'CAUTION') {
+    // CAUTION means post-breaker size reduction still active but trading allowed.
+    // The monolith's legacy contract was "null = clear" — CAUTION fits that.
+    return null;
   }
-
-  // 1. Consecutive losses
-  if (breakerState.consecutiveLosses >= BREAKER_CONSECUTIVE_LOSSES) {
-    return `${breakerState.consecutiveLosses} consecutive losing trades`;
-  }
-
-  // 1b. v10.4: Rolling window — catches bad streaks with scattered wins (e.g., 20% win rate day)
-  if (breakerState.rollingTradeResults.length >= BREAKER_ROLLING_WINDOW_SIZE) {
-    const rollingLosses = breakerState.rollingTradeResults.filter(r => !r).length;
-    if (rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
-      return `${rollingLosses}/${BREAKER_ROLLING_WINDOW_SIZE} trades lost in rolling window`;
-    }
-  }
-
-  // 2. Daily drawdown
-  if (breakerState.dailyBaseline.value > 0) {
-    const dailyDD = ((breakerState.dailyBaseline.value - portfolioValue) / breakerState.dailyBaseline.value) * 100;
-    if (dailyDD >= BREAKER_DAILY_DD_PCT) {
-      return `Daily drawdown ${dailyDD.toFixed(1)}% exceeds ${BREAKER_DAILY_DD_PCT}% limit`;
-    }
-  }
-
-  // 3. Weekly drawdown
-  if (breakerState.weeklyBaseline.value > 0) {
-    const weeklyDD = ((breakerState.weeklyBaseline.value - portfolioValue) / breakerState.weeklyBaseline.value) * 100;
-    if (weeklyDD >= BREAKER_WEEKLY_DD_PCT) {
-      return `Weekly drawdown ${weeklyDD.toFixed(1)}% exceeds ${BREAKER_WEEKLY_DD_PCT}% limit`;
-    }
-  }
-
-  // 4. Single trade loss check (checked when lastTradeResult provided)
-  if (lastTradeResult?.pnlUSD && lastTradeResult.pnlUSD < 0) {
-    const lossAsPct = (Math.abs(lastTradeResult.pnlUSD) / portfolioValue) * 100;
-    if (lossAsPct >= BREAKER_SINGLE_TRADE_LOSS_PCT) {
-      return `Single trade loss $${Math.abs(lastTradeResult.pnlUSD).toFixed(2)} (${lossAsPct.toFixed(1)}%) exceeds ${BREAKER_SINGLE_TRADE_LOSS_PCT}% limit`;
-    }
-  }
-
-  return null; // All clear
+  return decision.message;
 }
 
 /**
  * Fire the circuit breaker — pause trading and activate size reduction.
+ * Phase 3: state mutations delegated to CircuitBreaker.trigger(). Telegram
+ * + SHI side effects remain here (domain-specific notifications are not
+ * CircuitBreaker's concern).
  */
 function triggerCircuitBreaker(reason: string) {
-  const now = new Date().toISOString();
-  breakerState.lastBreakerTriggered = now;
-  breakerState.lastBreakerReason = reason;
-  breakerState.breakerSizeReductionUntil = new Date(Date.now() + BREAKER_SIZE_REDUCTION_HOURS * 3600000).toISOString();
-  breakerState.rollingTradeResults = []; // v10.4: Reset rolling window so breaker doesn't re-trigger immediately after pause
-  breakerState.consecutiveLosses = 0;    // v10.4: Also reset consecutive counter
-  console.log(`\n🚨🚨 CIRCUIT BREAKER TRIGGERED 🚨🚨`);
-  console.log(`   Reason: ${reason}`);
-  console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
-  console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
+  circuitBreaker.trigger('MANUAL_HALT', reason);
   // v19.6: Telegram alert on circuit breaker
   telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
   // Self-Healing Intelligence — diagnose root cause and apply playbook
@@ -2749,26 +2738,22 @@ function triggerCircuitBreaker(reason: string) {
 
 /**
  * Record a trade result for consecutive loss tracking.
+ * Phase 3: state mutations delegated to CircuitBreaker.recordTradeResult().
+ * Console logging + Telegram side effects remain here.
  */
 function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDetails?: { token?: string; error?: string; action?: string }) {
-  const isWin = success && (pnlUSD === undefined || pnlUSD >= 0);
-  if (isWin) {
-    breakerState.consecutiveLosses = 0; // Reset on win
-  } else {
-    breakerState.consecutiveLosses++;
-    console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
+  const result = circuitBreaker.recordTradeResult(success, pnlUSD);
+
+  if (!result.isWin) {
+    console.log(`   📉 Consecutive losses: ${result.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
   }
   // v19.6: Telegram trade failure tracking
   telegramService.onTradeResult(success, tradeDetails).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
 
-  // v10.4: Rolling window — track last N trade results regardless of outcome
-  breakerState.rollingTradeResults.push(isWin);
-  if (breakerState.rollingTradeResults.length > BREAKER_ROLLING_WINDOW_SIZE) {
-    breakerState.rollingTradeResults = breakerState.rollingTradeResults.slice(-BREAKER_ROLLING_WINDOW_SIZE);
-  }
-  const rollingLosses = breakerState.rollingTradeResults.filter(r => !r).length;
-  if (rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
-    console.log(`   📉 Rolling window: ${rollingLosses}/${breakerState.rollingTradeResults.length} losses in last ${BREAKER_ROLLING_WINDOW_SIZE} trades`);
+  // v10.4: Rolling window warning — CircuitBreaker tracks the window,
+  // we just emit the console warning when threshold is crossed
+  if (result.rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
+    console.log(`   📉 Rolling window: ${result.rollingLosses}/${breakerState.rollingTradeResults.length} losses in last ${BREAKER_ROLLING_WINDOW_SIZE} trades`);
   }
 }
 
