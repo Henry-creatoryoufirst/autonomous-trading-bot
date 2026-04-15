@@ -237,6 +237,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   // === AI & AGENT TOKENS (expanded) ===
+  TIBBIR: {
+    address: "0xa4a2e2ca3fbfe21aed83471d28b6f65a233c6e00",
+    symbol: "TIBBIR", name: "Ribbita by Virtuals", coingeckoId: "ribbita-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   VVV: {
     address: "0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf",
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
@@ -258,6 +263,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === DEFI (expanded) ===
+  LMTS: {
+    address: "0x9EadbE35F3Ee3bF3e28180070C429298a1b02F93",
+    symbol: "LMTS", name: "Limitless Exchange", coingeckoId: "limitless-3",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
     symbol: "WELL", name: "Moonwell", coingeckoId: "moonwell-artemis",
