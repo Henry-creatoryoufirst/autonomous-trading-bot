@@ -28,6 +28,7 @@
 import type { CycleContext } from '../types/cycle.js';
 import type { SetupDeps } from './stages/setup.js';
 import type { IntelligenceDeps } from './stages/intelligence.js';
+import type { MetricsDeps } from './stages/metrics.js';
 import {
   setupStage,
   intelligenceStage,
@@ -46,6 +47,7 @@ import {
 export interface HeavyCycleDeps {
   setup:        SetupDeps;
   intelligence: IntelligenceDeps;
+  metrics:      MetricsDeps;
 }
 
 /**
@@ -63,7 +65,7 @@ export async function runHeavyCycle(ctx: CycleContext, deps: HeavyCycleDeps): Pr
   ctx = await intelligenceStage(ctx, deps.intelligence);
   if (ctx.halted) return ctx;
 
-  ctx = await metricsStage(ctx);
+  ctx = await metricsStage(ctx, deps.metrics);
   if (ctx.halted) return ctx;
 
   ctx = await decisionStage(ctx);
