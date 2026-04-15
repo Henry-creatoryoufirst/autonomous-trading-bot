@@ -6460,6 +6460,17 @@ async function runTradingCycle() {
     // v12.2: Always update to actual value so dashboard matches sum of balances
     state.trading.totalPortfolioValue = newPortfolioValue;
 
+    // Self-Healing: real drawdown detection — > 5% drop in one cycle, not a phantom move,
+    // portfolio large enough that 5% is meaningful. Phantom drops are already handled above.
+    if (!isPhantomMove && dropPercent > 5 && prevValue > 100) {
+      shi?.processIncident('LARGE_DRAWDOWN', {
+        dropPercent: Number(dropPercent.toFixed(2)),
+        prevValue:   Number(prevValue.toFixed(2)),
+        newValue:    Number(newPortfolioValue.toFixed(2)),
+        cycleNumber: state.totalCycles,
+      });
+    }
+
     // v20.0: Update drawdown tracking for daily/weekly halt controls
     updateDrawdownTracking(newPortfolioValue);
 
@@ -7042,10 +7053,13 @@ async function runTradingCycle() {
           const swarmConsensus = swarmConsensusMap.get(d.toToken) ?? 0;
 
           // Only block if confluence is truly garbage AND swarm disagrees
-          if (confluenceScore < PRESERVATION_MIN_CONFLUENCE && swarmConsensus < PRESERVATION_MIN_SWARM_CONSENSUS) {
+          // SHI override: shiConfluenceDelta raises the bar after healing incidents
+          const effectiveConfluenceMin = PRESERVATION_MIN_CONFLUENCE + shiConfluenceDelta;
+          if (confluenceScore < effectiveConfluenceMin && swarmConsensus < PRESERVATION_MIN_SWARM_CONSENSUS) {
             capitalPreservationMode.tradesBlocked++;
             blockedCount++;
-            console.log(`   🛡️ PRESERVATION: Blocking weak BUY ${d.toToken} (confluence=${confluenceScore} < ${PRESERVATION_MIN_CONFLUENCE}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
+            const overrideNote = shiConfluenceDelta > 0 ? ` [SHI +${shiConfluenceDelta}]` : '';
+            console.log(`   🛡️ PRESERVATION: Blocking weak BUY ${d.toToken} (confluence=${confluenceScore} < ${effectiveConfluenceMin}${overrideNote}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
             continue;
           }
 
@@ -7716,6 +7730,15 @@ async function runTradingCycle() {
               message: `WARNING: 3 consecutive sell failures for ${tradeToken}. Investigating...`,
               data: { token: tradeToken, consecutiveFailures: tokenFailCount, lastError: tradeResult.error?.substring(0, 200) || 'unknown' },
             }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
+            // Self-Healing: escalated pattern — 3 failures in a row for same token means this
+            // isn't a transient hiccup. Fire a distinct CONSECUTIVE_FAILURES incident so Claude
+            // can diagnose the pattern (liquidity gone? pool broken? token compromised?).
+            shi?.processIncident('CONSECUTIVE_FAILURES', {
+              token: tradeToken,
+              consecutiveFailures: tokenFailCount,
+              lastError: tradeResult.error?.substring(0, 200) || 'unknown',
+              action: decision.action,
+            });
           } else if (tokenFailCount === 5) {
             // v21.x: FORCE SELL — bypass price gate after 5 consecutive failures.
             // Better to exit at an unknown price than hold a position we can never sell.
@@ -9558,6 +9581,43 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/model-telemetry':
         handleModelTelemetry(res, serverCtx);
         break;
+      case '/api/healing-stats': {
+        // Self-Healing Intelligence — full surface for dashboard visibility
+        try {
+          const stats = shi?.getStats() ?? null;
+          const recent = shi?.getRecentOutcomes(20) ?? [];
+          const enabled = process.env.SELF_HEALING_ENABLED !== 'false';
+          const initialized = shi !== null;
+          sendJSON(res, 200, {
+            enabled,
+            initialized,
+            stats,
+            recentOutcomes: recent.map(o => ({
+              id:               o.id,
+              incidentType:     o.incident.type,
+              severity:         o.incident.severity,
+              timestamp:        o.incident.timestamp,
+              resolved:         o.resolved,
+              resolvedAt:       o.resolvedAt,
+              durationMs:       o.durationMs,
+              rootCause:        o.diagnosis?.rootCause ?? null,
+              confidence:       o.diagnosis?.confidence ?? null,
+              actionsExecuted:  o.actionsExecuted.map(a => ({ action: a.action, success: a.success })),
+              portfolioImpact:  o.portfolioValueAfter !== null
+                ? Number((o.portfolioValueAfter - o.portfolioValueBefore).toFixed(2))
+                : null,
+            })),
+            overrides: {
+              sizeMultiplier:   shiSizeMultiplier,
+              confluenceDelta:  shiConfluenceDelta,
+            },
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (err: any) {
+          sendJSON(res, 500, { error: `Healing stats failed: ${err?.message || 'unknown'}` });
+        }
+        break;
+      }
       case '/api/ticker':
         handleTicker(res, serverCtx);
         break;
