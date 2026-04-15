@@ -166,6 +166,7 @@ import {
   KELLY_ROLLING_WINDOW,
   KELLY_POSITION_FLOOR_USD,
   KELLY_POSITION_CEILING_PCT,
+  KELLY_BEAR_REGIME_MULTIPLIER,
   KELLY_SMALL_PORTFOLIO_CEILING_PCT,
   KELLY_SMALL_PORTFOLIO_THRESHOLD,
   VOL_TARGET_DAILY_PCT,
@@ -2503,7 +2504,9 @@ const _volConstants = {
 };
 
 function getEffectiveKellyCeiling(portfolioValue: number): number {
-  return _getEffectiveKellyCeiling(portfolioValue, KELLY_SMALL_PORTFOLIO_THRESHOLD, KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_CEILING_PCT);
+  const base = _getEffectiveKellyCeiling(portfolioValue, KELLY_SMALL_PORTFOLIO_THRESHOLD, KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_CEILING_PCT);
+  const regime = state.trading?.marketRegime || 'NEUTRAL';
+  return (regime === 'BEAR' || regime === 'VOLATILE') ? base * KELLY_BEAR_REGIME_MULTIPLIER : base;
 }
 
 function calculateKellyPositionSize(portfolioValue: number) {
