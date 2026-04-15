@@ -1,0 +1,13 @@
+/**
+ * Barrel for cycle stage functions.
+ * Phase 5b/5c will populate these one at a time.
+ */
+
+export { setupStage }       from './setup.js';
+export { intelligenceStage } from './intelligence.js';
+export { metricsStage }     from './metrics.js';
+export { decisionStage }    from './decision.js';
+export { filtersStage }     from './filters.js';
+export { executionStage }   from './execution.js';
+export { reportingStage }   from './reporting.js';
+export { schedulingStage }  from './scheduling.js';

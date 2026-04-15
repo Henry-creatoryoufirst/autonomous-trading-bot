@@ -138,6 +138,8 @@ import type { BotInterface } from "./src/core/services/self-healing/types.js";
 import { StateManager, createStateManager } from "./src/core/state/state-manager.js";
 import { CircuitBreaker, PreservationMode } from "./src/core/risk/index.js";
 import type { BreakerConfig, PreservationConfig } from "./src/core/types/risk.js";
+// Phase 5a: light cycle extracted into standalone function
+import { runLightCycle } from "./src/core/cycle/index.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
@@ -6033,27 +6035,20 @@ async function runTradingCycle() {
   const { isHeavy, reason: heavyReason } = await shouldRunHeavyCycle(currentPrices);
 
   if (!isHeavy) {
-    // === LIGHT CYCLE ===
-    cycleStats.totalLight++;
-    adaptiveCycle.consecutiveLightCycles++;
-    const portfolioValue = state.trading.totalPortfolioValue || 0;
-    const cooldownCount = cooldownManager.getActiveCount();
-    const cacheStats = cacheManager.getStats();
-
-    // v6.2: Update adaptive interval even on light cycles
+    // === LIGHT CYCLE — Phase 5a: delegated to src/core/cycle/light-cycle.ts ===
     const lightInterval = computeNextInterval(currentPrices);
-    adaptiveCycle.currentIntervalSec = lightInterval.intervalSec;
-    adaptiveCycle.volatilityLevel = lightInterval.volatilityLevel;
-    adaptiveCycle.lastPriceCheck = new Map(currentPrices);
-
-    // v9.2: Sync costBasis.currentPrice on light cycles so dashboard stays fresh
-    for (const [symbol, price] of currentPrices) {
-      if (state.costBasis[symbol] && price > 0) {
-        (state.costBasis[symbol] as any).currentPrice = price;
-      }
-    }
-
-    console.log(`[CYCLE #${state.totalCycles}] LIGHT | Portfolio: $${portfolioValue.toFixed(2)} | Cooldowns: ${cooldownCount} | Cache: ${cacheStats.entries} entries (${cacheStats.hitRate} hit rate) | ${(Date.now() - cycleStart)}ms | ⚡ Next: ${lightInterval.intervalSec}s (${lightInterval.volatilityLevel})`);
+    runLightCycle({
+      cycleNumber:   state.totalCycles,
+      cycleStart,
+      portfolioValue: state.trading.totalPortfolioValue || 0,
+      cooldownCount:  cooldownManager.getActiveCount(),
+      cacheStats:     cacheManager.getStats(),
+      lightInterval,
+      currentPrices,
+      costBasis:     state.costBasis as Record<string, { currentPrice?: number; [key: string]: unknown }>,
+      cycleStats,
+      adaptiveCycle,
+    });
     return; // Skip full analysis
   }
 
@@ -8485,6 +8480,10 @@ async function main() {
   if (signalMode !== 'producer') try {
     console.log("\n🔧 Initializing CDP SDK...");
     cdpClient = createCdpClient();
+    // Update ServerContext's stale reference so /health + /api/accounts + related
+    // routes see the initialized client (the const object literal above captured
+    // the null value from before main() ran — let-var reassignment didn't propagate).
+    serverCtx.cdpClient = cdpClient;
     console.log("  ✅ CDP Client created");
 
     // Get or create the EOA account for trading
