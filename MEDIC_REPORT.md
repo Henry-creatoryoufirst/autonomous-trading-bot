@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-14T19:12 UTC
+# MEDIC REPORT — 2026-04-15T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue)
 
 ## Environment
-- Run timestamp: 2026-04-14T19:12 UTC
+- Run timestamp: 2026-04-15T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -12,25 +12,25 @@
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `403 Forbidden` with `x-deny-reason: host_not_allowed`:
+All endpoints attempted returned `Host not in allowlist` or `403 Forbidden`:
 
 ```
-curl -sv https://autonomous-trading-bot-production.up.railway.app/health
-→ HTTP/1.1 403 Forbidden
-→ x-deny-reason: host_not_allowed
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
+→ Host not in allowlist
+
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
+→ Host not in allowlist
 ```
 
 Endpoints attempted:
-- `/api/errors`   → 403
-- `/api/balances` → 403
-- `/health`       → 403
-- `/api/status`   → 403
+- `/api/errors`   → blocked (Host not in allowlist)
+- `/api/balances` → blocked (Host not in allowlist)
 
 ## Root Cause
 
 The Claude Code execution sandbox has an **egress proxy** that only allows outbound connections to a fixed allowlist of domains. The Railway deployment domain (`autonomous-trading-bot-production.up.railway.app`) is **not on this allowlist**, so all connections are blocked at the proxy layer before reaching Railway.
 
-This is an infrastructure constraint of the medic agent's execution environment — it does NOT necessarily indicate a bot failure.
+This is a **persistent infrastructure constraint** of the medic agent's execution environment — it does NOT necessarily indicate a bot failure. This same issue was documented in the previous run (2026-04-14T19:12 UTC, commit 8715c74).
 
 ## What Is NOT Known
 
@@ -42,10 +42,11 @@ Because the API is unreachable, the medic cannot determine:
 
 ## What IS Known (from git history)
 
-- Last scout commit: `2026-04-13 12:52:52 UTC` (feat(scout): add LUNA, CLANKER, VADER to TOKEN_REGISTRY)
-- Last auditor commit: `improve(auditor): lower Kelly ceiling 18%→14%` — normal operation
-- Most recent bot version deployed: v21.7 (Bear Mode)
-- No emergency commits in the last 24h git log
+- Last bot version deployed: **v21.11** — "dry powder reserve — proactive 10% USDC floor" (most recent commit on main/staging)
+- Last scout commit: `2026-04-13 12:52:52 UTC` (> 48h ago — scout is overdue)
+- Last auditor commit: `improve(auditor): lower VOL_HIGH_THRESHOLD 8%→6%` — normal operation
+- No crash/emergency commits in recent git log
+- Bot v21.11 is a healthy version with no known critical bugs
 
 ## Recommended Action for Henry
 
@@ -56,7 +57,7 @@ Because the API is unreachable, the medic cannot determine:
 5. Consider adding `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist to enable future automated health checks
 
 ## Pattern Classification
-PATTERN D — Unknown / Cannot Assess (API unreachable, not a trade-error pattern)
+PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
 - No code changes made to agent-v3.2.ts
