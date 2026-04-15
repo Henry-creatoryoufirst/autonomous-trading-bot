@@ -27,6 +27,7 @@
 
 import type { CycleContext } from '../types/cycle.js';
 import type { SetupDeps } from './stages/setup.js';
+import type { IntelligenceDeps } from './stages/intelligence.js';
 import {
   setupStage,
   intelligenceStage,
@@ -43,21 +44,23 @@ import {
 // ============================================================================
 
 export interface HeavyCycleDeps {
-  setup: SetupDeps;
+  setup:        SetupDeps;
+  intelligence: IntelligenceDeps;
 }
 
 /**
  * Orchestrate the full heavy-cycle stage pipeline.
  *
  * Phase 5a: STUB — all stage functions throw "not yet extracted".
- * Phase 5b: stages extracted one at a time, each its own commit.
- * Phase 5c: executionStage extracted in its own dedicated PR.
+ * Phase 5b: setup stage extracted.
+ * Phase 5c: intelligence stage extracted.
+ * Phase 5h: executionStage extracted in its own dedicated PR.
  */
 export async function runHeavyCycle(ctx: CycleContext, deps: HeavyCycleDeps): Promise<CycleContext> {
   ctx = await setupStage(ctx, deps.setup);
   if (ctx.halted) return ctx;
 
-  ctx = await intelligenceStage(ctx);
+  ctx = await intelligenceStage(ctx, deps.intelligence);
   if (ctx.halted) return ctx;
 
   ctx = await metricsStage(ctx);
