@@ -3,6 +3,8 @@
  * Phase 5b/5c will populate these one at a time.
  */
 
+export { deploymentCtxStage } from './deployment-ctx.js';
+export type { DeploymentCtxDeps } from './deployment-ctx.js';
 export { setupStage }        from './setup.js';
 export { intelligenceStage,
          computeVolumeSpikes,
