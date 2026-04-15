@@ -146,6 +146,9 @@ import type { SetupDeps } from "./src/core/cycle/stages/setup.js";
 // Phase 5c: intelligence stage extracted
 import { intelligenceStage } from "./src/core/cycle/stages/intelligence.js";
 import type { IntelligenceDeps } from "./src/core/cycle/stages/intelligence.js";
+// Phase 5d: metrics stage extracted
+import { metricsStage } from "./src/core/cycle/stages/metrics.js";
+import type { MetricsDeps } from "./src/core/cycle/stages/metrics.js";
 import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
@@ -2734,6 +2737,20 @@ function buildIntelligenceDeps(): IntelligenceDeps {
 
     // ── Constants ────────────────────────────────────────────────────────────
     volumeSpikeThreshold: VOLUME_SPIKE_THRESHOLD,
+  };
+}
+
+// ============================================================================
+// Phase 5d: buildMetricsDeps — wires state + singletons into MetricsDeps
+// ============================================================================
+function buildMetricsDeps(): MetricsDeps {
+  return {
+    getState:            () => state,
+    getBreakerState:     () => breakerState,
+    calculateSectorAllocations: (balances, totalValue) =>
+      calculateSectorAllocations(balances as any, totalValue),
+    updateUnrealizedPnL:        (balances) => updateUnrealizedPnL(balances as any),
+    calculateRiskRewardMetrics: () => calculateRiskRewardMetrics(),
   };
 }
 
@@ -6469,63 +6486,11 @@ async function runTradingCycle() {
       }
     }
 
-    console.log(`\n💰 Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
-    console.log(`   Today: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%) from $${dailyBase.toFixed(2)} start-of-day`);
-    console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${drawdown.toFixed(1)}%`);
-    console.log(`   Regime: ${marketData.marketRegime}`);
-
-    // Display technical indicators summary
-    if (Object.keys(marketData.indicators).length > 0) {
-      console.log(`\n📐 Technical Indicators:`);
-      const buySignals: string[] = [];
-      const sellSignals: string[] = [];
-      for (const [symbol, ind] of Object.entries(marketData.indicators)) {
-        const rsiStr = ind.rsi14 !== null ? `RSI=${ind.rsi14.toFixed(0)}` : "";
-        const macdStr = ind.macd ? `MACD=${ind.macd.signal}` : "";
-        const bbStr = ind.bollingerBands ? `BB=${ind.bollingerBands.signal}` : "";
-        const scoreStr = `Score=${ind.confluenceScore > 0 ? "+" : ""}${ind.confluenceScore}`;
-        console.log(`   ${symbol}: ${[rsiStr, macdStr, bbStr, `Trend=${ind.trendDirection}`, scoreStr].filter(Boolean).join(" | ")} → ${ind.overallSignal}`);
-        if (ind.confluenceScore >= 30) buySignals.push(`${symbol}(+${ind.confluenceScore})`);
-        if (ind.confluenceScore <= -30) sellSignals.push(`${symbol}(${ind.confluenceScore})`);
-      }
-      if (buySignals.length > 0) console.log(`   🟢 Buy signals: ${buySignals.join(", ")}`);
-      if (sellSignals.length > 0) console.log(`   🔴 Sell signals: ${sellSignals.join(", ")}`);
-    }
-
-    console.log(`\n📊 Sector Allocations:`);
-    for (const sector of sectorAllocations) {
-      const status = Math.abs(sector.drift) > 5
-        ? (sector.drift > 0 ? "⚠️ OVER" : "⚠️ UNDER")
-        : "✅";
-      console.log(`   ${status} ${sector.name}: ${sector.currentPercent.toFixed(1)}% (target: ${sector.targetPercent}%)`);
-    }
-
-    if (marketData.trendingTokens.length > 0) {
-      console.log(`\n🔥 Trending: ${marketData.trendingTokens.join(", ")}`);
-    }
-
-    // Update unrealized P&L and peak prices for all holdings
-    updateUnrealizedPnL(balances);
-
-    // Display cost basis summary
-    const activeCB = Object.values(state.costBasis).filter(cb => cb.currentHolding > 0 && cb.averageCostBasis > 0);
-    if (activeCB.length > 0) {
-      const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
-      const totalUnrealized = activeCB.reduce((s, cb) => s + cb.unrealizedPnL, 0);
-      console.log(`\n💹 Cost Basis P&L: Realized ${totalRealized >= 0 ? "+" : ""}$${totalRealized.toFixed(2)} | Unrealized ${totalUnrealized >= 0 ? "+" : ""}$${totalUnrealized.toFixed(2)}`);
-      for (const cb of activeCB) {
-        const pct = cb.averageCostBasis > 0 ? ((cb.unrealizedPnL / (cb.averageCostBasis * cb.currentHolding)) * 100) : 0;
-        console.log(`   ${cb.unrealizedPnL >= 0 ? "🟢" : "🔴"} ${cb.symbol}: avg $${cb.averageCostBasis.toFixed(4)} | P&L ${cb.unrealizedPnL >= 0 ? "+" : ""}$${cb.unrealizedPnL.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`);
-      }
-    }
-
-    // v6.2: Risk-Reward Metrics
-    const rrMetrics = calculateRiskRewardMetrics();
-    if (rrMetrics.avgWinUSD > 0 || rrMetrics.avgLossUSD > 0) {
-      console.log(`\n📊 Risk-Reward Profile:`);
-      console.log(`   Avg Win: +$${rrMetrics.avgWinUSD.toFixed(2)} | Avg Loss: -$${rrMetrics.avgLossUSD.toFixed(2)} | Ratio: ${rrMetrics.riskRewardRatio.toFixed(2)}x`);
-      console.log(`   Largest Win: +$${rrMetrics.largestWin.toFixed(2)} | Largest Loss: -$${rrMetrics.largestLoss.toFixed(2)}`);
-      console.log(`   Expectancy: $${rrMetrics.expectancy.toFixed(2)}/trade | Profit Factor: ${rrMetrics.profitFactor.toFixed(2)}`);
+    // === Phase 5d: metricsStage — portfolio display, indicators, unrealized P&L ===
+    cycleCtx = await metricsStage(cycleCtx, buildMetricsDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Metrics stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
 
     // v21.0: MECHANICAL STOP-LOSS REMOVED — Claude decides all exits.
