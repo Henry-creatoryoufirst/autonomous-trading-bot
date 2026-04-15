@@ -217,8 +217,11 @@ function makeMetricsDeps(overrides: Partial<MetricsDeps> = {}): MetricsDeps {
 
 function makeDeploymentCtxDeps(overrides: Partial<DeploymentCtxDeps> = {}): DeploymentCtxDeps {
   return {
-    calculateSectorAllocations: vi.fn(() => []),
-    checkCashDeploymentMode: vi.fn(() => ({ shouldDeploy: false, reason: 'test stub' }) as any),
+    calculateSectorAllocations: vi.fn().mockReturnValue([]),
+    checkCashDeploymentMode: vi.fn().mockReturnValue({
+      active: false, cashPercent: 20, excessCash: 0,
+      deployBudget: 0, confluenceDiscount: 0, tier: 'NONE', maxEntries: 0,
+    }),
     ...overrides,
   };
 }
@@ -257,7 +260,7 @@ const ALL_STAGES = [
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('runHeavyCycle — full pipeline', () => {
-  it('pushes all 11 stages to ctx.stagesCompleted in order on a clean run', async () => {
+  it('pushes all 12 stages to ctx.stagesCompleted in order on a clean run', async () => {
     const ctx = makeCtx();
     const deps = makeDeps();
 
