@@ -318,6 +318,10 @@ import {
   CULL_MAX_MOMENTUM,
   CULL_INTERVAL_CYCLES,
   CULL_MAX_PER_RUN,
+  // v21.11: Dry powder reserve — proactive capital availability
+  MIN_DRY_POWDER_PCT,
+  RESERVE_CHECK_INTERVAL_CYCLES,
+  RESERVE_MAX_SELLS,
   // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
   MAX_CONSECUTIVE_FAILURES,
   FAILURE_COOLDOWN_HOURS,
@@ -1066,6 +1070,97 @@ function cullStalePositions(
   }
 
   return decisions;
+}
+
+/**
+ * v21.11: Dry Powder Reserve — Proactive Capital Availability
+ *
+ * Ensures the portfolio always has MIN_DRY_POWDER_PCT of total value as deployable
+ * USDC. Runs every RESERVE_CHECK_INTERVAL_CYCLES regardless of BUY signals.
+ *
+ * This is fundamentally different from liberateCapital() which is reactive:
+ *   - liberateCapital: fires when a BUY signal arrives and USDC is already gone
+ *   - maintainDryPowder: fires proactively to prevent ever running out in the first place
+ *
+ * Result: bots are always capital-ready. When the alpha signal fires, the USDC
+ * is already waiting — not scrambled for at the last moment.
+ */
+function maintainDryPowder(
+  balances: any[],
+  state: any,
+): TradeDecision[] {
+  const NEVER_SELL = new Set(['USDC', 'ETH', 'WETH']);
+
+  const totalPortfolioValue = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
+  if (totalPortfolioValue < 50) return []; // Too small to be meaningful
+
+  const usdcBalance = balances.find(b => b.symbol === 'USDC')?.usdValue ?? 0;
+  const targetReserve = totalPortfolioValue * MIN_DRY_POWDER_PCT;
+
+  // Plenty of dry powder — nothing to do
+  if (usdcBalance >= targetReserve) return [];
+
+  const deficit = targetReserve - usdcBalance;
+
+  // Score all held positions by opportunity cost — we want to sell the one
+  // with the LEAST reason to hold: oldest + most negative P&L + smallest size
+  const now = Date.now();
+  const candidates: Array<{ symbol: string; usdValue: number; score: number }> = [];
+
+  for (const b of balances) {
+    const symbol = (b.symbol || '').toUpperCase();
+    if (NEVER_SELL.has(symbol)) continue;
+    if (!b.usdValue || b.usdValue < 5) continue;
+
+    // Skip ICU — those are being actively managed
+    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
+
+    // Skip circuit-breaker-blocked tokens
+    if (isTokenBlocked(symbol)) continue;
+
+    const cb = state.costBasis[b.symbol];
+    const ageHours = cb?.firstBuyDate
+      ? (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
+      : 0;
+
+    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
+    const unrealizedPnlPct = cb?.averageCostBasis > 0
+      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
+      : 0;
+
+    // Opportunity cost score: higher = more expendable
+    // Age penalty: longest-held stale positions first
+    const agePenalty = Math.min(ageHours / 168, 1.0) * 40;
+    // P&L penalty: losers first (winners are protected)
+    const pnlPenalty = Math.max(0, -unrealizedPnlPct) * 0.5;
+    // Size bonus: prefer selling smaller positions (less disruption)
+    const sizePenalty = Math.max(0, 1 - (b.usdValue / 200)) * 10;
+
+    candidates.push({ symbol: b.symbol, usdValue: b.usdValue, score: agePenalty + pnlPenalty + sizePenalty });
+  }
+
+  if (candidates.length === 0) return [];
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Sell just enough to restore the reserve, cap at RESERVE_MAX_SELLS
+  const toSell: typeof candidates = [];
+  let freed = 0;
+  for (const c of candidates) {
+    if (toSell.length >= RESERVE_MAX_SELLS) break;
+    if (freed >= deficit) break;
+    toSell.push(c);
+    freed += c.usdValue;
+  }
+
+  return toSell.map(pos => ({
+    action: 'SELL' as const,
+    fromToken: pos.symbol,
+    toToken: 'USDC',
+    amountUSD: pos.usdValue,
+    percent: 90,
+    reasoning: `DRY_POWDER: Portfolio has ${((usdcBalance / totalPortfolioValue) * 100).toFixed(1)}% USDC (target: ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}%). Selling lowest-opportunity-cost position to restore capital availability for incoming alpha signals.`,
+    sector: TOKEN_REGISTRY[pos.symbol]?.sector,
+  }));
 }
 
 /**
@@ -6532,6 +6627,46 @@ async function runTradingCycle() {
       }
     }
 
+    // === v21.11: DRY POWDER RESERVE — Proactive capital availability ===
+    // Every RESERVE_CHECK_INTERVAL_CYCLES, ensure USDC >= 10% of portfolio.
+    // If below target, sell the lowest-opportunity-cost position to restore it.
+    // This fires BEFORE Claude's decision so capital is always ready when alpha arrives.
+    if (state.totalCycles % RESERVE_CHECK_INTERVAL_CYCLES === 0) {
+      const reserveSells = maintainDryPowder(balances, state);
+      if (reserveSells.length > 0) {
+        const totalPortfolioValue = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
+        const usdcPct = ((balances.find(b => b.symbol === 'USDC')?.usdValue ?? 0) / totalPortfolioValue * 100).toFixed(1);
+        console.log(`\n💧 DRY_POWDER: USDC at ${usdcPct}% of portfolio (target: ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}%) — restoring reserve`);
+
+        const freedSymbols: string[] = [];
+        for (const rs of reserveSells) {
+          console.log(`   💧 Selling ${rs.fromToken} $${rs.amountUSD?.toFixed(2)} to restore dry powder`);
+          const result = await executeTrade(rs, marketData);
+          if (result.success) {
+            clearTradeFailures(rs.fromToken!);
+            freedSymbols.push(rs.fromToken!);
+            console.log(`   ✅ Reserve restored: +$${rs.amountUSD?.toFixed(2)} USDC from ${rs.fromToken}`);
+          } else {
+            console.log(`   ❌ Reserve sell failed: ${rs.fromToken}`);
+          }
+        }
+
+        if (freedSymbols.length > 0) {
+          const refreshed = await getBalances();
+          if (refreshed && refreshed.length > 0) balances = refreshed;
+          markStateDirty(true);
+
+          const newUsdc = balances.find(b => b.symbol === 'USDC')?.usdValue ?? 0;
+          const newTotal = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
+          await telegramService.sendAlert({
+            severity: "INFO",
+            title: `💧 Dry Powder Restored`,
+            message: `Capital availability restored from ${usdcPct}% → ${(newUsdc / newTotal * 100).toFixed(1)}% USDC.\n\nSold: ${freedSymbols.join(', ')}\nNow ready to deploy into the next alpha signal.`,
+          }).catch(() => {});
+        }
+      }
+    }
+
     // === v21.8: HARD CIRCUIT BREAKER — Emergency exit for severe losses or persistent failures ===
     // Safety net that fires EVERY cycle regardless of normal algo decisions.
     // Triggers for: (1) any position down >50% from cost basis, OR
@@ -8746,8 +8881,8 @@ async function main() {
     console.log(`\n✅ STARTUP: Trading is LIVE — no blockers detected`);
     await telegramService.sendAlert({
       severity: "INFO",
-      title: "Bot Started v21.10 — Trading LIVE 🟢",
-      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min\n\nv21.10: Position culling + sector rotation + holder concentration`,
+      title: "Bot Started v21.11 — Trading LIVE 🟢",
+      message: `Bot deployed and trading is ACTIVE.\n\nPortfolio: $${portfolioVal.toFixed(2)}\nPeak: $${state.trading.peakValue.toFixed(2)}\nTokens: ${CONFIG.activeTokens.length}\nInterval: ${CONFIG.trading.intervalMinutes}min\n\nv21.11: Dry powder reserve — always 10% USDC ready for alpha`,
     });
   }
 

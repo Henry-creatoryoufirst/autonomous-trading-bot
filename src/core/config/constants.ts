@@ -862,6 +862,22 @@ export const CULL_INTERVAL_CYCLES = 20;
 export const CULL_MAX_PER_RUN = 3;
 
 // ============================================================================
+// v21.11: DRY POWDER RESERVE — Proactive capital availability
+// Always keep MIN_DRY_POWDER_PCT of portfolio as deployable USDC.
+// Fires every RESERVE_CHECK_INTERVAL_CYCLES regardless of BUY signals.
+// Distinct from liberateCapital() which is reactive (triggered by BUY signal).
+// ============================================================================
+
+/** Minimum USDC as % of total portfolio — always kept as dry powder */
+export const MIN_DRY_POWDER_PCT = 0.10; // 10%
+
+/** How often (in cycles) to check dry powder levels (~75min at 15min intervals) */
+export const RESERVE_CHECK_INTERVAL_CYCLES = 5;
+
+/** Max positions to sell per reserve restore pass */
+export const RESERVE_MAX_SELLS = 2;
+
+// ============================================================================
 // v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely
 // ============================================================================
 
