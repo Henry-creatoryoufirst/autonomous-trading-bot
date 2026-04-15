@@ -149,6 +149,9 @@ import type { IntelligenceDeps } from "./src/core/cycle/stages/intelligence.js";
 // Phase 5d: metrics stage extracted
 import { metricsStage } from "./src/core/cycle/stages/metrics.js";
 import type { MetricsDeps } from "./src/core/cycle/stages/metrics.js";
+// Phase 5f: filters stage extracted
+import { filtersStage } from "./src/core/cycle/stages/filters.js";
+import type { FiltersStageDeps } from "./src/core/cycle/stages/filters.js";
 import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
@@ -2751,6 +2754,16 @@ function buildMetricsDeps(): MetricsDeps {
       calculateSectorAllocations(balances as any, totalValue),
     updateUnrealizedPnL:        (balances) => updateUnrealizedPnL(balances as any),
     calculateRiskRewardMetrics: () => calculateRiskRewardMetrics(),
+  };
+}
+
+// ============================================================================
+// Phase 5f: buildFiltersDeps — no price history this phase, R:R passes by default
+// ============================================================================
+function buildFiltersDeps(): FiltersStageDeps {
+  return {
+    getPriceHistory:   (_symbol) => [],
+    maxTradesPerCycle: CONFIG.trading.maxTradesPerCycle ?? 5,
   };
 }
 
@@ -6819,303 +6832,16 @@ async function runTradingCycle() {
       decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined, heavyReason);
     }
 
-    // v20.8: EXTREME FEAR SIZE REDUCTION REMOVED — F&G is info-only.
-    // The bot follows price physics. Momentum gates and signal quality filters
-    // (confluence, MACD, RSI) handle risk. Sentiment surveys don't gate trades.
-    // F&G=${fgValue} logged for dashboard display only.
+    cycleCtx.decisions = decisions;
 
-    // === v19.3: CAPITAL PRESERVATION MODE — HIGH-CONVICTION FILTER ===
-    // When preservation mode is active, only allow trades with high confluence or high swarm consensus.
-    // Also prioritize sells over buys if cash is below 50% target.
-    if (capitalPreservationMode.isActive) {
-      const latestSwarm = getLatestSwarmDecisions();
-      const swarmConsensusMap = new Map<string, number>();
-      for (const sd of latestSwarm) {
-        swarmConsensusMap.set(sd.token, sd.consensus);
-      }
-
-      const _usdcBalPres = balances.find(b => b.symbol === 'USDC');
-      const cashPctPres = _usdcBalPres ? (_usdcBalPres.usdValue / (state.trading.totalPortfolioValue || 1)) * 100 : 0;
-      const belowCashTarget = cashPctPres < PRESERVATION_TARGET_CASH_PCT;
-
-      const preservationFiltered: TradeDecision[] = [];
-      let blockedCount = 0;
-
-      for (const d of decisions) {
-        if (d.action === 'HOLD') {
-          preservationFiltered.push(d);
-          continue;
-        }
-
-        // Always allow sells — capital preservation prioritizes raising cash
-        if (d.action === 'SELL') {
-          capitalPreservationMode.tradesPassed++;
-          preservationFiltered.push(d);
-          continue;
-        }
-
-        // v19.6.1: For buys during preservation — reduce size, don't block.
-        // The AI already sees F&G=11 in its prompt. Let it make decisions.
-        // Circuit breaker handles real risk. Preservation just sizes down.
-        if (d.action === 'BUY') {
-          const tokenInd = marketData.indicators[d.toToken];
-          const confluenceScore = tokenInd?.confluenceScore ?? 0;
-          const swarmConsensus = swarmConsensusMap.get(d.toToken) ?? 0;
-
-          // Only block if confluence is truly garbage AND swarm disagrees
-          // SHI override: shiConfluenceDelta raises the bar after healing incidents
-          const effectiveConfluenceMin = PRESERVATION_MIN_CONFLUENCE + shiConfluenceDelta;
-          if (confluenceScore < effectiveConfluenceMin && swarmConsensus < PRESERVATION_MIN_SWARM_CONSENSUS) {
-            capitalPreservationMode.tradesBlocked++;
-            blockedCount++;
-            const overrideNote = shiConfluenceDelta > 0 ? ` [SHI +${shiConfluenceDelta}]` : '';
-            console.log(`   🛡️ PRESERVATION: Blocking weak BUY ${d.toToken} (confluence=${confluenceScore} < ${effectiveConfluenceMin}${overrideNote}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
-            continue;
-          }
-
-          // Size reduction: half-size during extreme fear
-          // v20.7: ALL buys get sized down during preservation — including deployment buys.
-          // The bot should be comfortable holding cash during fear, not forcing full-size buys.
-          if (d.amountUSD) {
-            const originalSize = d.amountUSD;
-            d.amountUSD = d.amountUSD * PRESERVATION_SIZE_MULTIPLIER;
-            const isDeploymentBuy = d.signalContext?.triggeredBy === "FORCED_DEPLOY" || d.signalContext?.triggeredBy === "CASH_DEPLOYMENT";
-            console.log(`   🛡️ PRESERVATION: Sizing down ${isDeploymentBuy ? 'deployment ' : ''}BUY ${d.toToken} $${originalSize.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${PRESERVATION_SIZE_MULTIPLIER}x extreme fear)`);
-          }
-          capitalPreservationMode.tradesPassed++;
-          preservationFiltered.push(d);
-        }
-      }
-
-      if (blockedCount > 0) {
-        console.log(`\n🛡️ CAPITAL PRESERVATION: Blocked ${blockedCount} low-conviction trades | Passed: ${preservationFiltered.filter(d => d.action !== 'HOLD').length} | Cash: ${cashPctPres.toFixed(1)}%`);
-      }
-      decisions = preservationFiltered;
+    // === Phase 5f: filtersStage extracted — replaces inline filter blocks ===
+    // (preservation + directives are no-ops this phase — Phase 5h scope)
+    cycleCtx = await filtersStage(cycleCtx, buildFiltersDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Filters stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
-
-    // v21.0: MIND-FIRST ARCHITECTURE — All mechanical trading systems removed.
-    // Claude is the ONLY source of trade decisions. It sees:
-    // - Every position with entry price, P&L, hold time, ATR, flow data
-    // - Market momentum, regime, volume, technical indicators
-    // - Portfolio cash %, sector allocations, sector drift
-    // - Recent trade history with outcomes
-    //
-    // REMOVED SYSTEMS (v21.0):
-    // - Position Sprawl Reducer (auto-sell small positions)
-    // - Trailing Stop Exits (ATR-based mechanical exits)
-    // - Per-Position Hard Stops (-15%, -12% mechanical exits)
-    // - Flow-Reversal Exit Engine (buy ratio < 40% exits)
-    // - Scale-Into-Winners (scale-up, momentum exit, decel trim)
-    // - Scout Seeding ($8 data probes)
-    // - Ride The Wave (FOMO momentum buys)
-    // - Deployment Fallback (auto-deploy after 3 HOLDs)
-    //
-    // KEPT: Directive Enforcement (user commands) + Trade Cap Guard (prevent churn)
-
-    // === v16.0: DIRECTIVE SELL ENFORCEMENT === (KEPT — user commands are not mechanical trading)
-    // Parse active directives for explicit sell/exit instructions and generate SELL decisions
-    // every cycle until the position is gone. Fixes P0-2 (directives not executing).
-    {
-      const directiveSellDecisions: TradeDecision[] = [];
-      const activeDirectives = getActiveDirectives();
-      const activeConfigDirectives = getActiveConfigDirectives();
-
-      // Combine user directives and config directives
-      // v20.0: Include createdAt for directive escalation — directives signaling sell for >24h on losing positions get priority 0.5
-      const allInstructions: { instruction: string; token?: string; createdAt?: string }[] = [];
-      for (const d of activeDirectives) {
-        allInstructions.push({ instruction: d.instruction, token: d.token, createdAt: d.createdAt });
-      }
-      for (const cd of activeConfigDirectives) {
-        allInstructions.push({ instruction: cd.instruction, createdAt: (cd as any).appliedAt });
-      }
-
-      // Parse for sell/exit action keywords
-      const sellActionPatterns = [
-        /\b(?:sell|exit|dump|liquidate|close|get rid of|offload)\s+(?:all\s+)?(\b[A-Z]{2,10}\b)/i,
-        /\b(?:prioritize selling|prioritize exiting)\s+(\b[A-Z]{2,10}\b)/i,
-        /\b(\b[A-Z]{2,10}\b)\s+(?:should be sold|needs to be sold|must be sold)/i,
-      ];
-
-      for (const item of allInstructions) {
-        const text = item.instruction;
-        let targetToken: string | null = item.token || null;
-
-        if (!targetToken) {
-          for (const pattern of sellActionPatterns) {
-            const match = text.match(pattern);
-            if (match) {
-              targetToken = match[1].toUpperCase();
-              break;
-            }
-          }
-        }
-
-        // Also check for direct token mention with sell-like keywords in same directive
-        if (!targetToken) {
-          const hasSellKeyword = /\b(?:sell|exit|dump|liquidate|close|offload|get rid of|prioritize selling)\b/i.test(text);
-          if (hasSellKeyword) {
-            const tokenMatches = text.match(/\b([A-Z]{2,10})\b/g);
-            if (tokenMatches) {
-              for (const t of tokenMatches) {
-                if (['USDC', 'USD', 'ETH', 'WETH', 'THE', 'AND', 'FOR', 'NOT', 'ALL', 'BUY', 'RSI', 'MACD'].includes(t)) continue;
-                const holding = balances.find(b => b.symbol === t && b.usdValue && b.usdValue > 1);
-                if (holding) { targetToken = t; break; }
-              }
-            }
-          }
-        }
-
-        if (!targetToken) continue;
-
-        // Check if we still hold this token
-        const holding = balances.find(b => b.symbol === targetToken && b.usdValue && b.usdValue > 1);
-        if (!holding) continue;
-
-        // Don't duplicate if stop-loss or trailing stop already covers this token
-        if (decisions.some(d => d.action === 'SELL' && d.fromToken === targetToken)) continue;
-
-        // v20.0: DIRECTIVE ESCALATION — if directive has been signaling sell for >24h AND position is losing,
-        // escalate to immediate market sell with high priority. Fixes the PENDLE problem: directive signaling
-        // exit for 3 days with -$35.87 daily loss but position wasn't sold.
-        const directiveAgeMs = item.createdAt ? (Date.now() - new Date(item.createdAt).getTime()) : 0;
-        const directiveAgeHours = directiveAgeMs / (1000 * 60 * 60);
-        const dirCb = state.costBasis[targetToken];
-        const dirCurrentPrice = marketData.tokens.find(t => t.symbol === targetToken)?.price || 0;
-        const dirIsLosing = dirCb && dirCb.averageCostBasis > 0 && dirCurrentPrice > 0 && dirCurrentPrice < dirCb.averageCostBasis;
-        const isEscalated = directiveAgeHours > 24 && dirIsLosing;
-
-        if (isEscalated) {
-          const dirLossPct = dirCb && dirCb.averageCostBasis > 0 ? ((dirCurrentPrice - dirCb.averageCostBasis) / dirCb.averageCostBasis) * 100 : 0;
-          console.log(`\n🚨 DIRECTIVE_ESCALATED: ${targetToken} — directive active ${directiveAgeHours.toFixed(0)}h, position losing ${dirLossPct.toFixed(1)}%. IMMEDIATE SELL escalation.`);
-          directiveSellDecisions.push({
-            action: 'SELL',
-            fromToken: targetToken,
-            toToken: 'USDC',
-            amountUSD: holding.usdValue,
-            reasoning: `DIRECTIVE_SELL_ESCALATED: ${targetToken} — directive active ${directiveAgeHours.toFixed(0)}h with ${dirLossPct.toFixed(1)}% loss. Immediate exit — "${text.substring(0, 50)}"`,
-            sector: TOKEN_REGISTRY[targetToken]?.sector,
-          });
-        } else {
-          console.log(`\n📋 DIRECTIVE_SELL: Executing directive to sell ${targetToken} — "${text.substring(0, 80)}"`);
-          directiveSellDecisions.push({
-            action: 'SELL',
-            fromToken: targetToken,
-            toToken: 'USDC',
-            amountUSD: holding.usdValue,
-            reasoning: `DIRECTIVE_SELL: User directive instructs selling ${targetToken} — "${text.substring(0, 60)}"`,
-            sector: TOKEN_REGISTRY[targetToken]?.sector,
-          });
-        }
-      }
-
-      if (directiveSellDecisions.length > 0) {
-        console.log(`\n📋 DIRECTIVE ENFORCEMENT: ${directiveSellDecisions.length} directive-driven sells`);
-        // Insert after stop-losses but before AI decisions
-        decisions = [...directiveSellDecisions, ...decisions];
-      }
-    }
-
-    // v21.0: SCALE-INTO-WINNERS + DEPLOYMENT FALLBACK REMOVED
-    // Claude decides all scaling, exits, scouts, and deployment. These mechanical
-    // systems are preserved as dead code during the transition period.
-
-    // v14.2: MAX_TRADES_PER_CYCLE GUARD — cap total trades to prevent churn
-    // v18.0: RANGING regime gets tighter cap (2 trades) — fewer, higher-conviction trades
-    // Priority order: stop-loss > momentum-exit > profit-take > AI > scale-up > forced-deploy > ride-the-wave
-    const effectiveMaxTrades = regime === 'RANGING' ? RANGING_MAX_TRADES_PER_CYCLE : MAX_TRADES_PER_CYCLE;
-    if (decisions.filter(d => d.action !== 'HOLD').length > effectiveMaxTrades) {
-      const priorityOrder = (d: TradeDecision): number => {
-        const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
-        switch (tier) {
-          case 'HARD_STOP': return -1;   // v16.0: highest priority — absolute loss limit
-          case 'TRAILING_STOP': return -0.8; // v20.0: adaptive trailing stop — primary exit mechanism
-          case 'SOFT_STOP': return -0.5;  // v16.0: approaching loss limit
-          case 'CONCENTRATED_STOP': return -0.5; // v16.0: concentrated loser
-          case 'STOP_LOSS': return 0;
-          case 'DIRECTIVE_SELL_ESCALATED': return 0.3; // v20.0: escalated directive — >24h sell signal on losing position
-          case 'DIRECTIVE_SELL': return 0.5; // v16.0: user directive enforcement
-          case 'FLOW_REVERSAL': return 0.7; // v19.0: flow physics exit — fires before momentum exit
-          case 'MOMENTUM_EXIT': return 1;
-          case 'DECEL_TRIM': return 1.5; // v14.1: after momentum exit, before profit take
-          case 'PROFIT_TAKE': return 2;
-          default: return 3; // AI
-          case 'SCALE_UP': return 4;
-          case 'FORCED_DEPLOY': return 5;
-          case 'DEPLOYMENT_FALLBACK': return 5;
-          case 'RIDE_THE_WAVE': return 6;
-          case 'SCOUT': return 7; // v19.0: lowest priority — scouts seed last
-        }
-      };
-      const actionDecisions = decisions.filter(d => d.action !== 'HOLD');
-      const holdDecisions = decisions.filter(d => d.action === 'HOLD');
-      actionDecisions.sort((a, b) => priorityOrder(a) - priorityOrder(b));
-      const kept = actionDecisions.slice(0, effectiveMaxTrades);
-      const dropped = actionDecisions.length - effectiveMaxTrades;
-      console.log(`\n⚠️ TRADE_CAP: Dropping ${dropped} lower-priority trades this cycle (max ${effectiveMaxTrades} per cycle${regime === 'RANGING' ? ' — RANGING regime' : ''})`);
-      for (const d of actionDecisions.slice(effectiveMaxTrades)) {
-        const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
-        console.log(`   Dropped: ${tier} ${d.action} ${d.fromToken}→${d.toToken} $${d.amountUSD.toFixed(0)}`);
-      }
-      decisions = [...kept, ...holdDecisions];
-    }
-
-    // v17.0: FEAR/REGIME BUY FILTERING REMOVED — the swarm handles all buy/sell decisions
-    // based on capital flow, momentum, risk metrics, and trend. No F&G-based overrides.
-
-    // v18.0: RISK/REWARD FILTER — Only enter trades where potential reward >= 2x risk
-    // Risk = stop-loss distance (sector-based). Reward = distance below 30-day high.
-    // Tokens near their 30-day high have limited upside — skip them.
-    {
-      const rrFiltered: TradeDecision[] = [];
-      for (const d of decisions) {
-        if (d.action !== 'BUY') {
-          rrFiltered.push(d);
-          continue;
-        }
-
-        const tokenInfo = TOKEN_REGISTRY[d.toToken];
-        const sectorKey = tokenInfo?.sector || 'DEFI';
-        const sectorStop = SECTOR_STOP_LOSS_OVERRIDES[sectorKey];
-        const riskPercent = Math.abs(sectorStop?.maxLoss || 5);
-
-        // Calculate potential upside using price history (distance from 30-day high)
-        const tokenHistory = getPriceHistoryStore().tokens[d.toToken];
-        const currentTokenPrice = marketData.tokens.find(t => t.symbol === d.toToken)?.price || 0;
-        let rewardPercent = riskPercent * 3; // Default: assume 3x risk if no history
-
-        if (tokenHistory && tokenHistory.prices.length > 10 && currentTokenPrice > 0) {
-          // Look at last 720 hourly entries (30 days) or whatever is available
-          const recentPrices = tokenHistory.prices.slice(-720);
-          const high30d = Math.max(...recentPrices);
-          if (high30d > 0) {
-            const distFromHigh = ((high30d - currentTokenPrice) / currentTokenPrice) * 100;
-            rewardPercent = distFromHigh;
-
-            // Token within 5% of 30-day high — limited upside, skip
-            if (distFromHigh < 5) {
-              console.log(`\n  📏 R:R_FILTER: Skipping ${d.toToken} BUY — only ${distFromHigh.toFixed(1)}% below 30d high ($${high30d.toFixed(4)}), limited upside`);
-              d.action = 'HOLD' as any;
-              d.reasoning = `R:R_FILTER: ${d.toToken} within ${distFromHigh.toFixed(1)}% of 30-day high — upside limited`;
-              rrFiltered.push(d);
-              continue;
-            }
-          }
-        }
-
-        const rrRatio = rewardPercent / riskPercent;
-        if (rrRatio < 2.0) {
-          console.log(`\n  📏 R:R_FILTER: Skipping ${d.toToken} BUY — R:R ratio ${rrRatio.toFixed(1)}:1 (risk: ${riskPercent}%, reward: ${rewardPercent.toFixed(1)}%) below 2:1 minimum`);
-          d.action = 'HOLD' as any;
-          d.reasoning = `R:R_FILTER: Reward/risk ratio ${rrRatio.toFixed(1)}:1 too low (need 2:1+)`;
-          rrFiltered.push(d);
-          continue;
-        }
-
-        rrFiltered.push(d);
-      }
-      decisions = rrFiltered;
-    }
+    decisions = cycleCtx.decisions;
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
