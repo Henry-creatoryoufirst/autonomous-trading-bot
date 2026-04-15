@@ -11,7 +11,10 @@ export { intelligenceStage,
          buildDexIntelFromDexScreener } from './intelligence.js';
 export { metricsStage }     from './metrics.js';
 export { decisionStage }    from './decision.js';
-export { filtersStage }     from './filters.js';
+export { filtersStage,
+         computeDecisionPriority,
+         checkRiskReward,
+         applySectorCapGuard } from './filters.js';
 export { executionStage }   from './execution.js';
 export { reportingStage }   from './reporting.js';
 export { schedulingStage,

@@ -11,3 +11,12 @@ export { HarvestManager } from './harvest-manager.js';
 export type { HarvestManagerDeps } from './harvest-manager.js';
 export { detectPhantomMoves, isRealLargeDrawdown } from './valuation.js';
 export type { BalanceEntry, PhantomDetectionInput, PhantomDetectionResult } from './valuation.js';
+
+// Phase 5f: position sizing pure helpers
+export {
+  computeVolatilityMultiplier,
+  computeConfidenceMultiplier,
+  combinePositionMultipliers,
+  computeCatchingFireMultiplier,
+  computeDeploymentFloor,
+} from './position-sizing.js';
