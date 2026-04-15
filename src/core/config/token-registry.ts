@@ -252,6 +252,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "WIRE", name: "717ai by Virtuals", coingeckoId: "717ai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
+  GAME: {
+    address: "0x1c4cca7c5db003824208adda61bd749e55f463a3",
+    symbol: "GAME", name: "GAME by Virtuals", coingeckoId: "game-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   ZORA: {
     address: "0x1111111111166b7fe7bd91427724b487980afc69",
     symbol: "ZORA", name: "Zora", coingeckoId: "zora",
