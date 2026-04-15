@@ -135,6 +135,7 @@ import { runPreFlightChecks } from "./src/core/services/startup-checks.js";
 import { telegramService } from "./src/core/services/telegram.js";
 import { SelfHealingIntelligence } from "./src/core/services/self-healing/index.js";
 import type { BotInterface } from "./src/core/services/self-healing/types.js";
+import { StateManager, createStateManager } from "./src/core/state/state-manager.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
@@ -2531,92 +2532,64 @@ const BREAKER_ROLLING_LOSS_THRESHOLD = 5;  // 5+ losses in 8 trades = trigger br
 let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
 
 // ============================================================================
+// STATE MANAGER — Phase 2 of refactor
+// Wraps `state` and `breakerState` BY REFERENCE (zero clone). Direct accesses
+// like `state.foo` and stateManager-mediated reads return the SAME object, so
+// both views stay consistent during the incremental migration. The unit test
+// at src/core/state/__tests__/state-manager.test.ts asserts this invariant.
+// ============================================================================
+const stateManager: StateManager = createStateManager(state, breakerState);
+
+// ============================================================================
 // BOT INTERFACE — clean bridge between Self-Healing Intelligence and bot internals
-// All healing actions go through this surface — no direct state mutation from SHI.
+// Phase 2: delegates reads to stateManager; healing writes still touch shared
+// module-level overrides (shiSizeMultiplier / shiConfluenceDelta / lastKnownPrices)
+// until P3 (Risk) and P4 (Portfolio) consume them via StateManager too.
 // ============================================================================
 const botInterface: BotInterface = {
-  getCycleNumber:   () => state.totalCycles,
-  getPortfolioValue: () => state.trading.totalPortfolioValue,
+  getCycleNumber:     () => stateManager.getCycleNumber(),
+  getPortfolioValue:  () => stateManager.getPortfolioValue(),
+  getTradeHistory:    (limit) => stateManager.getRecentTrades(limit),
+  getErrorLog:        (limit) => stateManager.getRecentErrors(limit),
+  getMarketRegime:    () => lastMarketRegime || stateManager.getMarketRegime(),
+  getActivePositions: () => stateManager.getActivePositions(),
+  getCircuitBreakerState: () => stateManager.getCircuitBreakerInfo(BREAKER_PAUSE_HOURS),
 
-  getTradeHistory: (limit) => state.tradeHistory.slice(-limit).map(t => ({
-    token:     (t as any).toToken || (t as any).fromToken || 'UNKNOWN',
-    action:    t.action,
-    success:   t.success,
-    pnlUSD:    (t as any).realizedPnlUSD,
-    timestamp: t.timestamp,
-  })),
-
-  getErrorLog: (limit) => ((state as any).errorLog || []).slice(-limit).map((e: any) => ({
-    type:      e.type,
-    message:   e.message,
-    timestamp: e.timestamp,
-  })),
-
-  getMarketRegime: () => lastMarketRegime,
-
-  getActivePositions: () => state.trading.balances
-    .filter(b => b.symbol !== 'USDC' && (b.usdValue || 0) > 1)
-    .map(b => {
-      const cb = state.costBasis[b.symbol];
-      const unrealizedPct = (cb?.averageCostBasis && b.price && cb.averageCostBasis > 0)
-        ? ((b.price - cb.averageCostBasis) / cb.averageCostBasis) * 100
-        : 0;
-      return { symbol: b.symbol, usdValue: b.usdValue || 0, unrealizedPct };
-    }),
-
-  getCircuitBreakerState: () => {
-    const triggered = breakerState.lastBreakerTriggered;
-    const active = !!triggered &&
-      Date.now() < new Date(triggered).getTime() + BREAKER_PAUSE_HOURS * 3600000;
-    return { active, reason: breakerState.lastBreakerReason, triggeredAt: triggered };
-  },
-
-  // Healing actions — all safe, no trade execution
+  // ---- Healing actions ----
   addTokenCooldown: (symbol, durationMs) => {
     cooldownManager.setRawCooldown(symbol, durationMs);
   },
 
   invalidatePriceCache: (symbol?) => {
-    if (symbol) {
-      delete lastKnownPrices[symbol];
-    }
+    if (symbol) delete lastKnownPrices[symbol];
     // If no symbol, clearing everything would starve the bot — only clear per-token
   },
 
   setPositionSizeMultiplier: (multiplier) => {
     shiSizeMultiplier = Math.max(0.25, Math.min(1.0, multiplier)); // clamp 25–100%
-    markStateDirty(true);
+    stateManager.markDirty(true);
     console.log(`[SHI] Position size multiplier set to ${(shiSizeMultiplier * 100).toFixed(0)}%`);
   },
 
   setConfluenceThresholdOverride: (delta) => {
     shiConfluenceDelta = Math.max(0, Math.min(40, delta)); // clamp 0–40pts
-    markStateDirty(true);
+    stateManager.markDirty(true);
     console.log(`[SHI] Confluence threshold raised by +${shiConfluenceDelta} points`);
   },
 
   resetCircuitBreaker: () => {
-    breakerState.lastBreakerTriggered = null;
-    breakerState.lastBreakerReason    = null;
-    breakerState.breakerSizeReductionUntil = null;
-    breakerState.consecutiveLosses    = 0;
-    breakerState.rollingTradeResults  = [];
-    markStateDirty(true);
+    stateManager.resetBreaker();
     console.log('[SHI] Circuit breaker cleared by Self-Healing Intelligence');
   },
 
   extendCircuitBreaker: (additionalHours) => {
-    if (breakerState.lastBreakerTriggered) {
-      const currentPauseEnd = new Date(breakerState.lastBreakerTriggered).getTime()
-        + BREAKER_PAUSE_HOURS * 3600000;
-      breakerState.breakerSizeReductionUntil =
-        new Date(currentPauseEnd + additionalHours * 3600000).toISOString();
-      markStateDirty(true);
+    const extended = stateManager.extendBreakerPause(additionalHours, BREAKER_PAUSE_HOURS);
+    if (extended) {
       console.log(`[SHI] Circuit breaker extended by ${additionalHours}h`);
     }
   },
 
-  markStateDirty: () => markStateDirty(true),
+  markStateDirty: () => stateManager.markDirty(true),
 };
 
 /**
