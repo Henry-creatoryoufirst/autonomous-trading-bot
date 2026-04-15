@@ -288,6 +288,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  RIVER: {
+    address: "0xdA7AD9dea9397cffdDAE2F8a052B82f1484252B3",
+    symbol: "RIVER", name: "River Protocol", coingeckoId: "river",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  // === MEME COINS (discovered) ===
+  SKI: {
+    address: "0x768be13e1680b5ebe0024c42c896e3db59ec0149",
+    symbol: "SKI", name: "Ski Mask Dog", coingeckoId: "ski-mask-dog",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
