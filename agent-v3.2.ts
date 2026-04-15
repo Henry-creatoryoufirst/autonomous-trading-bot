@@ -2654,8 +2654,14 @@ function calculateInstitutionalPositionSize(portfolioValue: number) {
   const momentum = calculateMarketMomentum();
   lastMomentumSignal = momentum;
 
+  // Streak-adjusted Kelly: gradual downscale before the hard circuit-breaker fires.
+  // Research (Kelly criterion 2026): Quarter-Kelly cuts drawdown ~50% with ~5% less long-run growth.
+  const losses = breakerState.consecutiveLosses;
+  const streakMult = losses >= 3 ? 0.5 : losses >= 2 ? 0.7 : 1.0;
+  const kc = streakMult < 1.0 ? { ..._kellyConstants, KELLY_FRACTION: KELLY_FRACTION * streakMult } : _kellyConstants;
+
   return _calculateInstitutionalPositionSize(
-    portfolioValue, state, _kellyConstants, _volConstants,
+    portfolioValue, state, kc, _volConstants,
     momentum, breakerState, cashDeploymentMode, BREAKER_SIZE_REDUCTION,
   );
 }
