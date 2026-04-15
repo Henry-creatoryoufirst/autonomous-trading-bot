@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX", "RIVER"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -281,6 +281,11 @@ export const TOKEN_REGISTRY: Record<string, {
   MEZO: {
     address: "0x8e4cbbcc33db6c0a18561fde1f6ba35906d4848b",
     symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  RIVER: {
+    address: "0xda7ad9dea9397cffddae2f8a052b82f1484252b3",
+    symbol: "RIVER", name: "River", coingeckoId: "river",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
