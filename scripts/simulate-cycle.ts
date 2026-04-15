@@ -13,7 +13,7 @@
  *   1 = at least one simulation failed
  */
 
-import { simulateCycle, simulateFleet, makeMockMarketData } from '../src/core/simulation/simulate-cycle.js';
+import { simulateCycle, simulateFleet, makeMockMarketData, EXPECTED_STAGES } from '../src/core/simulation/simulate-cycle.js';
 import { createBot } from '../src/core/bot/bot-factory.js';
 import { botConfigFromEnv } from '../src/core/bot/bot-config.js';
 import type { BotConfig } from '../src/core/bot/bot-config.js';
@@ -62,16 +62,19 @@ async function runSingleCycleSim(): Promise<boolean> {
   const market = makeMockMarketData();
   const result = await simulateCycle(bot, market);
 
-  console.log(`Bot:       ${result.botId}`);
-  console.log(`Cycle #:   ${result.cycleNumber}`);
-  console.log(`Stages:    ${result.stagesCompleted.join(' → ')}`);
-  console.log(`Prices:    ${Object.keys(result.currentPrices).join(', ')}`);
-  console.log(`Duration:  ${result.durationMs}ms`);
-  console.log(`Halted:    ${result.halted}${result.haltReason ? ` (${result.haltReason})` : ''}`);
+  console.log(`Bot:      ${result.botId}`);
+  console.log(`Cycle #:  ${result.cycleNumber}`);
+  console.log(`Prices:   ${Object.keys(result.currentPrices).join(', ')}`);
+  console.log(`Duration: ${result.durationMs}ms`);
+  console.log(`Halted:   ${result.halted}${result.haltReason ? ` (${result.haltReason})` : ''}`);
+  console.log('');
 
-  const passed = !result.halted
-    && result.stagesCompleted.includes('SETUP')
-    && result.stagesCompleted.includes('INTELLIGENCE');
+  let passed = !result.halted;
+  for (const stage of EXPECTED_STAGES) {
+    const ok = result.stagesCompleted.includes(stage);
+    console.log(`  ${ok ? '✅' : '❌'} ${stage}`);
+    if (!ok) passed = false;
+  }
 
   console.log(`\nResult: ${passed ? '✅ PASSED' : '❌ FAILED'}\n`);
   return passed;
