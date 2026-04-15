@@ -495,7 +495,7 @@ export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before 
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
 export const KELLY_POSITION_CEILING_PCT = 14;  // 14% of portfolio per trade — bear-adjusted (was 18%); with TRENDING_DOWN ×0.75 → 10.5% effective max; auditor Apr-2026: 46-day bear warrants Quarter-Kelly-range caps
-export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
+export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 22; // Bear-adjusted from 30 (proportional to main ceiling 18→14); $5K × 22% = $1,100 max; auditor Apr-2026: 46-day bear warrants uniform ceiling reduction
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**
