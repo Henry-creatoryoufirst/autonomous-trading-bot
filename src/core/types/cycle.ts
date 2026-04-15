@@ -11,9 +11,9 @@
  *
  * This is the foundation that Phase 5 (cycle engine extraction) consumes.
  */
-import type { AgentState, BreakerState } from './state.js';
+import type { AgentState, BreakerState, CashDeploymentResult } from './state.js';
 import type { MarketData, TradeDecision } from './market-data.js';
-import type { TradeRecord } from './index.js';
+import type { TradeRecord, SectorAllocation } from './index.js';
 
 // ============================================================================
 // CYCLE STAGE ENUM — identifies each step in the heavy cycle pipeline
@@ -160,6 +160,12 @@ export interface CycleContext {
   marketData?: MarketData;
   balances: AgentState['trading']['balances'];
   currentPrices: Record<string, number>;
+
+  // ---- DEPLOYMENT_CTX stage outputs (consumed by AI_DECISION) ----
+  /** Computed by DEPLOYMENT_CTX stage; optional until that stage runs. */
+  sectorAllocations?: SectorAllocation[];
+  /** Cash deployment context computed by DEPLOYMENT_CTX; optional until that stage runs. */
+  deploymentCheck?: CashDeploymentResult;
 
   // ---- Decisions pipeline (populated by AI_DECISION, mutated by filters) ----
   decisions: TradeDecision[];
