@@ -140,6 +140,10 @@ import { CircuitBreaker, PreservationMode } from "./src/core/risk/index.js";
 import type { BreakerConfig, PreservationConfig } from "./src/core/types/risk.js";
 // Phase 5a: light cycle extracted into standalone function
 import { runLightCycle } from "./src/core/cycle/index.js";
+// Phase 5b: setup stage extracted
+import { setupStage } from "./src/core/cycle/stages/setup.js";
+import type { SetupDeps } from "./src/core/cycle/stages/setup.js";
+import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
@@ -2645,6 +2649,34 @@ const botInterface: BotInterface = {
 
   markStateDirty: () => stateManager.markDirty(true),
 };
+
+// ============================================================================
+// Phase 5b: buildCycleServices — adapts module-level singletons to CycleServices
+// interface so CycleContext can be constructed for extracted stages.
+// Phase 6 (multi-tenant) replaces this with per-bot factory instances.
+// ============================================================================
+function buildCycleServices(): CycleServices {
+  return {
+    stateManager,
+    telegram: {
+      sendAlert:                 (a)       => telegramService.sendAlert(a),
+      onCircuitBreakerTriggered: (r, v)    => telegramService.onCircuitBreakerTriggered(r, v),
+      onTradeResult:             (ok, d)   => telegramService.onTradeResult(ok, d),
+    },
+    cache: {
+      invalidate: (key) => { cacheManager.invalidate(key); },
+      getStats:   ()    => {
+        const s = cacheManager.getStats();
+        return { hits: s.totalHits, misses: s.totalMisses, hitRate: parseFloat(s.hitRate) };
+      },
+    },
+    cooldown: {
+      getActiveCount:  ()          => cooldownManager.getActiveCount(),
+      setRawCooldown:  (sym, dur)  => cooldownManager.setRawCooldown(sym, dur),
+    },
+    ...(shi ? { shi: { processIncident: (t, c) => shi!.processIncident(t, c) } } : {}),
+  };
+}
 
 /**
  * v10.3: Effective Kelly ceiling — scales up for small portfolios.
@@ -6070,11 +6102,31 @@ async function runTradingCycle() {
 
     // v10.1.1: Fund migration removed — wallet IS the Smart Wallet at 0x55509
 
-    console.log("\n📊 Fetching balances...");
-    let balances = await getBalances();
-
-    console.log("📈 Fetching market data for all tracked tokens...");
-    marketData = await getMarketData();
+    // === Phase 5b: setup stage — balance + market data fetch ===
+    let cycleCtx: CycleContext = {
+      cycleNumber:     state.totalCycles,
+      isHeavy:         true,
+      trigger:         'SCHEDULED',
+      startedAt:       cycleStart,
+      balances:        [],
+      currentPrices:   {},
+      decisions:       [],
+      tradeResults:    [],
+      halted:          false,
+      stagesCompleted: [],
+      services:        buildCycleServices(),
+    };
+    const setupDeps: SetupDeps = { getBalances, getMarketData };
+    cycleCtx = await setupStage(cycleCtx, setupDeps);
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Setup stage halted: ${cycleCtx.haltReason}`);
+      return;
+    }
+    // Pull results back into local vars used by the remaining inline sections
+    let balances      = cycleCtx.balances as Awaited<ReturnType<typeof getBalances>>;
+    marketData        = cycleCtx.marketData!;
+    // v6.0: Update light/heavy cycle state (mirrors L6080–6082)
+    lastHeavyCycleAt   = Date.now();
 
     // v6.0: Update light/heavy cycle state
     lastHeavyCycleAt = Date.now();
