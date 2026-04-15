@@ -14,4 +14,5 @@ export { decisionStage }    from './decision.js';
 export { filtersStage }     from './filters.js';
 export { executionStage }   from './execution.js';
 export { reportingStage }   from './reporting.js';
-export { schedulingStage }  from './scheduling.js';
+export { schedulingStage,
+         runSchedulingStage } from './scheduling.js';
