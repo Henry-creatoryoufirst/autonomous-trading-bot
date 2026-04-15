@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-15T00:00 UTC
+# MEDIC REPORT — 2026-04-15T18:38 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue)
 
 ## Environment
-- Run timestamp: 2026-04-15T00:00 UTC
+- Run timestamp: 2026-04-15T18:38 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -12,7 +12,7 @@
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `Host not in allowlist` or `403 Forbidden`:
+All endpoints return `Host not in allowlist`:
 
 ```
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
@@ -22,44 +22,45 @@ curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
 → Host not in allowlist
 ```
 
-Endpoints attempted:
-- `/api/errors`   → blocked (Host not in allowlist)
-- `/api/balances` → blocked (Host not in allowlist)
-
 ## Root Cause
 
 The Claude Code execution sandbox has an **egress proxy** that only allows outbound connections to a fixed allowlist of domains. The Railway deployment domain (`autonomous-trading-bot-production.up.railway.app`) is **not on this allowlist**, so all connections are blocked at the proxy layer before reaching Railway.
 
-This is a **persistent infrastructure constraint** of the medic agent's execution environment — it does NOT necessarily indicate a bot failure. This same issue was documented in the previous run (2026-04-14T19:12 UTC, commit 8715c74).
+This is a **persistent infrastructure constraint** — documented in all prior runs today (2026-04-15T00:00, T03:06, T11:17 UTC). It does NOT indicate a bot failure.
+
+## What IS Known (from git history as of this run)
+
+- Current staging is **7 commits ahead of main**, all healthy changes:
+  - `1509b2e` refactor(state): Phase 2 — StateManager class
+  - `6fdf54c` refactor(types): Phase 1 — foundation boundary types
+  - `80d242a` feat(scout): add RIVER, SKI to TOKEN_REGISTRY
+  - `d2dc824` improve(auditor): KELLY_FRACTION 0.5→0.35 — bear-market recalibration
+  - `ddaea1b` feat(scout): add GAME to TOKEN_REGISTRY
+  - `62d13ec` test(shi): simulation harness
+  - Plus prior Self-Healing Intelligence commits
+- Last scout: 2026-04-15 17:20 UTC (RIVER, SKI added — 1.3h ago)
+- Last auditor: 2026-04-15 (KELLY_FRACTION lowered, bear-market mode active)
+- No emergency/crash fixes in recent history
+- Bot appears to be in **bear market / high volatility regime** based on auditor changes
 
 ## What Is NOT Known
 
-Because the API is unreachable, the medic cannot determine:
-- Whether `summary.totalFailed / summary.totalAttempted > 0.5`
-- Whether any error pattern (A/B/C) is active in `recentFailedTrades`
-- Whether all circuit breakers are blocked
-- Current portfolio balance or P&L state
-
-## What IS Known (from git history)
-
-- Last bot version deployed: **v21.11** — "dry powder reserve — proactive 10% USDC floor" (most recent commit on main/staging)
-- Last scout commit: `2026-04-13 12:52:52 UTC` (> 48h ago — scout is overdue)
-- Last auditor commit: `improve(auditor): lower VOL_HIGH_THRESHOLD 8%→6%` — normal operation
-- No crash/emergency commits in recent git log
-- Bot v21.11 is a healthy version with no known critical bugs
+Because the API is unreachable:
+- Exact failure rate (totalFailed / totalAttempted)
+- Active error patterns in recentFailedTrades
+- Circuit breaker status
+- Current portfolio value and P&L
 
 ## Recommended Action for Henry
 
 1. **Manually verify** bot health at: https://autonomous-trading-bot-production.up.railway.app/health
 2. **Check Railway dashboard** for service status and recent logs
-3. If bot is healthy, no action needed — this is a network restriction in the medic's environment
-4. If bot is down, investigate Railway logs for the actual error pattern before applying a medic fix
-5. Consider adding `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist to enable future automated health checks
+3. Staging branch has 7 productive commits ready to review and promote
+4. Consider adding `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist to enable automated health checks
 
 ## Pattern Classification
-PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
+PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint)
 
 ## Safety
-- No code changes made to agent-v3.2.ts
-- No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- No changes made to agent-v3.2.ts
+- All changes on staging branch only, never touched main
