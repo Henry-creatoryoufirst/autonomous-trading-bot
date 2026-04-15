@@ -16,8 +16,10 @@ import {
   computeDecisionPriority,
   checkRiskReward,
   applySectorCapGuard,
+  filtersStage,
 } from '../stages/filters.js';
 import type { TradeDecision } from '../../types/market-data.js';
+import type { CycleContext } from '../../types/cycle.js';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -303,5 +305,112 @@ describe('applySectorCapGuard', () => {
     expect(blocked.blocked).toBe(true);
     expect(allowed.blocked).toBe(false);
     expect(allowed.trimmedAmountUSD).toBeGreaterThan(0);
+  });
+});
+
+// ─── filtersStage integration ─────────────────────────────────────────────────
+
+function makeCtx(overrides: Partial<CycleContext> = {}): CycleContext {
+  return {
+    cycleNumber:     1,
+    isHeavy:         true,
+    trigger:         'SCHEDULED',
+    startedAt:       Date.now(),
+    balances:        [],
+    currentPrices:   {},
+    decisions:       [],
+    tradeResults:    [],
+    halted:          false,
+    services:        null as any,
+    stagesCompleted: [],
+    ...overrides,
+  };
+}
+
+describe('filtersStage integration', () => {
+  it('sorts decisions: HARD_STOP comes before AI before SCOUT', async () => {
+    const ctx = makeCtx({
+      decisions: [
+        makeDecision({ action: 'BUY',  toToken: 'MEME', reasoning: 'SCOUT: $8 probe' }),
+        makeDecision({ action: 'BUY',  toToken: 'ETH',  reasoning: 'AI: looks strong' }),
+        makeDecision({ action: 'SELL', fromToken: 'BTC', toToken: 'USDC', reasoning: 'HARD_STOP: -55%' }),
+      ],
+    });
+    const result = await filtersStage(ctx);
+    expect(result.decisions[0].reasoning).toMatch(/HARD_STOP/);
+    expect(result.decisions[1].reasoning).toMatch(/AI/);
+    expect(result.decisions[2].reasoning).toMatch(/SCOUT/);
+  });
+
+  it('trade cap drops lowest-priority decisions over the limit', async () => {
+    const ctx = makeCtx({
+      decisions: [
+        makeDecision({ action: 'SELL', fromToken: 'ETH', toToken: 'USDC', reasoning: 'HARD_STOP: -55%' }),
+        makeDecision({ action: 'SELL', fromToken: 'SOL', toToken: 'USDC', reasoning: 'STOP_LOSS: -15%' }),
+        makeDecision({ action: 'SELL', fromToken: 'BNB', toToken: 'USDC', reasoning: 'PROFIT_TAKE: +30%' }),
+        makeDecision({ action: 'SELL', fromToken: 'ARB', toToken: 'USDC', reasoning: 'AI: trailing exit' }),
+        makeDecision({ action: 'SELL', fromToken: 'OP',  toToken: 'USDC', reasoning: 'SCOUT: data probe 1' }),
+        makeDecision({ action: 'SELL', fromToken: 'INJ', toToken: 'USDC', reasoning: 'SCOUT: data probe 2' }),
+      ],
+    });
+    const result = await filtersStage(ctx, { getPriceHistory: () => [], maxTradesPerCycle: 3 });
+    const nonHolds = result.decisions.filter(d => d.action !== 'HOLD');
+    expect(nonHolds.length).toBeLessThanOrEqual(3);
+    // Highest-priority stops must survive
+    expect(result.decisions.some(d => d.reasoning?.includes('HARD_STOP'))).toBe(true);
+    expect(result.decisions.some(d => d.reasoning?.includes('STOP_LOSS'))).toBe(true);
+    // Lowest-priority scouts must be dropped
+    expect(result.decisions.every(d => !d.reasoning?.includes('SCOUT'))).toBe(true);
+  });
+
+  it('HOLDs always survive the cap', async () => {
+    const ctx = makeCtx({
+      decisions: [
+        makeDecision({ action: 'SELL', fromToken: 'ETH', toToken: 'USDC', reasoning: 'AI: exit 1' }),
+        makeDecision({ action: 'SELL', fromToken: 'SOL', toToken: 'USDC', reasoning: 'AI: exit 2' }),
+        makeDecision({ action: 'SELL', fromToken: 'BNB', toToken: 'USDC', reasoning: 'AI: exit 3' }),
+        makeDecision({ action: 'SELL', fromToken: 'ARB', toToken: 'USDC', reasoning: 'AI: exit 4' }),
+        makeDecision({ action: 'SELL', fromToken: 'OP',  toToken: 'USDC', reasoning: 'AI: exit 5' }),
+        makeDecision({ action: 'HOLD', reasoning: 'HOLD: already positioned — keep (A)' }),
+        makeDecision({ action: 'HOLD', reasoning: 'HOLD: already positioned — keep (B)' }),
+      ],
+    });
+    const result = await filtersStage(ctx, { getPriceHistory: () => [], maxTradesPerCycle: 3 });
+    // Both original HOLDs must survive
+    expect(result.decisions.some(d => d.reasoning?.includes('keep (A)'))).toBe(true);
+    expect(result.decisions.some(d => d.reasoning?.includes('keep (B)'))).toBe(true);
+  });
+
+  it('failed R:R check removes a BUY', async () => {
+    // Current price 3000, 30d high 3100 → dist = 3.3% < 5% → R:R fails
+    const prices = Array(50).fill(2800).concat([3100]);
+    const ctx = makeCtx({
+      decisions: [makeDecision({ action: 'BUY', toToken: 'ETH', reasoning: 'AI: buy ETH' })],
+      currentPrices: { ETH: 3000 },
+    });
+    const result = await filtersStage(ctx, {
+      getPriceHistory: (sym) => sym === 'ETH' ? prices : [],
+      maxTradesPerCycle: 5,
+    });
+    expect(result.decisions[0].action).toBe('HOLD');
+    expect(result.decisions[0].reasoning).toMatch(/R:R_FILTER/);
+  });
+
+  it('halted ctx returns immediately, nothing pushed to stagesCompleted', async () => {
+    const ctx = makeCtx({ halted: true, stagesCompleted: [] });
+    const result = await filtersStage(ctx);
+    expect(result.stagesCompleted).toHaveLength(0);
+    expect(result.decisions).toHaveLength(0);
+  });
+
+  it('all 4 stage names pushed to stagesCompleted on clean run', async () => {
+    const ctx = makeCtx({
+      decisions: [makeDecision({ action: 'SELL', fromToken: 'ETH', toToken: 'USDC', reasoning: 'PROFIT_TAKE: +30%' })],
+    });
+    const result = await filtersStage(ctx);
+    expect(result.stagesCompleted).toContain('PRESERVATION');
+    expect(result.stagesCompleted).toContain('DIRECTIVES');
+    expect(result.stagesCompleted).toContain('TRADE_CAP');
+    expect(result.stagesCompleted).toContain('RISK_REWARD');
   });
 });

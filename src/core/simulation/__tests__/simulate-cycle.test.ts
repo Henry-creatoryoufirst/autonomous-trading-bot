@@ -63,7 +63,7 @@ describe('simulateCycle — full pipeline', () => {
     expect(result.halted).toBe(false);
   });
 
-  it('completes all 8 expected stages', async () => {
+  it('completes all 11 expected stages', async () => {
     const bot = createBot(makeConfig('sim-a'));
     const result = await simulateCycle(bot);
     for (const stage of EXPECTED_STAGES) {
@@ -78,8 +78,8 @@ describe('simulateCycle — full pipeline', () => {
     expect(idx('SETUP')).toBeLessThan(idx('INTELLIGENCE'));
     expect(idx('INTELLIGENCE')).toBeLessThan(idx('METRICS'));
     expect(idx('METRICS')).toBeLessThan(idx('AI_DECISION'));
-    expect(idx('AI_DECISION')).toBeLessThan(idx('FILTERS'));
-    expect(idx('FILTERS')).toBeLessThan(idx('EXECUTION'));
+    expect(idx('AI_DECISION')).toBeLessThan(idx('PRESERVATION'));
+    expect(idx('RISK_REWARD')).toBeLessThan(idx('EXECUTION'));
     expect(idx('EXECUTION')).toBeLessThan(idx('REPORTING'));
     expect(idx('REPORTING')).toBeLessThan(idx('SCHEDULING'));
   });
@@ -137,7 +137,7 @@ describe('simulateFleet', () => {
     expect(fleet.bots).toHaveLength(3);
   });
 
-  it('allPassed is true when all bots complete all 8 stages', async () => {
+  it('allPassed is true when all bots complete all 11 stages', async () => {
     const configs = ['a', 'b'].map(makeConfig);
     const fleet = await simulateFleet(configs);
     expect(fleet.allPassed).toBe(true);
@@ -152,7 +152,7 @@ describe('simulateFleet', () => {
     }
   });
 
-  it('each bot completes all 8 expected stages', async () => {
+  it('each bot completes all 11 expected stages', async () => {
     const configs = ['a', 'b'].map(makeConfig);
     const fleet = await simulateFleet(configs);
     for (const result of fleet.bots) {

@@ -227,8 +227,11 @@ const ALL_STAGES = [
   'SETUP',
   'INTELLIGENCE',
   'METRICS',
-  'AI_DECISION', // decisionStage pushes 'AI_DECISION', not 'DECISION'
-  'FILTERS',
+  'AI_DECISION',   // decisionStage pushes 'AI_DECISION', not 'DECISION'
+  'PRESERVATION',  // Phase 5f: filtersStage pushes 4 real stage names
+  'DIRECTIVES',
+  'TRADE_CAP',
+  'RISK_REWARD',
   'EXECUTION',
   'REPORTING',
   'SCHEDULING',
@@ -239,7 +242,7 @@ const ALL_STAGES = [
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('runHeavyCycle — full pipeline', () => {
-  it('pushes all 8 stages to ctx.stagesCompleted in order on a clean run', async () => {
+  it('pushes all 11 stages to ctx.stagesCompleted in order on a clean run', async () => {
     const ctx = makeCtx();
     const deps = makeDeps();
 
@@ -317,7 +320,7 @@ describe('runHeavyCycle — halted guards', () => {
     // Downstream stages should NOT have run.
     expect(out.stagesCompleted).not.toContain('METRICS');
     expect(out.stagesCompleted).not.toContain('AI_DECISION');
-    expect(out.stagesCompleted).not.toContain('FILTERS');
+    expect(out.stagesCompleted).not.toContain('TRADE_CAP');
     expect(out.stagesCompleted).not.toContain('EXECUTION');
     expect(out.stagesCompleted).not.toContain('REPORTING');
     expect(out.stagesCompleted).not.toContain('SCHEDULING');

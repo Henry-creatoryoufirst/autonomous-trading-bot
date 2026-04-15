@@ -279,18 +279,99 @@ export function applySectorCapGuard(
 // ============================================================================
 
 /**
- * filtersStage — CycleStageFn wrapper.
+ * Dependencies injected into filtersStage.
  *
- * Today this is a lightweight pass-through: it pushes 'FILTERS' to
- * stagesCompleted so the orchestrator can track it. The real filtering
- * (capital preservation, directive enforcement, trade-cap guard, R:R filter,
- * sector cap) still runs inline in agent-v3.2.ts until the decision and
- * execution stages are extracted and the orchestrator is wired up.
- *
- * The three pure helpers above are already used by the monolith's inline
- * filtering code — extracting them here lets them be unit-tested independently.
+ * Both fields are optional at the call-site — the stage supplies safe defaults
+ * so the monolith can call it without wiring up the full dep graph yet.
  */
-export async function filtersStage(ctx: CycleContext): Promise<CycleContext> {
-  ctx.stagesCompleted.push('FILTERS' as any);
+export interface FiltersStageDeps {
+  /**
+   * 30-day hourly price samples per token for R:R evaluation.
+   * Return [] if unavailable — checkRiskReward passes by default.
+   */
+  getPriceHistory(symbol: string): number[];
+
+  /**
+   * Regime-aware max trades per cycle.
+   * Mirrors CONFIG.trading.maxTradesPerCycle with RANGING override.
+   */
+  maxTradesPerCycle: number;
+}
+
+/**
+ * filtersStage — Phase 5f CycleStageFn wrapper.
+ *
+ * Runs four passes over ctx.decisions:
+ *   Pass 1 — sort all non-HOLD decisions by priority (HARD_STOP first, SCOUT last)
+ *   Pass 2 — trade cap: keep top maxTrades non-HOLD decisions, HOLDs always survive
+ *   Pass 3 — R:R filter: BUYs that fail the 2:1 reward/risk check become HOLD
+ *   Pass 4 — sector cap: BUYs that would breach the 20% sector limit are trimmed or blocked
+ *
+ * Preservation and directives are no-ops this phase (pushed to stagesCompleted
+ * but not filtered — that logic lands in Phase 5h with the real decisionStage).
+ */
+export async function filtersStage(
+  ctx: CycleContext,
+  deps?: FiltersStageDeps,
+): Promise<CycleContext> {
+  if (ctx.halted) return ctx;
+
+  const priceHistory = deps?.getPriceHistory ?? (() => []);
+  const maxTrades    = deps?.maxTradesPerCycle ?? 5;
+
+  // Pass 1 — sort by priority (HARD_STOP first, SCOUT last)
+  {
+    const actions = ctx.decisions.filter(d => d.action !== 'HOLD');
+    const holds   = ctx.decisions.filter(d => d.action === 'HOLD');
+    actions.sort((a, b) => computeDecisionPriority(a) - computeDecisionPriority(b));
+    ctx.decisions = [...actions, ...holds];
+  }
+
+  // Pass 2 — trade cap (keep top maxTrades non-HOLD decisions)
+  // HOLDs always pass through — they have no execution cost
+  {
+    const actions = ctx.decisions.filter(d => d.action !== 'HOLD');
+    const holds   = ctx.decisions.filter(d => d.action === 'HOLD');
+    if (actions.length > maxTrades) {
+      ctx.decisions = [...actions.slice(0, maxTrades), ...holds];
+    }
+  }
+
+  // Pass 3 — R:R filter on BUYs using checkRiskReward
+  // Failed BUYs are converted to HOLD (mirrors monolith L7122–7170)
+  ctx.decisions = ctx.decisions.map(d => {
+    if (d.action !== 'BUY') return d;
+    const symbol       = d.toToken ?? '';
+    const prices       = priceHistory(symbol);
+    const currentPrice = ctx.currentPrices[symbol] ?? 0;
+    const rr           = checkRiskReward(d, { prices }, currentPrice, 5);
+    if (!rr.pass) {
+      return { ...d, action: 'HOLD', reasoning: `R:R_FILTER: ${rr.reason}` };
+    }
+    return d;
+  });
+
+  // Pass 4 — sector cap using applySectorCapGuard
+  // Trimmed BUYs get their amountUSD reduced; blocked BUYs become HOLD
+  // (mirrors monolith L7570–7620)
+  {
+    const portfolioValue = ctx.balances.reduce((sum, b) => sum + (b.usdValue ?? 0), 0);
+    ctx.decisions = ctx.decisions.map(d => {
+      if (d.action !== 'BUY') return d;
+      const symbol            = d.toToken ?? '';
+      const currentHoldingUSD = ctx.balances.find(b => b.symbol === symbol)?.usdValue ?? 0;
+      const cap               = applySectorCapGuard(d, currentHoldingUSD, portfolioValue, 20);
+      if (cap.blocked) {
+        return { ...d, action: 'HOLD', reasoning: `SECTOR_CAP: ${cap.reason ?? 'sector limit reached'}` };
+      }
+      if (cap.trimmed) {
+        return { ...d, amountUSD: cap.trimmedAmountUSD };
+      }
+      return d;
+    });
+  }
+
+  // PRESERVATION and DIRECTIVES are no-ops this phase — Phase 5h scope
+  ctx.stagesCompleted.push('PRESERVATION', 'DIRECTIVES', 'TRADE_CAP', 'RISK_REWARD');
   return ctx;
 }

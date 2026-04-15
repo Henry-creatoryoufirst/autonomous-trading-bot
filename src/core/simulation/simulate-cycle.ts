@@ -1,20 +1,21 @@
 /**
  * Never Rest Capital — Cycle Integration Simulation
  *
- * Phase 7+ of the monolith refactor. Validates that the full 8-stage
+ * Phase 7+ of the monolith refactor. Validates that the full 11-stage
  * runHeavyCycle pipeline runs end-to-end using a Bot instance and mock deps.
  *
  * This is NOT a backtester — it doesn't simulate multiple price candles or
  * measure strategy P&L. The strategy backtester lives in src/simulation/.
  *
  * Purpose:
- *   1. Prove all 8 stages complete with real types (integration, not unit tests)
+ *   1. Prove all 11 stages complete with real types (integration, not unit tests)
  *   2. Serve as a CI gate — `npx tsx scripts/simulate-cycle.ts` must pass
  *   3. Detect regressions when new stages are extracted or wired
  *
  * Expected stages on completion:
  *   SETUP → INTELLIGENCE → METRICS → AI_DECISION →
- *   FILTERS → EXECUTION → REPORTING → SCHEDULING
+ *   PRESERVATION → DIRECTIVES → TRADE_CAP → RISK_REWARD →
+ *   EXECUTION → REPORTING → SCHEDULING
  *
  * Usage (standalone):
  *   npx tsx src/core/simulation/simulate-cycle.ts
@@ -42,7 +43,10 @@ export const EXPECTED_STAGES = [
   'INTELLIGENCE',
   'METRICS',
   'AI_DECISION',
-  'FILTERS',
+  'PRESERVATION',  // Phase 5f: filtersStage pushes 4 real stage names
+  'DIRECTIVES',
+  'TRADE_CAP',
+  'RISK_REWARD',
   'EXECUTION',
   'REPORTING',
   'SCHEDULING',
