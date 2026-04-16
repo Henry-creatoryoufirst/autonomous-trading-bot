@@ -2189,3 +2189,49 @@ export function handleTicker(
     ctx.sendJSON(res, 500, { error: `Ticker failed: ${err.message}` });
   }
 }
+
+// ============================================================================
+// Route handler: /api/price-snapshot
+// v21.12: Lightweight BTC/ETH price endpoint backed by the bot's existing
+// Chainlink oracle cache (refreshed every cycle into state.trading.balances).
+// Dashboards use this to render the market-context strip without calling
+// third-party APIs. Returns 503 when the cache is empty (no successful oracle
+// read yet).
+// ============================================================================
+
+export function handlePriceSnapshot(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    const balances = ctx.state.trading?.balances || [];
+    // cbBTC is the Chainlink BTC proxy on Base; fall back to BTC if someone
+    // retags it in the registry.
+    const btcEntry = balances.find((b: any) => b.symbol === 'cbBTC')
+                   || balances.find((b: any) => b.symbol === 'BTC');
+    const ethEntry = balances.find((b: any) => b.symbol === 'ETH')
+                   || balances.find((b: any) => b.symbol === 'WETH');
+
+    const btcPrice = btcEntry?.price || 0;
+    const ethPrice = ethEntry?.price || 0;
+
+    if (btcPrice <= 0 && ethPrice <= 0) {
+      ctx.sendJSON(res, 503, { error: 'Prices unavailable' });
+      return;
+    }
+
+    const lastCheck = ctx.state.trading?.lastCheck;
+    const updatedAt = lastCheck
+      ? (typeof lastCheck.toISOString === 'function' ? lastCheck.toISOString() : new Date(lastCheck).toISOString())
+      : new Date().toISOString();
+
+    ctx.sendJSON(res, 200, {
+      btcPrice,
+      ethPrice,
+      updatedAt,
+      source: 'on-chain-chainlink',
+    });
+  } catch (err: any) {
+    ctx.sendJSON(res, 503, { error: 'Prices unavailable' });
+  }
+}

@@ -521,6 +521,7 @@ import {
   handleConfidence,
   handleModelTelemetry,
   handleTicker,
+  handlePriceSnapshot,
 } from "./src/dashboard/server/index.js";
 // Phase 4: Extracted execution engine
 import {
@@ -9348,6 +9349,10 @@ const healthServer = http.createServer(async (req, res) => {
       }
       case '/api/ticker':
         handleTicker(res, serverCtx);
+        break;
+      case '/api/price-snapshot':
+        // v21.12: BTC/ETH prices from the bot's Chainlink oracle cache.
+        handlePriceSnapshot(res, serverCtx);
         break;
       case '/api/discovery/scan':
         // Manual trigger for token discovery scan
