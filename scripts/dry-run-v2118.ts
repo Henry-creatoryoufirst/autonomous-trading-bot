@@ -8,10 +8,13 @@
  *   npx tsx scripts/dry-run-v2118.ts
  */
 
+import * as fs from 'fs';
 import { runMigrationV2118 } from '../src/core/portfolio/migration-v21-18.js';
+import type { OnChainTransfer } from '../src/core/portfolio/rebuild.js';
 import type { TokenCostBasis, TradeRecord } from '../src/core/types/index.js';
 
 const PROD_API = 'https://autonomous-trading-bot-production.up.railway.app';
+const TRANSFERS_PATH = '/tmp/onchain-transfers.json';
 
 interface BalanceEntry {
   symbol: string;
@@ -80,25 +83,43 @@ async function main() {
       .map((b) => [b.symbol, b.balance]),
   );
 
+  // Optionally load the on-chain transfer feed from the indexer (Session 2).
+  // If the file exists and is non-empty, we reconcile airdrops/phantoms too.
+  let transfers: OnChainTransfer[] | undefined;
+  if (fs.existsSync(TRANSFERS_PATH)) {
+    try {
+      const raw = fs.readFileSync(TRANSFERS_PATH, 'utf-8');
+      const parsed = JSON.parse(raw) as OnChainTransfer[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        transfers = parsed;
+      }
+    } catch {
+      /* ignore — treat as no transfers file */
+    }
+  }
+
   process.stdout.write(
-    `  Trades: ${tradesResp.trades.length}\n  Tokens in state: ${Object.keys(costBasis).length}\n  Portfolio on-chain: $${balancesResp.totalValue.toFixed(2)}\n\n`,
+    `  Trades: ${tradesResp.trades.length}\n  Tokens in state: ${Object.keys(costBasis).length}\n  Portfolio on-chain: $${balancesResp.totalValue.toFixed(2)}\n  Indexer transfers: ${transfers?.length ?? '(none — run build-onchain-index.ts first)'}\n\n`,
   );
 
   const result = runMigrationV2118({
     state,
     trades: tradesResp.trades,
+    transfers,
     onchainBalances,
     dryRun: true,
   });
 
   process.stdout.write('=== MIGRATION v21.18 — DRY RUN RESULT ===\n\n');
   process.stdout.write('Summary:\n');
-  process.stdout.write(`  Trades replayed:        ${result.summary.tradesReplayed}\n`);
-  process.stdout.write(`  Trades skipped:         ${result.summary.tradesSkipped}\n`);
-  process.stdout.write(`  Symbols touched:        ${result.summary.symbolsTouched}\n`);
-  process.stdout.write(`  Realized P&L BEFORE:    $${result.summary.realizedPnLBefore.toFixed(2)}\n`);
-  process.stdout.write(`  Realized P&L AFTER:     $${result.summary.realizedPnLAfter.toFixed(2)}\n`);
-  process.stdout.write(`  Phantom P&L removed:    $${result.summary.phantomPnLRemoved.toFixed(2)}\n\n`);
+  process.stdout.write(`  Trades replayed:          ${result.summary.tradesReplayed}\n`);
+  process.stdout.write(`  Trades skipped:           ${result.summary.tradesSkipped}\n`);
+  process.stdout.write(`  Transfers processed:      ${result.summary.transfersProcessed}\n`);
+  process.stdout.write(`  Unmatched transfers:      ${result.summary.unmatchedTransfers}  (airdrops + unlogged swaps)\n`);
+  process.stdout.write(`  Symbols touched:          ${result.summary.symbolsTouched}\n`);
+  process.stdout.write(`  Realized P&L BEFORE:      $${result.summary.realizedPnLBefore.toFixed(2)}\n`);
+  process.stdout.write(`  Realized P&L AFTER:       $${result.summary.realizedPnLAfter.toFixed(2)}\n`);
+  process.stdout.write(`  Phantom P&L removed:      $${result.summary.phantomPnLRemoved.toFixed(2)}\n\n`);
 
   process.stdout.write('Per-token corrections (top 15 by |Δ realizedPnL|):\n');
   process.stdout.write(
