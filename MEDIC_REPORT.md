@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-16T11:20 UTC
+# MEDIC REPORT — 2026-04-16T22:18 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #5)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #6)
 
 ## Environment
-- Run timestamp: 2026-04-16T10:18 UTC
+- Run timestamp: 2026-04-16T22:18 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-7E5FJ
 
 ## Problem
 
@@ -39,7 +39,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #2 | 2026-04-15T00:00 UTC | PATTERN D re-confirmed |
 | #3 | 2026-04-15T18:38 UTC | PATTERN D update |
 | #4 | 2026-04-16T10:18 UTC | PATTERN D update |
-| #5 | 2026-04-16T11:20 UTC | This report (same issue) |
+| #5 | 2026-04-16T11:20 UTC | PATTERN D update |
+| #6 | 2026-04-16T22:18 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -53,9 +54,14 @@ Despite API being unreachable from medic, the bot is clearly active:
 
 Bot is alive and making autonomous adjustments for bear market conditions.
 
-**Run #5 Auditor Note:** Bear market trigger confirmed by 3 auditor runs in last 22h.
+**Run #6 Auditor Note:** Bear market trigger confirmed by 3+ auditor runs today.
 Parameters are already heavily tightened (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%).
 Auditor skipped this run to prevent over-tightening without fresh API metrics.
+
+Latest git activity since last report:
+- `2026-04-16 17:57 EDT` — Phase 3b subscriber execution with safety rails merged to main
+- `2026-04-16 17:49 EDT` — /api/auto-harvest double-count fix deployed
+- `2026-04-16 17:48 EDT` — /api/price-snapshot endpoint live
 
 ## What Is NOT Known
 
@@ -65,7 +71,7 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #5)
+## Jobs Status This Run (Run #6)
 
 - **Scout**: SKIPPED — last ran 05:15 UTC today (within 48h); BENJI added earlier today
 - **Auditor**: SKIPPED — cannot fetch live metrics; bear market params already at floor:
@@ -73,7 +79,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is the 4th consecutive run with the same network restriction. Action required:**
+**This is the 6th consecutive run with the same network restriction. Action required:**
 
 1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
 2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
