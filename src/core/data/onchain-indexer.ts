@@ -103,19 +103,38 @@ export const DEFAULT_CONCURRENCY = 4;
 // ============================================================================
 
 /**
+ * RPC endpoints that are unsuitable for archival reads — they're tx-submission
+ * relays (Flashbots Protect, sequencer-direct) that can return stale / partial
+ * state for `eth_blockNumber` and `eth_getLogs`. The indexer filters these out
+ * so historical queries go to archival-capable RPCs only.
+ */
+const SUBMIT_ONLY_RPC_HOSTS = [
+  'rpc.flashbots.net',
+  'mainnet-sequencer.base.org',
+];
+
+function isArchivalRpc(url: string): boolean {
+  return !SUBMIT_ONLY_RPC_HOSTS.some((host) => url.includes(host));
+}
+
+/**
  * Build a viem public client for Base with fallback RPCs from the bot's config.
- * Mirrors the multi-endpoint pattern used by `rpcCall`.
+ * Mirrors the multi-endpoint pattern used by `rpcCall`, but filters out
+ * submit-only relays which don't serve archival `eth_getLogs` queries.
  */
 export function createBaseIndexerClient(
   endpoints: readonly string[] = BASE_RPC_ENDPOINTS,
 ): PublicClient {
-  if (endpoints.length === 0) {
-    throw new Error('createBaseIndexerClient: at least one RPC endpoint required');
+  const archival = endpoints.filter(isArchivalRpc);
+  if (archival.length === 0) {
+    throw new Error(
+      'createBaseIndexerClient: no archival-capable RPC endpoints (all are submit-only relays)',
+    );
   }
-  const transport = endpoints.length === 1
-    ? http(endpoints[0], { timeout: 30_000 })
+  const transport = archival.length === 1
+    ? http(archival[0], { timeout: 30_000 })
     : fallback(
-        endpoints.map((url) => http(url, { timeout: 30_000 })),
+        archival.map((url) => http(url, { timeout: 30_000 })),
         { rank: false, retryCount: 2 },
       );
 
