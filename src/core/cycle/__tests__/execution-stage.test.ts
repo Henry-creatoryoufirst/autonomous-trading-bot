@@ -12,6 +12,7 @@ import type { CycleContext } from '../../types/cycle.js';
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 function makeCtx(overrides: Partial<CycleContext> = {}): CycleContext {
@@ -106,5 +107,40 @@ describe('executionStage — trade safety', () => {
     const ctx = makeCtx();
     const result = await executionStage(ctx);
     expect(result.halted).toBe(false);
+  });
+});
+
+// ─── real deps ────────────────────────────────────────────────────────────────
+
+describe('executionStage — real deps', () => {
+  it('calls deps.run with ctx', async () => {
+    const ctx = makeCtx();
+    const run = vi.fn().mockResolvedValue(ctx);
+    await executionStage(ctx, { run });
+    expect(run).toHaveBeenCalledWith(ctx);
+  });
+
+  it('skips deps.run when halted', async () => {
+    const ctx = makeCtx({ halted: true });
+    const run = vi.fn().mockResolvedValue(ctx);
+    await executionStage(ctx, { run });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('sets halted + haltReason when deps.run throws', async () => {
+    const ctx = makeCtx();
+    const result = await executionStage(ctx, {
+      run: vi.fn().mockRejectedValue(new Error('swap failed')),
+    });
+    expect(result.halted).toBe(true);
+    expect(result.haltReason).toBe('swap failed');
+  });
+
+  it('always pushes EXECUTION even when deps.run throws', async () => {
+    const ctx = makeCtx();
+    const result = await executionStage(ctx, {
+      run: vi.fn().mockRejectedValue(new Error('swap failed')),
+    });
+    expect(result.stagesCompleted).toContain('EXECUTION');
   });
 });

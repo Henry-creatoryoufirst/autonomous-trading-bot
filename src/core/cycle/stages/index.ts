@@ -18,6 +18,7 @@ export { filtersStage,
          checkRiskReward,
          applySectorCapGuard } from './filters.js';
 export { executionStage }   from './execution.js';
+export type { ExecutionDeps } from './execution.js';
 export { reportingStage }   from './reporting.js';
 export { schedulingStage,
          runSchedulingStage } from './scheduling.js';

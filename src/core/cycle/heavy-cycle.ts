@@ -32,6 +32,7 @@ import type { MetricsDeps } from './stages/metrics.js';
 import type { DeploymentCtxDeps } from './stages/deployment-ctx.js';
 import type { DecisionDeps } from './stages/decision.js';
 import type { FiltersStageDeps } from './stages/filters.js';
+import type { ExecutionDeps } from './stages/execution.js';
 import type { ReportingDeps } from './stages/reporting.js';
 import {
   setupStage,
@@ -56,6 +57,7 @@ export interface HeavyCycleDeps {
   deploymentCtx:  DeploymentCtxDeps;
   decision:       DecisionDeps;
   filters:        FiltersStageDeps;
+  execution:      ExecutionDeps;
   reporting:      ReportingDeps;
 }
 
@@ -86,7 +88,7 @@ export async function runHeavyCycle(ctx: CycleContext, deps: HeavyCycleDeps): Pr
   ctx = await filtersStage(ctx, deps.filters);
   if (ctx.halted) return ctx;
 
-  ctx = await executionStage(ctx);
+  ctx = await executionStage(ctx, deps.execution);
   if (ctx.halted) return ctx;
 
   ctx = await reportingStage(ctx, deps.reporting);

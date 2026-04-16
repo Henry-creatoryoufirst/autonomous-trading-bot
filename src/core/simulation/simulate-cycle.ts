@@ -36,6 +36,7 @@ import type { MetricsDeps } from '../cycle/stages/metrics.js';
 import type { DeploymentCtxDeps } from '../cycle/stages/deployment-ctx.js';
 import type { DecisionDeps } from '../cycle/stages/decision.js';
 import type { FiltersStageDeps } from '../cycle/stages/filters.js';
+import type { ExecutionDeps } from '../cycle/stages/execution.js';
 import type { ReportingDeps } from '../cycle/stages/reporting.js';
 
 // ============================================================================
@@ -225,6 +226,12 @@ function makeMockReportingDeps(): ReportingDeps {
   };
 }
 
+function makeMockExecutionDeps(): ExecutionDeps {
+  return {
+    run: async (ctx) => ctx,
+  };
+}
+
 export function makeMockHeavyCycleDeps(
   bot: ReturnType<typeof createBot>,
   md: MarketData,
@@ -236,6 +243,7 @@ export function makeMockHeavyCycleDeps(
     deploymentCtx: makeMockDeploymentCtxDeps(),
     decision:      makeMockDecisionDeps(),
     filters:       makeMockFiltersDeps(),
+    execution:     makeMockExecutionDeps(),
     reporting:     makeMockReportingDeps(),
   };
 }

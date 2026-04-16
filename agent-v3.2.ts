@@ -152,6 +152,8 @@ import type { MetricsDeps } from "./src/core/cycle/stages/metrics.js";
 // Phase 5f: filters stage extracted
 import { filtersStage } from "./src/core/cycle/stages/filters.js";
 import type { FiltersStageDeps } from "./src/core/cycle/stages/filters.js";
+import { executionStage } from "./src/core/cycle/stages/execution.js";
+import type { ExecutionDeps } from "./src/core/cycle/stages/execution.js";
 // Phase deployment-ctx: sector allocations + cash deployment check
 import { deploymentCtxStage } from "./src/core/cycle/stages/deployment-ctx.js";
 import type { DeploymentCtxDeps } from "./src/core/cycle/stages/deployment-ctx.js";
@@ -6865,6 +6867,13 @@ async function runTradingCycle() {
     }
     decisions = cycleCtx.decisions;
 
+    // === Phase 5c: executionStage — wraps the 973-line inline trade-loop block. ===
+    // The deps.run callback is a closure over cycle-local variables (marketData,
+    // currentPrices, deploymentCheck, account, walletAddr, etc.) — a module-level
+    // factory cannot reach these. Zero logic changes inside the wrapped body.
+    const _execDeps: ExecutionDeps = {
+      run: async (_execCtx: CycleContext): Promise<CycleContext> => {
+
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
     let anyTradeExecuted = false;
@@ -7836,6 +7845,15 @@ async function runTradingCycle() {
       } catch (yieldOptErr: any) {
         console.error(`  ❌ Yield optimizer cycle error: ${yieldOptErr?.message?.substring(0, 200)}`);
       }
+    }
+
+        return _execCtx;
+      },
+    };
+    cycleCtx = await executionStage(cycleCtx, _execDeps);
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Execution stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
 
   } catch (error: any) {
