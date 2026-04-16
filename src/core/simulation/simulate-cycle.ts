@@ -36,6 +36,7 @@ import type { MetricsDeps } from '../cycle/stages/metrics.js';
 import type { DeploymentCtxDeps } from '../cycle/stages/deployment-ctx.js';
 import type { DecisionDeps } from '../cycle/stages/decision.js';
 import type { FiltersStageDeps } from '../cycle/stages/filters.js';
+import type { ReportingDeps } from '../cycle/stages/reporting.js';
 
 // ============================================================================
 // EXPECTED STAGES — full 8-stage pipeline
@@ -217,6 +218,13 @@ function makeMockFiltersDeps(): FiltersStageDeps {
   };
 }
 
+function makeMockReportingDeps(): ReportingDeps {
+  return {
+    flushState:       async () => {},
+    sendHourlyReport: async () => {},
+  };
+}
+
 export function makeMockHeavyCycleDeps(
   bot: ReturnType<typeof createBot>,
   md: MarketData,
@@ -228,6 +236,7 @@ export function makeMockHeavyCycleDeps(
     deploymentCtx: makeMockDeploymentCtxDeps(),
     decision:      makeMockDecisionDeps(),
     filters:       makeMockFiltersDeps(),
+    reporting:     makeMockReportingDeps(),
   };
 }
 

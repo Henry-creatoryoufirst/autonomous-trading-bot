@@ -29,6 +29,7 @@ import type { SetupDeps, BalanceEntry } from '../stages/setup.js';
 import type { DeploymentCtxDeps } from '../stages/deployment-ctx.js';
 import type { DecisionDeps } from '../stages/decision.js';
 import type { FiltersStageDeps } from '../stages/filters.js';
+import type { ReportingDeps } from '../stages/reporting.js';
 import type { DexIntelligence } from '../../services/gecko-terminal.js';
 import { intelligenceStage } from '../stages/intelligence.js';
 
@@ -247,6 +248,14 @@ function makeFiltersDeps(overrides: Partial<FiltersStageDeps> = {}): FiltersStag
   };
 }
 
+function makeReportingDeps(overrides: Partial<ReportingDeps> = {}): ReportingDeps {
+  return {
+    flushState:       vi.fn().mockResolvedValue(undefined),
+    sendHourlyReport: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
 function makeDeps(overrides: Partial<HeavyCycleDeps> = {}): HeavyCycleDeps {
   return {
     setup:         makeSetupDeps(),
@@ -255,6 +264,7 @@ function makeDeps(overrides: Partial<HeavyCycleDeps> = {}): HeavyCycleDeps {
     deploymentCtx: makeDeploymentCtxDeps(),
     decision:      makeDecisionDeps(),
     filters:       makeFiltersDeps(),
+    reporting:     makeReportingDeps(),
     ...overrides,
   };
 }
@@ -398,11 +408,12 @@ describe('HeavyCycleDeps type', () => {
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('deploymentCtx');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('decision');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('filters');
+    expectTypeOf<HeavyCycleDeps>().toHaveProperty('reporting');
 
-    // Runtime assertion — a valid HeavyCycleDeps instance must carry all six.
+    // Runtime assertion — a valid HeavyCycleDeps instance must carry all seven.
     const deps = makeDeps();
     expect(Object.keys(deps).sort()).toEqual([
-      'decision', 'deploymentCtx', 'filters', 'intelligence', 'metrics', 'setup',
+      'decision', 'deploymentCtx', 'filters', 'intelligence', 'metrics', 'reporting', 'setup',
     ]);
   });
 });
