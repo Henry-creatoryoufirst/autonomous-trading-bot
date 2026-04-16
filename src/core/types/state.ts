@@ -61,6 +61,17 @@ export interface AgentState {
   dailyPayoutCount: number;
   lastDailyPayoutDate: string | null;
   dailyPayoutByRecipient: Record<string, number>;
+  /**
+   * v21.15/v21.13-fix: Harvest-on-sell reservation.
+   * Accumulates `profit × totalRecipientPct/100` on every profitable sell so
+   * the fee can't be re-deployed before the 8AM UTC daily payout fires.
+   * Reset to 0 AFTER a successful payout in runDailyPayout().
+   *
+   * Historically this was stored via `(state as any).pendingFeeUSDC` and was
+   * never persisted → every bot restart wiped it to 0, silently under-paying
+   * recipients on any day with a restart. Now in the type + persistence layer.
+   */
+  pendingFeeUSDC: number;
   // Self-improvement engine
   strategyPatterns: Record<string, StrategyPattern>;
   adaptiveThresholds: AdaptiveThresholds;

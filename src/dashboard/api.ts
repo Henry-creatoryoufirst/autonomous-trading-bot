@@ -290,6 +290,12 @@ export function apiPortfolio() {
         lastPayoutDate: state.lastDailyPayoutDate,
         dailyPayoutCount: state.dailyPayoutCount,
         totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
+        // v21.13-fix: actual USDC currently reserved for the next 8AM UTC payout.
+        // Accumulated at each profitable sell; paid out in full at 8AM UTC.
+        // Dashboards use this as the "expected tomorrow" number — more accurate
+        // than estimating from today's realized × recipient% because it reflects
+        // what's actually been committed so far.
+        pendingFeeUSDC: state.pendingFeeUSDC || 0,
       },
     // v11.1: Cash deployment engine status
     cashDeployment: {

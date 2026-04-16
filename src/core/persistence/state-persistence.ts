@@ -203,6 +203,11 @@ export function loadTradeHistory(): void {
       state.dailyPayoutCount = parsed.dailyPayoutCount || 0;
       state.lastDailyPayoutDate = parsed.lastDailyPayoutDate || null;
       state.dailyPayoutByRecipient = parsed.dailyPayoutByRecipient || {};
+      // v21.15-fix: Harvest-on-sell reservation. Previously lived only as
+      // (state as any).pendingFeeUSDC so it was lost on every restart. Now
+      // persisted so the bot keeps the reserve across redeploys and the 8AM
+      // UTC payout pays the correct amount even if the bot restarted mid-day.
+      state.pendingFeeUSDC = parsed.pendingFeeUSDC || 0;
 
       // Shadow proposals
       if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
@@ -399,6 +404,7 @@ export function saveTradeHistory(): void {
       dailyPayoutCount: state.dailyPayoutCount,
       lastDailyPayoutDate: state.lastDailyPayoutDate,
       dailyPayoutByRecipient: state.dailyPayoutByRecipient,
+      pendingFeeUSDC: state.pendingFeeUSDC || 0,
       strategyPatterns: state.strategyPatterns,
       adaptiveThresholds: state.adaptiveThresholds,
       performanceReviews: state.performanceReviews.slice(-30),
