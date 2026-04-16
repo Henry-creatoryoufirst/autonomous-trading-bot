@@ -1,36 +1,39 @@
-# MEDIC REPORT — 2026-04-15T00:00 UTC
+# MEDIC REPORT — 2026-04-16T04:00 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue)
 
 ## Environment
-- Run timestamp: 2026-04-15T00:00 UTC
+- Run timestamp: 2026-04-16T04:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-D05Mp
 
 ## Problem
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `Host not in allowlist` or `403 Forbidden`:
+All endpoints attempted returned `403 Forbidden`:
 
 ```
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
-→ Host not in allowlist
+→ 403 Forbidden
 
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
-→ Host not in allowlist
+→ 403 Forbidden
 ```
 
 Endpoints attempted:
-- `/api/errors`   → blocked (Host not in allowlist)
-- `/api/balances` → blocked (Host not in allowlist)
+- `/api/errors`   → 403 Forbidden
+- `/api/balances` → 403 Forbidden
+- `/api/health`   → 403 Forbidden
 
 ## Root Cause
 
 The Claude Code execution sandbox has an **egress proxy** that only allows outbound connections to a fixed allowlist of domains. The Railway deployment domain (`autonomous-trading-bot-production.up.railway.app`) is **not on this allowlist**, so all connections are blocked at the proxy layer before reaching Railway.
 
-This is a **persistent infrastructure constraint** of the medic agent's execution environment — it does NOT necessarily indicate a bot failure. This same issue was documented in the previous run (2026-04-14T19:12 UTC, commit 8715c74).
+This is a **persistent infrastructure constraint** of the medic agent's execution environment — it does NOT necessarily indicate a bot failure. This same issue was documented in the previous runs:
+- 2026-04-15T00:00 UTC (commit 1ab0751)
+- 2026-04-16T04:00 UTC (this run)
 
 ## What Is NOT Known
 
@@ -42,11 +45,11 @@ Because the API is unreachable, the medic cannot determine:
 
 ## What IS Known (from git history)
 
-- Last bot version deployed: **v21.11** — "dry powder reserve — proactive 10% USDC floor" (most recent commit on main/staging)
-- Last scout commit: `2026-04-13 12:52:52 UTC` (> 48h ago — scout is overdue)
-- Last auditor commit: `improve(auditor): lower VOL_HIGH_THRESHOLD 8%→6%` — normal operation
+- Last bot version deployed: **v21.11** — "dry powder reserve — proactive 10% USDC floor"
+- Self-Healing Intelligence added in recent commits (v21.8+)
+- Last auditor commit: `improve(auditor): lower VOL_TARGET_DAILY_PCT 2→1.5 — bear-market VAPS recalibration`
 - No crash/emergency commits in recent git log
-- Bot v21.11 is a healthy version with no known critical bugs
+- Bot v21.11 with SHI is a healthy version with no known critical bugs
 
 ## Recommended Action for Henry
 
@@ -62,4 +65,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to feature branch per MEDIC SAFETY protocol
