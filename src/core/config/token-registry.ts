@@ -27,13 +27,13 @@ export const SECTORS = {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI"],
+    tokens: ["BRETT", "DEGEN", "TOSHI", "ZORA"],
   },
   DEFI: {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "TRX"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -133,6 +133,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
   },
   // === MEME COINS (15%) ===
+  ZORA: {
+    address: "0x1111111111166b7fe7bd91427724b487980afc69",
+    symbol: "ZORA", name: "Zora", coingeckoId: "zora",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
     symbol: "BRETT", name: "Brett", coingeckoId: "brett",
@@ -212,6 +217,12 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x696F9436B67233384889472Cd7cD58A6fB5DF4f1",
     symbol: "AVNT", name: "Avantis", coingeckoId: "avantis",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  // v21.7 (scout): TRX bridged to Base via LayerZero — live on Aerodrome since March 19 2026, TVL ~$5.67M
+  TRX: {
+    address: "0x989cfdc3508500d0c91f22896a0d2ee1ef675870",
+    symbol: "TRX", name: "Tron (Base)", coingeckoId: "tron",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
