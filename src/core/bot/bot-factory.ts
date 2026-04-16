@@ -66,6 +66,7 @@ export function createInitialAgentState(): AgentState {
     dailyPayoutCount:       0,
     lastDailyPayoutDate:    null,
     dailyPayoutByRecipient: {},
+    pendingFeeUSDC:         0,
     strategyPatterns:       {},
     adaptiveThresholds:     { adaptationCount: 0 } as any,
     performanceReviews:     [],
