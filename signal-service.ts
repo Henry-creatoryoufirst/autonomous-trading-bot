@@ -300,11 +300,73 @@ interface AlphaCandidate {
   };
 }
 
+async function callCheapLLM(prompt: string): Promise<string> {
+  // Priority: Groq → Cerebras → Anthropic Haiku
+  const groqKey = process.env.GROQ_API_KEY;
+  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+  if (groqKey) {
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.1-8b-instant',
+        max_tokens: 256,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+    return response.data?.choices?.[0]?.message?.content || '';
+  }
+
+  if (cerebrasKey) {
+    const response = await axios.post(
+      'https://api.cerebras.ai/v1/chat/completions',
+      {
+        model: 'llama-3.3-70b',
+        max_tokens: 256,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${cerebrasKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+    return response.data?.choices?.[0]?.message?.content || '';
+  }
+
+  // Fallback: Anthropic Haiku
+  if (!anthropicKey) return '';
+  const response = await axios.post(
+    'https://api.anthropic.com/v1/messages',
+    {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    {
+      headers: {
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      timeout: 15000,
+    }
+  );
+  return response.data?.content?.[0]?.text || '';
+}
+
 async function runHaikuPreFilter(candidates: any[]): Promise<AlphaCandidate[]> {
   if (candidates.length === 0) return [];
-
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) return candidates.map(c => ({ ...c }));
 
   // Run Haiku on each candidate in parallel (they're independent)
   const results = await Promise.all(candidates.map(async (candidate) => {
@@ -340,28 +402,9 @@ Respond ONLY with valid JSON:
   "entryCondition": "<specific condition>"
 }`;
 
-      const response = await axios.post(
-        'https://api.anthropic.com/v1/messages',
-        {
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 256,
-          messages: [{ role: 'user', content: prompt }],
-        },
-        {
-          headers: {
-            'x-api-key': anthropicKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          timeout: 15000,
-        }
-      );
-
-      const text = response.data?.content?.[0]?.text || '';
-      // Extract JSON from response (handle markdown code blocks)
+      const text = await callCheapLLM(prompt);
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return { ...candidate };
-
       const haiku = JSON.parse(jsonMatch[0]);
       return { ...candidate, haiku };
     } catch {
