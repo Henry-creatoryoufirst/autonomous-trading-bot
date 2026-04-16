@@ -445,20 +445,63 @@ export async function indexBotWalletTransfers(
 // START-BLOCK HELPERS
 // ============================================================================
 
+/** Base mainnet produces one block every ~2 seconds. */
+const BASE_AVG_BLOCK_SECONDS = 2;
+
 /**
- * Binary-search the first block with `timestamp >= targetUnixSec`.
- * Costs O(log N) `getBlock` calls — typically ~25 on Base.
+ * Ask Blockscout for the block number at or just after `targetUnixSec`.
+ * Fast (single HTTP call) and reliable — Blockscout has a dedicated
+ * `getblocknobytime` endpoint. Returns `null` if the API is unreachable or
+ * returns an unexpected response, so callers can fall back.
+ */
+async function findBlockViaBlockscout(targetUnixSec: number): Promise<bigint | null> {
+  try {
+    const url = `https://base.blockscout.com/api?module=block&action=getblocknobytime&timestamp=${targetUnixSec}&closest=after`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+    const json = await res.json() as { status?: string; result?: string | { blockNumber?: string } };
+    const raw = typeof json.result === 'string' ? json.result : json.result?.blockNumber;
+    if (!raw) return null;
+    const num = BigInt(raw);
+    return num > 0n ? num : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find the first block with `timestamp >= targetUnixSec`.
+ *
+ * Strategy:
+ *   1. Try Blockscout's `getblocknobytime` API (single HTTP call, reliable).
+ *   2. If that fails, narrow the search range via 2s-block arithmetic, then
+ *      binary-search within that narrow window. This avoids probing
+ *      genesis-era blocks on public RPCs that don't serve deep archives.
  */
 export async function findBlockAtOrAfterTimestamp(
   client: PublicClient,
   targetUnixSec: number,
   hintBlock?: bigint,
 ): Promise<bigint> {
-  let lo = 0n;
-  let hi = hintBlock ?? (await client.getBlockNumber());
+  const blockscout = await findBlockViaBlockscout(targetUnixSec);
+  if (blockscout !== null) return blockscout;
 
-  const latestBlock = await client.getBlock({ blockNumber: hi });
-  if (Number(latestBlock.timestamp) < targetUnixSec) return hi;
+  const latestBlockNum = hintBlock ?? (await client.getBlockNumber());
+  const latestBlock = await client.getBlock({ blockNumber: latestBlockNum });
+  const latestTs = Number(latestBlock.timestamp);
+
+  if (latestTs < targetUnixSec) return latestBlockNum;
+
+  // Arithmetic estimate: latest - (latestTs - target)/2s. Widen by ±1 day
+  // (43_200 blocks) to absorb block-time jitter, then binary-search that window.
+  const secondsBack = latestTs - targetUnixSec;
+  const approxBack = BigInt(Math.ceil(secondsBack / BASE_AVG_BLOCK_SECONDS));
+  const oneDayBlocks = BigInt(Math.ceil((24 * 3600) / BASE_AVG_BLOCK_SECONDS));
+
+  let lo = approxBack > latestBlockNum ? 0n : latestBlockNum - approxBack;
+  lo = lo > oneDayBlocks ? lo - oneDayBlocks : 0n;
+  let hi = latestBlockNum - approxBack + oneDayBlocks;
+  if (hi > latestBlockNum) hi = latestBlockNum;
 
   while (lo < hi) {
     const mid = (lo + hi) / 2n;
