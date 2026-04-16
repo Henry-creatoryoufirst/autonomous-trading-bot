@@ -15,7 +15,7 @@ export const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "TRX"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
@@ -235,6 +235,12 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x6985884C4392D348587B19cb9eAAf157F13271cd",
     symbol: "ZRO", name: "LayerZero", coingeckoId: "layerzero",
     sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  // === BLUE CHIP (cross-chain L1 bridged, via LayerZero) ===
+  TRX: {
+    address: "0x989cfdc3508500d0c91f22896a0d2ee1ef675870",
+    symbol: "TRX", name: "Tron", coingeckoId: "tron",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 6,
   },
   // === AI & AGENT TOKENS (expanded) ===
   VVV: {
