@@ -618,14 +618,22 @@ export function handleAutoHarvest(
   nextPayoutDate.setUTCHours(8, 0, 0, 0);
   if (nextPayoutDate.getTime() <= Date.now()) nextPayoutDate.setUTCDate(nextPayoutDate.getUTCDate() + 1);
 
+  // v21.12: Fix double-count bug. Every daily-payout increments BOTH
+  // `totalAutoHarvestedUSD` (legacy counter) and `totalDailyPayoutsUSD` (new
+  // counter) — the only code path updating totalAutoHarvestedUSD is the daily
+  // payout itself (agent-v3.2.ts:5842). Summing them was returning 2× the
+  // actual total. Match the portfolio endpoint's convention and use only the
+  // legacy counter, which covers both historical and current payouts.
+  // Same issue applies to transferCount and recipients[].totalTransferred.
+
   ctx.sendJSON(res, 200, {
     enabled: ctx.CONFIG.autoHarvest.enabled,
     mode: 'daily',
     thresholdUSD: ctx.CONFIG.autoHarvest.thresholdUSD,
     cooldownHours: ctx.CONFIG.autoHarvest.cooldownHours,
     minETHReserve: ctx.CONFIG.autoHarvest.minETHReserve,
-    totalTransferredUSD: ctx.state.totalAutoHarvestedUSD + (ctx.state.totalDailyPayoutsUSD || 0),
-    transferCount: (ctx.state.autoHarvestCount || 0) + (ctx.state.dailyPayoutCount || 0),
+    totalTransferredUSD: ctx.state.totalAutoHarvestedUSD,
+    transferCount: ctx.state.autoHarvestCount || 0,
     totalTransfers: (ctx.state.autoHarvestTransfers || []).length,
     recentTransfers: (ctx.state.autoHarvestTransfers || []).slice(-5),
     lastHarvestTime: (ctx.state.lastAutoHarvestTime || null),
@@ -633,7 +641,7 @@ export function handleAutoHarvest(
       label: r.label,
       wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
       percent: r.percent,
-      totalTransferred: (ctx.state.autoHarvestByRecipient[r.label] || 0) + (ctx.state.dailyPayoutByRecipient[r.label] || 0),
+      totalTransferred: ctx.state.autoHarvestByRecipient[r.label] || 0,
     })),
     reinvestPercent: 100 - (ctx.CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
     dailyPayout: {
