@@ -173,15 +173,70 @@ export class CircuitBreaker {
   /**
    * Update the daily and weekly baselines used for drawdown checks.
    * Daily baseline resets at UTC midnight; weekly resets on Monday UTC.
+   *
+   * v21.13: Added sanity validation + self-healing for stuck baselines.
+   *
+   * The old logic captured whatever portfolioValue was passed in whenever the
+   * date rolled over. If that cycle happened during a temporary on-chain
+   * pricing glitch (e.g. one token failed to price), the baseline would
+   * commit an artificially low value and stay stuck for the entire day.
+   *
+   * The new logic:
+   *  1. On date rollover, defer the capture if the new value is wildly lower
+   *     than the previous baseline — we'd rather carry yesterday's baseline
+   *     for another cycle than commit a bad value.
+   *  2. Within the same day, if the stored baseline looks stuck (current
+   *     portfolio is massively higher), rewrite it with today's median-ish
+   *     value. This self-heals the case where a bad capture already committed
+   *     before this fix shipped.
    */
   updateBaselines(portfolioValue: number): void {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const bs = this.state.getBreakerState();
 
+    // ── Sanity thresholds ──────────────────────────────────────────────────
+    // A "suspicious drop" is >35% below the previous baseline in one day.
+    // Real crashes happen, but 35% in a day is extreme enough that we'd
+    // rather spend one cycle deferring and recapture once we're confident.
+    const DAILY_DROP_SANITY = 0.35;
+    // A "suspicious stuck baseline" is when today's portfolio is >25%
+    // above the stored baseline — that's the same 25% sanity cap the
+    // dashboard uses to hide "Today's P&L" as "Calibrating".
+    const STUCK_BASELINE_THRESHOLD = 0.25;
+
     if (bs.dailyBaseline.date !== dateStr) {
-      this.state.setDailyBaseline(dateStr, portfolioValue);
-      this.state.setDailyBaselineValidated(true);
+      // Date rollover — decide whether to capture or defer.
+      const previousValue = bs.dailyBaseline.value;
+      const dropFromPrevious = previousValue > 0
+        ? (previousValue - portfolioValue) / previousValue
+        : 0;
+
+      if (previousValue > 0 && dropFromPrevious > DAILY_DROP_SANITY) {
+        // Suspicious. Defer capture — keep yesterday's date so we retry
+        // next cycle. Mark not-validated so the dashboard shows "Calibrating".
+        console.log(
+          `[CircuitBreaker] ⚠️ Deferring baseline capture for ${dateStr}: ` +
+          `portfolio $${portfolioValue.toFixed(2)} is ${(dropFromPrevious * 100).toFixed(1)}% ` +
+          `below previous baseline $${previousValue.toFixed(2)} — likely pricing glitch`,
+        );
+        this.state.setDailyBaselineValidated(false);
+      } else {
+        this.state.setDailyBaseline(dateStr, portfolioValue);
+        this.state.setDailyBaselineValidated(true);
+      }
+    } else if (bs.dailyBaseline.value > 0) {
+      // Same day — check for stuck-baseline self-heal.
+      const stuckDelta = (portfolioValue - bs.dailyBaseline.value) / bs.dailyBaseline.value;
+      if (stuckDelta > STUCK_BASELINE_THRESHOLD) {
+        console.log(
+          `[CircuitBreaker] 🔧 Baseline self-heal: stored $${bs.dailyBaseline.value.toFixed(2)} ` +
+          `is ${(stuckDelta * 100).toFixed(1)}% below current $${portfolioValue.toFixed(2)} — ` +
+          `overwriting with current (prior capture was likely a bad read).`,
+        );
+        this.state.setDailyBaseline(dateStr, portfolioValue);
+        this.state.setDailyBaselineValidated(true);
+      }
     }
 
     // Weekly (Monday = start of week in UTC)
