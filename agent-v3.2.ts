@@ -143,6 +143,9 @@ const NVR_SUBSCRIBE_ENABLED = !!NVR_SUBSCRIBE_URL && process.env.NVR_SUBSCRIBE =
 const NVR_SUBSCRIBE_MODE = (process.env.NVR_SUBSCRIBE_MODE || 'log').toLowerCase(); // 'log' | 'execute'
 const NVR_POLL_INTERVAL_MS = parseInt(process.env.NVR_POLL_INTERVAL_MS || '60000');  // 60s default
 const NVR_DECISION_STALE_MS = 5 * 60 * 1000;                  // skip decisions older than 5min
+const NVR_MAX_TRADE_USD = parseFloat(process.env.NVR_MAX_TRADE_USD || '50');  // per-mirror trade cap (safety)
+const NVR_MARKET_DATA_MAX_AGE_MS = 10 * 60 * 1000;            // refuse to execute if marketData stale > 10min
+const NVR_COOLDOWN_MS = 60 * 1000;                            // per-token cooldown to prevent echo storms
 
 async function publishNvrDecision(payload: {
   cycle: number;
@@ -183,6 +186,11 @@ async function publishNvrDecision(payload: {
 
 let nvrLastSeenTs = 0;
 let nvrSubscribeFailures = 0;
+// Cache of latest computed marketData — set by runTradingCycle, used by NVR subscriber for execution
+let lastMarketData: any = null;
+let lastMarketDataAt = 0;
+// Per-token cooldown to prevent echo storms (e.g. publisher and subscriber bouncing same token)
+const nvrMirrorCooldown = new Map<string, number>();
 
 async function pollNvrSubscriber(): Promise<void> {
   if (!NVR_SUBSCRIBE_ENABLED) return;
@@ -210,20 +218,93 @@ async function pollNvrSubscriber(): Promise<void> {
       if (Date.now() - decision.ts > NVR_DECISION_STALE_MS) continue;        // skip stale
       if (portfolioValue <= 0) continue;                                     // not initialized yet
 
-      const scaledUSD = (decision.sizePct / 100) * portfolioValue;
+      let scaledUSD = (decision.sizePct / 100) * portfolioValue;
       const focusToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+      const isExecute = NVR_SUBSCRIBE_MODE === 'execute';
+
+      // Apply per-trade safety cap
+      const cappedUSD = Math.min(scaledUSD, NVR_MAX_TRADE_USD);
+      const wasCapped = cappedUSD < scaledUSD;
+      scaledUSD = cappedUSD;
 
       console.log(
-        `[NVR Subscribe] ${NVR_SUBSCRIBE_MODE === 'execute' ? 'EXECUTE-PENDING' : 'LOG-ONLY'}: ` +
+        `[NVR Subscribe] ${isExecute ? 'EXECUTE' : 'LOG-ONLY'}: ` +
         `${decision.action} $${scaledUSD.toFixed(2)} ${focusToken} ` +
-        `(${decision.sizePct.toFixed(2)}% of $${portfolioValue.toFixed(0)}) ` +
+        `(${decision.sizePct.toFixed(2)}% of $${portfolioValue.toFixed(0)}${wasCapped ? `, capped from $${((decision.sizePct / 100) * portfolioValue).toFixed(2)}` : ''}) ` +
         `from ${decision.publishedBy} cycle ${decision.cycle} | ${decision.reasoning?.slice(0, 70)}`
       );
 
-      if (NVR_SUBSCRIBE_MODE === 'execute') {
-        // Phase 3b — execution wiring intentionally deferred until feed quality is verified.
-        // Once enabled, this will build a TradeDecision and call executeTrade() with local safety gates.
-        console.warn('[NVR Subscribe] EXECUTE mode requested — Phase 3b not yet wired, decision logged only');
+      if (!isExecute) continue;
+
+      // === Phase 3b execution path with safety gates ===
+
+      // Gate 1: minimum trade size
+      if (scaledUSD < (CONFIG?.trading?.minPositionUSD ?? 5)) {
+        console.log(`  ↳ [NVR] Skip: $${scaledUSD.toFixed(2)} below min position size`);
+        continue;
+      }
+
+      // Gate 2: marketData freshness (need it for executeTrade)
+      const dataAgeMs = Date.now() - lastMarketDataAt;
+      if (!lastMarketData || dataAgeMs > NVR_MARKET_DATA_MAX_AGE_MS) {
+        console.log(`  ↳ [NVR] Skip: marketData stale (${(dataAgeMs / 1000).toFixed(0)}s old) — will retry next poll`);
+        continue;
+      }
+
+      // Gate 3: per-token cooldown (prevent echo storms)
+      const cooldownToken = focusToken;
+      const lastMirroredAt = nvrMirrorCooldown.get(cooldownToken) ?? 0;
+      if (Date.now() - lastMirroredAt < NVR_COOLDOWN_MS) {
+        console.log(`  ↳ [NVR] Skip: ${cooldownToken} in cooldown (${((Date.now() - lastMirroredAt) / 1000).toFixed(0)}s ago)`);
+        continue;
+      }
+
+      // Gate 4: SELL must have a position to sell
+      if (decision.action === 'SELL') {
+        const cb = (state as any)?.costBasis?.[decision.fromToken];
+        if (!cb || (cb.currentHolding ?? 0) <= 0) {
+          console.log(`  ↳ [NVR] Skip SELL: no holdings of ${decision.fromToken} to mirror`);
+          continue;
+        }
+      }
+
+      // Gate 5: circuit breaker
+      try {
+        const breaker: any = typeof circuitBreaker !== 'undefined' ? circuitBreaker : null;
+        if (breaker && typeof breaker.isOpen === 'function' && breaker.isOpen()) {
+          console.log(`  ↳ [NVR] Skip: circuit breaker is OPEN`);
+          continue;
+        }
+      } catch { /* breaker check optional */ }
+
+      // Build local TradeDecision
+      const localDecision: any = {
+        action: decision.action,
+        fromToken: decision.fromToken,
+        toToken: decision.toToken,
+        amountUSD: scaledUSD,
+        reasoning: `[NVR-MIRROR] ${decision.reasoning?.slice(0, 200) || 'mirror trade'}`,
+        sector: decision.sector,
+        signalContext: {
+          ...(decision.signalContext || {}),
+          triggeredBy: 'NVR_SUBSCRIBE',
+          nvrSourceCycle: decision.cycle,
+          nvrSourcePublisher: decision.publishedBy,
+          nvrSourceTxHash: decision.txHash,
+        },
+      };
+
+      // Execute (don't await long-running execution from inside loop — fire-and-forget per token)
+      try {
+        nvrMirrorCooldown.set(cooldownToken, Date.now()); // reserve cooldown BEFORE execution
+        const result = await executeTrade(localDecision, lastMarketData);
+        if (result.success) {
+          console.log(`  ↳ [NVR] EXECUTED: ${decision.action} $${scaledUSD.toFixed(2)} ${focusToken} | tx ${result.txHash?.slice(0, 10)}...`);
+        } else {
+          console.warn(`  ↳ [NVR] FAILED: ${result.error?.slice(0, 100)}`);
+        }
+      } catch (e) {
+        console.warn(`  ↳ [NVR] Exception during executeTrade: ${(e as Error)?.message?.slice(0, 100)}`);
       }
     }
 
@@ -6352,6 +6433,9 @@ async function runTradingCycle() {
     // Pull results back into local vars used by the remaining inline sections
     let balances      = cycleCtx.balances as Awaited<ReturnType<typeof getBalances>>;
     marketData        = cycleCtx.marketData!;
+    // NVR Phase 3b: cache marketData so the subscriber loop can execute mirror trades with fresh context
+    lastMarketData = marketData;
+    lastMarketDataAt = Date.now();
     // v6.0: Update light/heavy cycle state (mirrors L6080–6082)
     lastHeavyCycleAt   = Date.now();
 
