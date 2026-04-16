@@ -168,8 +168,11 @@ export async function resolveTokenMetadata(
       batch.map(async (addr) => {
         const address = getAddress(addr);
         const [symbolResult, decimalsResult] = await Promise.allSettled([
-          client.readContract({ address, abi: erc20Abi, functionName: 'symbol' }),
-          client.readContract({ address, abi: erc20Abi, functionName: 'decimals' }),
+          // viem's readContract has a strict parameter type that trips tsc here
+          // due to generic narrowing. Cast is safe: return values are guarded
+          // by typeof checks immediately after.
+          (client as any).readContract({ address, abi: erc20Abi, functionName: 'symbol' }),
+          (client as any).readContract({ address, abi: erc20Abi, functionName: 'decimals' }),
         ]);
         const symbol =
           symbolResult.status === 'fulfilled' && typeof symbolResult.value === 'string'
