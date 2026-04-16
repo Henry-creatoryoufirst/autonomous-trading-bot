@@ -218,19 +218,30 @@ async function pollNvrSubscriber(): Promise<void> {
       if (Date.now() - decision.ts > NVR_DECISION_STALE_MS) continue;        // skip stale
       if (portfolioValue <= 0) continue;                                     // not initialized yet
 
-      let scaledUSD = (decision.sizePct / 100) * portfolioValue;
+      const rawScaledUSD = (decision.sizePct / 100) * portfolioValue;
+      const minPosition = CONFIG?.trading?.minPositionUSD ?? 5;
       const focusToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
       const isExecute = NVR_SUBSCRIBE_MODE === 'execute';
 
-      // Apply per-trade safety cap
-      const cappedUSD = Math.min(scaledUSD, NVR_MAX_TRADE_USD);
-      const wasCapped = cappedUSD < scaledUSD;
-      scaledUSD = cappedUSD;
+      // Size resolution for small subscribers:
+      // 1. If raw scaled is below bot's minPositionUSD → bump up to minPosition (so we still participate)
+      // 2. Cap at NVR_MAX_TRADE_USD (safety ceiling)
+      // 3. If NVR_MAX_TRADE_USD < minPosition (misconfigured), Gate 1 will catch it
+      let scaledUSD = rawScaledUSD;
+      let sizeNote = '';
+      if (scaledUSD < minPosition) {
+        scaledUSD = minPosition;
+        sizeNote = `, bumped from $${rawScaledUSD.toFixed(2)} to min $${minPosition}`;
+      }
+      if (scaledUSD > NVR_MAX_TRADE_USD) {
+        scaledUSD = NVR_MAX_TRADE_USD;
+        sizeNote = `, capped from $${rawScaledUSD.toFixed(2)} to NVR_MAX_TRADE_USD $${NVR_MAX_TRADE_USD}`;
+      }
 
       console.log(
         `[NVR Subscribe] ${isExecute ? 'EXECUTE' : 'LOG-ONLY'}: ` +
         `${decision.action} $${scaledUSD.toFixed(2)} ${focusToken} ` +
-        `(${decision.sizePct.toFixed(2)}% of $${portfolioValue.toFixed(0)}${wasCapped ? `, capped from $${((decision.sizePct / 100) * portfolioValue).toFixed(2)}` : ''}) ` +
+        `(${decision.sizePct.toFixed(2)}% of $${portfolioValue.toFixed(0)}${sizeNote}) ` +
         `from ${decision.publishedBy} cycle ${decision.cycle} | ${decision.reasoning?.slice(0, 70)}`
       );
 
@@ -238,9 +249,9 @@ async function pollNvrSubscriber(): Promise<void> {
 
       // === Phase 3b execution path with safety gates ===
 
-      // Gate 1: minimum trade size
-      if (scaledUSD < (CONFIG?.trading?.minPositionUSD ?? 5)) {
-        console.log(`  ↳ [NVR] Skip: $${scaledUSD.toFixed(2)} below min position size`);
+      // Gate 1: misconfigured cap (NVR_MAX_TRADE_USD < bot's minPositionUSD makes execution impossible)
+      if (scaledUSD < minPosition) {
+        console.warn(`  ↳ [NVR] Skip: NVR_MAX_TRADE_USD ($${NVR_MAX_TRADE_USD}) is below bot minPositionUSD ($${minPosition}) — fix env config`);
         continue;
       }
 
