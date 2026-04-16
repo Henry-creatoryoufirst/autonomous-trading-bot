@@ -147,6 +147,16 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VADER", name: "VaderAI by Virtuals", coingeckoId: "vaderai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  BNKR: {
+    address: "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b",
+    symbol: "BNKR", name: "BankrCoin", coingeckoId: "bankercoin-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  MOLT: {
+    address: "0xb695559b26bb2c9703ef1935c37aeae9526bab07",
+    symbol: "MOLT", name: "Moltbook", coingeckoId: "moltbook",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
