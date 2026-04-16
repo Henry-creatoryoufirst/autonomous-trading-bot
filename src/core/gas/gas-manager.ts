@@ -8,14 +8,18 @@
 
 import { parseUnits } from 'viem';
 import {
-  GAS_REFUEL_THRESHOLD_ETH,
-  GAS_REFUEL_AMOUNT_USDC,
-  GAS_REFUEL_MIN_USDC,
-  GAS_REFUEL_COOLDOWN_MS,
-  GAS_BOOTSTRAP_MIN_ETH_USD,
-  GAS_BOOTSTRAP_SWAP_USD,
-  GAS_BOOTSTRAP_MIN_USDC,
+  GAS_MIN_ETH_FOR_TRADE,
+  GAS_INLINE_TOP_UP_USDC,
 } from '../config/constants.js';
+
+// Gas manager constants (values mirror the v21.11 inline gas system in agent-v3.2.ts)
+const GAS_REFUEL_THRESHOLD_ETH  = GAS_MIN_ETH_FOR_TRADE;         // 0.003 ETH
+const GAS_REFUEL_AMOUNT_USDC    = GAS_INLINE_TOP_UP_USDC;         // $3.00
+const GAS_REFUEL_MIN_USDC       = GAS_INLINE_TOP_UP_USDC + 2;    // $5.00 minimum USDC to trigger refuel
+const GAS_REFUEL_COOLDOWN_MS    = 60 * 60 * 1000;                 // 1 hour between refuels
+const GAS_BOOTSTRAP_MIN_ETH_USD = 5.00;                           // skip bootstrap if ETH already worth $5+
+const GAS_BOOTSTRAP_SWAP_USD    = GAS_INLINE_TOP_UP_USDC;         // $3.00 USDC→ETH during bootstrap
+const GAS_BOOTSTRAP_MIN_USDC    = GAS_INLINE_TOP_UP_USDC + 7;   // $10.00 minimum USDC to bootstrap
 
 // ============================================================================
 // MODULE STATE

@@ -135,6 +135,32 @@ import { runPreFlightChecks } from "./src/core/services/startup-checks.js";
 import { telegramService } from "./src/core/services/telegram.js";
 import { SelfHealingIntelligence } from "./src/core/services/self-healing/index.js";
 import type { BotInterface } from "./src/core/services/self-healing/types.js";
+import { StateManager, createStateManager } from "./src/core/state/state-manager.js";
+import { CircuitBreaker, PreservationMode } from "./src/core/risk/index.js";
+import type { BreakerConfig, PreservationConfig } from "./src/core/types/risk.js";
+// Phase 5a: light cycle extracted into standalone function
+import { runLightCycle } from "./src/core/cycle/index.js";
+// Phase 5b: setup stage extracted
+import { setupStage } from "./src/core/cycle/stages/setup.js";
+import type { SetupDeps } from "./src/core/cycle/stages/setup.js";
+// Phase 5c: intelligence stage extracted
+import { intelligenceStage } from "./src/core/cycle/stages/intelligence.js";
+import type { IntelligenceDeps } from "./src/core/cycle/stages/intelligence.js";
+// Phase 5d: metrics stage extracted
+import { metricsStage } from "./src/core/cycle/stages/metrics.js";
+import type { MetricsDeps } from "./src/core/cycle/stages/metrics.js";
+// Phase 5f: filters stage extracted
+import { filtersStage } from "./src/core/cycle/stages/filters.js";
+import type { FiltersStageDeps } from "./src/core/cycle/stages/filters.js";
+import { executionStage } from "./src/core/cycle/stages/execution.js";
+import type { ExecutionDeps } from "./src/core/cycle/stages/execution.js";
+// Phase deployment-ctx: sector allocations + cash deployment check
+import { deploymentCtxStage } from "./src/core/cycle/stages/deployment-ctx.js";
+import type { DeploymentCtxDeps } from "./src/core/cycle/stages/deployment-ctx.js";
+// Phase 5h: real decision stage — AI call + central signals routing
+import { decisionStage } from "./src/core/cycle/stages/decision.js";
+import type { DecisionDeps } from "./src/core/cycle/stages/decision.js";
+import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
 import { cacheManager, CacheKeys } from "./src/core/services/cache-manager.js";
@@ -616,6 +642,7 @@ const ALPHA_KELLY_MULTIPLIER = 0.5;     // Half-Kelly for alpha trades (more con
 
 // Capital Liberation — sell weakest positions to fund high-conviction entries
 const MIN_USDC_RESERVE_FOR_LIBERATION = 50;  // Below this, liberation triggers
+const CRITICAL_USDC_FLOOR = 20;              // v21.12: Below this, liberation fires WITHOUT conviction gate (prevents $3 micro-buy loop)
 const MAX_LIBERATION_SELLS = 3;              // Never sell more than 3 positions per event
 
 // CONFIGURATION V3.2
@@ -877,21 +904,34 @@ const capitalPreservationMode: {
  * v19.3.1: On first call (startup), if F&G is in extreme fear, pre-fill the ring buffer
  * so preservation mode activates immediately instead of waiting 6 hours after every restart.
  */
+/**
+ * Phase 3: delegates to PreservationMode.update().
+ * v20.8: forceDisabled=true in config — mode stays DISABLED regardless of F&G.
+ *
+ * The legacy `capitalPreservationMode` module-level variable is kept in sync
+ * for backward compat with the ~11 sites still reading `.isActive`, `.fearReadings`,
+ * `.tradesBlocked`, `.tradesPassed`. P5 (cycle extraction) migrates those call
+ * sites to consume `preservationMode.getMode()` directly.
+ */
 function updateCapitalPreservationMode(fgValue: number): void {
-  // v20.8: F&G demoted to info-only. Preservation mode is DISABLED.
-  // The bot follows price physics (momentum, volume, capital flows), not sentiment surveys.
-  // F&G is still tracked for logging/dashboard display.
+  preservationMode.update(fgValue, lastMarketRegime);
+
+  // Mirror state into the legacy variable for call-site compat
   capitalPreservationMode.fearReadings.push(fgValue);
   if (capitalPreservationMode.fearReadings.length > PRESERVATION_RING_BUFFER_SIZE) {
     capitalPreservationMode.fearReadings.shift();
   }
   capitalPreservationMode.lastUpdated = Date.now();
+  const snapshot = preservationMode.getMode();
+  const wasActive = capitalPreservationMode.isActive;
+  capitalPreservationMode.isActive = snapshot.label === 'ACTIVE';
+  // Legacy variable uses epoch-ms; snapshot uses ISO string → convert
+  capitalPreservationMode.activatedAt = snapshot.activatedAt
+    ? new Date(snapshot.activatedAt).getTime()
+    : null;
 
-  // Force deactivation if somehow still active from before this update
-  if (capitalPreservationMode.isActive) {
-    console.log(`\n🟢 PRESERVATION MODE DISABLED (v20.8) — F&G=${fgValue} logged as info-only`);
-    capitalPreservationMode.isActive = false;
-    capitalPreservationMode.activatedAt = null;
+  if (wasActive && !capitalPreservationMode.isActive) {
+    console.log(`\n🟢 PRESERVATION MODE DISABLED — F&G=${fgValue} logged as info-only`);
   }
 }
 
@@ -2531,93 +2571,239 @@ const BREAKER_ROLLING_LOSS_THRESHOLD = 5;  // 5+ losses in 8 trades = trigger br
 let breakerState: BreakerState = { ...DEFAULT_BREAKER_STATE };
 
 // ============================================================================
+// STATE MANAGER — Phase 2 of refactor
+// Wraps `state` and `breakerState` BY REFERENCE (zero clone). Direct accesses
+// like `state.foo` and stateManager-mediated reads return the SAME object, so
+// both views stay consistent during the incremental migration. The unit test
+// at src/core/state/__tests__/state-manager.test.ts asserts this invariant.
+// ============================================================================
+const stateManager: StateManager = createStateManager(state, breakerState);
+
+// ============================================================================
+// RISK MODULES — Phase 3 of refactor
+// CircuitBreaker centralizes the 70 scattered breakerState.* mutations.
+// PreservationMode centralizes the Fear & Greed state machine (v20.8:
+// force-disabled by default — "price physics, not sentiment surveys").
+// Both consume StateManager so all mutations flow through the same
+// reference as direct `state.foo` / `breakerState.foo` accesses.
+// ============================================================================
+const _breakerConfig: BreakerConfig = {
+  consecutiveLossLimit:       BREAKER_CONSECUTIVE_LOSSES,
+  rollingWindowSize:          BREAKER_ROLLING_WINDOW_SIZE,
+  rollingLossThreshold:       BREAKER_ROLLING_LOSS_THRESHOLD,
+  pauseHours:                 BREAKER_PAUSE_HOURS,
+  sizeReductionPercent:       BREAKER_SIZE_REDUCTION,
+  sizeReductionHours:         BREAKER_SIZE_REDUCTION_HOURS,
+  dailyDrawdownPercent:       BREAKER_DAILY_DD_PCT,
+  weeklyDrawdownPercent:      BREAKER_WEEKLY_DD_PCT,
+  capitalFloorUSD:            CAPITAL_FLOOR_ABSOLUTE_USD,
+  capitalFloorPercentOfPeak:  0.6,
+  emergencyExitLossPercent:   -(BREAKER_SINGLE_TRADE_LOSS_PCT / 100),
+  emergencyExitFailureCount:  10,
+};
+const _preservationConfig: PreservationConfig = {
+  activationFearGreed:        PRESERVATION_FG_ACTIVATE,
+  deactivationFearGreed:      PRESERVATION_FG_DEACTIVATE,
+  ringBufferSize:             PRESERVATION_RING_BUFFER_SIZE,
+  minSustainedReadings:       PRESERVATION_RING_BUFFER_SIZE, // Full buffer = sustained
+  sizeMultiplier:             PRESERVATION_SIZE_MULTIPLIER,
+  minConfluence:              PRESERVATION_MIN_CONFLUENCE,
+  minSwarmConsensus:          PRESERVATION_MIN_SWARM_CONSENSUS,
+  cycleIntervalMultiplier:    PRESERVATION_CYCLE_MULTIPLIER,
+  targetCashPercent:          PRESERVATION_TARGET_CASH_PCT,
+  forceDisabled:              true, // v20.8: disabled by default, SHI can re-enable
+};
+const circuitBreaker = new CircuitBreaker({ stateManager, config: _breakerConfig });
+const preservationMode = new PreservationMode({ stateManager, config: _preservationConfig });
+
+// ============================================================================
 // BOT INTERFACE — clean bridge between Self-Healing Intelligence and bot internals
-// All healing actions go through this surface — no direct state mutation from SHI.
+// Phase 2: delegates reads to stateManager; healing writes still touch shared
+// module-level overrides (shiSizeMultiplier / shiConfluenceDelta / lastKnownPrices)
+// until P3 (Risk) and P4 (Portfolio) consume them via StateManager too.
 // ============================================================================
 const botInterface: BotInterface = {
-  getCycleNumber:   () => state.totalCycles,
-  getPortfolioValue: () => state.trading.totalPortfolioValue,
+  getCycleNumber:     () => stateManager.getCycleNumber(),
+  getPortfolioValue:  () => stateManager.getPortfolioValue(),
+  getTradeHistory:    (limit) => stateManager.getRecentTrades(limit),
+  getErrorLog:        (limit) => stateManager.getRecentErrors(limit),
+  getMarketRegime:    () => lastMarketRegime || stateManager.getMarketRegime(),
+  getActivePositions: () => stateManager.getActivePositions(),
+  getCircuitBreakerState: () => stateManager.getCircuitBreakerInfo(BREAKER_PAUSE_HOURS),
 
-  getTradeHistory: (limit) => state.tradeHistory.slice(-limit).map(t => ({
-    token:     (t as any).toToken || (t as any).fromToken || 'UNKNOWN',
-    action:    t.action,
-    success:   t.success,
-    pnlUSD:    (t as any).realizedPnlUSD,
-    timestamp: t.timestamp,
-  })),
-
-  getErrorLog: (limit) => ((state as any).errorLog || []).slice(-limit).map((e: any) => ({
-    type:      e.type,
-    message:   e.message,
-    timestamp: e.timestamp,
-  })),
-
-  getMarketRegime: () => lastMarketRegime,
-
-  getActivePositions: () => state.trading.balances
-    .filter(b => b.symbol !== 'USDC' && (b.usdValue || 0) > 1)
-    .map(b => {
-      const cb = state.costBasis[b.symbol];
-      const unrealizedPct = (cb?.averageCostBasis && b.price && cb.averageCostBasis > 0)
-        ? ((b.price - cb.averageCostBasis) / cb.averageCostBasis) * 100
-        : 0;
-      return { symbol: b.symbol, usdValue: b.usdValue || 0, unrealizedPct };
-    }),
-
-  getCircuitBreakerState: () => {
-    const triggered = breakerState.lastBreakerTriggered;
-    const active = !!triggered &&
-      Date.now() < new Date(triggered).getTime() + BREAKER_PAUSE_HOURS * 3600000;
-    return { active, reason: breakerState.lastBreakerReason, triggeredAt: triggered };
-  },
-
-  // Healing actions — all safe, no trade execution
+  // ---- Healing actions ----
   addTokenCooldown: (symbol, durationMs) => {
     cooldownManager.setRawCooldown(symbol, durationMs);
   },
 
   invalidatePriceCache: (symbol?) => {
-    if (symbol) {
-      delete lastKnownPrices[symbol];
-    }
+    if (symbol) delete lastKnownPrices[symbol];
     // If no symbol, clearing everything would starve the bot — only clear per-token
   },
 
   setPositionSizeMultiplier: (multiplier) => {
     shiSizeMultiplier = Math.max(0.25, Math.min(1.0, multiplier)); // clamp 25–100%
-    markStateDirty(true);
+    stateManager.markDirty(true);
     console.log(`[SHI] Position size multiplier set to ${(shiSizeMultiplier * 100).toFixed(0)}%`);
   },
 
   setConfluenceThresholdOverride: (delta) => {
     shiConfluenceDelta = Math.max(0, Math.min(40, delta)); // clamp 0–40pts
-    markStateDirty(true);
+    stateManager.markDirty(true);
     console.log(`[SHI] Confluence threshold raised by +${shiConfluenceDelta} points`);
   },
 
   resetCircuitBreaker: () => {
-    breakerState.lastBreakerTriggered = null;
-    breakerState.lastBreakerReason    = null;
-    breakerState.breakerSizeReductionUntil = null;
-    breakerState.consecutiveLosses    = 0;
-    breakerState.rollingTradeResults  = [];
-    markStateDirty(true);
+    stateManager.resetBreaker();
     console.log('[SHI] Circuit breaker cleared by Self-Healing Intelligence');
   },
 
   extendCircuitBreaker: (additionalHours) => {
-    if (breakerState.lastBreakerTriggered) {
-      const currentPauseEnd = new Date(breakerState.lastBreakerTriggered).getTime()
-        + BREAKER_PAUSE_HOURS * 3600000;
-      breakerState.breakerSizeReductionUntil =
-        new Date(currentPauseEnd + additionalHours * 3600000).toISOString();
-      markStateDirty(true);
+    const extended = stateManager.extendBreakerPause(additionalHours, BREAKER_PAUSE_HOURS);
+    if (extended) {
       console.log(`[SHI] Circuit breaker extended by ${additionalHours}h`);
     }
   },
 
-  markStateDirty: () => markStateDirty(true),
+  markStateDirty: () => stateManager.markDirty(true),
 };
+
+// ============================================================================
+// Phase 5b: buildCycleServices — adapts module-level singletons to CycleServices
+// interface so CycleContext can be constructed for extracted stages.
+// Phase 6 (multi-tenant) replaces this with per-bot factory instances.
+// ============================================================================
+function buildCycleServices(): CycleServices {
+  return {
+    stateManager,
+    telegram: {
+      sendAlert:                 (a)       => telegramService.sendAlert(a),
+      onCircuitBreakerTriggered: (r, v)    => telegramService.onCircuitBreakerTriggered(r, v),
+      onTradeResult:             (ok, d)   => telegramService.onTradeResult(ok, d),
+    },
+    cache: {
+      invalidate: (key) => { cacheManager.invalidate(key); },
+      getStats:   ()    => {
+        const s = cacheManager.getStats();
+        return { hits: s.totalHits, misses: s.totalMisses, hitRate: parseFloat(s.hitRate) };
+      },
+    },
+    cooldown: {
+      getActiveCount:  ()          => cooldownManager.getActiveCount(),
+      setRawCooldown:  (sym, dur)  => cooldownManager.setRawCooldown(sym, dur),
+    },
+    ...(shi ? { shi: { processIncident: (t, c) => shi!.processIncident(t, c) } } : {}),
+  };
+}
+
+// ============================================================================
+// Phase 5c: buildIntelligenceDeps — boxes module-level vars + singletons
+// into the IntelligenceDeps interface for intelligenceStage.
+// ============================================================================
+function buildIntelligenceDeps(): IntelligenceDeps {
+  return {
+    // ── Macro regime ────────────────────────────────────────────────────────
+    fetchSignalIntel,
+    getCachedPriceHistory,
+    computeMacroRegime,
+    updateCapitalPreservationMode,
+
+    // ── Module-level state boxes ─────────────────────────────────────────────
+    macroState: {
+      getLastFearGreedValue:    () => lastFearGreedValue,
+      setLastFearGreedValue:    (v) => { lastFearGreedValue = v; },
+      getConsecutiveBearChecks: () => consecutiveBearChecks,
+      setConsecutiveBearChecks: (v) => { consecutiveBearChecks = v; },
+      setCurrentMacroRegime:    (v) => { currentMacroRegime = v; },
+      getBtcDominanceBuffer:    () => btcDominanceBuffer,
+      pushBtcDominance:         (v) => {
+        btcDominanceBuffer.push(v);
+        if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344);
+      },
+    },
+    intelState: {
+      getDexIntelligence:          () => lastDexIntelligence,
+      setDexIntelligence:          (v) => { lastDexIntelligence = v; },
+      getDexIntelFetchCount:       () => dexIntelFetchCount,
+      incrementDexIntelFetchCount: () => { dexIntelFetchCount++; },
+      getDexScreenerTxnCache:      () => dexScreenerTxnCache,
+      setLastVolumeSnapshot:       (v) => { lastVolumeSnapshot = v; },
+      setLastIntelligenceData:     (v) => { lastIntelligenceData = v; },
+    },
+    flowTimeframeState,
+    recordFlowReading,
+
+    // ── DEX intelligence ─────────────────────────────────────────────────────
+    fetchDexIntelligence: () => geckoTerminalService.fetchIntelligence(),
+
+    // ── Dust consolidation ───────────────────────────────────────────────────
+    consolidateDustPositions: async (b, m) => { await consolidateDustPositions(b, m); },
+
+    // ── Self-improvement ─────────────────────────────────────────────────────
+    calculateTradePerformance: () => calculateTradePerformance() as unknown as Record<string, unknown>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    runPerformanceReview: (r) => runPerformanceReview(r) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    adaptThresholds: (review, regime) => adaptThresholds(review as any, regime),
+    analyzeStrategyPatterns,
+
+    // ── Constants ────────────────────────────────────────────────────────────
+    volumeSpikeThreshold: VOLUME_SPIKE_THRESHOLD,
+  };
+}
+
+// ============================================================================
+// Phase 5d: buildMetricsDeps — wires state + singletons into MetricsDeps
+// ============================================================================
+function buildMetricsDeps(): MetricsDeps {
+  return {
+    getState:            () => state,
+    getBreakerState:     () => breakerState,
+    calculateSectorAllocations: (balances, totalValue) =>
+      calculateSectorAllocations(balances as any, totalValue),
+    updateUnrealizedPnL:        (balances) => updateUnrealizedPnL(balances as any),
+    calculateRiskRewardMetrics: () => calculateRiskRewardMetrics(),
+  };
+}
+
+// ============================================================================
+// Phase deployment-ctx: buildDeploymentCtxDeps — boxes calculateSectorAllocations
+// + checkCashDeploymentMode into DeploymentCtxDeps
+// ============================================================================
+function buildDeploymentCtxDeps(): DeploymentCtxDeps {
+  return {
+    calculateSectorAllocations: (balances, totalValue) =>
+      calculateSectorAllocations(balances as any, totalValue),
+    checkCashDeploymentMode: (usdcBalance, totalPortfolioValue, fearGreedValue) =>
+      checkCashDeploymentMode(usdcBalance, totalPortfolioValue, fearGreedValue),
+  };
+}
+
+// ============================================================================
+// Phase 5h: buildDecisionDeps — routes AI call (makeTradeDecision) or central
+// signal fetch (fetchCentralSignals) based on the module-level signalMode.
+// Takes heavyCycleReason so makeTradeDecision can use tiered model routing.
+// ============================================================================
+function buildDecisionDeps(heavyCycleReason?: string): DecisionDeps {
+  return {
+    signalMode,
+    fetchCentralSignals,
+    makeTradeDecision,
+    getLatestSwarmDecisions,
+    maxBuySize:       CONFIG.trading.maxBuySize,
+    heavyCycleReason,
+  };
+}
+
+// ============================================================================
+// Phase 5f: buildFiltersDeps — no price history this phase, R:R passes by default
+// ============================================================================
+function buildFiltersDeps(): FiltersStageDeps {
+  return {
+    getPriceHistory:   (_symbol) => [],
+    maxTradesPerCycle: CONFIG.trading.maxTradesPerCycle ?? 5,
+  };
+}
 
 /**
  * v10.3: Effective Kelly ceiling — scales up for small portfolios.
@@ -2663,111 +2849,48 @@ function calculateInstitutionalPositionSize(portfolioValue: number) {
 /**
  * Update daily/weekly baselines if date has changed.
  */
+/**
+ * Phase 3: delegates to CircuitBreaker.updateBaselines().
+ * Monolith contract preserved: callers invoke this as a fire-and-forget
+ * side-effect function that updates daily/weekly drawdown baselines.
+ */
 function updateDrawdownBaselines(portfolioValue: number) {
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
-
-  // Daily reset
-  if (breakerState.dailyBaseline.date !== todayStr) {
-    breakerState.dailyBaseline = { date: todayStr, value: portfolioValue };
-    // v21.3: Mark baseline as validated — this function is only called from real cycles
-    // with fully-priced balances (not from startup warmup which only prices USDC).
-    breakerState.dailyBaselineValidated = true;
-  }
-  // v21.3: If baseline exists for today but wasn't validated yet, validate it now
-  // (happens when baseline was set by startup warmup, then first real cycle runs)
+  circuitBreaker.updateBaselines(portfolioValue);
+  // v21.3: Ensure baseline is validated on every call (in case a prior warmup
+  // set it without validation). CircuitBreaker handles the date-rollover path.
   if (!breakerState.dailyBaselineValidated) {
-    breakerState.dailyBaselineValidated = true;
-  }
-
-  // Weekly reset (Monday)
-  const dayOfWeek = now.getUTCDay();
-  const mondayDate = new Date(now);
-  mondayDate.setUTCDate(now.getUTCDate() - ((dayOfWeek + 6) % 7));
-  const weekStr = mondayDate.toISOString().split('T')[0];
-  if (breakerState.weeklyBaseline.weekStart !== weekStr) {
-    breakerState.weeklyBaseline = { weekStart: weekStr, value: portfolioValue };
+    stateManager.setDailyBaselineValidated(true);
   }
 }
 
 /**
  * Check all circuit breaker conditions.
  * Returns null if clear, or a reason string if breaker should fire.
+ *
+ * Phase 3: delegates to CircuitBreaker.evaluate(). Return-type contract
+ * preserved for monolith call sites (null = clear, string = pause reason
+ * or trigger reason). Note: CircuitBreaker.evaluate() now ALSO triggers
+ * the breaker internally if conditions fire — we no longer rely on the
+ * caller to invoke triggerCircuitBreaker() separately.
  */
 function checkCircuitBreaker(portfolioValue: number, lastTradeResult?: { success: boolean; pnlUSD?: number }): string | null {
-  // Update baselines
-  updateDrawdownBaselines(portfolioValue);
-
-  // Check if still in pause from previous breaker
-  if (breakerState.lastBreakerTriggered) {
-    const pauseEnd = new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000);
-    if (Date.now() < pauseEnd) {
-      const remaining = Math.ceil((pauseEnd - Date.now()) / 60000);
-      return `PAUSED: ${breakerState.lastBreakerReason} (${remaining}m remaining)`;
-    }
-    // v20.4.2: Pause expired — clear the rolling window and consecutive losses so the bot can trade again.
-    // Without this, the stale 8/8 losses would immediately re-trip the breaker.
-    console.log(`  ✅ Breaker pause expired — resetting rolling window (${breakerState.rollingTradeResults.length} entries) and consecutive losses (${breakerState.consecutiveLosses})`);
-    breakerState.lastBreakerTriggered = null;
-    breakerState.lastBreakerReason = null;
-    breakerState.consecutiveLosses = 0;
-    breakerState.rollingTradeResults = [];
+  const decision = circuitBreaker.evaluate(portfolioValue, lastTradeResult);
+  if (decision.severity === 'NONE' || decision.severity === 'CAUTION') {
+    // CAUTION means post-breaker size reduction still active but trading allowed.
+    // The monolith's legacy contract was "null = clear" — CAUTION fits that.
+    return null;
   }
-
-  // 1. Consecutive losses
-  if (breakerState.consecutiveLosses >= BREAKER_CONSECUTIVE_LOSSES) {
-    return `${breakerState.consecutiveLosses} consecutive losing trades`;
-  }
-
-  // 1b. v10.4: Rolling window — catches bad streaks with scattered wins (e.g., 20% win rate day)
-  if (breakerState.rollingTradeResults.length >= BREAKER_ROLLING_WINDOW_SIZE) {
-    const rollingLosses = breakerState.rollingTradeResults.filter(r => !r).length;
-    if (rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
-      return `${rollingLosses}/${BREAKER_ROLLING_WINDOW_SIZE} trades lost in rolling window`;
-    }
-  }
-
-  // 2. Daily drawdown
-  if (breakerState.dailyBaseline.value > 0) {
-    const dailyDD = ((breakerState.dailyBaseline.value - portfolioValue) / breakerState.dailyBaseline.value) * 100;
-    if (dailyDD >= BREAKER_DAILY_DD_PCT) {
-      return `Daily drawdown ${dailyDD.toFixed(1)}% exceeds ${BREAKER_DAILY_DD_PCT}% limit`;
-    }
-  }
-
-  // 3. Weekly drawdown
-  if (breakerState.weeklyBaseline.value > 0) {
-    const weeklyDD = ((breakerState.weeklyBaseline.value - portfolioValue) / breakerState.weeklyBaseline.value) * 100;
-    if (weeklyDD >= BREAKER_WEEKLY_DD_PCT) {
-      return `Weekly drawdown ${weeklyDD.toFixed(1)}% exceeds ${BREAKER_WEEKLY_DD_PCT}% limit`;
-    }
-  }
-
-  // 4. Single trade loss check (checked when lastTradeResult provided)
-  if (lastTradeResult?.pnlUSD && lastTradeResult.pnlUSD < 0) {
-    const lossAsPct = (Math.abs(lastTradeResult.pnlUSD) / portfolioValue) * 100;
-    if (lossAsPct >= BREAKER_SINGLE_TRADE_LOSS_PCT) {
-      return `Single trade loss $${Math.abs(lastTradeResult.pnlUSD).toFixed(2)} (${lossAsPct.toFixed(1)}%) exceeds ${BREAKER_SINGLE_TRADE_LOSS_PCT}% limit`;
-    }
-  }
-
-  return null; // All clear
+  return decision.message;
 }
 
 /**
  * Fire the circuit breaker — pause trading and activate size reduction.
+ * Phase 3: state mutations delegated to CircuitBreaker.trigger(). Telegram
+ * + SHI side effects remain here (domain-specific notifications are not
+ * CircuitBreaker's concern).
  */
 function triggerCircuitBreaker(reason: string) {
-  const now = new Date().toISOString();
-  breakerState.lastBreakerTriggered = now;
-  breakerState.lastBreakerReason = reason;
-  breakerState.breakerSizeReductionUntil = new Date(Date.now() + BREAKER_SIZE_REDUCTION_HOURS * 3600000).toISOString();
-  breakerState.rollingTradeResults = []; // v10.4: Reset rolling window so breaker doesn't re-trigger immediately after pause
-  breakerState.consecutiveLosses = 0;    // v10.4: Also reset consecutive counter
-  console.log(`\n🚨🚨 CIRCUIT BREAKER TRIGGERED 🚨🚨`);
-  console.log(`   Reason: ${reason}`);
-  console.log(`   Action: ALL trading paused for ${BREAKER_PAUSE_HOURS} hours`);
-  console.log(`   After pause: position sizes reduced 50% for ${BREAKER_SIZE_REDUCTION_HOURS}h`);
+  circuitBreaker.trigger('MANUAL_HALT', reason);
   // v19.6: Telegram alert on circuit breaker
   telegramService.onCircuitBreakerTriggered(reason, state.trading.totalPortfolioValue).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
   // Self-Healing Intelligence — diagnose root cause and apply playbook
@@ -2776,26 +2899,22 @@ function triggerCircuitBreaker(reason: string) {
 
 /**
  * Record a trade result for consecutive loss tracking.
+ * Phase 3: state mutations delegated to CircuitBreaker.recordTradeResult().
+ * Console logging + Telegram side effects remain here.
  */
 function recordTradeResultForBreaker(success: boolean, pnlUSD?: number, tradeDetails?: { token?: string; error?: string; action?: string }) {
-  const isWin = success && (pnlUSD === undefined || pnlUSD >= 0);
-  if (isWin) {
-    breakerState.consecutiveLosses = 0; // Reset on win
-  } else {
-    breakerState.consecutiveLosses++;
-    console.log(`   📉 Consecutive losses: ${breakerState.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
+  const result = circuitBreaker.recordTradeResult(success, pnlUSD);
+
+  if (!result.isWin) {
+    console.log(`   📉 Consecutive losses: ${result.consecutiveLosses}/${BREAKER_CONSECUTIVE_LOSSES}`);
   }
   // v19.6: Telegram trade failure tracking
   telegramService.onTradeResult(success, tradeDetails).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
 
-  // v10.4: Rolling window — track last N trade results regardless of outcome
-  breakerState.rollingTradeResults.push(isWin);
-  if (breakerState.rollingTradeResults.length > BREAKER_ROLLING_WINDOW_SIZE) {
-    breakerState.rollingTradeResults = breakerState.rollingTradeResults.slice(-BREAKER_ROLLING_WINDOW_SIZE);
-  }
-  const rollingLosses = breakerState.rollingTradeResults.filter(r => !r).length;
-  if (rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
-    console.log(`   📉 Rolling window: ${rollingLosses}/${breakerState.rollingTradeResults.length} losses in last ${BREAKER_ROLLING_WINDOW_SIZE} trades`);
+  // v10.4: Rolling window warning — CircuitBreaker tracks the window,
+  // we just emit the console warning when threshold is crossed
+  if (result.rollingLosses >= BREAKER_ROLLING_LOSS_THRESHOLD) {
+    console.log(`   📉 Rolling window: ${result.rollingLosses}/${breakerState.rollingTradeResults.length} losses in last ${BREAKER_ROLLING_WINDOW_SIZE} trades`);
   }
 }
 
@@ -6075,27 +6194,20 @@ async function runTradingCycle() {
   const { isHeavy, reason: heavyReason } = await shouldRunHeavyCycle(currentPrices);
 
   if (!isHeavy) {
-    // === LIGHT CYCLE ===
-    cycleStats.totalLight++;
-    adaptiveCycle.consecutiveLightCycles++;
-    const portfolioValue = state.trading.totalPortfolioValue || 0;
-    const cooldownCount = cooldownManager.getActiveCount();
-    const cacheStats = cacheManager.getStats();
-
-    // v6.2: Update adaptive interval even on light cycles
+    // === LIGHT CYCLE — Phase 5a: delegated to src/core/cycle/light-cycle.ts ===
     const lightInterval = computeNextInterval(currentPrices);
-    adaptiveCycle.currentIntervalSec = lightInterval.intervalSec;
-    adaptiveCycle.volatilityLevel = lightInterval.volatilityLevel;
-    adaptiveCycle.lastPriceCheck = new Map(currentPrices);
-
-    // v9.2: Sync costBasis.currentPrice on light cycles so dashboard stays fresh
-    for (const [symbol, price] of currentPrices) {
-      if (state.costBasis[symbol] && price > 0) {
-        (state.costBasis[symbol] as any).currentPrice = price;
-      }
-    }
-
-    console.log(`[CYCLE #${state.totalCycles}] LIGHT | Portfolio: $${portfolioValue.toFixed(2)} | Cooldowns: ${cooldownCount} | Cache: ${cacheStats.entries} entries (${cacheStats.hitRate} hit rate) | ${(Date.now() - cycleStart)}ms | ⚡ Next: ${lightInterval.intervalSec}s (${lightInterval.volatilityLevel})`);
+    runLightCycle({
+      cycleNumber:   state.totalCycles,
+      cycleStart,
+      portfolioValue: state.trading.totalPortfolioValue || 0,
+      cooldownCount:  cooldownManager.getActiveCount(),
+      cacheStats:     cacheManager.getStats(),
+      lightInterval,
+      currentPrices,
+      costBasis:     state.costBasis as Record<string, { currentPrice?: number; [key: string]: unknown }>,
+      cycleStats,
+      adaptiveCycle,
+    });
     return; // Skip full analysis
   }
 
@@ -6117,243 +6229,44 @@ async function runTradingCycle() {
 
     // v10.1.1: Fund migration removed — wallet IS the Smart Wallet at 0x55509
 
-    console.log("\n📊 Fetching balances...");
-    let balances = await getBalances();
-
-    console.log("📈 Fetching market data for all tracked tokens...");
-    marketData = await getMarketData();
+    // === Phase 5b: setup stage — balance + market data fetch ===
+    let cycleCtx: CycleContext = {
+      cycleNumber:     state.totalCycles,
+      isHeavy:         true,
+      trigger:         'SCHEDULED',
+      startedAt:       cycleStart,
+      balances:        [],
+      currentPrices:   {},
+      decisions:       [],
+      tradeResults:    [],
+      halted:          false,
+      stagesCompleted: [],
+      services:        buildCycleServices(),
+    };
+    const setupDeps: SetupDeps = { getBalances, getMarketData };
+    cycleCtx = await setupStage(cycleCtx, setupDeps);
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Setup stage halted: ${cycleCtx.haltReason}`);
+      return;
+    }
+    // Pull results back into local vars used by the remaining inline sections
+    let balances      = cycleCtx.balances as Awaited<ReturnType<typeof getBalances>>;
+    marketData        = cycleCtx.marketData!;
+    // v6.0: Update light/heavy cycle state (mirrors L6080–6082)
+    lastHeavyCycleAt   = Date.now();
 
     // v6.0: Update light/heavy cycle state
     lastHeavyCycleAt = Date.now();
     lastPriceSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.price]));
     lastFearGreedValue = marketData.fearGreed.value;
 
-    // === Bear Mode: Macro Regime (v21.7) — Signal Service first, local fallback ===
-    {
-      // Try centralized Signal Service first (2.5s timeout — never blocks the cycle)
-      const signalIntel = await fetchSignalIntel();
-
-      if (signalIntel) {
-        // ── PATH A: Signal Service is live — use authoritative centralized data ──
-        lastFearGreedValue = signalIntel.fearGreed; // override with signal service value
-        consecutiveBearChecks = signalIntel.consecutiveBearChecks;
-        currentMacroRegime = { regime: signalIntel.regime, score: signalIntel.score };
-        const inBearMode = signalIntel.inBearMode;
-        console.log(`🛰️  Regime from Signal Service: ${signalIntel.regime} (score: ${signalIntel.score}, age: ${signalIntel.ageSec}s, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE' : ''}`);
-      } else {
-        // ── PATH B: Signal Service unavailable — compute locally (existing logic) ──
-        const btcCurrentDominance = marketData.globalMarket?.btcDominance || 0;
-        if (btcCurrentDominance > 0) {
-          btcDominanceBuffer.push(btcCurrentDominance);
-          if (btcDominanceBuffer.length > 1344) btcDominanceBuffer = btcDominanceBuffer.slice(-1344);
-        }
-
-        let btcDominanceTrend: number | undefined;
-        if (btcDominanceBuffer.length >= 96) {
-          const lookback = Math.min(672, btcDominanceBuffer.length - 1);
-          const oldDominance = btcDominanceBuffer[btcDominanceBuffer.length - 1 - lookback];
-          if (oldDominance > 0) btcDominanceTrend = btcCurrentDominance - oldDominance;
-        }
-
-        const btcPrices = getCachedPriceHistory('cbBTC').prices;
-        if (btcPrices.length >= 50) {
-          const regimeResult = computeMacroRegime(btcPrices, btcDominanceTrend, lastFearGreedValue);
-          if (regimeResult.regime === 'BEAR') {
-            consecutiveBearChecks = Math.min(consecutiveBearChecks + 1, 10);
-          } else {
-            consecutiveBearChecks = 0;
-          }
-          currentMacroRegime = { regime: regimeResult.regime, score: regimeResult.score };
-          const inBearMode = consecutiveBearChecks >= 3;
-          console.log(`🔭 Regime (local fallback): ${regimeResult.regime} (score: ${regimeResult.score}, F&G: ${lastFearGreedValue}, dom: ${btcDominanceTrend !== undefined ? btcDominanceTrend.toFixed(1) + 'pp' : 'n/a'}, bearChecks: ${consecutiveBearChecks}/3)${inBearMode ? ' 🐻 BEAR MODE ACTIVE' : ''}`);
-        }
-      }
-    }
-
-    // v19.3: Update capital preservation mode state
-    updateCapitalPreservationMode(marketData.fearGreed.value);
-
-    // v11.4: Volume spike detection — flag tokens with volume ≥ VOLUME_SPIKE_THRESHOLD × 7d avg
-    const volumeSpikes: { symbol: string; volumeChange: number }[] = [];
-    for (const token of marketData.tokens) {
-      const ind = marketData.indicators[token.symbol];
-      if (ind?.volumeChange24h !== null && ind?.volumeChange24h !== undefined) {
-        const volumeMultiple = 1 + (ind.volumeChange24h / 100);
-        if (volumeMultiple >= VOLUME_SPIKE_THRESHOLD) {
-          volumeSpikes.push({ symbol: token.symbol, volumeChange: ind.volumeChange24h });
-        }
-      }
-    }
-    if (volumeSpikes.length > 0) {
-      console.log(`  📊 VOLUME SPIKES (≥${VOLUME_SPIKE_THRESHOLD}x 7d avg): ${volumeSpikes.map(v => `${v.symbol} +${v.volumeChange.toFixed(0)}%`).join(', ')}`);
-    }
-    lastVolumeSnapshot = new Map(marketData.tokens.map(t => [t.symbol, t.volume24h]));
-
-    // v5.2: Consolidate dust positions every 10 cycles
-    if (state.totalCycles % 10 === 1) {
-      await consolidateDustPositions(balances, marketData);
-    }
-
-    // V4.5: Store intelligence data for API endpoint (now includes news + macro + v10.0)
-    lastIntelligenceData = {
-      defi: marketData.defiLlama,
-      derivatives: marketData.derivatives,
-      news: marketData.newsSentiment,
-      macro: marketData.macroData,
-      regime: marketData.marketRegime,
-      performance: calculateTradePerformance(),
-      // v10.0: Market Intelligence Engine
-      globalMarket: marketData.globalMarket,
-      smartRetailDivergence: marketData.smartRetailDivergence,
-      fundingMeanReversion: marketData.fundingMeanReversion,
-      tvlPriceDivergence: marketData.tvlPriceDivergence,
-      stablecoinSupply: marketData.stablecoinSupply,
-    };
-
-    // === v11.0: DEX INTELLIGENCE (GeckoTerminal) ===
-    try {
-      console.log('🦎 Fetching DEX intelligence (GeckoTerminal)...');
-      lastDexIntelligence = await geckoTerminalService.fetchIntelligence();
-      dexIntelFetchCount++;
-      const spikes = lastDexIntelligence.volumeSpikes.length;
-      const pressure = lastDexIntelligence.buySellPressure.filter(p => p.signal !== 'NEUTRAL').length;
-      console.log(`  ✅ DEX intel: ${lastDexIntelligence.tokenMetrics.length} tokens | ${spikes} volume spikes | ${pressure} pressure signals | ${lastDexIntelligence.errors.length} errors`);
-    } catch (dexErr: any) {
-      console.warn(`  ⚠️ DEX intelligence fetch failed: ${dexErr.message?.substring(0, 150)} — continuing without`);
-    }
-
-    // === v19.2: MERGE DEXSCREENER TXN DATA INTO BUYSELLPRESSURE ===
-    // GeckoTerminal only covers ~7 tokens via rotation. DexScreener price stream
-    // already fetches txn data for ALL 24 tokens every 10s. Merge to fill gaps.
-    if (lastDexIntelligence) {
-      const geckoSymbols = new Set(lastDexIntelligence.buySellPressure.map(p => p.symbol));
-      let mergedCount = 0;
-      for (const [sym, txn] of Object.entries(dexScreenerTxnCache)) {
-        if (geckoSymbols.has(sym)) continue; // GeckoTerminal already has this token
-        if (Date.now() - txn.updatedAt > 120_000) continue; // stale (>2min old)
-        const totalH1 = txn.h1Buys + txn.h1Sells;
-        const totalH24 = txn.h24Buys + txn.h24Sells;
-        if (totalH1 < 5 && totalH24 < 20) continue; // too low activity
-
-        const buyRatioH1 = totalH1 > 0 ? txn.h1Buys / totalH1 : 0.5;
-        const buyRatioH24 = totalH24 > 0 ? txn.h24Buys / totalH24 : 0.5;
-
-        let signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL' = 'NEUTRAL';
-        if (buyRatioH1 > 0.65 && buyRatioH24 > 0.55) signal = 'STRONG_BUY';
-        else if (buyRatioH1 > 0.55) signal = 'BUY_PRESSURE';
-        else if (buyRatioH1 < 0.35 && buyRatioH24 < 0.45) signal = 'STRONG_SELL';
-        else if (buyRatioH1 < 0.45) signal = 'SELL_PRESSURE';
-
-        lastDexIntelligence.buySellPressure.push({
-          symbol: sym,
-          h1Buys: txn.h1Buys, h1Sells: txn.h1Sells,
-          h1Buyers: txn.h1Buyers, h1Sellers: txn.h1Sellers,
-          h24Buys: txn.h24Buys, h24Sells: txn.h24Sells,
-          buyRatioH1: Math.round(buyRatioH1 * 100) / 100,
-          buyRatioH24: Math.round(buyRatioH24 * 100) / 100,
-          signal,
-        });
-        mergedCount++;
-      }
-      if (mergedCount > 0) {
-        console.log(`  📡 Flow coverage: ${geckoSymbols.size} GeckoTerminal + ${mergedCount} DexScreener = ${lastDexIntelligence.buySellPressure.length} total tokens with flow data`);
-      }
-    } else {
-      // GeckoTerminal completely failed — build buySellPressure entirely from DexScreener cache
-      const buySellPressure: any[] = [];
-      for (const [sym, txn] of Object.entries(dexScreenerTxnCache)) {
-        if (Date.now() - txn.updatedAt > 120_000) continue;
-        const totalH1 = txn.h1Buys + txn.h1Sells;
-        const totalH24 = txn.h24Buys + txn.h24Sells;
-        if (totalH1 < 5 && totalH24 < 20) continue;
-
-        const buyRatioH1 = totalH1 > 0 ? txn.h1Buys / totalH1 : 0.5;
-        const buyRatioH24 = totalH24 > 0 ? txn.h24Buys / totalH24 : 0.5;
-
-        let signal: 'STRONG_BUY' | 'BUY_PRESSURE' | 'NEUTRAL' | 'SELL_PRESSURE' | 'STRONG_SELL' = 'NEUTRAL';
-        if (buyRatioH1 > 0.65 && buyRatioH24 > 0.55) signal = 'STRONG_BUY';
-        else if (buyRatioH1 > 0.55) signal = 'BUY_PRESSURE';
-        else if (buyRatioH1 < 0.35 && buyRatioH24 < 0.45) signal = 'STRONG_SELL';
-        else if (buyRatioH1 < 0.45) signal = 'SELL_PRESSURE';
-
-        buySellPressure.push({
-          symbol: sym,
-          h1Buys: txn.h1Buys, h1Sells: txn.h1Sells,
-          h1Buyers: txn.h1Buyers, h1Sellers: txn.h1Sellers,
-          h24Buys: txn.h24Buys, h24Sells: txn.h24Sells,
-          buyRatioH1: Math.round(buyRatioH1 * 100) / 100,
-          buyRatioH24: Math.round(buyRatioH24 * 100) / 100,
-          signal,
-        });
-      }
-      if (buySellPressure.length > 0) {
-        lastDexIntelligence = {
-          trendingPools: [], tokenMetrics: [], volumeSpikes: [],
-          buySellPressure, newPools: [], aiSummary: '',
-          timestamp: new Date().toISOString(), errors: ['GeckoTerminal failed — using DexScreener txn cache'],
-        };
-        console.log(`  📡 Flow coverage: 0 GeckoTerminal (failed) + ${buySellPressure.length} DexScreener = ${buySellPressure.length} total tokens with flow data`);
-      }
-    }
-
-    // === v19.0: RECORD FLOW READINGS FOR MULTI-TIMEFRAME AGGREGATION ===
-    // Store buy ratio from DEX intelligence and on-chain flow for all tracked tokens
-    if (lastDexIntelligence) {
-      for (const pressure of lastDexIntelligence.buySellPressure) {
-        if (pressure.buyRatioH1 !== undefined) {
-          recordFlowReading(flowTimeframeState, pressure.symbol, pressure.buyRatioH1 * 100);
-        }
-      }
-    }
-    // Also record from on-chain order flow (higher fidelity when available)
-    for (const [symbol, ind] of Object.entries(marketData.indicators)) {
-      if (ind?.orderFlow) {
-        const totalFlow = ind.orderFlow.buyVolumeUSD + ind.orderFlow.sellVolumeUSD;
-        if (totalFlow > 0) {
-          recordFlowReading(flowTimeframeState, symbol, (ind.orderFlow.buyVolumeUSD / totalFlow) * 100);
-        }
-      }
-    }
-
-    // === PHASE 3: PERFORMANCE REVIEW TRIGGER ===
-    // Run review every 10 trades or every 24 hours
-    const tradesSinceReview = state.tradeHistory.length - state.lastReviewTradeIndex;
-    const hoursSinceReview = state.lastReviewTimestamp
-      ? (Date.now() - new Date(state.lastReviewTimestamp).getTime()) / (1000 * 60 * 60)
-      : 999;
-    if (tradesSinceReview >= 10 || hoursSinceReview >= 24) {
-      const reason = tradesSinceReview >= 10 ? "TRADE_COUNT" as const : "TIME_ELAPSED" as const;
-      console.log(`\n🧪 SELF-IMPROVEMENT: Running performance review (${reason})...`);
-      const review = runPerformanceReview(reason);
-      console.log(`   Generated ${review.insights.length} insights, ${review.recommendations.length} recommendations`);
-
-      // Store the review
-      state.performanceReviews.push(review);
-      if (state.performanceReviews.length > 30) {
-        state.performanceReviews = state.performanceReviews.slice(-30);
-      }
-
-      // Update review tracking state
-      state.lastReviewTradeIndex = state.tradeHistory.length;
-      state.lastReviewTimestamp = new Date().toISOString();
-
-      // Adapt thresholds based on review findings — pass current regime for walk-forward validation
-      adaptThresholds(review, marketData.marketRegime);
-      console.log(`   Thresholds adapted (${state.adaptiveThresholds.adaptationCount} total adaptations)`);
-
-      // Persist everything
-      markStateDirty();
-      console.log(`   Review #${state.performanceReviews.length} stored | Next review after ${state.lastReviewTradeIndex + 10} trades or 24h`);
-    }
-
-    // === PHASE 3: ANALYZE STRATEGY PATTERNS ===
-    // v10.2: Rebuild every 50 heavy cycles (not just cycle 1) so patterns reflect recent trading
-    if (state.tradeHistory.length > 0 && (state.totalCycles <= 1 || state.totalCycles % 50 === 0)) {
-      console.log(`\n🧬 SELF-IMPROVEMENT: Building strategy pattern memory from ${state.tradeHistory.length} trades...`);
-      analyzeStrategyPatterns();
-      const validPatterns = Object.values(state.strategyPatterns).filter(p => !p.patternId.startsWith("UNKNOWN"));
-      console.log(`   Identified ${Object.keys(state.strategyPatterns).length} patterns (${validPatterns.length} with signal data)`);
-      markStateDirty();
+    // === Phase 5c: intelligence stage — macro regime, DEX intel, self-improvement ===
+    // Module-level vars (lastFearGreedValue, currentMacroRegime, lastDexIntelligence, etc.)
+    // are updated in-place by the IntelligenceDeps accessor boxes — no explicit pull-back needed.
+    cycleCtx = await intelligenceStage(cycleCtx, buildIntelligenceDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Intelligence stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
 
     // Update USD values
@@ -6624,63 +6537,18 @@ async function runTradingCycle() {
       }
     }
 
-    console.log(`\n💰 Portfolio: $${state.trading.totalPortfolioValue.toFixed(2)}`);
-    console.log(`   Today: ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%) from $${dailyBase.toFixed(2)} start-of-day`);
-    console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${drawdown.toFixed(1)}%`);
-    console.log(`   Regime: ${marketData.marketRegime}`);
-
-    // Display technical indicators summary
-    if (Object.keys(marketData.indicators).length > 0) {
-      console.log(`\n📐 Technical Indicators:`);
-      const buySignals: string[] = [];
-      const sellSignals: string[] = [];
-      for (const [symbol, ind] of Object.entries(marketData.indicators)) {
-        const rsiStr = ind.rsi14 !== null ? `RSI=${ind.rsi14.toFixed(0)}` : "";
-        const macdStr = ind.macd ? `MACD=${ind.macd.signal}` : "";
-        const bbStr = ind.bollingerBands ? `BB=${ind.bollingerBands.signal}` : "";
-        const scoreStr = `Score=${ind.confluenceScore > 0 ? "+" : ""}${ind.confluenceScore}`;
-        console.log(`   ${symbol}: ${[rsiStr, macdStr, bbStr, `Trend=${ind.trendDirection}`, scoreStr].filter(Boolean).join(" | ")} → ${ind.overallSignal}`);
-        if (ind.confluenceScore >= 30) buySignals.push(`${symbol}(+${ind.confluenceScore})`);
-        if (ind.confluenceScore <= -30) sellSignals.push(`${symbol}(${ind.confluenceScore})`);
-      }
-      if (buySignals.length > 0) console.log(`   🟢 Buy signals: ${buySignals.join(", ")}`);
-      if (sellSignals.length > 0) console.log(`   🔴 Sell signals: ${sellSignals.join(", ")}`);
+    // === Phase 5d: metricsStage — portfolio display, indicators, unrealized P&L ===
+    cycleCtx = await metricsStage(cycleCtx, buildMetricsDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Metrics stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
 
-    console.log(`\n📊 Sector Allocations:`);
-    for (const sector of sectorAllocations) {
-      const status = Math.abs(sector.drift) > 5
-        ? (sector.drift > 0 ? "⚠️ OVER" : "⚠️ UNDER")
-        : "✅";
-      console.log(`   ${status} ${sector.name}: ${sector.currentPercent.toFixed(1)}% (target: ${sector.targetPercent}%)`);
-    }
-
-    if (marketData.trendingTokens.length > 0) {
-      console.log(`\n🔥 Trending: ${marketData.trendingTokens.join(", ")}`);
-    }
-
-    // Update unrealized P&L and peak prices for all holdings
-    updateUnrealizedPnL(balances);
-
-    // Display cost basis summary
-    const activeCB = Object.values(state.costBasis).filter(cb => cb.currentHolding > 0 && cb.averageCostBasis > 0);
-    if (activeCB.length > 0) {
-      const totalRealized = Object.values(state.costBasis).reduce((s, cb) => s + cb.realizedPnL, 0);
-      const totalUnrealized = activeCB.reduce((s, cb) => s + cb.unrealizedPnL, 0);
-      console.log(`\n💹 Cost Basis P&L: Realized ${totalRealized >= 0 ? "+" : ""}$${totalRealized.toFixed(2)} | Unrealized ${totalUnrealized >= 0 ? "+" : ""}$${totalUnrealized.toFixed(2)}`);
-      for (const cb of activeCB) {
-        const pct = cb.averageCostBasis > 0 ? ((cb.unrealizedPnL / (cb.averageCostBasis * cb.currentHolding)) * 100) : 0;
-        console.log(`   ${cb.unrealizedPnL >= 0 ? "🟢" : "🔴"} ${cb.symbol}: avg $${cb.averageCostBasis.toFixed(4)} | P&L ${cb.unrealizedPnL >= 0 ? "+" : ""}$${cb.unrealizedPnL.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%)`);
-      }
-    }
-
-    // v6.2: Risk-Reward Metrics
-    const rrMetrics = calculateRiskRewardMetrics();
-    if (rrMetrics.avgWinUSD > 0 || rrMetrics.avgLossUSD > 0) {
-      console.log(`\n📊 Risk-Reward Profile:`);
-      console.log(`   Avg Win: +$${rrMetrics.avgWinUSD.toFixed(2)} | Avg Loss: -$${rrMetrics.avgLossUSD.toFixed(2)} | Ratio: ${rrMetrics.riskRewardRatio.toFixed(2)}x`);
-      console.log(`   Largest Win: +$${rrMetrics.largestWin.toFixed(2)} | Largest Loss: -$${rrMetrics.largestLoss.toFixed(2)}`);
-      console.log(`   Expectancy: $${rrMetrics.expectancy.toFixed(2)}/trade | Profit Factor: ${rrMetrics.profitFactor.toFixed(2)}`);
+    // === Phase deployment-ctx: sector allocations + cash deployment check ===
+    cycleCtx = await deploymentCtxStage(cycleCtx, buildDeploymentCtxDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ DeploymentCtx stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
 
     // v21.0: MECHANICAL STOP-LOSS REMOVED — Claude decides all exits.
@@ -6712,9 +6580,16 @@ async function runTradingCycle() {
         console.log(`\n🧹 DUST_CLEANUP: Found ${dustPositions.length} micro positions under $${DUST_CLEANUP_THRESHOLD_USD} (held >${DUST_CLEANUP_MIN_AGE_HOURS}h)`);
         for (const dust of dustPositions) {
           console.log(`   🧹 Cleaning: ${dust.symbol} $${dust.usdValue.toFixed(2)} (held ${dust.ageHours.toFixed(0)}h)`);
-          if (isTokenBlocked(dust.symbol)) {
+          // v21.12: Write-off override — a position under $1 held >7 days is a dead position,
+          // not a volatile one. The circuit breaker was designed to prevent panic-selling,
+          // not to lock in a 99%+ loss indefinitely. Override it for these write-offs.
+          const isWriteOff = dust.usdValue < 1.00 && dust.ageHours > 168;
+          if (isTokenBlocked(dust.symbol) && !isWriteOff) {
             console.log(`   🚫 ${dust.symbol} blocked by circuit breaker — skipping`);
             continue;
+          }
+          if (isTokenBlocked(dust.symbol) && isWriteOff) {
+            console.log(`   📝 ${dust.symbol} write-off: $${dust.usdValue.toFixed(3)} after ${dust.ageHours.toFixed(0)}h — overriding circuit breaker`);
           }
           const dustDecision: TradeDecision = {
             action: 'SELL',
@@ -6975,337 +6850,29 @@ async function runTradingCycle() {
     const fgValue = marketData.fearGreed.value; // kept for display/logging
     const regime = marketData.marketRegime;
 
-    // AI decision (or central signal fetch)
-    let decisions: TradeDecision[];
-
-    if (signalMode === 'central') {
-      console.log("\n📡 Fetching signals from NVR central service...");
-      decisions = await fetchCentralSignals({ balances, marketData, portfolioValue: state.trading.totalPortfolioValue });
-
-      // Apply local position sizing to each central signal decision
-      const portfolioValue = state.trading.totalPortfolioValue;
-      const availableUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
-      for (const decision of decisions) {
-        if (decision.amountUSD === 0 && decision.action === 'BUY') {
-          // 4% of portfolio per trade, capped by available USDC and max buy size
-          decision.amountUSD = Math.min(
-            CONFIG.trading.maxBuySize,
-            portfolioValue * 0.04,
-            availableUSDC * 0.9, // Leave 10% USDC buffer
-          );
-        }
-        if (decision.amountUSD === 0 && decision.action === 'SELL') {
-          // Sell 50% of position by default for central signals
-          const holding = balances.find(b => b.symbol === decision.fromToken);
-          if (holding) {
-            decision.amountUSD = holding.usdValue * 0.5;
-          }
-        }
-      }
-      console.log(`  📡 Central decisions: ${decisions.length} (${decisions.filter(d => d.action === 'BUY').length} buys, ${decisions.filter(d => d.action === 'SELL').length} sells)`);
-    } else {
-      // Existing Claude AI call — v20.5: now with tiered model routing
-      console.log("\n🧠 AI analyzing portfolio & market...");
-      decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined, heavyReason);
+    // === Phase 5h: decisionStage — AI trade decisions (Claude / central signals) ===
+    cycleCtx = await decisionStage(cycleCtx, buildDecisionDeps(heavyReason));
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Decision stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
+    let decisions = cycleCtx.decisions;
 
-    // v20.8: EXTREME FEAR SIZE REDUCTION REMOVED — F&G is info-only.
-    // The bot follows price physics. Momentum gates and signal quality filters
-    // (confluence, MACD, RSI) handle risk. Sentiment surveys don't gate trades.
-    // F&G=${fgValue} logged for dashboard display only.
-
-    // === v19.3: CAPITAL PRESERVATION MODE — HIGH-CONVICTION FILTER ===
-    // When preservation mode is active, only allow trades with high confluence or high swarm consensus.
-    // Also prioritize sells over buys if cash is below 50% target.
-    if (capitalPreservationMode.isActive) {
-      const latestSwarm = getLatestSwarmDecisions();
-      const swarmConsensusMap = new Map<string, number>();
-      for (const sd of latestSwarm) {
-        swarmConsensusMap.set(sd.token, sd.consensus);
-      }
-
-      const _usdcBalPres = balances.find(b => b.symbol === 'USDC');
-      const cashPctPres = _usdcBalPres ? (_usdcBalPres.usdValue / (state.trading.totalPortfolioValue || 1)) * 100 : 0;
-      const belowCashTarget = cashPctPres < PRESERVATION_TARGET_CASH_PCT;
-
-      const preservationFiltered: TradeDecision[] = [];
-      let blockedCount = 0;
-
-      for (const d of decisions) {
-        if (d.action === 'HOLD') {
-          preservationFiltered.push(d);
-          continue;
-        }
-
-        // Always allow sells — capital preservation prioritizes raising cash
-        if (d.action === 'SELL') {
-          capitalPreservationMode.tradesPassed++;
-          preservationFiltered.push(d);
-          continue;
-        }
-
-        // v19.6.1: For buys during preservation — reduce size, don't block.
-        // The AI already sees F&G=11 in its prompt. Let it make decisions.
-        // Circuit breaker handles real risk. Preservation just sizes down.
-        if (d.action === 'BUY') {
-          const tokenInd = marketData.indicators[d.toToken];
-          const confluenceScore = tokenInd?.confluenceScore ?? 0;
-          const swarmConsensus = swarmConsensusMap.get(d.toToken) ?? 0;
-
-          // Only block if confluence is truly garbage AND swarm disagrees
-          // SHI override: shiConfluenceDelta raises the bar after healing incidents
-          const effectiveConfluenceMin = PRESERVATION_MIN_CONFLUENCE + shiConfluenceDelta;
-          if (confluenceScore < effectiveConfluenceMin && swarmConsensus < PRESERVATION_MIN_SWARM_CONSENSUS) {
-            capitalPreservationMode.tradesBlocked++;
-            blockedCount++;
-            const overrideNote = shiConfluenceDelta > 0 ? ` [SHI +${shiConfluenceDelta}]` : '';
-            console.log(`   🛡️ PRESERVATION: Blocking weak BUY ${d.toToken} (confluence=${confluenceScore} < ${effectiveConfluenceMin}${overrideNote}, swarm=${swarmConsensus}% < ${PRESERVATION_MIN_SWARM_CONSENSUS}%)`);
-            continue;
-          }
-
-          // Size reduction: half-size during extreme fear
-          // v20.7: ALL buys get sized down during preservation — including deployment buys.
-          // The bot should be comfortable holding cash during fear, not forcing full-size buys.
-          if (d.amountUSD) {
-            const originalSize = d.amountUSD;
-            d.amountUSD = d.amountUSD * PRESERVATION_SIZE_MULTIPLIER;
-            const isDeploymentBuy = d.signalContext?.triggeredBy === "FORCED_DEPLOY" || d.signalContext?.triggeredBy === "CASH_DEPLOYMENT";
-            console.log(`   🛡️ PRESERVATION: Sizing down ${isDeploymentBuy ? 'deployment ' : ''}BUY ${d.toToken} $${originalSize.toFixed(2)} → $${d.amountUSD.toFixed(2)} (${PRESERVATION_SIZE_MULTIPLIER}x extreme fear)`);
-          }
-          capitalPreservationMode.tradesPassed++;
-          preservationFiltered.push(d);
-        }
-      }
-
-      if (blockedCount > 0) {
-        console.log(`\n🛡️ CAPITAL PRESERVATION: Blocked ${blockedCount} low-conviction trades | Passed: ${preservationFiltered.filter(d => d.action !== 'HOLD').length} | Cash: ${cashPctPres.toFixed(1)}%`);
-      }
-      decisions = preservationFiltered;
+    // === Phase 5f: filtersStage extracted — replaces inline filter blocks ===
+    // (preservation + directives are no-ops this phase — Phase 5h scope)
+    cycleCtx = await filtersStage(cycleCtx, buildFiltersDeps());
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Filters stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
+    decisions = cycleCtx.decisions;
 
-    // v21.0: MIND-FIRST ARCHITECTURE — All mechanical trading systems removed.
-    // Claude is the ONLY source of trade decisions. It sees:
-    // - Every position with entry price, P&L, hold time, ATR, flow data
-    // - Market momentum, regime, volume, technical indicators
-    // - Portfolio cash %, sector allocations, sector drift
-    // - Recent trade history with outcomes
-    //
-    // REMOVED SYSTEMS (v21.0):
-    // - Position Sprawl Reducer (auto-sell small positions)
-    // - Trailing Stop Exits (ATR-based mechanical exits)
-    // - Per-Position Hard Stops (-15%, -12% mechanical exits)
-    // - Flow-Reversal Exit Engine (buy ratio < 40% exits)
-    // - Scale-Into-Winners (scale-up, momentum exit, decel trim)
-    // - Scout Seeding ($8 data probes)
-    // - Ride The Wave (FOMO momentum buys)
-    // - Deployment Fallback (auto-deploy after 3 HOLDs)
-    //
-    // KEPT: Directive Enforcement (user commands) + Trade Cap Guard (prevent churn)
-
-    // === v16.0: DIRECTIVE SELL ENFORCEMENT === (KEPT — user commands are not mechanical trading)
-    // Parse active directives for explicit sell/exit instructions and generate SELL decisions
-    // every cycle until the position is gone. Fixes P0-2 (directives not executing).
-    {
-      const directiveSellDecisions: TradeDecision[] = [];
-      const activeDirectives = getActiveDirectives();
-      const activeConfigDirectives = getActiveConfigDirectives();
-
-      // Combine user directives and config directives
-      // v20.0: Include createdAt for directive escalation — directives signaling sell for >24h on losing positions get priority 0.5
-      const allInstructions: { instruction: string; token?: string; createdAt?: string }[] = [];
-      for (const d of activeDirectives) {
-        allInstructions.push({ instruction: d.instruction, token: d.token, createdAt: d.createdAt });
-      }
-      for (const cd of activeConfigDirectives) {
-        allInstructions.push({ instruction: cd.instruction, createdAt: (cd as any).appliedAt });
-      }
-
-      // Parse for sell/exit action keywords
-      const sellActionPatterns = [
-        /\b(?:sell|exit|dump|liquidate|close|get rid of|offload)\s+(?:all\s+)?(\b[A-Z]{2,10}\b)/i,
-        /\b(?:prioritize selling|prioritize exiting)\s+(\b[A-Z]{2,10}\b)/i,
-        /\b(\b[A-Z]{2,10}\b)\s+(?:should be sold|needs to be sold|must be sold)/i,
-      ];
-
-      for (const item of allInstructions) {
-        const text = item.instruction;
-        let targetToken: string | null = item.token || null;
-
-        if (!targetToken) {
-          for (const pattern of sellActionPatterns) {
-            const match = text.match(pattern);
-            if (match) {
-              targetToken = match[1].toUpperCase();
-              break;
-            }
-          }
-        }
-
-        // Also check for direct token mention with sell-like keywords in same directive
-        if (!targetToken) {
-          const hasSellKeyword = /\b(?:sell|exit|dump|liquidate|close|offload|get rid of|prioritize selling)\b/i.test(text);
-          if (hasSellKeyword) {
-            const tokenMatches = text.match(/\b([A-Z]{2,10})\b/g);
-            if (tokenMatches) {
-              for (const t of tokenMatches) {
-                if (['USDC', 'USD', 'ETH', 'WETH', 'THE', 'AND', 'FOR', 'NOT', 'ALL', 'BUY', 'RSI', 'MACD'].includes(t)) continue;
-                const holding = balances.find(b => b.symbol === t && b.usdValue && b.usdValue > 1);
-                if (holding) { targetToken = t; break; }
-              }
-            }
-          }
-        }
-
-        if (!targetToken) continue;
-
-        // Check if we still hold this token
-        const holding = balances.find(b => b.symbol === targetToken && b.usdValue && b.usdValue > 1);
-        if (!holding) continue;
-
-        // Don't duplicate if stop-loss or trailing stop already covers this token
-        if (decisions.some(d => d.action === 'SELL' && d.fromToken === targetToken)) continue;
-
-        // v20.0: DIRECTIVE ESCALATION — if directive has been signaling sell for >24h AND position is losing,
-        // escalate to immediate market sell with high priority. Fixes the PENDLE problem: directive signaling
-        // exit for 3 days with -$35.87 daily loss but position wasn't sold.
-        const directiveAgeMs = item.createdAt ? (Date.now() - new Date(item.createdAt).getTime()) : 0;
-        const directiveAgeHours = directiveAgeMs / (1000 * 60 * 60);
-        const dirCb = state.costBasis[targetToken];
-        const dirCurrentPrice = marketData.tokens.find(t => t.symbol === targetToken)?.price || 0;
-        const dirIsLosing = dirCb && dirCb.averageCostBasis > 0 && dirCurrentPrice > 0 && dirCurrentPrice < dirCb.averageCostBasis;
-        const isEscalated = directiveAgeHours > 24 && dirIsLosing;
-
-        if (isEscalated) {
-          const dirLossPct = dirCb && dirCb.averageCostBasis > 0 ? ((dirCurrentPrice - dirCb.averageCostBasis) / dirCb.averageCostBasis) * 100 : 0;
-          console.log(`\n🚨 DIRECTIVE_ESCALATED: ${targetToken} — directive active ${directiveAgeHours.toFixed(0)}h, position losing ${dirLossPct.toFixed(1)}%. IMMEDIATE SELL escalation.`);
-          directiveSellDecisions.push({
-            action: 'SELL',
-            fromToken: targetToken,
-            toToken: 'USDC',
-            amountUSD: holding.usdValue,
-            reasoning: `DIRECTIVE_SELL_ESCALATED: ${targetToken} — directive active ${directiveAgeHours.toFixed(0)}h with ${dirLossPct.toFixed(1)}% loss. Immediate exit — "${text.substring(0, 50)}"`,
-            sector: TOKEN_REGISTRY[targetToken]?.sector,
-          });
-        } else {
-          console.log(`\n📋 DIRECTIVE_SELL: Executing directive to sell ${targetToken} — "${text.substring(0, 80)}"`);
-          directiveSellDecisions.push({
-            action: 'SELL',
-            fromToken: targetToken,
-            toToken: 'USDC',
-            amountUSD: holding.usdValue,
-            reasoning: `DIRECTIVE_SELL: User directive instructs selling ${targetToken} — "${text.substring(0, 60)}"`,
-            sector: TOKEN_REGISTRY[targetToken]?.sector,
-          });
-        }
-      }
-
-      if (directiveSellDecisions.length > 0) {
-        console.log(`\n📋 DIRECTIVE ENFORCEMENT: ${directiveSellDecisions.length} directive-driven sells`);
-        // Insert after stop-losses but before AI decisions
-        decisions = [...directiveSellDecisions, ...decisions];
-      }
-    }
-
-    // v21.0: SCALE-INTO-WINNERS + DEPLOYMENT FALLBACK REMOVED
-    // Claude decides all scaling, exits, scouts, and deployment. These mechanical
-    // systems are preserved as dead code during the transition period.
-
-    // v14.2: MAX_TRADES_PER_CYCLE GUARD — cap total trades to prevent churn
-    // v18.0: RANGING regime gets tighter cap (2 trades) — fewer, higher-conviction trades
-    // Priority order: stop-loss > momentum-exit > profit-take > AI > scale-up > forced-deploy > ride-the-wave
-    const effectiveMaxTrades = regime === 'RANGING' ? RANGING_MAX_TRADES_PER_CYCLE : MAX_TRADES_PER_CYCLE;
-    if (decisions.filter(d => d.action !== 'HOLD').length > effectiveMaxTrades) {
-      const priorityOrder = (d: TradeDecision): number => {
-        const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
-        switch (tier) {
-          case 'HARD_STOP': return -1;   // v16.0: highest priority — absolute loss limit
-          case 'TRAILING_STOP': return -0.8; // v20.0: adaptive trailing stop — primary exit mechanism
-          case 'SOFT_STOP': return -0.5;  // v16.0: approaching loss limit
-          case 'CONCENTRATED_STOP': return -0.5; // v16.0: concentrated loser
-          case 'STOP_LOSS': return 0;
-          case 'DIRECTIVE_SELL_ESCALATED': return 0.3; // v20.0: escalated directive — >24h sell signal on losing position
-          case 'DIRECTIVE_SELL': return 0.5; // v16.0: user directive enforcement
-          case 'FLOW_REVERSAL': return 0.7; // v19.0: flow physics exit — fires before momentum exit
-          case 'MOMENTUM_EXIT': return 1;
-          case 'DECEL_TRIM': return 1.5; // v14.1: after momentum exit, before profit take
-          case 'PROFIT_TAKE': return 2;
-          default: return 3; // AI
-          case 'SCALE_UP': return 4;
-          case 'FORCED_DEPLOY': return 5;
-          case 'DEPLOYMENT_FALLBACK': return 5;
-          case 'RIDE_THE_WAVE': return 6;
-          case 'SCOUT': return 7; // v19.0: lowest priority — scouts seed last
-        }
-      };
-      const actionDecisions = decisions.filter(d => d.action !== 'HOLD');
-      const holdDecisions = decisions.filter(d => d.action === 'HOLD');
-      actionDecisions.sort((a, b) => priorityOrder(a) - priorityOrder(b));
-      const kept = actionDecisions.slice(0, effectiveMaxTrades);
-      const dropped = actionDecisions.length - effectiveMaxTrades;
-      console.log(`\n⚠️ TRADE_CAP: Dropping ${dropped} lower-priority trades this cycle (max ${effectiveMaxTrades} per cycle${regime === 'RANGING' ? ' — RANGING regime' : ''})`);
-      for (const d of actionDecisions.slice(effectiveMaxTrades)) {
-        const tier = d.reasoning?.match(/^([A-Z_]+):/)?.[1] || 'AI';
-        console.log(`   Dropped: ${tier} ${d.action} ${d.fromToken}→${d.toToken} $${d.amountUSD.toFixed(0)}`);
-      }
-      decisions = [...kept, ...holdDecisions];
-    }
-
-    // v17.0: FEAR/REGIME BUY FILTERING REMOVED — the swarm handles all buy/sell decisions
-    // based on capital flow, momentum, risk metrics, and trend. No F&G-based overrides.
-
-    // v18.0: RISK/REWARD FILTER — Only enter trades where potential reward >= 2x risk
-    // Risk = stop-loss distance (sector-based). Reward = distance below 30-day high.
-    // Tokens near their 30-day high have limited upside — skip them.
-    {
-      const rrFiltered: TradeDecision[] = [];
-      for (const d of decisions) {
-        if (d.action !== 'BUY') {
-          rrFiltered.push(d);
-          continue;
-        }
-
-        const tokenInfo = TOKEN_REGISTRY[d.toToken];
-        const sectorKey = tokenInfo?.sector || 'DEFI';
-        const sectorStop = SECTOR_STOP_LOSS_OVERRIDES[sectorKey];
-        const riskPercent = Math.abs(sectorStop?.maxLoss || 5);
-
-        // Calculate potential upside using price history (distance from 30-day high)
-        const tokenHistory = getPriceHistoryStore().tokens[d.toToken];
-        const currentTokenPrice = marketData.tokens.find(t => t.symbol === d.toToken)?.price || 0;
-        let rewardPercent = riskPercent * 3; // Default: assume 3x risk if no history
-
-        if (tokenHistory && tokenHistory.prices.length > 10 && currentTokenPrice > 0) {
-          // Look at last 720 hourly entries (30 days) or whatever is available
-          const recentPrices = tokenHistory.prices.slice(-720);
-          const high30d = Math.max(...recentPrices);
-          if (high30d > 0) {
-            const distFromHigh = ((high30d - currentTokenPrice) / currentTokenPrice) * 100;
-            rewardPercent = distFromHigh;
-
-            // Token within 5% of 30-day high — limited upside, skip
-            if (distFromHigh < 5) {
-              console.log(`\n  📏 R:R_FILTER: Skipping ${d.toToken} BUY — only ${distFromHigh.toFixed(1)}% below 30d high ($${high30d.toFixed(4)}), limited upside`);
-              d.action = 'HOLD' as any;
-              d.reasoning = `R:R_FILTER: ${d.toToken} within ${distFromHigh.toFixed(1)}% of 30-day high — upside limited`;
-              rrFiltered.push(d);
-              continue;
-            }
-          }
-        }
-
-        const rrRatio = rewardPercent / riskPercent;
-        if (rrRatio < 2.0) {
-          console.log(`\n  📏 R:R_FILTER: Skipping ${d.toToken} BUY — R:R ratio ${rrRatio.toFixed(1)}:1 (risk: ${riskPercent}%, reward: ${rewardPercent.toFixed(1)}%) below 2:1 minimum`);
-          d.action = 'HOLD' as any;
-          d.reasoning = `R:R_FILTER: Reward/risk ratio ${rrRatio.toFixed(1)}:1 too low (need 2:1+)`;
-          rrFiltered.push(d);
-          continue;
-        }
-
-        rrFiltered.push(d);
-      }
-      decisions = rrFiltered;
-    }
+    // === Phase 5c: executionStage — wraps the 973-line inline trade-loop block. ===
+    // The deps.run callback is a closure over cycle-local variables (marketData,
+    // currentPrices, deploymentCheck, account, walletAddr, etc.) — a module-level
+    // factory cannot reach these. Zero logic changes inside the wrapped body.
+    const _execDeps: ExecutionDeps = {
+      run: async (_execCtx: CycleContext): Promise<CycleContext> => {
 
     // v9.2: Track remaining USDC across multi-trade to prevent overspend
     let remainingUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
@@ -7313,7 +6880,9 @@ async function runTradingCycle() {
     let crashBuyEntriesThisCycle = 0; // v11.2: Track crash-buy entries to enforce max cap
 
     // === Capital Liberation — free dead-weight positions to fund high-conviction entries ===
-    // Triggers when USDC is critically low AND a strong signal exists this cycle.
+    // Normal path: USDC < $50 AND a strong signal exists this cycle.
+    // Emergency path (v21.12): USDC < $20 fires liberation unconditionally to break the
+    // micro-buy loop where the bot deploys $3 of USDC into WETH every cycle indefinitely.
     if (remainingUSDC < MIN_USDC_RESERVE_FOR_LIBERATION) {
       const discoveredTokenSymbols = tokenDiscoveryEngine
         ? tokenDiscoveryEngine.getDiscoveredTokens().map((t: DiscoveredToken) => t.symbol.toUpperCase())
@@ -7328,17 +6897,24 @@ async function runTradingCycle() {
         return false;
       });
 
-      if (hasHighConvictionBuy) {
-        const buyTargets = decisions
-          .filter(d => d.action === 'BUY' && d.toToken)
-          .map(d => d.toToken);
-        const excludeFromLib = [...buyTargets];
+      // v21.12: Emergency cash floor — bypass conviction gate when USDC is critically depleted.
+      // Targets $100 rebuild so the bot can resume meaningful position sizing.
+      const isEmergencyLow = remainingUSDC < CRITICAL_USDC_FLOOR;
 
-        const liberationSells = liberateCapital(balances, state, 80, excludeFromLib);
+      if (hasHighConvictionBuy || isEmergencyLow) {
+        const buyTargets = hasHighConvictionBuy
+          ? decisions.filter(d => d.action === 'BUY' && d.toToken).map(d => d.toToken)
+          : [];
+        const excludeFromLib = [...buyTargets];
+        const targetUSD = isEmergencyLow ? 100 : 80;
+        const liberationReason = isEmergencyLow
+          ? `emergency cash floor rebuild (USDC: $${remainingUSDC.toFixed(2)})`
+          : (buyTargets[0] || 'high-conviction entry');
+
+        const liberationSells = liberateCapital(balances, state, targetUSD, excludeFromLib);
 
         if (liberationSells.length > 0) {
-          const targetSymbol = buyTargets[0] || 'high-conviction entry';
-          console.log(`\n💸 [CAPITAL LIBERATION] Freeing capital from ${liberationSells.length} weak positions to fund ${targetSymbol}`);
+          console.log(`\n💸 [CAPITAL LIBERATION] Freeing capital from ${liberationSells.length} weak position(s) — ${liberationReason}`);
 
           const soldLines: string[] = [];
           for (const sellDecision of liberationSells) {
@@ -7355,12 +6931,18 @@ async function runTradingCycle() {
           }
 
           if (soldLines.length > 0) {
+            const title = isEmergencyLow ? `[Emergency Capital Liberation]` : `[Capital Liberation]`;
+            const body = isEmergencyLow
+              ? `Cash critically low ($${(remainingUSDC - soldLines.reduce((s, l) => s + parseFloat(l.match(/\$([\d.]+)/)?.[1] || '0'), 0)).toFixed(2)} USDC). Freed ${soldLines.length} position(s) to rebuild trading capacity.\n\n${soldLines.join('\n')}`
+              : `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${buyTargets[0] || 'high-conviction entry'}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`;
             telegramService.sendAlert({
-              severity: 'INFO',
-              title: `[Capital Liberation]`,
-              message: `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${targetSymbol}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`,
+              severity: isEmergencyLow ? 'CRITICAL' : 'INFO',
+              title,
+              message: body,
             }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           }
+        } else if (isEmergencyLow) {
+          console.log(`\n⚠️ [CAPITAL LIBERATION] Emergency low USDC ($${remainingUSDC.toFixed(2)}) but no eligible liberation candidates found`);
         }
       }
     }
@@ -8265,6 +7847,15 @@ async function runTradingCycle() {
       }
     }
 
+        return _execCtx;
+      },
+    };
+    cycleCtx = await executionStage(cycleCtx, _execDeps);
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Execution stage halted: ${cycleCtx.haltReason}`);
+      return;
+    }
+
   } catch (error: any) {
     console.error("Cycle error:", error.message);
     logError('CYCLE_ERROR', error.message, { stack: error.stack?.split('\n').slice(0, 3).join(' | ') });
@@ -8527,6 +8118,10 @@ async function main() {
   if (signalMode !== 'producer') try {
     console.log("\n🔧 Initializing CDP SDK...");
     cdpClient = createCdpClient();
+    // Update ServerContext's stale reference so /health + /api/accounts + related
+    // routes see the initialized client (the const object literal above captured
+    // the null value from before main() ran — let-var reassignment didn't propagate).
+    serverCtx.cdpClient = cdpClient;
     console.log("  ✅ CDP Client created");
 
     // Get or create the EOA account for trading

@@ -490,7 +490,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  * Kelly % = (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
  * Position = Kelly% × KELLY_FRACTION × Portfolio
  */
-export const KELLY_FRACTION = 0.5;            // Half Kelly — aggressive capital deployment
+export const KELLY_FRACTION = 0.35;           // Bear-adjusted Apr-2026: Quarter-Kelly range (was 0.5 half-Kelly); 46-day bear + auditor ceiling already at 14% → 0.35×14%=4.9% effective max vs 7% prior
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
@@ -514,7 +514,7 @@ export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calcula
  * Triggers on ANY of these conditions
  */
 export const BREAKER_CONSECUTIVE_LOSSES = 5;   // 5 consecutive losing trades → pause (less hair-trigger)
-export const BREAKER_DAILY_DD_PCT = 8;         // 8% daily drawdown → pause
+export const BREAKER_DAILY_DD_PCT = 7;         // 7% daily drawdown → pause (auditor Apr-2026: tightened 8→7; industry practice 5-6%, bear-market defensive posture warrants earlier pause)
 export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster

@@ -7,8 +7,8 @@ import {
   updateUnrealizedPnL,
 } from '../cost-basis.js';
 
-import type { TokenCostBasis } from '../../../types/index.js';
-import type { AgentState } from '../../../types/state.js';
+import type { TokenCostBasis } from '../../types/index.js';
+import type { AgentState } from '../../types/state.js';
 
 type CostBasisMap = Record<string, TokenCostBasis>;
 type PriceMap = Record<string, { price: number; [key: string]: any }>;

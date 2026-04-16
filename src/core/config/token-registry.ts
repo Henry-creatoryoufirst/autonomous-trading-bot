@@ -188,6 +188,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "DRB", name: "DebtReliefBot", coingeckoId: "debtreliefbot",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  SPX: {
+    address: "0x50dA645f148798F68EF2d7dB7C1CB22A6819bb2C",
+    symbol: "SPX", name: "SPX6900", coingeckoId: "spx6900",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI PROTOCOLS (15%) ===
   AERO: {
     address: "0x940181a94A35A4569E4529A3CDfB74e38FD98631",
@@ -242,15 +247,15 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VVV", name: "Venice Token", coingeckoId: "venice-token",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
-  CLANKER: {
-    address: "0x1bc0c42215582d5a085795f4badbac3ff36d1bcb",
-    symbol: "CLANKER", name: "tokenbot", coingeckoId: "tokenbot-2",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
-  },
   WIRE: {
     address: "0x0b3ae50babe7ffa4e1a50569cee6bdefd4ccaee0",
     symbol: "WIRE", name: "717ai by Virtuals", coingeckoId: "717ai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 15, decimals: 18,
+  },
+  GAME: {
+    address: "0x1c4cca7c5db003824208adda61bd749e55f463a3",
+    symbol: "GAME", name: "GAME by Virtuals", coingeckoId: "game-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   ZORA: {
     address: "0x1111111111166b7fe7bd91427724b487980afc69",
@@ -282,6 +287,22 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x8e4cbbcc33db6c0a18561fde1f6ba35906d4848b",
     symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  RIVER: {
+    address: "0xdA7AD9dea9397cffdDAE2F8a052B82f1484252B3",
+    symbol: "RIVER", name: "River Protocol", coingeckoId: "river",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  // === MEME COINS (discovered) ===
+  SKI: {
+    address: "0x768be13e1680b5ebe0024c42c896e3db59ec0149",
+    symbol: "SKI", name: "Ski Mask Dog", coingeckoId: "ski-mask-dog",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  BENJI: {
+    address: "0xBC45647eA894030a4E9801Ec03479739FA2485F0",
+    symbol: "BENJI", name: "Basenji", coingeckoId: "basenji",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
