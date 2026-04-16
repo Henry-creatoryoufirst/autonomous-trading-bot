@@ -618,14 +618,22 @@ export function handleAutoHarvest(
   nextPayoutDate.setUTCHours(8, 0, 0, 0);
   if (nextPayoutDate.getTime() <= Date.now()) nextPayoutDate.setUTCDate(nextPayoutDate.getUTCDate() + 1);
 
+  // v21.12: Fix double-count bug. Every daily-payout increments BOTH
+  // `totalAutoHarvestedUSD` (legacy counter) and `totalDailyPayoutsUSD` (new
+  // counter) — the only code path updating totalAutoHarvestedUSD is the daily
+  // payout itself (agent-v3.2.ts:5842). Summing them was returning 2× the
+  // actual total. Match the portfolio endpoint's convention and use only the
+  // legacy counter, which covers both historical and current payouts.
+  // Same issue applies to transferCount and recipients[].totalTransferred.
+
   ctx.sendJSON(res, 200, {
     enabled: ctx.CONFIG.autoHarvest.enabled,
     mode: 'daily',
     thresholdUSD: ctx.CONFIG.autoHarvest.thresholdUSD,
     cooldownHours: ctx.CONFIG.autoHarvest.cooldownHours,
     minETHReserve: ctx.CONFIG.autoHarvest.minETHReserve,
-    totalTransferredUSD: ctx.state.totalAutoHarvestedUSD + (ctx.state.totalDailyPayoutsUSD || 0),
-    transferCount: (ctx.state.autoHarvestCount || 0) + (ctx.state.dailyPayoutCount || 0),
+    totalTransferredUSD: ctx.state.totalAutoHarvestedUSD,
+    transferCount: ctx.state.autoHarvestCount || 0,
     totalTransfers: (ctx.state.autoHarvestTransfers || []).length,
     recentTransfers: (ctx.state.autoHarvestTransfers || []).slice(-5),
     lastHarvestTime: (ctx.state.lastAutoHarvestTime || null),
@@ -633,7 +641,7 @@ export function handleAutoHarvest(
       label: r.label,
       wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
       percent: r.percent,
-      totalTransferred: (ctx.state.autoHarvestByRecipient[r.label] || 0) + (ctx.state.dailyPayoutByRecipient[r.label] || 0),
+      totalTransferred: ctx.state.autoHarvestByRecipient[r.label] || 0,
     })),
     reinvestPercent: 100 - (ctx.CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
     dailyPayout: {
@@ -1983,23 +1991,29 @@ export function handleConfidence(
   ctx: ServerContext,
 ): void {
   try {
+    // v21.12: Surface the gate threshold so dashboards can render "minimum to pass"
+    // alongside the score. Sourced from CONFIDENCE_MIN env var (default 60) to match
+    // what the gate itself uses.
+    const threshold = parseInt(process.env.CONFIDENCE_MIN || '60', 10);
+
     // Return cached result if still fresh
     if (cachedConfidence && (Date.now() - cachedConfidence.timestamp) < CONFIDENCE_CACHE_TTL_MS) {
       ctx.sendJSON(res, 200, {
         ...cachedConfidence.score,
+        threshold,
         cached: true,
         cachedAt: new Date(cachedConfidence.timestamp).toISOString(),
       });
       return;
     }
 
-    const threshold = parseInt(process.env.CONFIDENCE_MIN || '60', 10);
     const gate = runConfidenceGate(threshold);
 
     cachedConfidence = { score: gate.score, timestamp: Date.now() };
 
     ctx.sendJSON(res, 200, {
       ...gate.score,
+      threshold,
       cached: false,
       cachedAt: new Date().toISOString(),
     });
@@ -2054,6 +2068,53 @@ export function handleModelTelemetry(
         toModel: t.model,
       }));
 
+    // v21.12: Per-backend health summary for dashboards. Sub-objects are omitted
+    // when the corresponding backend key isn't configured, so consumers should
+    // treat this whole object as optional and handle missing sub-fields.
+    const backendHealth: Record<string, any> = {};
+
+    // Gemma (local Ollama) — always exposed when we have any telemetry; "healthy"
+    // is based on recent activity + escalation rate staying under 30%.
+    const gemmaBackendEntries = telemetry.filter(t => t.backend === 'ollama');
+    const gemmaLast = gemmaBackendEntries.length > 0
+      ? gemmaBackendEntries[gemmaBackendEntries.length - 1]
+      : null;
+    const escalationRate = gemmaEntries.length > 0
+      ? telemetry.filter(t => t.escalated).length / gemmaEntries.length
+      : 0;
+    backendHealth.gemma = {
+      healthy: gemmaBackendEntries.length > 0 && escalationRate < 0.30,
+      lastUsed: gemmaLast ? gemmaLast.timestamp : null,
+      escalationRate: Math.round(escalationRate * 10000) / 10000,
+      avgLatencyMs: gemmaBackendEntries.length > 0
+        ? Math.round(gemmaBackendEntries.reduce((s, t) => s + t.latencyMs, 0) / gemmaBackendEntries.length)
+        : 0,
+    };
+
+    if (process.env.GROQ_API_KEY) {
+      const groqEntries = telemetry.filter(t => t.backend === 'groq');
+      const groqLast = groqEntries.length > 0 ? groqEntries[groqEntries.length - 1] : null;
+      backendHealth.groq = {
+        healthy: groqEntries.length > 0 && groqEntries.slice(-10).every(t => t.success !== false),
+        lastUsed: groqLast ? groqLast.timestamp : null,
+        avgLatencyMs: groqEntries.length > 0
+          ? Math.round(groqEntries.reduce((s, t) => s + t.latencyMs, 0) / groqEntries.length)
+          : 0,
+      };
+    }
+
+    if (process.env.CEREBRAS_API_KEY) {
+      const cerebrasEntries = telemetry.filter(t => t.backend === 'cerebras');
+      const cerebrasLast = cerebrasEntries.length > 0 ? cerebrasEntries[cerebrasEntries.length - 1] : null;
+      backendHealth.cerebras = {
+        healthy: cerebrasEntries.length > 0 && cerebrasEntries.slice(-10).every(t => t.success !== false),
+        lastUsed: cerebrasLast ? cerebrasLast.timestamp : null,
+        avgLatencyMs: cerebrasEntries.length > 0
+          ? Math.round(cerebrasEntries.reduce((s, t) => s + t.latencyMs, 0) / cerebrasEntries.length)
+          : 0,
+      };
+    }
+
     ctx.sendJSON(res, 200, {
       currentTier,
       gemmaMode,
@@ -2066,6 +2127,8 @@ export function handleModelTelemetry(
       estimatedSavingsUSD: Math.round(estimatedSavings * 100) / 100,
       monthlyClaudeCostUSD: Math.round(estimatedClaudeCost * 100) / 100,
       escalations,
+      // v21.12: Per-backend health block (gemma always present; groq/cerebras only when keys set).
+      backendHealth,
       chain: activeChain.name.toLowerCase(),
       updatedAt: new Date().toISOString(),
     });
@@ -2132,5 +2195,51 @@ export function handleTicker(
     });
   } catch (err: any) {
     ctx.sendJSON(res, 500, { error: `Ticker failed: ${err.message}` });
+  }
+}
+
+// ============================================================================
+// Route handler: /api/price-snapshot
+// v21.12: Lightweight BTC/ETH price endpoint backed by the bot's existing
+// Chainlink oracle cache (refreshed every cycle into state.trading.balances).
+// Dashboards use this to render the market-context strip without calling
+// third-party APIs. Returns 503 when the cache is empty (no successful oracle
+// read yet).
+// ============================================================================
+
+export function handlePriceSnapshot(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    const balances = ctx.state.trading?.balances || [];
+    // cbBTC is the Chainlink BTC proxy on Base; fall back to BTC if someone
+    // retags it in the registry.
+    const btcEntry = balances.find((b: any) => b.symbol === 'cbBTC')
+                   || balances.find((b: any) => b.symbol === 'BTC');
+    const ethEntry = balances.find((b: any) => b.symbol === 'ETH')
+                   || balances.find((b: any) => b.symbol === 'WETH');
+
+    const btcPrice = btcEntry?.price || 0;
+    const ethPrice = ethEntry?.price || 0;
+
+    if (btcPrice <= 0 && ethPrice <= 0) {
+      ctx.sendJSON(res, 503, { error: 'Prices unavailable' });
+      return;
+    }
+
+    const lastCheck = ctx.state.trading?.lastCheck;
+    const updatedAt = lastCheck
+      ? (typeof lastCheck.toISOString === 'function' ? lastCheck.toISOString() : new Date(lastCheck).toISOString())
+      : new Date().toISOString();
+
+    ctx.sendJSON(res, 200, {
+      btcPrice,
+      ethPrice,
+      updatedAt,
+      source: 'on-chain-chainlink',
+    });
+  } catch (err: any) {
+    ctx.sendJSON(res, 503, { error: 'Prices unavailable' });
   }
 }

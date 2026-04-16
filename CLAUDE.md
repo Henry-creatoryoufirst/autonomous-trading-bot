@@ -3,12 +3,16 @@
 ## Overview
 Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycles analyzing market conditions via technical indicators, confluence scoring, and adversarial risk review.
 
-## Current Version: v20.6
+## Current Version: v21.11.0 (see package.json — source of truth)
 
 ## Quick Reference
 - **Main file:** `agent-v3.2.ts` (~850KB)
-- **Bot wallet:** `0x55509AA76E2769eCCa5B4293359e3001dA16dd0F`
-- **BaseScan:** basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F
+- **Smart wallet (holds funds, signs trades):** `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1`
+  - Coinbase Smart Wallet (ERC-4337). This is where positions live.
+  - BaseScan: basescan.org/address/0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1
+- **Funding EOA (deposits originate here):** `0x55509AA76E2769eCCa5B4293359e3001dA16dd0F`
+  - Original USDC deposits come from this EOA into the smart wallet.
+  - NOT where the bot trades from — don't send to this address expecting it to trade.
 - **Network:** Base Mainnet (Coinbase L2)
 
 ## Deployment — STAGING REQUIRED
@@ -63,15 +67,20 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 - Railway container: ~$7-8/mo per bot
 - Target at scale: $2-4/bot/month (tiered models + shared infra)
 
-## Version History (recent)
-- v20.6: Phantom spike detection, tighter price sanity
-- v20.5.x: Micro-trade sizing, state backup/restore, prompt compression, tiered model routing
-- v20.5: Token pruning engine
-- v20.4.x: Tiered cycles, self-healing, Aerodrome Slipstream router
-- v20.4: Multi-asset convergence, Chainlink, CMC intelligence
-- v20.3: P&L from on-chain deposits (blockchain = source of truth)
-- v20.2: Graduated deployment, fear-aware trading
-- v20.0: Walk-forward validation, adversarial risk reviewer
+## Version History (recent — see `git log` for the full trail)
+- v21.12 (staging): /api/price-snapshot endpoint, /api/auto-harvest double-count
+  fix, cycleIntervalSec + threshold + backendHealth exposure for dashboard
+- v21.11.x: Gas reservoir self-funding, prompt compression Tier 1+2 (~360K
+  tokens/day saved), canonical decision feed (pub/sub Phase 1-3a)
+- v21.9: Capital Liberation (capital follows conviction), Smart Wallet exit
+  tracking, Outcome Tracker recursive learning, 7-layer Alpha Hunter
+- v21.8: Force-sell + outcome tracker
+- v21.3–21.7: 5-silo refactor (setup/intelligence/metrics/decision/filters
+  extraction), Phase 5c execution stage promotion
+- v20.x: Token pruning, tiered model routing, self-healing, Aerodrome
+  Slipstream router, Chainlink oracles, walk-forward validation
+
+For an authoritative view: `git log --oneline main` in this repo.
 
 ## Important Notes
 - NEVER commit API keys or wallet private keys

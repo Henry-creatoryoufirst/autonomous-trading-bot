@@ -82,4 +82,7 @@ export {
 
   // Trade ticker
   handleTicker,
+
+  // v21.12: Price snapshot (BTC/ETH from Chainlink cache)
+  handlePriceSnapshot,
 } from './routes.js';
