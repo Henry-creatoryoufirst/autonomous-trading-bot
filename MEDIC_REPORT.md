@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-04-16T10:18 UTC
+# MEDIC REPORT — 2026-04-16T11:20 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #4)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #5)
 
 ## Environment
 - Run timestamp: 2026-04-16T10:18 UTC
@@ -38,7 +38,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #1 | 2026-04-14T19:12 UTC | First PATTERN D report filed |
 | #2 | 2026-04-15T00:00 UTC | PATTERN D re-confirmed |
 | #3 | 2026-04-15T18:38 UTC | PATTERN D update |
-| #4 | 2026-04-16T10:18 UTC | This report (same issue) |
+| #4 | 2026-04-16T10:18 UTC | PATTERN D update |
+| #5 | 2026-04-16T11:20 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -52,6 +53,10 @@ Despite API being unreachable from medic, the bot is clearly active:
 
 Bot is alive and making autonomous adjustments for bear market conditions.
 
+**Run #5 Auditor Note:** Bear market trigger confirmed by 3 auditor runs in last 22h.
+Parameters are already heavily tightened (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%).
+Auditor skipped this run to prevent over-tightening without fresh API metrics.
+
 ## What Is NOT Known
 
 Because the API is unreachable, the medic cannot determine:
@@ -60,10 +65,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run
+## Jobs Status This Run (Run #5)
 
-- **Scout**: SKIPPED — last ran 05:15 UTC today (within 48h)
-- **Auditor**: SKIPPED — cannot fetch bot metrics; last run was 10h ago with bear-market adjustments
+- **Scout**: SKIPPED — last ran 05:15 UTC today (within 48h); BENJI added earlier today
+- **Auditor**: SKIPPED — cannot fetch live metrics; bear market params already at floor:
+  KELLY=0.35, VOL_TARGET=1.5%, BREAKER_DD=7%. Further tightening without fresh data risks halting all trades.
 
 ## Recommended Action for Henry
 
