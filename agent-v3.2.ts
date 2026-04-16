@@ -640,6 +640,7 @@ const ALPHA_KELLY_MULTIPLIER = 0.5;     // Half-Kelly for alpha trades (more con
 
 // Capital Liberation — sell weakest positions to fund high-conviction entries
 const MIN_USDC_RESERVE_FOR_LIBERATION = 50;  // Below this, liberation triggers
+const CRITICAL_USDC_FLOOR = 20;              // v21.12: Below this, liberation fires WITHOUT conviction gate (prevents $3 micro-buy loop)
 const MAX_LIBERATION_SELLS = 3;              // Never sell more than 3 positions per event
 
 // CONFIGURATION V3.2
@@ -6577,9 +6578,16 @@ async function runTradingCycle() {
         console.log(`\n🧹 DUST_CLEANUP: Found ${dustPositions.length} micro positions under $${DUST_CLEANUP_THRESHOLD_USD} (held >${DUST_CLEANUP_MIN_AGE_HOURS}h)`);
         for (const dust of dustPositions) {
           console.log(`   🧹 Cleaning: ${dust.symbol} $${dust.usdValue.toFixed(2)} (held ${dust.ageHours.toFixed(0)}h)`);
-          if (isTokenBlocked(dust.symbol)) {
+          // v21.12: Write-off override — a position under $1 held >7 days is a dead position,
+          // not a volatile one. The circuit breaker was designed to prevent panic-selling,
+          // not to lock in a 99%+ loss indefinitely. Override it for these write-offs.
+          const isWriteOff = dust.usdValue < 1.00 && dust.ageHours > 168;
+          if (isTokenBlocked(dust.symbol) && !isWriteOff) {
             console.log(`   🚫 ${dust.symbol} blocked by circuit breaker — skipping`);
             continue;
+          }
+          if (isTokenBlocked(dust.symbol) && isWriteOff) {
+            console.log(`   📝 ${dust.symbol} write-off: $${dust.usdValue.toFixed(3)} after ${dust.ageHours.toFixed(0)}h — overriding circuit breaker`);
           }
           const dustDecision: TradeDecision = {
             action: 'SELL',
@@ -6863,7 +6871,9 @@ async function runTradingCycle() {
     let crashBuyEntriesThisCycle = 0; // v11.2: Track crash-buy entries to enforce max cap
 
     // === Capital Liberation — free dead-weight positions to fund high-conviction entries ===
-    // Triggers when USDC is critically low AND a strong signal exists this cycle.
+    // Normal path: USDC < $50 AND a strong signal exists this cycle.
+    // Emergency path (v21.12): USDC < $20 fires liberation unconditionally to break the
+    // micro-buy loop where the bot deploys $3 of USDC into WETH every cycle indefinitely.
     if (remainingUSDC < MIN_USDC_RESERVE_FOR_LIBERATION) {
       const discoveredTokenSymbols = tokenDiscoveryEngine
         ? tokenDiscoveryEngine.getDiscoveredTokens().map((t: DiscoveredToken) => t.symbol.toUpperCase())
@@ -6878,17 +6888,24 @@ async function runTradingCycle() {
         return false;
       });
 
-      if (hasHighConvictionBuy) {
-        const buyTargets = decisions
-          .filter(d => d.action === 'BUY' && d.toToken)
-          .map(d => d.toToken);
-        const excludeFromLib = [...buyTargets];
+      // v21.12: Emergency cash floor — bypass conviction gate when USDC is critically depleted.
+      // Targets $100 rebuild so the bot can resume meaningful position sizing.
+      const isEmergencyLow = remainingUSDC < CRITICAL_USDC_FLOOR;
 
-        const liberationSells = liberateCapital(balances, state, 80, excludeFromLib);
+      if (hasHighConvictionBuy || isEmergencyLow) {
+        const buyTargets = hasHighConvictionBuy
+          ? decisions.filter(d => d.action === 'BUY' && d.toToken).map(d => d.toToken)
+          : [];
+        const excludeFromLib = [...buyTargets];
+        const targetUSD = isEmergencyLow ? 100 : 80;
+        const liberationReason = isEmergencyLow
+          ? `emergency cash floor rebuild (USDC: $${remainingUSDC.toFixed(2)})`
+          : (buyTargets[0] || 'high-conviction entry');
+
+        const liberationSells = liberateCapital(balances, state, targetUSD, excludeFromLib);
 
         if (liberationSells.length > 0) {
-          const targetSymbol = buyTargets[0] || 'high-conviction entry';
-          console.log(`\n💸 [CAPITAL LIBERATION] Freeing capital from ${liberationSells.length} weak positions to fund ${targetSymbol}`);
+          console.log(`\n💸 [CAPITAL LIBERATION] Freeing capital from ${liberationSells.length} weak position(s) — ${liberationReason}`);
 
           const soldLines: string[] = [];
           for (const sellDecision of liberationSells) {
@@ -6905,12 +6922,18 @@ async function runTradingCycle() {
           }
 
           if (soldLines.length > 0) {
+            const title = isEmergencyLow ? `[Emergency Capital Liberation]` : `[Capital Liberation]`;
+            const body = isEmergencyLow
+              ? `Cash critically low ($${(remainingUSDC - soldLines.reduce((s, l) => s + parseFloat(l.match(/\$([\d.]+)/)?.[1] || '0'), 0)).toFixed(2)} USDC). Freed ${soldLines.length} position(s) to rebuild trading capacity.\n\n${soldLines.join('\n')}`
+              : `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${buyTargets[0] || 'high-conviction entry'}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`;
             telegramService.sendAlert({
-              severity: 'INFO',
-              title: `[Capital Liberation]`,
-              message: `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${targetSymbol}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`,
+              severity: isEmergencyLow ? 'CRITICAL' : 'INFO',
+              title,
+              message: body,
             }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
           }
+        } else if (isEmergencyLow) {
+          console.log(`\n⚠️ [CAPITAL LIBERATION] Emergency low USDC ($${remainingUSDC.toFixed(2)}) but no eligible liberation candidates found`);
         }
       }
     }
