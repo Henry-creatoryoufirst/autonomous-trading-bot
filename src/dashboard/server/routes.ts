@@ -1983,23 +1983,29 @@ export function handleConfidence(
   ctx: ServerContext,
 ): void {
   try {
+    // v21.12: Surface the gate threshold so dashboards can render "minimum to pass"
+    // alongside the score. Sourced from CONFIDENCE_MIN env var (default 60) to match
+    // what the gate itself uses.
+    const threshold = parseInt(process.env.CONFIDENCE_MIN || '60', 10);
+
     // Return cached result if still fresh
     if (cachedConfidence && (Date.now() - cachedConfidence.timestamp) < CONFIDENCE_CACHE_TTL_MS) {
       ctx.sendJSON(res, 200, {
         ...cachedConfidence.score,
+        threshold,
         cached: true,
         cachedAt: new Date(cachedConfidence.timestamp).toISOString(),
       });
       return;
     }
 
-    const threshold = parseInt(process.env.CONFIDENCE_MIN || '60', 10);
     const gate = runConfidenceGate(threshold);
 
     cachedConfidence = { score: gate.score, timestamp: Date.now() };
 
     ctx.sendJSON(res, 200, {
       ...gate.score,
+      threshold,
       cached: false,
       cachedAt: new Date().toISOString(),
     });
