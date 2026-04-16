@@ -478,6 +478,7 @@ import { computeMacroRegime } from "./src/algorithm/macro-regime.js";
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/core/portfolio/index.js";
+import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
 import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/core/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/core/diagnostics/index.js";
@@ -8604,6 +8605,20 @@ async function main() {
     saveTradeHistory();
     console.log(`✅ MIGRATION v21.14: Reset realized P&L on ${resetCount} tokens. Clean slate.\n`);
   }
+
+  // v21.18: Ground-truth cost basis rebuild.
+  // v21.14 only zeroed realizedPnL — the underlying cost-basis corruption (BRETT
+  // averaging at $0.000119 instead of real $0.00737) kept re-inflating P&L on
+  // every sell. This migration replays the trade log chronologically to produce
+  // honest averageCostBasis, totalInvestedUSD, and realizedPnL values.
+  // Backs up state.costBasis to disk before mutating (see migration-v21-18.ts).
+  // Set MIGRATION_V2118_DRY_RUN=true in Railway env to preview without writing.
+  runMigrationV2118InMonolith({
+    state: state as any,
+    trades: state.tradeHistory,
+    onWrite: () => saveTradeHistory(),
+    backupDir: CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf('/')) || './logs',
+  });
 
   // Restore discovery state if available
   if (tokenDiscoveryEngine) {
