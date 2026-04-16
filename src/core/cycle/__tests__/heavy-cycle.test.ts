@@ -27,6 +27,8 @@ import type { MetricsDeps, RiskRewardStats } from '../stages/metrics.js';
 import type { IntelligenceDeps } from '../stages/intelligence.js';
 import type { SetupDeps, BalanceEntry } from '../stages/setup.js';
 import type { DeploymentCtxDeps } from '../stages/deployment-ctx.js';
+import type { DecisionDeps } from '../stages/decision.js';
+import type { FiltersStageDeps } from '../stages/filters.js';
 import type { DexIntelligence } from '../../services/gecko-terminal.js';
 import { intelligenceStage } from '../stages/intelligence.js';
 
@@ -226,12 +228,33 @@ function makeDeploymentCtxDeps(overrides: Partial<DeploymentCtxDeps> = {}): Depl
   };
 }
 
+function makeDecisionDeps(overrides: Partial<DecisionDeps> = {}): DecisionDeps {
+  return {
+    signalMode:              'local',
+    fetchCentralSignals:     vi.fn().mockResolvedValue([]),
+    makeTradeDecision:       vi.fn().mockResolvedValue([]),
+    getLatestSwarmDecisions: vi.fn().mockReturnValue([]),
+    maxBuySize:              250,
+    ...overrides,
+  };
+}
+
+function makeFiltersDeps(overrides: Partial<FiltersStageDeps> = {}): FiltersStageDeps {
+  return {
+    getPriceHistory:   vi.fn().mockReturnValue([]),
+    maxTradesPerCycle: 5,
+    ...overrides,
+  };
+}
+
 function makeDeps(overrides: Partial<HeavyCycleDeps> = {}): HeavyCycleDeps {
   return {
     setup:         makeSetupDeps(),
     intelligence:  makeIntelligenceDeps(),
     metrics:       makeMetricsDeps(),
     deploymentCtx: makeDeploymentCtxDeps(),
+    decision:      makeDecisionDeps(),
+    filters:       makeFiltersDeps(),
     ...overrides,
   };
 }
@@ -366,16 +389,20 @@ describe('runHeavyCycle — halted guards', () => {
 });
 
 describe('HeavyCycleDeps type', () => {
-  it('is exported with setup, intelligence, metrics, and deploymentCtx keys', () => {
+  it('is exported with setup, intelligence, metrics, deploymentCtx, decision, and filters keys', () => {
     // TS-level assertion — compiles iff HeavyCycleDeps has exactly these keys
     // with the expected per-stage deps types.
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('setup');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('intelligence');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('metrics');
     expectTypeOf<HeavyCycleDeps>().toHaveProperty('deploymentCtx');
+    expectTypeOf<HeavyCycleDeps>().toHaveProperty('decision');
+    expectTypeOf<HeavyCycleDeps>().toHaveProperty('filters');
 
-    // Runtime assertion — a valid HeavyCycleDeps instance must carry all four.
+    // Runtime assertion — a valid HeavyCycleDeps instance must carry all six.
     const deps = makeDeps();
-    expect(Object.keys(deps).sort()).toEqual(['deploymentCtx', 'intelligence', 'metrics', 'setup']);
+    expect(Object.keys(deps).sort()).toEqual([
+      'decision', 'deploymentCtx', 'filters', 'intelligence', 'metrics', 'setup',
+    ]);
   });
 });

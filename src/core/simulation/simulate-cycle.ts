@@ -34,6 +34,8 @@ import type { SetupDeps } from '../cycle/stages/setup.js';
 import type { IntelligenceDeps } from '../cycle/stages/intelligence.js';
 import type { MetricsDeps } from '../cycle/stages/metrics.js';
 import type { DeploymentCtxDeps } from '../cycle/stages/deployment-ctx.js';
+import type { DecisionDeps } from '../cycle/stages/decision.js';
+import type { FiltersStageDeps } from '../cycle/stages/filters.js';
 
 // ============================================================================
 // EXPECTED STAGES — full 8-stage pipeline
@@ -198,6 +200,23 @@ function makeMockMetricsDeps(bot: ReturnType<typeof createBot>): MetricsDeps {
   };
 }
 
+function makeMockDecisionDeps(): DecisionDeps {
+  return {
+    signalMode:              'local',
+    fetchCentralSignals:     async () => [],
+    makeTradeDecision:       async () => [],
+    getLatestSwarmDecisions: () => [],
+    maxBuySize:              250,
+  };
+}
+
+function makeMockFiltersDeps(): FiltersStageDeps {
+  return {
+    getPriceHistory:   () => [],
+    maxTradesPerCycle: 5,
+  };
+}
+
 export function makeMockHeavyCycleDeps(
   bot: ReturnType<typeof createBot>,
   md: MarketData,
@@ -207,6 +226,8 @@ export function makeMockHeavyCycleDeps(
     intelligence:  makeMockIntelligenceDeps(),
     metrics:       makeMockMetricsDeps(bot),
     deploymentCtx: makeMockDeploymentCtxDeps(),
+    decision:      makeMockDecisionDeps(),
+    filters:       makeMockFiltersDeps(),
   };
 }
 
