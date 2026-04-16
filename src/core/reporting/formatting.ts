@@ -50,9 +50,6 @@ export function formatIntelligenceForPrompt(
       }
     }
 
-    // Signal interpretation
-    if (defi.baseTVLChange24h > 3) lines.push(`🟢 TVL SIGNAL: Capital flowing INTO Base (+${defi.baseTVLChange24h.toFixed(1)}%) — bullish for Base tokens`);
-    else if (defi.baseTVLChange24h < -3) lines.push(`🔴 TVL SIGNAL: Capital flowing OUT of Base (${defi.baseTVLChange24h.toFixed(1)}%) — bearish for Base tokens`);
     lines.push("");
   }
 
@@ -82,55 +79,6 @@ export function formatIntelligenceForPrompt(
     lines.push(`BTC Positioning: ${derivatives.btcPositioningSignal}`);
     lines.push(`ETH Positioning: ${derivatives.ethPositioningSignal}`);
 
-    // Funding rate interpretation
-    if (derivatives.btcFundingSignal === "LONG_CROWDED") {
-      lines.push(`⚠️ FUNDING SIGNAL: BTC longs crowded — risk of long squeeze / correction`);
-    } else if (derivatives.btcFundingSignal === "SHORT_CROWDED") {
-      lines.push(`🟢 FUNDING SIGNAL: BTC shorts crowded — potential short squeeze / rally`);
-    }
-    if (derivatives.ethFundingSignal === "LONG_CROWDED") {
-      lines.push(`⚠️ FUNDING SIGNAL: ETH longs crowded — risk of long squeeze / correction`);
-    } else if (derivatives.ethFundingSignal === "SHORT_CROWDED") {
-      lines.push(`🟢 FUNDING SIGNAL: ETH shorts crowded — potential short squeeze / rally`);
-    }
-
-    // v5.1: Positioning signal interpretation
-    const posSignals = [
-      { asset: "BTC", signal: derivatives.btcPositioningSignal },
-      { asset: "ETH", signal: derivatives.ethPositioningSignal },
-    ];
-    for (const { asset, signal } of posSignals) {
-      switch (signal) {
-        case "SMART_MONEY_LONG":
-          lines.push(`🟢 POSITIONING: ${asset} — Top traders accumulating longs while retail is short. High-conviction BUY signal.`);
-          break;
-        case "SMART_MONEY_SHORT":
-          lines.push(`🔴 POSITIONING: ${asset} — Top traders going short while retail is long. Distribution phase — caution.`);
-          break;
-        case "OVERLEVERAGED_LONG":
-          lines.push(`⚠️ POSITIONING: ${asset} — Extreme long crowding across all participants. Long squeeze risk elevated.`);
-          break;
-        case "OVERLEVERAGED_SHORT":
-          lines.push(`⚠️ POSITIONING: ${asset} — Extreme short crowding. Short squeeze potential.`);
-          break;
-      }
-    }
-
-    // v5.1: OI-Price Divergence interpretation
-    if (derivatives.btcOIPriceDivergence !== "NEUTRAL" && derivatives.btcOIPriceDivergence !== "ALIGNED") {
-      if (derivatives.btcOIPriceDivergence === "OI_UP_PRICE_DOWN") {
-        lines.push(`⚡ DIVERGENCE: BTC OI rising while price falling — new shorts entering OR longs averaging down. Squeeze potential building.`);
-      } else {
-        lines.push(`⚡ DIVERGENCE: BTC OI falling while price rising — short squeeze in progress, shorts capitulating.`);
-      }
-    }
-    if (derivatives.ethOIPriceDivergence !== "NEUTRAL" && derivatives.ethOIPriceDivergence !== "ALIGNED") {
-      if (derivatives.ethOIPriceDivergence === "OI_UP_PRICE_DOWN") {
-        lines.push(`⚡ DIVERGENCE: ETH OI rising while price falling — squeeze potential building.`);
-      } else {
-        lines.push(`⚡ DIVERGENCE: ETH OI falling while price rising — short squeeze in progress.`);
-      }
-    }
     lines.push("");
   }
 
@@ -157,10 +105,6 @@ export function formatIntelligenceForPrompt(
       }
     }
 
-    // Sentiment signal interpretation
-    if (news.sentimentScore > 40) lines.push(`🟢 NEWS SIGNAL: Strong bullish sentiment — market optimism, watch for FOMO tops`);
-    else if (news.sentimentScore < -40) lines.push(`🔴 NEWS SIGNAL: Strong bearish sentiment — market fear, contrarian buying opportunity?`);
-    else if (news.overallSentiment === "MIXED") lines.push(`⚠️ NEWS SIGNAL: Mixed sentiment — conflicting narratives, use other signals for direction`);
     lines.push("");
   }
 
@@ -168,16 +112,11 @@ export function formatIntelligenceForPrompt(
     lines.push(`═══ MACRO INTELLIGENCE (Federal Reserve / FRED) ═══`);
     if (macro.fedFundsRate) lines.push(`Fed Funds Rate: ${sf(macro.fedFundsRate.value, 2)}% (${macro.rateDirection})`);
     if (macro.treasury10Y) lines.push(`10-Year Treasury Yield: ${sf(macro.treasury10Y.value, 2)}%`);
-    if (macro.yieldCurve) lines.push(`Yield Curve (10Y-2Y): ${(macro.yieldCurve.value ?? 0) >= 0 ? "+" : ""}${sf(macro.yieldCurve.value, 2)}% ${(macro.yieldCurve.value ?? 0) < 0 ? "⚠️ INVERTED" : ""}`);
+    if (macro.yieldCurve) lines.push(`Yield Curve (10Y-2Y): ${(macro.yieldCurve.value ?? 0) >= 0 ? "+" : ""}${sf(macro.yieldCurve.value, 2)}%`);
     if (macro.cpi) lines.push(`CPI: ${sf(macro.cpi.value, 1)} ${macro.cpi.yoyChange !== null ? `(${(macro.cpi.yoyChange ?? 0) >= 0 ? "+" : ""}${sf(macro.cpi.yoyChange, 1)}% YoY)` : ""}`);
-    if (macro.m2MoneySupply) lines.push(`M2 Money Supply: ${macro.m2MoneySupply.yoyChange !== null ? `${(macro.m2MoneySupply.yoyChange ?? 0) >= 0 ? "+" : ""}${sf(macro.m2MoneySupply.yoyChange, 1)}% YoY` : "N/A"} ${(macro.m2MoneySupply.yoyChange ?? 0) > 5 ? "🟢 LIQUIDITY EXPANDING" : (macro.m2MoneySupply.yoyChange ?? 0) < 0 ? "🔴 LIQUIDITY CONTRACTING" : ""}`);
-    if (macro.dollarIndex) lines.push(`US Dollar Index: ${sf(macro.dollarIndex.value, 1)} ${(macro.dollarIndex.value ?? 0) > 110 ? "🔴 STRONG (headwind)" : (macro.dollarIndex.value ?? 0) < 100 ? "🟢 WEAK (tailwind)" : ""}`);
+    if (macro.m2MoneySupply) lines.push(`M2 Money Supply: ${macro.m2MoneySupply.yoyChange !== null ? `${(macro.m2MoneySupply.yoyChange ?? 0) >= 0 ? "+" : ""}${sf(macro.m2MoneySupply.yoyChange, 1)}% YoY` : "N/A"}`);
+    if (macro.dollarIndex) lines.push(`US Dollar Index: ${sf(macro.dollarIndex.value, 1)}`);
     lines.push(`Macro Signal: ${macro.macroSignal}`);
-
-    // Macro signal interpretation
-    if (macro.macroSignal === "RISK_ON") lines.push(`🟢 MACRO SIGNAL: Conditions favor risk assets — looser policy, expanding liquidity, or weakening dollar`);
-    else if (macro.macroSignal === "RISK_OFF") lines.push(`🔴 MACRO SIGNAL: Conditions headwind for crypto — tightening policy, high yields, or strong dollar`);
-    else lines.push(`→ Macro environment neutral — no strong directional bias from macro factors`);
 
     // v5.1: Cross-Asset Correlation Intelligence
     if (macro.crossAssets) {
@@ -191,27 +130,12 @@ export function formatIntelligenceForPrompt(
         lines.push(`Oil (WTI): $${sf(ca.oilPrice, 2)} ${ca.oilChange24h !== null ? `(${ca.oilChange24h >= 0 ? "+" : ""}${sf(ca.oilChange24h, 1)}% 24h)` : ""}`);
       }
       if (ca.vixLevel !== null) {
-        lines.push(`VIX: ${sf(ca.vixLevel, 1)} ${ca.vixLevel > 30 ? "⚠️ HIGH FEAR" : ca.vixLevel > 20 ? "↑ Elevated" : ca.vixLevel < 15 ? "🟢 Low (complacent)" : ""}`);
+        lines.push(`VIX: ${sf(ca.vixLevel, 1)}`);
       }
       if (ca.sp500Change !== null) {
-        lines.push(`S&P 500: ${ca.sp500Change >= 0 ? "+" : ""}${sf(ca.sp500Change, 1)}% ${ca.sp500Change > 2 ? "🟢 Risk-On Rally" : ca.sp500Change < -2 ? "🔴 Risk-Off Selloff" : ""}`);
+        lines.push(`S&P 500: ${ca.sp500Change >= 0 ? "+" : ""}${sf(ca.sp500Change, 1)}%`);
       }
       lines.push(`Cross-Asset Signal: ${ca.crossAssetSignal}`);
-
-      // Interpretation for AI
-      switch (ca.crossAssetSignal) {
-        case "RISK_ON":
-          lines.push(`🟢 CROSS-ASSET: Traditional risk assets support crypto upside — gold retreating, equities strong, VIX low`);
-          break;
-        case "RISK_OFF":
-          lines.push(`🔴 CROSS-ASSET: Risk-off in traditional markets — crypto may face headwinds but also creates buying opportunities at lower prices`);
-          break;
-        case "FLIGHT_TO_SAFETY":
-          lines.push(`🚨 CROSS-ASSET: Flight to safety in TradFi — gold surging, VIX spiking. Reduce position sizes but look for oversold crypto entries at panic prices.`);
-          break;
-        default:
-          lines.push(`→ Cross-asset signals mixed — no strong directional bias from traditional markets`);
-      }
     }
     lines.push("");
   }
@@ -223,16 +147,7 @@ export function formatIntelligenceForPrompt(
     lines.push(`Total Crypto Market Cap: $${sf((globalMarket.totalMarketCap || 0) / 1e9, 1)}B | 24h Volume: $${sf((globalMarket.totalVolume24h || 0) / 1e9, 1)}B`);
     if (globalMarket.defiMarketCap) lines.push(`DeFi Market Cap: $${sf(globalMarket.defiMarketCap / 1e9, 1)}B`);
     lines.push(`BTC Dominance 7d Change: ${(globalMarket.btcDominanceChange7d ?? 0) >= 0 ? '+' : ''}${sf(globalMarket.btcDominanceChange7d, 2)}pp`);
-    switch (globalMarket.altseasonSignal) {
-      case 'ALTSEASON_ROTATION':
-        lines.push(`🔥 ALTSEASON SIGNAL: BTC dominance dropping >2pp — capital rotating into alts. BOOST AI/Meme allocation, REDUCE Blue Chip.`);
-        break;
-      case 'BTC_DOMINANCE_FLIGHT':
-        lines.push(`⚠️ BTC DOMINANCE FLIGHT: Capital fleeing alts back to BTC. BOOST Blue Chip allocation, REDUCE speculative alts.`);
-        break;
-      default:
-        lines.push(`→ Dominance stable — no strong altseason or BTC flight signal`);
-    }
+    lines.push(`Altseason Signal: ${globalMarket.altseasonSignal}`);
     lines.push('');
   }
 
@@ -245,13 +160,6 @@ export function formatIntelligenceForPrompt(
     if (smartRetailDiv.ethDivergence !== null) {
       lines.push(`ETH: Smart-Retail divergence = ${smartRetailDiv.ethDivergence >= 0 ? '+' : ''}${sf(smartRetailDiv.ethDivergence, 1)}pp → ${smartRetailDiv.ethSignal}`);
     }
-    if (smartRetailDiv.btcSignal === 'STRONG_BUY' || smartRetailDiv.ethSignal === 'STRONG_BUY') {
-      lines.push(`🟢 Smart money is MORE long than retail — institutions see opportunity. High conviction BUY signal.`);
-    } else if (smartRetailDiv.btcSignal === 'STRONG_SELL' || smartRetailDiv.ethSignal === 'STRONG_SELL') {
-      lines.push(`🔴 Retail is MORE long than smart money — institutions are hedging. High conviction SELL/reduce signal.`);
-    } else {
-      lines.push(`→ Smart money and retail broadly aligned — no divergence edge`);
-    }
     lines.push('');
   }
 
@@ -260,13 +168,6 @@ export function formatIntelligenceForPrompt(
     lines.push(`═══ FUNDING RATE MEAN-REVERSION ═══`);
     lines.push(`BTC funding: mean=${sf((fundingMR.btcMean ?? 0) * 100, 4)}% | z-score=${sf(fundingMR.btcZScore, 2)} → ${fundingMR.btcSignal}`);
     lines.push(`ETH funding: mean=${sf((fundingMR.ethMean ?? 0) * 100, 4)}% | z-score=${sf(fundingMR.ethZScore, 2)} → ${fundingMR.ethSignal}`);
-    if (fundingMR.btcSignal === 'CROWDED_LONGS_REVERSAL' || fundingMR.ethSignal === 'CROWDED_LONGS_REVERSAL') {
-      lines.push(`⚠️ CROWDED LONGS: Funding rates >2σ above mean — leveraged longs are overcrowded. Correction risk elevated. Consider taking profit or hedging.`);
-    } else if (fundingMR.btcSignal === 'CROWDED_SHORTS_BOUNCE' || fundingMR.ethSignal === 'CROWDED_SHORTS_BOUNCE') {
-      lines.push(`🟢 CROWDED SHORTS: Funding rates >2σ below mean — leveraged shorts overcrowded. Short squeeze likely. BUY opportunity.`);
-    } else {
-      lines.push(`→ Funding rates within normal range — no mean-reversion signal`);
-    }
     lines.push('');
   }
 
@@ -279,9 +180,8 @@ export function formatIntelligenceForPrompt(
       if (d.signal === 'UNDERVALUED') undervalued.push(`${token} (TVL ${(d.tvlChange ?? 0) >= 0 ? '+' : ''}${sf(d.tvlChange, 1)}% / Price ${(d.priceChange ?? 0) >= 0 ? '+' : ''}${sf(d.priceChange, 1)}%)`);
       if (d.signal === 'OVERVALUED') overvalued.push(`${token} (TVL ${(d.tvlChange ?? 0) >= 0 ? '+' : ''}${sf(d.tvlChange, 1)}% / Price ${(d.priceChange ?? 0) >= 0 ? '+' : ''}${sf(d.priceChange, 1)}%)`);
     }
-    if (undervalued.length > 0) lines.push(`🟢 UNDERVALUED (TVL up, price flat): ${undervalued.join(', ')}`);
-    if (overvalued.length > 0) lines.push(`🔴 OVERVALUED (TVL down, price up): ${overvalued.join(', ')}`);
-    if (undervalued.length === 0 && overvalued.length === 0) lines.push(`→ TVL and price broadly aligned — no divergence detected`);
+    if (undervalued.length > 0) lines.push(`UNDERVALUED (TVL up, price flat): ${undervalued.join(', ')}`);
+    if (overvalued.length > 0) lines.push(`OVERVALUED (TVL down, price up): ${overvalued.join(', ')}`);
     lines.push('');
   }
 
@@ -290,28 +190,12 @@ export function formatIntelligenceForPrompt(
     lines.push(`═══ STABLECOIN SUPPLY / CAPITAL FLOW ═══`);
     lines.push(`Total Stablecoin Supply: $${sf((stablecoinData.totalStablecoinSupply || 0) / 1e9, 1)}B (USDT: $${sf((stablecoinData.usdtMarketCap || 0) / 1e9, 1)}B | USDC: $${sf((stablecoinData.usdcMarketCap || 0) / 1e9, 1)}B)`);
     lines.push(`7-Day Supply Change: ${(stablecoinData.supplyChange7d ?? 0) >= 0 ? '+' : ''}${sf(stablecoinData.supplyChange7d, 2)}%`);
-    switch (stablecoinData.signal) {
-      case 'CAPITAL_INFLOW':
-        lines.push(`🟢 CAPITAL INFLOW: Stablecoin supply growing >2% — fresh capital entering crypto. Bullish for prices.`);
-        break;
-      case 'CAPITAL_OUTFLOW':
-        lines.push(`🔴 CAPITAL OUTFLOW: Stablecoin supply shrinking >2% — capital leaving crypto. Bearish headwind.`);
-        break;
-      default:
-        lines.push(`→ Stablecoin supply stable — no strong capital flow signal`);
-    }
+    lines.push(`Stablecoin Signal: ${stablecoinData.signal}`);
     lines.push('');
   }
 
   lines.push(`═══ MARKET REGIME ═══`);
   lines.push(`Current Regime: ${regime}`);
-  switch (regime) {
-    case "TRENDING_UP": lines.push(`→ Deploy capital aggressively on dips — ride momentum, let winners run`); break;
-    case "TRENDING_DOWN": lines.push(`→ Hunt discounted entries — accumulate oversold tokens, trim only clear losers`); break;
-    case "RANGING": lines.push(`→ Active mean-reversion — buy oversold, sell overbought, keep capital working`); break;
-    case "VOLATILE": lines.push(`→ Volatility = opportunity — smaller positions, more trades, exploit dislocations`); break;
-    default: lines.push(`→ Mixed signals — stay active, look for individual token setups`); break;
-  }
 
   return lines.join("\n");
 }

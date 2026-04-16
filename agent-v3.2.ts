@@ -4245,18 +4245,11 @@ ${rotationSummary}
 ═══ TECHNICAL INDICATORS ═══
 ${indicatorsSummary || "  No indicator data available"}
 
-${strongBuySignals.length > 0 ? `🟢 STRONGEST BUY SIGNALS: ${strongBuySignals.join(", ")}` : ""}
-${strongSellSignals.length > 0 ? `🔴 STRONGEST SELL SIGNALS: ${strongSellSignals.join(", ")}` : ""}
 ${swarmPromptSection}
 
 ${intelligenceSummary}
 
 ${lastDexIntelligence?.aiSummary || ''}
-
-═══ TOKEN PRICES ═══
-${Object.entries(marketBySector).map(([sector, tokens]) =>
-  `${sector}: ${tokens.slice(0, 5).join(" | ")}`
-).join("\n")}
 ${volumeSpikeSection}
 ═══ RECENT TRADE HISTORY ═══
 ${tradeHistoryContext}${tradeHistorySummary}

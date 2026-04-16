@@ -300,7 +300,7 @@ interface AlphaCandidate {
   };
 }
 
-async function callCheapLLM(prompt: string): Promise<string> {
+async function callCheapLLM(prompt: string, maxTokens: number = 256): Promise<string> {
   // Priority: Groq → Cerebras → Anthropic Haiku
   const groqKey = process.env.GROQ_API_KEY;
   const cerebrasKey = process.env.CEREBRAS_API_KEY;
@@ -311,7 +311,7 @@ async function callCheapLLM(prompt: string): Promise<string> {
       'https://api.groq.com/openai/v1/chat/completions',
       {
         model: 'llama-3.1-8b-instant',
-        max_tokens: 256,
+        max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       },
       {
@@ -330,7 +330,7 @@ async function callCheapLLM(prompt: string): Promise<string> {
       'https://api.cerebras.ai/v1/chat/completions',
       {
         model: 'llama-3.3-70b',
-        max_tokens: 256,
+        max_tokens: maxTokens,
         messages: [{ role: 'user', content: prompt }],
       },
       {
@@ -350,7 +350,7 @@ async function callCheapLLM(prompt: string): Promise<string> {
     'https://api.anthropic.com/v1/messages',
     {
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 256,
+      max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }],
     },
     {
@@ -368,51 +368,46 @@ async function callCheapLLM(prompt: string): Promise<string> {
 async function runHaikuPreFilter(candidates: any[]): Promise<AlphaCandidate[]> {
   if (candidates.length === 0) return [];
 
-  // Run Haiku on each candidate in parallel (they're independent)
-  const results = await Promise.all(candidates.map(async (candidate) => {
-    try {
-      const prompt = `You are a crypto alpha analyst scoring a Base chain token as a potential short-term trade setup.
+  // Batched scoring: one LLM call scores all candidates at once
+  // ~85% reduction in instruction-overhead tokens vs per-candidate calls
+  const tokenList = candidates.map((c, i) =>
+    `${i + 1}. ${c.symbol} (${c.sector}) — 24h: ${c.priceChange24h.toFixed(1)}%, vol $${(c.volume24hUSD / 1000).toFixed(0)}K, liq $${(c.liquidityUSD / 1000).toFixed(0)}K, txns: ${c.txns24h}, LP: ${c.lpLocked ?? '?'}, holders: ${c.holderConcentration?.toFixed(0) ?? '?'}%, score: ${c.compositeScore}/100`
+  ).join('\n');
 
-Token: ${candidate.symbol} (${candidate.sector})
-24h Price Change: ${candidate.priceChange24h.toFixed(1)}%
-24h Volume: $${(candidate.volume24hUSD / 1000).toFixed(0)}K
-Liquidity: $${(candidate.liquidityUSD / 1000).toFixed(0)}K
-Transactions 24h: ${candidate.txns24h}
-LP Locked: ${candidate.lpLocked ?? 'unknown'}
-Top-10 Holder Concentration: ${candidate.holderConcentration !== undefined ? candidate.holderConcentration.toFixed(0) + '%' : 'unknown'}
-Composite Discovery Score: ${candidate.compositeScore}/100
+  const prompt = `You are a crypto alpha analyst scoring Base chain tokens as short-term trade setups.
 
-Score this token on three dimensions (0-10 each):
-1. accumulationScore: Is this token in a pre-move accumulation phase (high = accumulating, low = already pumped or dead)
-2. narrativeScore: Does this fit a current market narrative or hot sector? (high = strong narrative, low = no story)
-3. riskScore: Safety/risk quality (high = safer, low = risky/suspicious)
+Score each token below on three dimensions (0-10 each):
+- accumulationScore: pre-move accumulation (high = accumulating, low = pumped/dead)
+- narrativeScore: fits current narrative/hot sector (high = strong narrative)
+- riskScore: safety quality (high = safer, low = risky)
 
-Then give:
-- recommendation: WATCH (interesting, wait for setup), ENTRY_ZONE (good setup right now), or AVOID (too risky or too late)
-- reasoning: one sentence explaining your call
-- entryCondition: what specific condition to wait for before entering (e.g. "pull back to $X support", "volume confirmation on second leg")
+Then for each: recommendation (WATCH | ENTRY_ZONE | AVOID), reasoning (one short sentence, no brackets), entryCondition (specific condition to wait for, no brackets).
 
-Respond ONLY with valid JSON:
-{
-  "accumulationScore": <0-10>,
-  "narrativeScore": <0-10>,
-  "riskScore": <0-10>,
-  "recommendation": "<WATCH|ENTRY_ZONE|AVOID>",
-  "reasoning": "<one sentence>",
-  "entryCondition": "<specific condition>"
-}`;
+Tokens:
+${tokenList}
 
-      const text = await callCheapLLM(prompt);
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return { ...candidate };
-      const haiku = JSON.parse(jsonMatch[0]);
+Respond ONLY with a valid JSON array, one object per token in the same order:
+[
+  {"index": 1, "accumulationScore": 0-10, "narrativeScore": 0-10, "riskScore": 0-10, "recommendation": "WATCH|ENTRY_ZONE|AVOID", "reasoning": "...", "entryCondition": "..."}
+]`;
+
+  try {
+    const text = await callCheapLLM(prompt, 2000);
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return candidates.map(c => ({ ...c }));
+
+    const scores = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(scores)) return candidates.map(c => ({ ...c }));
+
+    return candidates.map((candidate, i) => {
+      const haikuRaw = scores.find((s: any) => s?.index === i + 1) || scores[i];
+      if (!haikuRaw) return { ...candidate };
+      const { index, ...haiku } = haikuRaw;
       return { ...candidate, haiku };
-    } catch {
-      return { ...candidate }; // Return without haiku scores on failure
-    }
-  }));
-
-  return results;
+    });
+  } catch {
+    return candidates.map(c => ({ ...c })); // Return without haiku scores on failure
+  }
 }
 
 // ============================================================================
