@@ -2060,6 +2060,53 @@ export function handleModelTelemetry(
         toModel: t.model,
       }));
 
+    // v21.12: Per-backend health summary for dashboards. Sub-objects are omitted
+    // when the corresponding backend key isn't configured, so consumers should
+    // treat this whole object as optional and handle missing sub-fields.
+    const backendHealth: Record<string, any> = {};
+
+    // Gemma (local Ollama) — always exposed when we have any telemetry; "healthy"
+    // is based on recent activity + escalation rate staying under 30%.
+    const gemmaBackendEntries = telemetry.filter(t => t.backend === 'ollama');
+    const gemmaLast = gemmaBackendEntries.length > 0
+      ? gemmaBackendEntries[gemmaBackendEntries.length - 1]
+      : null;
+    const escalationRate = gemmaEntries.length > 0
+      ? telemetry.filter(t => t.escalated).length / gemmaEntries.length
+      : 0;
+    backendHealth.gemma = {
+      healthy: gemmaBackendEntries.length > 0 && escalationRate < 0.30,
+      lastUsed: gemmaLast ? gemmaLast.timestamp : null,
+      escalationRate: Math.round(escalationRate * 10000) / 10000,
+      avgLatencyMs: gemmaBackendEntries.length > 0
+        ? Math.round(gemmaBackendEntries.reduce((s, t) => s + t.latencyMs, 0) / gemmaBackendEntries.length)
+        : 0,
+    };
+
+    if (process.env.GROQ_API_KEY) {
+      const groqEntries = telemetry.filter(t => t.backend === 'groq');
+      const groqLast = groqEntries.length > 0 ? groqEntries[groqEntries.length - 1] : null;
+      backendHealth.groq = {
+        healthy: groqEntries.length > 0 && groqEntries.slice(-10).every(t => t.success !== false),
+        lastUsed: groqLast ? groqLast.timestamp : null,
+        avgLatencyMs: groqEntries.length > 0
+          ? Math.round(groqEntries.reduce((s, t) => s + t.latencyMs, 0) / groqEntries.length)
+          : 0,
+      };
+    }
+
+    if (process.env.CEREBRAS_API_KEY) {
+      const cerebrasEntries = telemetry.filter(t => t.backend === 'cerebras');
+      const cerebrasLast = cerebrasEntries.length > 0 ? cerebrasEntries[cerebrasEntries.length - 1] : null;
+      backendHealth.cerebras = {
+        healthy: cerebrasEntries.length > 0 && cerebrasEntries.slice(-10).every(t => t.success !== false),
+        lastUsed: cerebrasLast ? cerebrasLast.timestamp : null,
+        avgLatencyMs: cerebrasEntries.length > 0
+          ? Math.round(cerebrasEntries.reduce((s, t) => s + t.latencyMs, 0) / cerebrasEntries.length)
+          : 0,
+      };
+    }
+
     ctx.sendJSON(res, 200, {
       currentTier,
       gemmaMode,
@@ -2072,6 +2119,8 @@ export function handleModelTelemetry(
       estimatedSavingsUSD: Math.round(estimatedSavings * 100) / 100,
       monthlyClaudeCostUSD: Math.round(estimatedClaudeCost * 100) / 100,
       escalations,
+      // v21.12: Per-backend health block (gemma always present; groq/cerebras only when keys set).
+      backendHealth,
       chain: activeChain.name.toLowerCase(),
       updatedAt: new Date().toISOString(),
     });
