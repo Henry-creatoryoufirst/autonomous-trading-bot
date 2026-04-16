@@ -55,7 +55,7 @@ import { updateWalletWeight, checkSmartWalletActivity } from './src/core/service
 // ============================================================================
 
 const PORT = parseInt(process.env.PORT || '3001');
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000;       // 5 minutes
 const HISTORY_MAX = 288;                          // 24h @ 5-min cadence
 const FLEET_ONLINE_WINDOW_MS = 30 * 60 * 1000;   // 30 minutes = "online"
@@ -69,6 +69,12 @@ const BASE_RPC_URL = 'https://mainnet.base.org';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
+// NVR Bot Feed — canonical strategy decisions broadcast to subscriber bots
+// Subscribers execute scaled versions of these trades (% of their portfolio)
+const NVR_DECISIONS_MAX = 1000;                   // ~7 days at 4 trades/hr
+const NVR_PUBLISH_KEY = process.env.NVR_PUBLISH_KEY || ''; // shared secret for POST auth
+const NVR_DECISION_STALE_MS = 5 * 60 * 1000;     // decisions older than 5min are not auto-served as "latest"
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -79,6 +85,26 @@ const history: SignalHistoryEntry[] = [];
 const lastGasAlertMs = new Map<string, number>();
 let refreshCount = 0;
 let lastRefreshAt: string | null = null;
+
+// NVR Bot canonical decision feed — single source of truth for the strategy
+interface NVRDecision {
+  id: string;                        // unique: ts + random suffix
+  ts: number;                        // unix ms when published
+  cycle: number;                     // publisher's cycle number
+  action: 'BUY' | 'SELL';
+  fromToken: string;
+  toToken: string;
+  sizePct: number;                   // 0-100, % of publisher's portfolio
+  reasoning: string;
+  sector?: string;
+  publishedBy: string;               // BOT_INSTANCE_NAME of publisher
+  txHash: string;                    // proof of execution on the publisher's wallet
+  publisherPortfolioValue: number;   // for context / debugging
+  signalContext?: Record<string, unknown>;
+}
+const nvrDecisions: NVRDecision[] = [];
+let nvrPublishCount = 0;
+let nvrPollCount = 0;
 
 // Alpha discovery engine — tracks token momentum for the /alpha endpoint
 const alphaDiscovery = new TokenDiscoveryEngine([
@@ -300,76 +326,114 @@ interface AlphaCandidate {
   };
 }
 
+async function callCheapLLM(prompt: string, maxTokens: number = 256): Promise<string> {
+  // Priority: Groq → Cerebras → Anthropic Haiku
+  const groqKey = process.env.GROQ_API_KEY;
+  const cerebrasKey = process.env.CEREBRAS_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+  if (groqKey) {
+    const response = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.1-8b-instant',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${groqKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+    return response.data?.choices?.[0]?.message?.content || '';
+  }
+
+  if (cerebrasKey) {
+    const response = await axios.post(
+      'https://api.cerebras.ai/v1/chat/completions',
+      {
+        model: 'llama-3.3-70b',
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${cerebrasKey}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      }
+    );
+    return response.data?.choices?.[0]?.message?.content || '';
+  }
+
+  // Fallback: Anthropic Haiku
+  if (!anthropicKey) return '';
+  const response = await axios.post(
+    'https://api.anthropic.com/v1/messages',
+    {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    {
+      headers: {
+        'x-api-key': anthropicKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      timeout: 15000,
+    }
+  );
+  return response.data?.content?.[0]?.text || '';
+}
+
 async function runHaikuPreFilter(candidates: any[]): Promise<AlphaCandidate[]> {
   if (candidates.length === 0) return [];
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!anthropicKey) return candidates.map(c => ({ ...c }));
+  // Batched scoring: one LLM call scores all candidates at once
+  // ~85% reduction in instruction-overhead tokens vs per-candidate calls
+  const tokenList = candidates.map((c, i) =>
+    `${i + 1}. ${c.symbol} (${c.sector}) — 24h: ${c.priceChange24h.toFixed(1)}%, vol $${(c.volume24hUSD / 1000).toFixed(0)}K, liq $${(c.liquidityUSD / 1000).toFixed(0)}K, txns: ${c.txns24h}, LP: ${c.lpLocked ?? '?'}, holders: ${c.holderConcentration?.toFixed(0) ?? '?'}%, score: ${c.compositeScore}/100`
+  ).join('\n');
 
-  // Run Haiku on each candidate in parallel (they're independent)
-  const results = await Promise.all(candidates.map(async (candidate) => {
-    try {
-      const prompt = `You are a crypto alpha analyst scoring a Base chain token as a potential short-term trade setup.
+  const prompt = `You are a crypto alpha analyst scoring Base chain tokens as short-term trade setups.
 
-Token: ${candidate.symbol} (${candidate.sector})
-24h Price Change: ${candidate.priceChange24h.toFixed(1)}%
-24h Volume: $${(candidate.volume24hUSD / 1000).toFixed(0)}K
-Liquidity: $${(candidate.liquidityUSD / 1000).toFixed(0)}K
-Transactions 24h: ${candidate.txns24h}
-LP Locked: ${candidate.lpLocked ?? 'unknown'}
-Top-10 Holder Concentration: ${candidate.holderConcentration !== undefined ? candidate.holderConcentration.toFixed(0) + '%' : 'unknown'}
-Composite Discovery Score: ${candidate.compositeScore}/100
+Score each token below on three dimensions (0-10 each):
+- accumulationScore: pre-move accumulation (high = accumulating, low = pumped/dead)
+- narrativeScore: fits current narrative/hot sector (high = strong narrative)
+- riskScore: safety quality (high = safer, low = risky)
 
-Score this token on three dimensions (0-10 each):
-1. accumulationScore: Is this token in a pre-move accumulation phase (high = accumulating, low = already pumped or dead)
-2. narrativeScore: Does this fit a current market narrative or hot sector? (high = strong narrative, low = no story)
-3. riskScore: Safety/risk quality (high = safer, low = risky/suspicious)
+Then for each: recommendation (WATCH | ENTRY_ZONE | AVOID), reasoning (one short sentence, no brackets), entryCondition (specific condition to wait for, no brackets).
 
-Then give:
-- recommendation: WATCH (interesting, wait for setup), ENTRY_ZONE (good setup right now), or AVOID (too risky or too late)
-- reasoning: one sentence explaining your call
-- entryCondition: what specific condition to wait for before entering (e.g. "pull back to $X support", "volume confirmation on second leg")
+Tokens:
+${tokenList}
 
-Respond ONLY with valid JSON:
-{
-  "accumulationScore": <0-10>,
-  "narrativeScore": <0-10>,
-  "riskScore": <0-10>,
-  "recommendation": "<WATCH|ENTRY_ZONE|AVOID>",
-  "reasoning": "<one sentence>",
-  "entryCondition": "<specific condition>"
-}`;
+Respond ONLY with a valid JSON array, one object per token in the same order:
+[
+  {"index": 1, "accumulationScore": 0-10, "narrativeScore": 0-10, "riskScore": 0-10, "recommendation": "WATCH|ENTRY_ZONE|AVOID", "reasoning": "...", "entryCondition": "..."}
+]`;
 
-      const response = await axios.post(
-        'https://api.anthropic.com/v1/messages',
-        {
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 256,
-          messages: [{ role: 'user', content: prompt }],
-        },
-        {
-          headers: {
-            'x-api-key': anthropicKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          timeout: 15000,
-        }
-      );
+  try {
+    const text = await callCheapLLM(prompt, 2000);
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return candidates.map(c => ({ ...c }));
 
-      const text = response.data?.content?.[0]?.text || '';
-      // Extract JSON from response (handle markdown code blocks)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return { ...candidate };
+    const scores = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(scores)) return candidates.map(c => ({ ...c }));
 
-      const haiku = JSON.parse(jsonMatch[0]);
+    return candidates.map((candidate, i) => {
+      const haikuRaw = scores.find((s: any) => s?.index === i + 1) || scores[i];
+      if (!haikuRaw) return { ...candidate };
+      const { index, ...haiku } = haikuRaw;
       return { ...candidate, haiku };
-    } catch {
-      return { ...candidate }; // Return without haiku scores on failure
-    }
-  }));
-
-  return results;
+    });
+  } catch {
+    return candidates.map(c => ({ ...c })); // Return without haiku scores on failure
+  }
 }
 
 // ============================================================================
@@ -492,6 +556,107 @@ function handleGas(res: http.ServerResponse): void {
 }
 
 // ============================================================================
+// NVR BOT FEED — canonical strategy decisions
+// ============================================================================
+
+function handleNvrLatest(res: http.ServerResponse): void {
+  const latest = nvrDecisions.length > 0 ? nvrDecisions[nvrDecisions.length - 1] : null;
+  sendJSON(res, 200, {
+    latest,
+    fresh: latest ? (Date.now() - latest.ts) < NVR_DECISION_STALE_MS : false,
+    totalPublished: nvrPublishCount,
+    totalPolls: nvrPollCount,
+  });
+}
+
+function handleNvrFeed(res: http.ServerResponse, url: URL): void {
+  nvrPollCount++;
+  const since = parseInt(url.searchParams.get('since') || '0');
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
+  const filtered = since > 0 ? nvrDecisions.filter(d => d.ts > since) : nvrDecisions;
+  const slice = filtered.slice(-limit);
+  sendJSON(res, 200, {
+    decisions: slice,
+    count: slice.length,
+    totalBuffered: nvrDecisions.length,
+    maxBuffer: NVR_DECISIONS_MAX,
+    serverTime: Date.now(),
+  });
+}
+
+function handleNvrPublish(req: http.IncomingMessage, res: http.ServerResponse): void {
+  // Auth: shared key in x-nvr-key header
+  if (!NVR_PUBLISH_KEY) {
+    sendJSON(res, 503, { error: 'NVR publishing not configured (NVR_PUBLISH_KEY unset on service)' });
+    return;
+  }
+  const providedKey = req.headers['x-nvr-key'];
+  if (providedKey !== NVR_PUBLISH_KEY) {
+    sendJSON(res, 401, { error: 'Invalid or missing x-nvr-key header' });
+    return;
+  }
+
+  // Read body
+  const chunks: Buffer[] = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    try {
+      const raw = Buffer.concat(chunks).toString('utf8');
+      const body = JSON.parse(raw);
+
+      // Validate required fields
+      const required = ['action', 'fromToken', 'toToken', 'sizePct', 'reasoning', 'publishedBy', 'txHash', 'publisherPortfolioValue'];
+      for (const field of required) {
+        if (body[field] === undefined || body[field] === null) {
+          sendJSON(res, 400, { error: `Missing required field: ${field}` });
+          return;
+        }
+      }
+      if (body.action !== 'BUY' && body.action !== 'SELL') {
+        sendJSON(res, 400, { error: 'action must be BUY or SELL' });
+        return;
+      }
+      if (typeof body.sizePct !== 'number' || body.sizePct <= 0 || body.sizePct > 100) {
+        sendJSON(res, 400, { error: 'sizePct must be a number between 0 and 100' });
+        return;
+      }
+
+      const decision: NVRDecision = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        ts: Date.now(),
+        cycle: typeof body.cycle === 'number' ? body.cycle : 0,
+        action: body.action,
+        fromToken: String(body.fromToken),
+        toToken: String(body.toToken),
+        sizePct: Number(body.sizePct),
+        reasoning: String(body.reasoning).slice(0, 500),
+        sector: body.sector ? String(body.sector) : undefined,
+        publishedBy: String(body.publishedBy),
+        txHash: String(body.txHash),
+        publisherPortfolioValue: Number(body.publisherPortfolioValue),
+        signalContext: body.signalContext && typeof body.signalContext === 'object' ? body.signalContext : undefined,
+      };
+
+      nvrDecisions.push(decision);
+      if (nvrDecisions.length > NVR_DECISIONS_MAX) nvrDecisions.shift();
+      nvrPublishCount++;
+
+      console.log(
+        `[NVR Feed] Published #${nvrPublishCount}: ${decision.action} ${decision.toToken !== 'USDC' ? decision.toToken : decision.fromToken} ` +
+        `${decision.sizePct.toFixed(2)}% by ${decision.publishedBy} | tx ${decision.txHash.slice(0, 10)}...`
+      );
+
+      sendJSON(res, 201, { ok: true, id: decision.id, ts: decision.ts });
+    } catch (err) {
+      sendJSON(res, 400, { error: `Invalid JSON: ${(err as Error).message}` });
+    }
+  });
+  req.on('error', (err) => {
+    sendJSON(res, 400, { error: `Request error: ${err.message}` });
+  });
+}
+
+// ============================================================================
 // HTTP SERVER
 // ============================================================================
 
@@ -499,8 +664,20 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
   if (req.method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS' });
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, x-nvr-key',
+    });
     res.end();
+    return;
+  }
+
+  const path = url.pathname;
+
+  // POST /nvr-decisions — publish a canonical NVR strategy decision (auth required)
+  if (req.method === 'POST' && path === '/nvr-decisions') {
+    handleNvrPublish(req, res);
     return;
   }
 
@@ -508,8 +685,6 @@ const server = http.createServer((req, res) => {
     sendJSON(res, 405, { error: 'Method not allowed' });
     return;
   }
-
-  const path = url.pathname;
 
   // GET /health
   if (path === '/health' || path === '/') {
@@ -545,6 +720,18 @@ const server = http.createServer((req, res) => {
   // GET /gas
   if (path === '/gas') {
     handleGas(res);
+    return;
+  }
+
+  // GET /nvr-decisions/latest — convenience: most recent decision (or null)
+  if (path === '/nvr-decisions/latest') {
+    handleNvrLatest(res);
+    return;
+  }
+
+  // GET /nvr-decisions[?since=<ms>&limit=<n>] — subscriber feed
+  if (path === '/nvr-decisions') {
+    handleNvrFeed(res, url);
     return;
   }
 
@@ -671,6 +858,9 @@ server.listen(PORT, () => {
   console.log('    GET /config/:id  — per-bot strategy profile');
   console.log('    GET /alpha       — top alpha candidates with Haiku pre-filter scores');
   console.log('    GET /outcomes    — recursive learning: outcome history, wallet hit rates, signal accuracy');
+  console.log(`    POST /nvr-decisions — publish NVR Bot decision (auth: x-nvr-key) ${NVR_PUBLISH_KEY ? '[ENABLED]' : '[DISABLED — set NVR_PUBLISH_KEY]'}`);
+  console.log('    GET /nvr-decisions[?since=<ms>&limit=<n>] — subscriber feed');
+  console.log('    GET /nvr-decisions/latest — most recent decision');
   console.log('');
 });
 

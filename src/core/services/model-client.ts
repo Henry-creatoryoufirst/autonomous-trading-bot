@@ -142,14 +142,7 @@ export async function callOllama(options: ModelRequestOptions): Promise<ModelRes
   const startMs = Date.now();
   const baseUrl = getOllamaBaseUrl();
 
-  // Build messages — prepend JSON enforcement system message
-  const messages = [
-    {
-      role: 'system' as const,
-      content: 'Respond ONLY with a valid JSON array of trade decisions. No markdown fences, no prose, no explanation outside the JSON. If no action needed, return [{"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"no action"}].',
-    },
-    ...options.messages,
-  ];
+  const messages = [...options.messages];
 
   const body: Record<string, unknown> = {
     model: AI_MODEL_GEMMA,
@@ -231,14 +224,7 @@ export async function callGroq(options: ModelRequestOptions): Promise<ModelRespo
     throw new Error('GROQ_API_KEY is not set');
   }
 
-  // Build messages — prepend JSON enforcement system message
-  const messages = [
-    {
-      role: 'system' as const,
-      content: 'Respond ONLY with a valid JSON array of trade decisions. No markdown fences, no prose, no explanation outside the JSON. If no action needed, return [{"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"no action"}].',
-    },
-    ...options.messages,
-  ];
+  const messages = [...options.messages];
 
   const body: Record<string, unknown> = {
     model: GROQ_MODEL_FAST,
@@ -319,13 +305,7 @@ export async function callCerebras(options: ModelRequestOptions): Promise<ModelR
     throw new Error('CEREBRAS_API_KEY is not set');
   }
 
-  const messages = [
-    {
-      role: 'system' as const,
-      content: 'Respond ONLY with a valid JSON array of trade decisions. No markdown fences, no prose, no explanation outside the JSON. If no action needed, return [{"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"no action"}].',
-    },
-    ...options.messages,
-  ];
+  const messages = [...options.messages];
 
   const body: Record<string, unknown> = {
     model: CEREBRAS_MODEL,
