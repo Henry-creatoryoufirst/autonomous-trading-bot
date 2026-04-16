@@ -299,6 +299,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "SKI", name: "Ski Mask Dog", coingeckoId: "ski-mask-dog",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  BENJI: {
+    address: "0xBC45647eA894030a4E9801Ec03479739FA2485F0",
+    symbol: "BENJI", name: "Basenji", coingeckoId: "basenji",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
