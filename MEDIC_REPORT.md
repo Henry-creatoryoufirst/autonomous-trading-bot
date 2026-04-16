@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-16T11:20 UTC
+# MEDIC REPORT — 2026-04-16T18:10 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #5)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #6)
 
 ## Environment
-- Run timestamp: 2026-04-16T10:18 UTC
+- Run timestamp: 2026-04-16T18:10 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-Q5HJZ
 
 ## Problem
 
@@ -39,23 +39,24 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #2 | 2026-04-15T00:00 UTC | PATTERN D re-confirmed |
 | #3 | 2026-04-15T18:38 UTC | PATTERN D update |
 | #4 | 2026-04-16T10:18 UTC | PATTERN D update |
-| #5 | 2026-04-16T11:20 UTC | This report (same issue) |
+| #5 | 2026-04-16T11:20 UTC | PATTERN D update |
+| #6 | 2026-04-16T18:10 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
 Despite API being unreachable from medic, the bot is clearly active:
 
+- `2026-04-16 14:52 UTC` — on-chain Transfer event indexer deployed (#6)
+- `2026-04-16 14:54 UTC` — ground-truth cost basis rebuild (eliminate $1.4M phantom P&L) (#7)
 - `2026-04-16 05:15 UTC` — Scout added BENJI to TOKEN_REGISTRY
 - `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
 - `2026-04-16 00:21 UTC` — Scout added SPX to TOKEN_REGISTRY
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 - `2026-04-15 12:25 UTC` — Auditor lowered VOL_TARGET_DAILY_PCT 2→1.5 (bear-market)
 
-Bot is alive and making autonomous adjustments for bear market conditions.
+Bot is alive and making autonomous adjustments. Recent ground-truth cost basis rebuild suggests active development.
 
-**Run #5 Auditor Note:** Bear market trigger confirmed by 3 auditor runs in last 22h.
-Parameters are already heavily tightened (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%).
-Auditor skipped this run to prevent over-tightening without fresh API metrics.
+**Run #6 Note:** 6 consecutive runs blocked by egress proxy. Bear market risk params are at their tightened floor (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%). Scout last ran ~13h ago (within 48h window — skip). No further auditor tightening warranted without fresh API metrics.
 
 ## What Is NOT Known
 
@@ -65,20 +66,21 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #5)
+## Jobs Status This Run (Run #6)
 
-- **Scout**: SKIPPED — last ran 05:15 UTC today (within 48h); BENJI added earlier today
+- **Scout**: SKIPPED — last ran ~13h ago today (within 48h window; BENJI added at 05:15 UTC)
 - **Auditor**: SKIPPED — cannot fetch live metrics; bear market params already at floor:
   KELLY=0.35, VOL_TARGET=1.5%, BREAKER_DD=7%. Further tightening without fresh data risks halting all trades.
 
 ## Recommended Action for Henry
 
-**This is the 4th consecutive run with the same network restriction. Action required:**
+**This is now the 6th consecutive run blocked by the same network restriction. Action required:**
 
 1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
 2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
 3. Alternatively, expose a **read-only status webhook** that pushes to a domain already in the allowlist
 4. Manually verify bot health at: https://autonomous-trading-bot-production.up.railway.app/health
+5. Check BaseScan for wallet activity: https://basescan.org/address/0x55509AA76E2769eCCa5B4293359e3001dA16dd0F
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -86,4 +88,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-Q5HJZ per branch constraints
