@@ -8192,6 +8192,8 @@ async function main() {
     getCrashBuyingOverrideActive: () => crashBuyingOverrideActive,
     getCrashBuyingOverrideCycles: () => crashBuyingOverrideCycles,
     getCurrentAltseasonSignal: () => currentAltseasonSignal,
+    // v21.12: Dashboard field — current adaptive cycle interval (sec)
+    getCurrentCycleIntervalSec: () => adaptiveCycle.currentIntervalSec,
   });
 
   // === NVR SIGNAL SERVICE: Mode Detection ===

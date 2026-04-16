@@ -61,6 +61,8 @@ let getCashDeploymentCycles: () => number;
 let getCrashBuyingOverrideActive: () => boolean;
 let getCrashBuyingOverrideCycles: () => number;
 let getCurrentAltseasonSignal: () => any;
+// v21.12: Dashboard field — adaptive cycle interval (120-900s) for "next cycle in" countdown.
+let getCurrentCycleIntervalSec: () => number;
 
 export function initDashboardAPI(deps: Record<string, any>) {
   state = deps.state;
@@ -91,6 +93,7 @@ export function initDashboardAPI(deps: Record<string, any>) {
   getCrashBuyingOverrideActive = deps.getCrashBuyingOverrideActive;
   getCrashBuyingOverrideCycles = deps.getCrashBuyingOverrideCycles;
   getCurrentAltseasonSignal = deps.getCurrentAltseasonSignal;
+  getCurrentCycleIntervalSec = deps.getCurrentCycleIntervalSec;
 }
 
 export function sendJSON(res: http.ServerResponse, status: number, data: any, req?: http.IncomingMessage) {
@@ -312,6 +315,11 @@ export function apiPortfolio() {
     // v11.4.22: On-chain recovery diagnostic
     _recovery: (state as any)._recoveryStatus || 'not run',
     _recoveryWallet: (state as any)._recoveryWallet || 'unknown',
+    // v21.12: Adaptive cycle interval in seconds (120-900s). Dashboards use this to render
+    // a "next cycle in" countdown. Optional field — old dashboards ignore it safely.
+    cycleIntervalSec: typeof getCurrentCycleIntervalSec === 'function'
+      ? (getCurrentCycleIntervalSec() || 600)
+      : 600,
   };
   } catch (err: any) {
     // v21.0: Graceful fallback — return minimal portfolio data instead of 500 error
@@ -337,6 +345,10 @@ export function apiPortfolio() {
       totalCycles: state.totalCycles,
       version: BOT_VERSION,
       uptime: `${Math.floor((Date.now() - state.startTime.getTime()) / 3600000)}h`,
+      // v21.12: Also surface in fallback so dashboards still get a value on errors.
+      cycleIntervalSec: typeof getCurrentCycleIntervalSec === 'function'
+        ? (getCurrentCycleIntervalSec() || 600)
+        : 600,
     };
   }
 }
