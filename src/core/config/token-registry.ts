@@ -178,6 +178,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "KEYCAT", name: "Keyboard Cat", coingeckoId: "keyboard-cat-base",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  SKI: {
+    address: "0x768be13e1680b5ebe0024c42c896e3db59ec0149",
+    symbol: "SKI", name: "Ski Mask Dog", coingeckoId: "ski-mask-dog",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   MIGGLES: {
     address: "0xb1a03eda10342529bbf8eb700a06c60441fef25d",
     symbol: "MIGGLES", name: "Mr. Miggles", coingeckoId: "mister-miggles",
