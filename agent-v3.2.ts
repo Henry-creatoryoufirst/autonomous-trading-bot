@@ -130,6 +130,112 @@ const PAPER_TRADE_MODE = process.env.PAPER_TRADE_MODE === 'true';
 const PAPER_VALIDATE_FIRST = process.env.PAPER_VALIDATE_FIRST !== 'false'; // default ON — audit trail before every live trade
 const PAPER_GATE_PORTFOLIO_ID = 'paper-gate-shadow';
 
+// =============================================================================
+// NVR BOT FEED — publish/subscribe to canonical strategy decisions
+// Publisher: bot posts every successful trade to the signal service feed
+// Subscriber: bot polls feed and (Phase 3b) executes scaled versions
+// =============================================================================
+const NVR_PUBLISH_URL = process.env.NVR_PUBLISH_URL || '';     // e.g. https://nvr-signal-service.up.railway.app
+const NVR_PUBLISH_KEY = process.env.NVR_PUBLISH_KEY || '';     // shared secret with signal service
+const NVR_PUBLISHER_ENABLED = !!(NVR_PUBLISH_URL && NVR_PUBLISH_KEY);
+const NVR_SUBSCRIBE_URL = process.env.NVR_SUBSCRIBE_URL || NVR_PUBLISH_URL;
+const NVR_SUBSCRIBE_ENABLED = !!NVR_SUBSCRIBE_URL && process.env.NVR_SUBSCRIBE === 'true';
+const NVR_SUBSCRIBE_MODE = (process.env.NVR_SUBSCRIBE_MODE || 'log').toLowerCase(); // 'log' | 'execute'
+const NVR_POLL_INTERVAL_MS = parseInt(process.env.NVR_POLL_INTERVAL_MS || '60000');  // 60s default
+const NVR_DECISION_STALE_MS = 5 * 60 * 1000;                  // skip decisions older than 5min
+
+async function publishNvrDecision(payload: {
+  cycle: number;
+  action: 'BUY' | 'SELL';
+  fromToken: string;
+  toToken: string;
+  sizePct: number;
+  reasoning: string;
+  sector?: string;
+  txHash: string;
+  publisherPortfolioValue: number;
+  signalContext?: Record<string, unknown>;
+}): Promise<void> {
+  if (!NVR_PUBLISHER_ENABLED) return;
+  const body = {
+    ...payload,
+    publishedBy: process.env.BOT_INSTANCE_NAME || 'unknown',
+  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${NVR_PUBLISH_URL}/nvr-decisions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-nvr-key': NVR_PUBLISH_KEY },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.warn(`[NVR Publish] HTTP ${response.status}: ${errText.slice(0, 120)}`);
+    }
+  } catch (e) {
+    console.warn(`[NVR Publish] Failed: ${(e as Error)?.message?.slice(0, 80)}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let nvrLastSeenTs = 0;
+let nvrSubscribeFailures = 0;
+
+async function pollNvrSubscriber(): Promise<void> {
+  if (!NVR_SUBSCRIBE_ENABLED) return;
+  try {
+    const url = `${NVR_SUBSCRIBE_URL}/nvr-decisions?since=${nvrLastSeenTs}&limit=20`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) {
+      nvrSubscribeFailures++;
+      if (nvrSubscribeFailures % 10 === 1) console.warn(`[NVR Subscribe] HTTP ${response.status}`);
+      return;
+    }
+    nvrSubscribeFailures = 0;
+    const data: any = await response.json();
+    const decisions: any[] = data?.decisions || [];
+    if (decisions.length === 0) return;
+
+    const myBotId = process.env.BOT_INSTANCE_NAME || 'unknown';
+    const portfolioValue = (typeof state !== 'undefined' && state?.trading?.totalPortfolioValue) || 0;
+
+    for (const decision of decisions) {
+      if (decision.publishedBy === myBotId) continue;                        // don't echo self
+      if (Date.now() - decision.ts > NVR_DECISION_STALE_MS) continue;        // skip stale
+      if (portfolioValue <= 0) continue;                                     // not initialized yet
+
+      const scaledUSD = (decision.sizePct / 100) * portfolioValue;
+      const focusToken = decision.action === 'BUY' ? decision.toToken : decision.fromToken;
+
+      console.log(
+        `[NVR Subscribe] ${NVR_SUBSCRIBE_MODE === 'execute' ? 'EXECUTE-PENDING' : 'LOG-ONLY'}: ` +
+        `${decision.action} $${scaledUSD.toFixed(2)} ${focusToken} ` +
+        `(${decision.sizePct.toFixed(2)}% of $${portfolioValue.toFixed(0)}) ` +
+        `from ${decision.publishedBy} cycle ${decision.cycle} | ${decision.reasoning?.slice(0, 70)}`
+      );
+
+      if (NVR_SUBSCRIBE_MODE === 'execute') {
+        // Phase 3b — execution wiring intentionally deferred until feed quality is verified.
+        // Once enabled, this will build a TradeDecision and call executeTrade() with local safety gates.
+        console.warn('[NVR Subscribe] EXECUTE mode requested — Phase 3b not yet wired, decision logged only');
+      }
+    }
+
+    nvrLastSeenTs = Math.max(nvrLastSeenTs, ...decisions.map(d => d.ts));
+  } catch (e) {
+    nvrSubscribeFailures++;
+    if (nvrSubscribeFailures % 10 === 1) {
+      console.warn(`[NVR Subscribe] Poll failed: ${(e as Error)?.message?.slice(0, 100)}`);
+    }
+  }
+}
+
 // === v19.6: STARTUP VALIDATION + TELEGRAM ALERTS ===
 import { runPreFlightChecks } from "./src/core/services/startup-checks.js";
 import { telegramService } from "./src/core/services/telegram.js";
@@ -7416,6 +7522,26 @@ async function runTradingCycle() {
             }
           }
           anyTradeExecuted = true;
+
+          // Publish to NVR Bot canonical feed (fire-and-forget)
+          if (NVR_PUBLISHER_ENABLED && tradeResult.success && tradeResult.txHash &&
+              (decision.action === "BUY" || decision.action === "SELL")) {
+            const portfolioValue = state.trading.totalPortfolioValue;
+            if (portfolioValue > 0 && decision.amountUSD > 0) {
+              publishNvrDecision({
+                cycle: state.totalCycles ?? 0,
+                action: decision.action,
+                fromToken: decision.fromToken,
+                toToken: decision.toToken,
+                sizePct: (decision.amountUSD / portfolioValue) * 100,
+                reasoning: decision.reasoning,
+                sector: decision.sector,
+                txHash: tradeResult.txHash,
+                publisherPortfolioValue: portfolioValue,
+                signalContext: decision.signalContext as Record<string, unknown> | undefined,
+              }).catch(() => {/* already logged inside publishNvrDecision */});
+            }
+          }
         }
 
         // v8.0: Track for institutional breaker
@@ -8668,6 +8794,18 @@ async function main() {
 
   // v21.13: ICU Watch Mode Scanner — checks intensive positions every 2 min
   setInterval(scanICUPositions, ICU_SCAN_INTERVAL_MS);
+
+  // NVR Bot Feed Subscriber — poll canonical decision feed (Phase 3a: log-only)
+  if (NVR_SUBSCRIBE_ENABLED) {
+    console.log(`[NVR Subscribe] Enabled in ${NVR_SUBSCRIBE_MODE} mode, polling ${NVR_SUBSCRIBE_URL} every ${NVR_POLL_INTERVAL_MS}ms`);
+    // Initialize lastSeenTs to now so we don't replay historical decisions on startup
+    nvrLastSeenTs = Date.now();
+    setInterval(pollNvrSubscriber, NVR_POLL_INTERVAL_MS);
+  }
+
+  if (NVR_PUBLISHER_ENABLED) {
+    console.log(`[NVR Publish] Enabled — will broadcast trades to ${NVR_PUBLISH_URL}`);
+  }
 
   // Safety net: keep the cron as a backup forced heavy cycle trigger
   const cronExpression = `*/${Math.max(CONFIG.trading.intervalMinutes, 15)} * * * *`;
