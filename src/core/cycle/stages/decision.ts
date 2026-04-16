@@ -45,8 +45,8 @@ export interface CentralSignalContext {
 /**
  * Dependencies injected into decisionStage.
  *
- * Phase 5h will populate these from the live monolith helpers.
- * Tests pass mocks. The stub ignores them.
+ * Phase 5h: populated from the live monolith helpers via buildDecisionDeps().
+ * Tests pass mocks.
  */
 export interface DecisionDeps {
   /** Routing mode — selects Claude AI vs. central signal service vs. producer mode. */
@@ -76,38 +76,104 @@ export interface DecisionDeps {
    * filtering in the PRESERVATION stage, but fetched here for completeness).
    */
   getLatestSwarmDecisions(): SwarmDecision[];
+
+  /**
+   * Max buy size in USD — caps per-trade sizing for central signal decisions.
+   * Mirrors CONFIG.trading.maxBuySize.
+   */
+  maxBuySize: number;
+
+  /**
+   * Why this heavy cycle was triggered — passed to makeTradeDecision for
+   * tiered model routing (Haiku vs Sonnet).  Optional: missing → Sonnet default.
+   */
+  heavyCycleReason?: string;
 }
 
 // ============================================================================
-// STAGE — Phase 5e non-throwing stub
+// STAGE — Phase 5h real implementation
 // ============================================================================
 
 /**
- * DECISION stage stub.
+ * DECISION stage.
  *
- * Phase 5e: Does not call Claude or any external service.
- * Returns ctx unmodified except for marking the stage complete and
- * ensuring ctx.decisions is an array.
+ * Routes to the appropriate decision source based on deps.signalMode:
+ *   - 'central'  → fetchCentralSignals() + local position sizing
+ *   - 'local' / 'producer' → makeTradeDecision() (Claude / Haiku)
  *
- * Real implementation (Phase 5h) will:
- *   - Use deps.signalMode to route to central signals or Claude AI
- *   - Apply capital preservation sizing via swarm consensus
- *   - Populate ctx.decisions with raw trade decisions
+ * When deps is omitted (e.g., heavy-cycle.ts orchestrator before full wiring),
+ * falls back to the Phase 5e stub: returns an empty decisions array.
+ *
+ * Contract: NEVER sets ctx.halted — errors from AI calls propagate as thrown
+ * exceptions; the cycle engine's outer try/catch handles them.
  */
 export async function decisionStage(
   ctx: CycleContext,
-  _deps?: DecisionDeps,
+  deps?: DecisionDeps,
 ): Promise<CycleContext> {
   if (ctx.halted) return ctx;
 
-  // Phase 5e: no AI call — real implementation gated behind Phase 5h (48h soak).
-  // Downstream stages (PRESERVATION, DIRECTIVES, TRADE_CAP, RISK_REWARD) expect
-  // ctx.decisions to be an array. Ensure it is initialised even if setup left it
-  // undefined (defensive — CycleContext types it as TradeDecision[]).
-  if (!Array.isArray(ctx.decisions)) {
-    ctx.decisions = [];
+  // Stub fallback — deps not wired (heavy-cycle.ts orchestrator path, tests)
+  if (!deps) {
+    if (!Array.isArray(ctx.decisions)) ctx.decisions = [];
+    ctx.stagesCompleted.push('AI_DECISION');
+    return ctx;
   }
 
+  const totalPortfolioValue =
+    ctx.services.stateManager.getState().trading.totalPortfolioValue;
+  const balances       = ctx.balances as unknown as DecisionBalance[];
+  const marketData     = ctx.marketData!;
+  const sectorAllocations = ctx.sectorAllocations ?? [];
+  const deploymentCheck   = ctx.deploymentCheck;
+
+  let decisions: TradeDecision[];
+
+  if (deps.signalMode === 'central') {
+    console.log('\n📡 Fetching signals from NVR central service...');
+    decisions = await deps.fetchCentralSignals({
+      balances,
+      marketData,
+      portfolioValue: totalPortfolioValue,
+    });
+
+    // Apply local position sizing to central signal decisions that have no amount set
+    const availableUSDC =
+      ctx.balances.find(b => b.symbol === 'USDC')?.balance ?? 0;
+    for (const decision of decisions) {
+      if (decision.amountUSD === 0 && decision.action === 'BUY') {
+        // 4% of portfolio per trade, capped by available USDC and max buy size
+        decision.amountUSD = Math.min(
+          deps.maxBuySize,
+          totalPortfolioValue * 0.04,
+          availableUSDC * 0.9, // Leave 10% USDC buffer
+        );
+      }
+      if (decision.amountUSD === 0 && decision.action === 'SELL') {
+        // Sell 50% of position by default for central signals
+        const holding = ctx.balances.find(b => b.symbol === decision.fromToken);
+        if (holding) decision.amountUSD = (holding.usdValue ?? 0) * 0.5;
+      }
+    }
+    console.log(
+      `  📡 Central decisions: ${decisions.length} ` +
+      `(${decisions.filter(d => d.action === 'BUY').length} buys, ` +
+      `${decisions.filter(d => d.action === 'SELL').length} sells)`,
+    );
+  } else {
+    // local or producer mode: call Claude AI (v20.5 tiered model routing)
+    console.log('\n🧠 AI analyzing portfolio & market...');
+    decisions = await deps.makeTradeDecision(
+      balances,
+      marketData,
+      totalPortfolioValue,
+      sectorAllocations,
+      deploymentCheck?.active ? deploymentCheck : undefined,
+      deps.heavyCycleReason,
+    );
+  }
+
+  ctx.decisions = decisions;
   ctx.stagesCompleted.push('AI_DECISION');
   return ctx;
 }

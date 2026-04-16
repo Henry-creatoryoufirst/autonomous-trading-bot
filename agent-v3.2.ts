@@ -155,6 +155,9 @@ import type { FiltersStageDeps } from "./src/core/cycle/stages/filters.js";
 // Phase deployment-ctx: sector allocations + cash deployment check
 import { deploymentCtxStage } from "./src/core/cycle/stages/deployment-ctx.js";
 import type { DeploymentCtxDeps } from "./src/core/cycle/stages/deployment-ctx.js";
+// Phase 5h: real decision stage — AI call + central signals routing
+import { decisionStage } from "./src/core/cycle/stages/decision.js";
+import type { DecisionDeps } from "./src/core/cycle/stages/decision.js";
 import type { CycleContext, CycleServices } from "./src/core/types/cycle.js";
 
 // === v6.0: SMART CACHING + COOLDOWN + CONSTANTS ===
@@ -2770,6 +2773,22 @@ function buildDeploymentCtxDeps(): DeploymentCtxDeps {
       calculateSectorAllocations(balances as any, totalValue),
     checkCashDeploymentMode: (usdcBalance, totalPortfolioValue, fearGreedValue) =>
       checkCashDeploymentMode(usdcBalance, totalPortfolioValue, fearGreedValue),
+  };
+}
+
+// ============================================================================
+// Phase 5h: buildDecisionDeps — routes AI call (makeTradeDecision) or central
+// signal fetch (fetchCentralSignals) based on the module-level signalMode.
+// Takes heavyCycleReason so makeTradeDecision can use tiered model routing.
+// ============================================================================
+function buildDecisionDeps(heavyCycleReason?: string): DecisionDeps {
+  return {
+    signalMode,
+    fetchCentralSignals,
+    makeTradeDecision,
+    getLatestSwarmDecisions,
+    maxBuySize:       CONFIG.trading.maxBuySize,
+    heavyCycleReason,
   };
 }
 
@@ -6821,41 +6840,13 @@ async function runTradingCycle() {
     const fgValue = marketData.fearGreed.value; // kept for display/logging
     const regime = marketData.marketRegime;
 
-    // AI decision (or central signal fetch)
-    let decisions: TradeDecision[];
-
-    if (signalMode === 'central') {
-      console.log("\n📡 Fetching signals from NVR central service...");
-      decisions = await fetchCentralSignals({ balances, marketData, portfolioValue: state.trading.totalPortfolioValue });
-
-      // Apply local position sizing to each central signal decision
-      const portfolioValue = state.trading.totalPortfolioValue;
-      const availableUSDC = balances.find(b => b.symbol === 'USDC')?.balance || 0;
-      for (const decision of decisions) {
-        if (decision.amountUSD === 0 && decision.action === 'BUY') {
-          // 4% of portfolio per trade, capped by available USDC and max buy size
-          decision.amountUSD = Math.min(
-            CONFIG.trading.maxBuySize,
-            portfolioValue * 0.04,
-            availableUSDC * 0.9, // Leave 10% USDC buffer
-          );
-        }
-        if (decision.amountUSD === 0 && decision.action === 'SELL') {
-          // Sell 50% of position by default for central signals
-          const holding = balances.find(b => b.symbol === decision.fromToken);
-          if (holding) {
-            decision.amountUSD = holding.usdValue * 0.5;
-          }
-        }
-      }
-      console.log(`  📡 Central decisions: ${decisions.length} (${decisions.filter(d => d.action === 'BUY').length} buys, ${decisions.filter(d => d.action === 'SELL').length} sells)`);
-    } else {
-      // Existing Claude AI call — v20.5: now with tiered model routing
-      console.log("\n🧠 AI analyzing portfolio & market...");
-      decisions = await makeTradeDecision(balances, marketData, state.trading.totalPortfolioValue, sectorAllocations, deploymentCheck.active ? deploymentCheck : undefined, heavyReason);
+    // === Phase 5h: decisionStage — AI trade decisions (Claude / central signals) ===
+    cycleCtx = await decisionStage(cycleCtx, buildDecisionDeps(heavyReason));
+    if (cycleCtx.halted) {
+      console.error(`  ❌ Decision stage halted: ${cycleCtx.haltReason}`);
+      return;
     }
-
-    cycleCtx.decisions = decisions;
+    let decisions = cycleCtx.decisions;
 
     // === Phase 5f: filtersStage extracted — replaces inline filter blocks ===
     // (preservation + directives are no-ops this phase — Phase 5h scope)
