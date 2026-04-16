@@ -20,3 +20,20 @@ export {
   computeCatchingFireMultiplier,
   computeDeploymentFloor,
 } from './position-sizing.js';
+
+// v21.18 — ground-truth cost basis rebuild + migration
+export {
+  rebuildFromGroundTruth,
+  diffAgainstExisting,
+  applyRebuiltCostBasis,
+  type RebuildInputs,
+  type RebuildResult,
+  type RebuildDiff,
+  type OnChainTransfer,
+} from './rebuild.js';
+export {
+  runMigrationV2118,
+  runMigrationV2118InMonolith,
+  MIGRATION_FLAG_KEY,
+  MIGRATION_VERSION,
+} from './migration-v21-18.js';
