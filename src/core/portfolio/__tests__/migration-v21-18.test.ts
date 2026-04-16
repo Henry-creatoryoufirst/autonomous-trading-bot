@@ -22,7 +22,11 @@ import {
 } from '../migration-v21-18.js';
 import type { TokenCostBasis, TradeRecord } from '../../types/index.js';
 
-import prodSnapshot from './fixtures/prod-snapshot-2026-04-16.json' with { type: 'json' };
+// JSON import via fs to stay compatible with Node16 module resolution.
+const __fixturesDir = new URL('./fixtures/', import.meta.url);
+const prodSnapshot = JSON.parse(
+  fs.readFileSync(new URL('prod-snapshot-2026-04-16.json', __fixturesDir), 'utf-8'),
+);
 
 // ---------------------------------------------------------------------------
 // Helpers
