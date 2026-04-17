@@ -11,8 +11,10 @@
 
 import axios from 'axios';
 import { aaveYieldService } from './aave-yield.js';
-// v21.2: Morpho stub — real import disabled until Railway compatibility resolved
-const morphoYieldService = { getDepositedUSDC() { return 0; }, getState() { return { depositedUSDC: 0 }; } };
+// v21.18 (2026-04-17): the Railway-compat issue that forced a stub here was
+// resolved alongside the MorphoYieldService un-stub in agent-v3.2.ts. Same
+// singleton is now imported so the optimizer sees real Morpho deposits.
+import { morphoYieldService } from './morpho-yield.js';
 import {
   YIELD_CHECK_INTERVAL_CYCLES,
   YIELD_MIN_DIFFERENTIAL_PCT,

@@ -992,8 +992,10 @@ export const YIELD_AUTO_COMPOUND_INTERVAL_HOURS = 12;
 // Two tiers: CORE (always sent, ~600 tokens) + STRATEGY (heavy cycles only, ~3500 tokens)
 // Dynamic data (portfolio, prices, indicators) is always appended at runtime.
 
-/** Compact prompt sent EVERY cycle — identity, safety rules, output format */
-export const SYSTEM_PROMPT_CORE = `You are NVR Capital's autonomous trading agent v21.1 on Base Mainnet.
+/** Compact prompt sent EVERY cycle — identity, safety rules, output format.
+ *  Version is pulled live from package.json (BOT_VERSION, defined at top of
+ *  this file) so Claude is never told the wrong version. */
+export const SYSTEM_PROMPT_CORE = `You are NVR Capital's autonomous trading agent v${BOT_VERSION} on Base Mainnet.
 You are the SOLE decision-maker. No mechanical systems override you. You execute LIVE swaps.
 
 ═══ YOUR MISSION ═══
@@ -1024,7 +1026,7 @@ Multi: [{"action":"BUY",...},{"action":"SELL",...}]
 HOLD: {"action":"HOLD","fromToken":"NONE","toToken":"NONE","amountUSD":0,"reasoning":"No clear signals — staying patient"}`;
 
 /** Full strategy framework — sent only on heavy (Sonnet) cycles that may trade */
-export const SYSTEM_PROMPT_STRATEGY = `═══ STRATEGY FRAMEWORK v21.1 — FOLLOW THE PHYSICS ═══
+export const SYSTEM_PROMPT_STRATEGY = `═══ STRATEGY FRAMEWORK v${BOT_VERSION} — FOLLOW THE PHYSICS ═══
 
 CORE PHILOSOPHY:
 You are a wave rider. Capital flows create waves — money rushing into an asset lifts the price. Your job is to detect the wave early, ride it hard, and exit when momentum fades. You don't create waves, you don't fight them, and you don't sit idle when one is forming.
