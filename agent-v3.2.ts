@@ -5788,9 +5788,20 @@ async function executeDailyPayout(): Promise<void> {
   console.log(`========================================`);
 
   // Idempotency — already paid this day?
+  // v21.16-fix: Only guard as "already paid" if the last recorded payout for this
+  // date actually distributed something. A failed attempt (ALL_TRANSFERS_FAILED,
+  // BELOW_FLOOR, LOW_GAS) should NOT lock the bot out of retrying once conditions
+  // improve (e.g. more USDC becomes available later in the day).
   if (state.lastDailyPayoutDate === yesterdayStr) {
-    console.log(`[Daily Payout] Already paid for ${yesterdayStr} — skipping (restart-safe)`);
-    return;
+    const lastRecord = state.dailyPayouts?.slice(-1)[0];
+    const lastSucceeded = lastRecord
+      && lastRecord.date === yesterdayStr
+      && (lastRecord.totalDistributed || 0) > 0;
+    if (lastSucceeded) {
+      console.log(`[Daily Payout] Already paid for ${yesterdayStr} — skipping (restart-safe)`);
+      return;
+    }
+    console.log(`[Daily Payout] Previous attempt for ${yesterdayStr} did not distribute ($${(lastRecord?.totalDistributed || 0).toFixed(2)}, reason=${lastRecord?.skippedReason || '?'}). Retrying.`);
   }
 
   // Compute yesterday's realized P&L
@@ -5865,8 +5876,26 @@ async function executeDailyPayout(): Promise<void> {
   // The $5 buffer was too low and caused USDC exhaustion → trading freeze
   const PAYOUT_TRADING_RESERVE = 50; // Keep $50 minimum for active trading
   const effectiveBuffer = Math.max(DAILY_PAYOUT_USDC_BUFFER, PAYOUT_TRADING_RESERVE);
-  const sendableUSDC = Math.max(0, usdcBalance - effectiveBuffer);
   const totalRecipientPct = recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+  const totalOwed = effectiveRealizedPnL * (totalRecipientPct / 100);
+
+  // v21.16-fix: Graceful USDC scarcity — if the buffer would starve ALL recipients,
+  // relax it. The buffer exists to keep the trading loop alive, not to block a
+  // payout that's legitimately owed. Without this, Apr 17 payout of $282.67 failed
+  // with "Capped to $0.00" because usdcBalance was just below the $50 reserve.
+  // Priority: full payout if possible, then minimum-1-recipient payout if scarce.
+  let sendableUSDC: number;
+  const idealSendable = Math.max(0, usdcBalance - effectiveBuffer);
+  if (idealSendable >= totalOwed || usdcBalance <= DAILY_PAYOUT_MIN_TRANSFER_USD) {
+    // Either we have plenty, or almost none — use the standard buffer.
+    sendableUSDC = idealSendable;
+  } else {
+    // We have some USDC but less than full owed with buffer intact. Use whatever
+    // we can without overdrawing — leave at least DAILY_PAYOUT_USDC_BUFFER (tiny,
+    // for gas) but sacrifice the $50 trading reserve this cycle.
+    sendableUSDC = Math.max(0, usdcBalance - DAILY_PAYOUT_USDC_BUFFER);
+    console.log(`[Daily Payout] ⚠️ USDC scarce ($${usdcBalance.toFixed(2)}) vs owed ($${totalOwed.toFixed(2)}). Relaxing trading reserve to pay partial.`);
+  }
 
   console.log(`[Daily Payout] USDC: $${usdcBalance.toFixed(2)} (sendable: $${sendableUSDC.toFixed(2)}) | ETH: ${ethBalance.toFixed(6)}`);
   console.log(`[Daily Payout] Recipients: ${recipients.map((r: HarvestRecipient) => `${r.label}(${r.percent}%)`).join(', ')}`);
@@ -5876,14 +5905,26 @@ async function executeDailyPayout(): Promise<void> {
   const transferResults: Array<{ label: string; wallet: string; amount: number; txHash?: string; error?: string }> = [];
   let totalSent = 0;
 
+  // v21.16-fix: Fairness ratio — if USDC can't cover the full owed amount,
+  // distribute PROPORTIONALLY across all recipients rather than paying the
+  // first recipient in full and starving the rest. Capped at 1.0 so there's
+  // never an overpayment.
+  const fairnessRatio = totalOwed > 0
+    ? Math.min(1, Math.min(sendableUSDC, headroom) / totalOwed)
+    : 0;
+
   for (const recipient of recipients) {
-    const share = effectiveRealizedPnL * (recipient.percent / 100);
+    const fullShare = effectiveRealizedPnL * (recipient.percent / 100);
+    const share = fullShare * fairnessRatio;
 
     if (share < DAILY_PAYOUT_MIN_TRANSFER_USD) {
       transferResults.push({
         label: recipient.label,
         wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
-        amount: 0, error: `Share $${share.toFixed(2)} below min $${DAILY_PAYOUT_MIN_TRANSFER_USD}`,
+        amount: 0,
+        error: fairnessRatio < 1
+          ? `Scaled share $${share.toFixed(2)} below min (USDC scarce, ratio ${(fairnessRatio * 100).toFixed(0)}%)`
+          : `Share $${share.toFixed(2)} below min $${DAILY_PAYOUT_MIN_TRANSFER_USD}`,
       });
       continue;
     }
