@@ -146,6 +146,10 @@ const NVR_DECISION_STALE_MS = 5 * 60 * 1000;                  // skip decisions 
 const NVR_MAX_TRADE_USD = parseFloat(process.env.NVR_MAX_TRADE_USD || '50');  // per-mirror trade cap (safety)
 const NVR_MARKET_DATA_MAX_AGE_MS = 10 * 60 * 1000;            // refuse to execute if marketData stale > 10min
 const NVR_COOLDOWN_MS = 60 * 1000;                            // per-token cooldown to prevent echo storms
+// Subscriber-only mute mode: bot stops making own AI trade decisions and ONLY mirrors NVR feed.
+// Intel collection, balance tracking, gas top-up, harvest, telegram, and the subscriber loop
+// all keep running normally — only the bot's own decisionStage output is short-circuited to HOLD.
+const NVR_SUBSCRIBER_ONLY = process.env.NVR_SUBSCRIBER_ONLY === 'true';
 
 async function publishNvrDecision(payload: {
   cycle: number;
@@ -7118,6 +7122,23 @@ async function runTradingCycle() {
       return;
     }
     let decisions = cycleCtx.decisions;
+
+    // === NVR_SUBSCRIBER_ONLY mute mode ===
+    // Subscriber bots defer to the NVR Bot canonical feed. Their own AI decisions
+    // are short-circuited to HOLD here so executionStage and capital liberation
+    // become no-ops. The independent pollNvrSubscriber loop still mirrors NVR
+    // signals on its own setInterval.
+    if (NVR_SUBSCRIBER_ONLY) {
+      console.log(`   🔕 [SUBSCRIBER_ONLY] Skipping own trade decisions — NVR mirror loop handles trades`);
+      decisions = [{
+        action: "HOLD",
+        fromToken: "NONE",
+        toToken: "NONE",
+        amountUSD: 0,
+        reasoning: "NVR_SUBSCRIBER_ONLY mode — bot defers to NVR canonical feed for trades",
+      }];
+      cycleCtx.decisions = decisions;
+    }
 
     // === Phase 5f: filtersStage extracted — replaces inline filter blocks ===
     // (preservation + directives are no-ops this phase — Phase 5h scope)
