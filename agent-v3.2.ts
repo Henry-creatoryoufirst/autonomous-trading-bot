@@ -714,20 +714,9 @@ import type { FamilyTradeDecision, FamilyTradeResult } from "./src/fleet/types/f
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from "./src/core/services/aave-yield.js";
-// v21.2: Morpho yield — DISABLED for now (was crashing Railway deploys)
-// TODO: Re-enable once import issue is resolved
-const morphoYieldService = {
-  enable() {}, disable() {}, isEnabled() { return false; },
-  getState() { return { enabled: false, depositedUSDC: 0, currentValueUSDC: 0, totalYieldEarned: 0, shareBalance: 0, supplyCount: 0, withdrawCount: 0, lastSupply: null, lastWithdraw: null, estimatedAPY: 0, operations: [] }; },
-  getDepositedUSDC() { return 0; },
-  restoreState(_s: any) {}, toJSON() { return {}; },
-  refreshBalance(_w: string) { return Promise.resolve(); },
-  calculateDepositAmount(_usdcBalance: number, _regime: string, _fearGreedVal: number) { return 0; }, calculateWithdrawAmount(_usdcBalance: number, _regime: string, _fearGreedVal: number, _aiNeedsCapital?: boolean) { return 0; },
-  buildDepositCalldata(_a: number, _w: string) { return { to: '', data: '', approvalNeeded: false, approvalTo: '', approvalData: '' }; },
-  buildWithdrawCalldata(_a: number, _w: string) { return { to: '', data: '' }; },
-  getAllowance(_w: string) { return Promise.resolve(0n); },
-  recordSupply(_amountUSDC: number, _txHash?: string, _reason?: string) {}, recordWithdraw(_amountUSDC: number, _txHash?: string, _reason?: string) {},
-};
+import { MorphoYieldService } from "./src/core/services/morpho-yield.js";
+// v21.18: Re-enable Morpho yield service — $740 steakUSDC was locked with no auto-withdraw
+const morphoYieldService = new MorphoYieldService({ minLiquidUSDC: 500, minDepositUSDC: 50, minWithdrawUSDC: 25 });
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
 import { yieldOptimizer } from "./src/core/services/yield-optimizer.js";
