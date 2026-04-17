@@ -14,6 +14,11 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
   - Original USDC deposits come from this EOA into the smart wallet.
   - NOT where the bot trades from — don't send to this address expecting it to trade.
 - **Network:** Base Mainnet (Coinbase L2)
+- **Canonical CDP project ID:** `c5774a25-3713-44c0-b090-c9a2ad69443a`
+  - EVERY bot in the fleet must run against this CDP project.
+  - Set in `CDP_API_KEY_ID` on each bot's Railway service.
+  - Bot refuses to start if mismatched (set `NVR_ALLOW_NON_CANONICAL_CDP=true` ONLY for supervised migrations).
+  - See `NVR-SPEC-012-Multi-Tenant-Smart-Account-Consolidation.md` in NVR-HQ/Specs for background.
 
 ## Deployment — STAGING REQUIRED
 - **NEVER push bot code changes directly to `main`** — always go through staging first
