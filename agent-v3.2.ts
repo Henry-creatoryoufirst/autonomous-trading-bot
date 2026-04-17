@@ -715,6 +715,9 @@ import type { FamilyTradeDecision, FamilyTradeResult } from "./src/fleet/types/f
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from "./src/core/services/aave-yield.js";
 import { MorphoYieldService } from "./src/core/services/morpho-yield.js";
+// NVR-SPEC-011 Phase 1: rotation indexer (observation-only). Opt-in via
+// ROTATION_INDEXER_ENABLED env var. No behavioral change when disabled.
+import { getRotationIndexer } from "./src/core/services/rotation-indexer.js";
 // v21.18: Re-enable Morpho yield service — $740 steakUSDC was locked with no auto-withdraw
 const morphoYieldService = new MorphoYieldService({ minLiquidUSDC: 500, minDepositUSDC: 50, minWithdrawUSDC: 25 });
 
@@ -8621,6 +8624,27 @@ async function main() {
     console.log(`\n🏦 Yield Services: disabled (set AAVE_YIELD_ENABLED=true to activate)`);
   }
 
+  // === NVR-SPEC-011 PHASE 1: ROTATION INDEXER (opt-in, observation only) ===
+  // Starts a background loop that captures ERC-20 Transfer events for the
+  // tracked wallet set and writes them to data/rotation-events-YYYY-MM-DD.jsonl.
+  // No signals are produced. No trading behavior is affected. Disabled by
+  // default — enable via ROTATION_INDEXER_ENABLED=true (staging first per
+  // deploy protocol).
+  if (process.env['ROTATION_INDEXER_ENABLED'] === 'true') {
+    try {
+      const indexer = getRotationIndexer();
+      await indexer.start();
+      const h = indexer.health();
+      console.log(`\n🧭 Rotation Indexer: STARTED`);
+      console.log(`  Tracking ${h.trackedWallets} wallets · poll ${(process.env['ROTATION_INDEXER_POLL_MS'] ?? '6000')}ms`);
+      console.log(`  Event log: ${h.eventLogPath}`);
+    } catch (rotErr: unknown) {
+      console.warn(`  ⚠️ Rotation indexer failed to start: ${(rotErr as Error).message?.substring(0, 200)}`);
+    }
+  } else {
+    console.log(`\n🧭 Rotation Indexer: disabled (set ROTATION_INDEXER_ENABLED=true to activate)`);
+  }
+
   // === DERIVATIVES MODULE INITIALIZATION (v6.0) ===
   if (CONFIG.derivatives.enabled) {
     console.log("\n🔧 Initializing Derivatives Module...");
@@ -9465,6 +9489,16 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/cache':
         handleCache(res, serverCtx);
         break;
+      case '/api/rotation-indexer': {
+        // NVR-SPEC-011 Phase 1: health snapshot. Safe even if the indexer
+        // has never been started — `getRotationIndexer()` lazy-constructs.
+        const indexer = getRotationIndexer();
+        sendJSON(res, 200, {
+          enabled: process.env['ROTATION_INDEXER_ENABLED'] === 'true',
+          ...indexer.health(),
+        });
+        break;
+      }
       case '/api/yield':
         handleYield(res, serverCtx);
         break;
