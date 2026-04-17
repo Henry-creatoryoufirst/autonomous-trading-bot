@@ -5295,14 +5295,24 @@ async function executeDirectDexSwap(
     }
 
     // Update cost basis
+    // v21.19-fix: Capture the actual token amount traded so it can be stored in
+    // the trade record. Previously `decision.tokenAmount` was used directly,
+    // but for BUYs it's undefined at decision-time (we only know the amount
+    // AFTER the swap completes). That left trade records with tokenAmount=null,
+    // which broke cost-basis rebuilds (rebuildFromGroundTruth requires it) and
+    // caused `updateCostBasisAfterSell` to return $0 realized P&L on tokens
+    // like ENA/cbXRP/CLANKER — which in turn starved the harvest reserve.
     let tradeRealizedPnL = 0;
+    let actualTokenAmount: number | undefined = undefined;
     if (!isSell && decision.toToken !== "USDC") {
       const tPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price || 1;
       const tokensReceived = actualTokens > 0 ? actualTokens : (decision.amountUSD / tPrice);
+      actualTokenAmount = tokensReceived;
       updateCostBasisAfterBuy(decision.toToken, decision.amountUSD, tokensReceived);
     } else if (isSell && decision.fromToken !== "USDC") {
       const tPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
       const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tPrice));
+      actualTokenAmount = tokensSold;
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
       // v21.15: Harvest-on-sell — reserve fee USDC at moment of profitable sell
       // so it can't be re-deployed before the 8AM payout runs.
@@ -5329,7 +5339,11 @@ async function executeDirectDexSwap(
       fromToken: decision.fromToken,
       toToken: decision.toToken,
       amountUSD: decision.amountUSD,
-      tokenAmount: decision.tokenAmount,
+      // v21.19-fix: Use the actual post-swap token amount captured above. Using
+      // decision.tokenAmount here left BUY records with null tokenAmount (buys
+      // don't know tokens-received until after the swap), which broke all
+      // cost-basis rebuilds for those tokens.
+      tokenAmount: actualTokenAmount ?? decision.tokenAmount,
       txHash,
       success: true,
       portfolioValueBefore,
@@ -5606,10 +5620,13 @@ async function executeSingleSwap(
     }
 
     // Update cost basis — prefer actual tokens, fall back to estimated
+    // v21.19-fix: Also capture actualTokenAmount for the trade record below.
     let tradeRealizedPnL = 0; // v12.2: capture realized P&L at trade time for daily scoreboard
+    let actualTokenAmount: number | undefined = undefined;
     if (decision.action === "BUY" && decision.toToken !== "USDC") {
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.toToken)?.price || 1;
       const tokensReceived = actualTokens > 0 ? actualTokens : (decision.amountUSD / tokenPrice);
+      actualTokenAmount = tokensReceived;
       if (actualTokens > 0) {
         const actualPrice = decision.amountUSD / actualTokens;
         const slippagePaid = ((actualPrice - tokenPrice) / tokenPrice) * 100;
@@ -5619,6 +5636,7 @@ async function executeSingleSwap(
     } else if (decision.action === "SELL" && decision.fromToken !== "USDC") {
       const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 1;
       const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tokenPrice));
+      actualTokenAmount = tokensSold;
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
     }
 
@@ -5632,7 +5650,11 @@ async function executeSingleSwap(
       fromToken: decision.fromToken,
       toToken: decision.toToken,
       amountUSD: decision.amountUSD,
-      tokenAmount: decision.tokenAmount,
+      // v21.19-fix: Use the actual post-swap token amount captured above. Using
+      // decision.tokenAmount here left BUY records with null tokenAmount (buys
+      // don't know tokens-received until after the swap), which broke all
+      // cost-basis rebuilds for those tokens.
+      tokenAmount: actualTokenAmount ?? decision.tokenAmount,
       txHash,
       success: true,
       portfolioValueBefore,

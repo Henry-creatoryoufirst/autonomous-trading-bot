@@ -11,6 +11,73 @@ import { getState } from '../state/index.js';
 
 type PriceMap = Record<string, { price: number; [key: string]: any }>;
 
+/**
+ * v21.19-fix: Targeted cost-basis rebuild for a single token.
+ *
+ * Replays this token's BUY records from the trade log to reconstruct
+ * averageCostBasis, totalInvestedUSD, and totalTokensAcquired. Used as a
+ * just-in-time repair when a sell hits a token with no cost basis (usually
+ * because older BUY records were written with a missing tokenAmount, or the
+ * cost-basis entry was lost in a state-file migration).
+ *
+ * Mutates `cb` in place when replayable buys exist. Returns true iff cost
+ * basis was restored to a non-zero average.
+ *
+ * Intentionally permissive: even a partial reconstruction (e.g. recent buys
+ * replayable, older ones missing tokenAmount) is better than $0 pure-revenue
+ * accounting because it gives the harvest reserve something to work with.
+ */
+function attemptSelfHeal(symbol: string, cb: TokenCostBasis): boolean {
+  const trades = getState().tradeHistory || [];
+  let totalInvested = 0;
+  let totalTokens = 0;
+  let realizedPnLFromSells = 0;
+  let firstBuyDate: string | null = null;
+
+  // Replay buys chronologically
+  const chrono = [...trades].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+
+  for (const t of chrono) {
+    if (t.action === 'BUY' && t.toToken === symbol) {
+      const tokens = t.tokenAmount ?? 0;
+      const usd = t.amountUSD ?? 0;
+      if (tokens <= 0 || usd <= 0) continue; // skip records missing either field
+      totalInvested += usd;
+      totalTokens += tokens;
+      if (!firstBuyDate) firstBuyDate = t.timestamp;
+    } else if (t.action === 'SELL' && t.fromToken === symbol) {
+      const tokens = t.tokenAmount ?? 0;
+      const usd = t.amountUSD ?? 0;
+      if (tokens <= 0) continue;
+      // Use the weighted-average at this point in time
+      const avgCost = totalTokens > 0 ? totalInvested / totalTokens : 0;
+      const sellPrice = usd / tokens;
+      const pnl = avgCost > 0 ? (sellPrice - avgCost) * tokens : 0;
+      realizedPnLFromSells += pnl;
+      // Reduce holdings proportionally, same formula as live sell path
+      const proportionSold = totalTokens > 0 ? tokens / totalTokens : 0;
+      totalInvested = Math.max(0, totalInvested * (1 - proportionSold));
+      totalTokens = Math.max(0, totalTokens - tokens);
+    }
+  }
+
+  if (totalTokens <= 0 || totalInvested <= 0) return false;
+
+  cb.totalInvestedUSD = totalInvested;
+  cb.totalTokensAcquired = totalTokens;
+  cb.averageCostBasis = totalInvested / totalTokens;
+  // Preserve any existing realizedPnL — do not overwrite with replay value
+  // (that would be destructive; current value may contain legitimate pre-fix
+  // realizations the caller wants to keep).
+  if (cb.realizedPnL === 0 && realizedPnLFromSells !== 0) {
+    cb.realizedPnL = realizedPnLFromSells;
+  }
+  if (firstBuyDate && !cb.firstBuyDate) cb.firstBuyDate = firstBuyDate;
+  return true;
+}
+
 export function getOrCreateCostBasis(
   symbol: string,
 ): TokenCostBasis {
@@ -94,11 +161,20 @@ export function updateCostBasisAfterSell(
 ): number {
   const cb = getOrCreateCostBasis(symbol);
 
-  // If we have no cost basis for this token (lost on restart), treat as pure profit
+  // v21.19-fix: Self-heal missing cost basis from trade history.
+  // If no averageCostBasis exists, attempt a targeted rebuild from the trade
+  // log BEFORE giving up. This catches tokens like ENA/cbXRP/CLANKER where
+  // older BUY records had a missing tokenAmount (buys didn't capture post-swap
+  // amount) — pre-v21.19 records can't be rebuilt, but newer ones can, and
+  // even partial rebuilds recover realized P&L from this point forward.
   if (cb.averageCostBasis <= 0 || cb.totalTokensAcquired <= 0) {
-    console.log(`  📊 P&L: No cost basis for ${symbol} — recording sell as $${amountUSD.toFixed(2)} pure revenue (P&L neutral)`);
-    cb.currentHolding = Math.max(0, cb.currentHolding - tokensSold);
-    return 0;
+    const healed = attemptSelfHeal(symbol, cb);
+    if (!healed) {
+      console.log(`  📊 P&L: No cost basis for ${symbol} — recording sell as $${amountUSD.toFixed(2)} pure revenue (P&L neutral, self-heal failed)`);
+      cb.currentHolding = Math.max(0, cb.currentHolding - tokensSold);
+      return 0;
+    }
+    console.log(`  🔧 Self-healed cost basis for ${symbol}: avg=$${cb.averageCostBasis.toFixed(6)} from ${getState().tradeHistory.filter(t => t.action === 'BUY' && t.toToken === symbol && (t.tokenAmount ?? 0) > 0).length} replayable buys`);
   }
 
   // Realized P&L = (sell price per token - avg cost) * tokens sold
