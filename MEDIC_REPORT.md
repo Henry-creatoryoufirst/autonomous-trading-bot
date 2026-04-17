@@ -1,18 +1,18 @@
-# MEDIC REPORT — 2026-04-16T11:20 UTC
+# MEDIC REPORT — 2026-04-17T04:16 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #5)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #6)
 
 ## Environment
-- Run timestamp: 2026-04-16T10:18 UTC
+- Run timestamp: 2026-04-17T04:16 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-d4ZPx
 
 ## Problem
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `Host not in allowlist` or `403 Forbidden`:
+All endpoints attempted returned `Host not in allowlist`:
 
 ```
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
@@ -25,7 +25,7 @@ curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
 GeckoTerminal API also blocked (same egress restriction):
 ```
 GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools?page=1
-→ 403 Forbidden
+→ Host not in allowlist
 ```
 
 ## Root Cause
@@ -39,7 +39,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #2 | 2026-04-15T00:00 UTC | PATTERN D re-confirmed |
 | #3 | 2026-04-15T18:38 UTC | PATTERN D update |
 | #4 | 2026-04-16T10:18 UTC | PATTERN D update |
-| #5 | 2026-04-16T11:20 UTC | This report (same issue) |
+| #5 | 2026-04-16T11:20 UTC | PATTERN D update |
+| #6 | 2026-04-17T04:16 UTC | This report |
 
 ## Bot Health Evidence (from git history)
 
@@ -51,11 +52,11 @@ Despite API being unreachable from medic, the bot is clearly active:
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 - `2026-04-15 12:25 UTC` — Auditor lowered VOL_TARGET_DAILY_PCT 2→1.5 (bear-market)
 
-Bot is alive and making autonomous adjustments for bear market conditions.
+Bot is alive and has been making autonomous bear-market adjustments.
 
-**Run #5 Auditor Note:** Bear market trigger confirmed by 3 auditor runs in last 22h.
-Parameters are already heavily tightened (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%).
-Auditor skipped this run to prevent over-tightening without fresh API metrics.
+**Run #6 Note:** Bear market parameters already heavily tightened across 3 prior auditor runs.
+Current floor values: KELLY=0.35, VOL_TARGET=1.5%, BREAKER_DD=7%.
+Auditor skipped this run — further tightening without fresh API metrics risks halting all trades.
 
 ## What Is NOT Known
 
@@ -65,19 +66,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #5)
+## Jobs Status This Run (Run #6)
 
-- **Scout**: SKIPPED — last ran 05:15 UTC today (within 48h); BENJI added earlier today
-- **Auditor**: SKIPPED — cannot fetch live metrics; bear market params already at floor:
-  KELLY=0.35, VOL_TARGET=1.5%, BREAKER_DD=7%. Further tightening without fresh data risks halting all trades.
+- **Medic**: PATTERN D — API unreachable (environmental constraint, not a trade error)
+- **Scout**: SKIPPED — last ran 2026-04-16T05:15 UTC (23h ago, under 48h threshold)
+- **Auditor**: SKIPPED — all required API endpoints (trades, portfolio, patterns, adaptive) blocked
 
 ## Recommended Action for Henry
 
-**This is the 4th consecutive run with the same network restriction. Action required:**
+**This is the 5th consecutive run with the same network restriction. Action required:**
 
 1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
 2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
-3. Alternatively, expose a **read-only status webhook** that pushes to a domain already in the allowlist
+3. Alternatively, configure a **push webhook** from the bot to a publicly-accessible endpoint the medic can read
 4. Manually verify bot health at: https://autonomous-trading-bot-production.up.railway.app/health
 
 ## Pattern Classification
@@ -86,4 +87,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to dev branch per MEDIC SAFETY protocol
