@@ -9021,15 +9021,27 @@ async function main() {
       console.log(`     ${i + 1}. "${r.label}" → ${r.wallet.slice(0, 6)}...${r.wallet.slice(-4)} (${r.percent}%)`);
     });
 
-    // Startup catch-up: if bot starts after 8 AM UTC and yesterday hasn't been paid
+    // Startup catch-up: if bot starts after 8 AM UTC and yesterday hasn't been
+    // paid (or prior attempt failed to distribute anything), fire a retry in 30s.
+    // v21.16-fix: Also retry if last attempt for yesterday had totalDistributed=0
+    // (e.g. ALL_TRANSFERS_FAILED from USDC scarcity). Previously the date-only
+    // check locked out retries after a failed attempt, stranding earned payout.
     const nowUTC = new Date();
     const hourUTC = nowUTC.getUTCHours();
     if (hourUTC >= 8) {
       const yesterday = new Date(nowUTC);
       yesterday.setUTCDate(yesterday.getUTCDate() - 1);
       const yesterdayStr = yesterday.toISOString().slice(0, 10);
-      if (state.lastDailyPayoutDate !== yesterdayStr) {
-        console.log(`  ⏰ Daily Payout catch-up: yesterday (${yesterdayStr}) not yet paid — scheduling in 30s`);
+      const lastRecord = state.dailyPayouts?.slice(-1)[0];
+      const notYetPaid = state.lastDailyPayoutDate !== yesterdayStr;
+      const lastAttemptFailed = state.lastDailyPayoutDate === yesterdayStr
+        && lastRecord?.date === yesterdayStr
+        && (lastRecord?.totalDistributed || 0) === 0;
+      if (notYetPaid || lastAttemptFailed) {
+        const why = lastAttemptFailed
+          ? `last attempt failed (${lastRecord?.skippedReason || '?'}, distributed $0)`
+          : `yesterday (${yesterdayStr}) not yet paid`;
+        console.log(`  ⏰ Daily Payout catch-up: ${why} — scheduling in 30s`);
         setTimeout(async () => {
           try {
             await executeDailyPayout();
