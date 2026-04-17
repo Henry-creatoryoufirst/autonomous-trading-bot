@@ -144,7 +144,7 @@ const NVR_SUBSCRIBE_MODE = (process.env.NVR_SUBSCRIBE_MODE || 'log').toLowerCase
 const NVR_POLL_INTERVAL_MS = parseInt(process.env.NVR_POLL_INTERVAL_MS || '60000');  // 60s default
 const NVR_DECISION_STALE_MS = 5 * 60 * 1000;                  // skip decisions older than 5min
 const NVR_MAX_TRADE_USD = parseFloat(process.env.NVR_MAX_TRADE_USD || '50');  // per-mirror trade cap (safety)
-const NVR_MARKET_DATA_MAX_AGE_MS = 10 * 60 * 1000;            // refuse to execute if marketData stale > 10min
+const NVR_MARKET_DATA_MAX_AGE_MS = 20 * 60 * 1000;            // marketData freshness gate — 20min covers adaptive cycle drift on subscriber bots
 const NVR_COOLDOWN_MS = 60 * 1000;                            // per-token cooldown to prevent echo storms
 // Subscriber-only mute mode: bot stops making own AI trade decisions and ONLY mirrors NVR feed.
 // Intel collection, balance tracking, gas top-up, harvest, telegram, and the subscriber loop
