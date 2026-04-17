@@ -1,5 +1,14 @@
 /**
- * Henry's Autonomous Trading Agent v20.0
+ * Henry's Autonomous Trading Agent — NVR Capital
+ *
+ * Current version: tracked in package.json (exposed as BOT_VERSION).
+ * Architecture: 5-silo refactor (proposer → reviewer → executor), plus
+ * capital sleeves scaffolding (SPEC-010) and rotation indexer (SPEC-011
+ * Phase 1, observation-only on staging).
+ *
+ * Historical changelog below is preserved intentionally. For the current
+ * state, read package.json, CLAUDE.md, and the specs in ~/Desktop/NVR-HQ/
+ * rather than this banner.
  *
  * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE + v5.1 INTELLIGENCE UPGRADE
  *
@@ -714,12 +723,15 @@ import type { FamilyTradeDecision, FamilyTradeResult } from "./src/fleet/types/f
 
 // === v11.0: AAVE V3 YIELD SERVICE ===
 import { aaveYieldService } from "./src/core/services/aave-yield.js";
-import { MorphoYieldService } from "./src/core/services/morpho-yield.js";
+// v21.18 hardening (2026-04-17): use the shared morphoYieldService singleton
+// exported by morpho-yield.ts so the agent and the yield-optimizer observe
+// the same on-chain balance + deposit state. (Previously the agent created
+// a fresh instance here and the optimizer used a local no-op stub — the
+// two never agreed, and the optimizer was blind to real Morpho deposits.)
+import { morphoYieldService } from "./src/core/services/morpho-yield.js";
 // NVR-SPEC-011 Phase 1: rotation indexer (observation-only). Opt-in via
 // ROTATION_INDEXER_ENABLED env var. No behavioral change when disabled.
 import { getRotationIndexer } from "./src/core/services/rotation-indexer.js";
-// v21.18: Re-enable Morpho yield service — $740 steakUSDC was locked with no auto-withdraw
-const morphoYieldService = new MorphoYieldService({ minLiquidUSDC: 500, minDepositUSDC: 50, minWithdrawUSDC: 25 });
 
 // === v15.3: MULTI-PROTOCOL YIELD OPTIMIZER ===
 import { yieldOptimizer } from "./src/core/services/yield-optimizer.js";
@@ -938,11 +950,35 @@ if (gemmaMode !== 'disabled') {
 //   apiKeyId: UUID string (e.g. "fe3fabdc-...")
 //   apiKeySecret: Either raw base64 Ed25519 key (88 chars) OR PEM PKCS#8 EC key (-----BEGIN PRIVATE KEY-----)
 //   walletSecret: Raw base64 DER-encoded ECDSA P-256 key (no PEM headers - SDK wraps internally)
+// Governance: the entire NVR fleet runs against ONE CDP project. If the bot
+// finds itself on a different project at startup, it refuses to boot loudly.
+// This catches drift from manual Railway reprovisioning. See
+// NVR-SPEC-012-Multi-Tenant-Smart-Account-Consolidation.md for background.
+const CANONICAL_CDP_PROJECT_ID = 'c5774a25-3713-44c0-b090-c9a2ad69443a';
+// Set NVR_ALLOW_NON_CANONICAL_CDP=true ONLY during supervised migrations.
+const ALLOW_NON_CANONICAL_CDP = process.env.NVR_ALLOW_NON_CANONICAL_CDP === 'true';
+
 function createCdpClient(): CdpClient {
   // Try new naming first, then fall back to old
   const apiKeyId = process.env.CDP_API_KEY_ID || process.env.CDP_API_KEY_NAME;
   let apiKeySecret = process.env.CDP_API_KEY_SECRET || process.env.CDP_API_KEY_PRIVATE_KEY;
   const walletSecret = process.env.CDP_WALLET_SECRET;
+
+  // Governance lockdown: refuse non-canonical CDP project at startup.
+  // This is the last line of defense against drift like K&H (Project B) and
+  // Zachary (Project C) that caused unreachable funds and broken recovery flows.
+  if (apiKeyId && apiKeyId !== CANONICAL_CDP_PROJECT_ID) {
+    const msg =
+      `❌ FATAL: CDP_API_KEY_ID (${apiKeyId.slice(0, 12)}...) is not the canonical ` +
+      `NVR fleet project (${CANONICAL_CDP_PROJECT_ID.slice(0, 12)}...). Refusing to start. ` +
+      `If you're in the middle of a supervised migration, set NVR_ALLOW_NON_CANONICAL_CDP=true.`;
+    if (!ALLOW_NON_CANONICAL_CDP) {
+      console.error(msg);
+      throw new Error(msg);
+    } else {
+      console.warn(`⚠️  ${msg} — override active via NVR_ALLOW_NON_CANONICAL_CDP.`);
+    }
+  }
 
   // Railway env vars may store PEM newlines as literal \n — convert to real newlines
   if (apiKeySecret && apiKeySecret.includes('\\n')) {
