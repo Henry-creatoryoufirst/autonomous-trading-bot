@@ -24,7 +24,7 @@
 
 import { appendFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import axios from 'axios';
+import { rpcCall } from '../execution/rpc.js';
 import { getSmartWallets } from './smart-wallet-tracker.js';
 import {
   TRANSFER_TOPIC,
@@ -50,8 +50,6 @@ const MAX_BLOCK_RANGE_PER_CALL = 250;
  *  catching up log-by-log would be slow. Cap the initial catch-up so we
  *  don't hammer RPC on cold-start. */
 const MAX_COLD_START_CATCHUP_BLOCKS = 2_000;
-
-const BASE_RPC_URL = 'https://mainnet.base.org';
 
 // ============================================================================
 // TOKEN DECIMALS CACHE
@@ -132,25 +130,23 @@ interface RpcLog {
   blockNumber: string; // hex
 }
 
-async function rpc<T = unknown>(method: string, params: unknown[]): Promise<T> {
-  const res = await axios.post(
-    BASE_RPC_URL,
-    { jsonrpc: '2.0', id: 1, method, params },
-    { timeout: 10_000 },
-  );
-  if (res.data.error) {
-    throw new Error(`RPC ${method} error: ${res.data.error.message || res.data.error}`);
-  }
-  return res.data.result as T;
-}
-
+/**
+ * All RPC goes through the bot's shared multi-endpoint rotation in
+ * src/core/execution/rpc.ts — `rpcCall` handles 429/502/503 retries and
+ * automatic failover across the full BASE_RPC_ENDPOINTS list (Flashbots,
+ * 1RPC, drpc, etc.) rather than hammering a single public endpoint.
+ * This lets the indexer poll at 6s safely; a single-endpoint implementation
+ * historically got rate-limited and had to back off to 30s.
+ */
 async function getLatestBlockNumber(): Promise<number> {
-  const hex = await rpc<string>('eth_blockNumber', []);
-  return parseInt(hex, 16);
+  const hex = await rpcCall('eth_blockNumber', []);
+  return parseInt(hex as string, 16);
 }
 
 async function getBlockTimestamp(blockHex: string): Promise<number> {
-  const block = await rpc<{ timestamp: string } | null>('eth_getBlockByNumber', [blockHex, false]);
+  const block = await rpcCall('eth_getBlockByNumber', [blockHex, false]) as
+    | { timestamp: string }
+    | null;
   if (!block?.timestamp) return Math.floor(Date.now() / 1000); // fallback
   return parseInt(block.timestamp, 16);
 }
@@ -325,14 +321,14 @@ export class RotationIndexer {
 
     // Two queries: tracked wallet in topic2 (from = OUT), and topic3 (to = IN).
     // Public RPCs support array-OR within a single topic slot.
-    const fromQuery = rpc<RpcLog[]>('eth_getLogs', [{
+    const fromQuery = rpcCall('eth_getLogs', [{
       fromBlock: fromHex, toBlock: toHex,
       topics: [TRANSFER_TOPIC, this.trackedTopics, null],
-    }]);
-    const toQuery = rpc<RpcLog[]>('eth_getLogs', [{
+    }]) as Promise<RpcLog[]>;
+    const toQuery = rpcCall('eth_getLogs', [{
       fromBlock: fromHex, toBlock: toHex,
       topics: [TRANSFER_TOPIC, null, this.trackedTopics],
-    }]);
+    }]) as Promise<RpcLog[]>;
 
     const [outLogs, inLogs] = await Promise.all([fromQuery, toQuery]);
     // Deduplicate by (txHash, logIndex substitute = block+address+topics) — in
