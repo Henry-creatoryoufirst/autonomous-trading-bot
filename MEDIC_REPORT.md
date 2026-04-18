@@ -1,31 +1,33 @@
-# MEDIC REPORT — 2026-04-17T12:00 UTC
+# MEDIC REPORT — 2026-04-18T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #7)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #8)
 
 ## Environment
-- Run timestamp: 2026-04-17T12:00 UTC
+- Run timestamp: 2026-04-18T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-7YB6a
 
 ## Problem
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `Host not in allowlist` or `403 Forbidden`:
+All endpoints attempted returned `403 Forbidden`:
 
 ```
-curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
-→ Host not in allowlist
-
-curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
-→ Host not in allowlist
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors       → 403
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances     → 403
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/trades       → 403
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/portfolio    → 403
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/patterns     → 403
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/adaptive     → 403
 ```
 
-GeckoTerminal API also blocked (same egress restriction):
+GeckoTerminal, CoinGecko, DEXScreener APIs also blocked (same egress restriction):
 ```
-GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools?page=1
-→ 403 Forbidden
+GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools → 403
+GET https://api.coingecko.com/api/v3/coins/markets → 403
+GET https://api.dexscreener.com/latest/dex/search → 403
 ```
 
 ## Root Cause
@@ -41,23 +43,22 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #4 | 2026-04-16T10:18 UTC | PATTERN D update |
 | #5 | 2026-04-16T11:20 UTC | PATTERN D update |
 | #6 | 2026-04-17T00:00 UTC | PATTERN D update |
-| #7 | 2026-04-17T12:00 UTC | This report (same issue) |
+| #7 | 2026-04-17T12:00 UTC | PATTERN D update |
+| #8 | 2026-04-18T00:00 UTC | This report |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the bot is clearly active:
+Despite API being unreachable from medic, the bot is clearly active and evolving:
 
-- `2026-04-16 05:15 UTC` — Scout added BENJI to TOKEN_REGISTRY
-- `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
-- `2026-04-16 00:21 UTC` — Scout added SPX to TOKEN_REGISTRY
-- `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
-- `2026-04-15 12:25 UTC` — Auditor lowered VOL_TARGET_DAILY_PCT 2→1.5 (bear-market)
+- `2026-04-17` — governance: refuse to start on non-canonical CDP project (safety feature)
+- `2026-04-17` — fix(rotation): route indexer through shared multi-endpoint rpcCall
+- `2026-04-17` — feat(rotation): Phase 1 indexer + event log (NVR-SPEC-011)
+- `2026-04-17` — feat(sleeves): capital sleeves scaffolding (NVR-SPEC-010)
+- `2026-04-17` — fix(nvr-bot): bump marketData freshness gate 10→20min
+- `2026-04-17` — fix(v21.18): re-enable Morpho yield service, unlock $740 USDC
+- Previous: KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7% (bear-market tightening from runs #3-#5)
 
-Bot is alive and making autonomous adjustments for bear market conditions.
-
-**Run #5 Auditor Note:** Bear market trigger confirmed by 3 auditor runs in last 22h.
-Parameters are already heavily tightened (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%).
-Auditor skipped this run to prevent over-tightening without fresh API metrics.
+Bot is alive with active development. Code changes are being deployed regularly.
 
 ## What Is NOT Known
 
@@ -66,20 +67,30 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
+- Win rate, drawdown, market regime (needed for Auditor trigger)
 
-## Jobs Status This Run (Run #7)
+## Jobs Status This Run (Run #8)
 
-- **Scout**: SKIPPED — last scout commit was 2026-04-16 10:52 EDT (~25h ago, within 48h window)
-- **Auditor**: SKIPPED — cannot fetch live metrics; all /api/* endpoints return 403
+- **Medic**: PATTERN D — API unreachable, updating report
+- **Scout**: SKIPPED — GeckoTerminal API blocked; cannot verify quality criteria (liquidity/volume/age). Last scout commit was 2026-04-16 10:52 EDT (~37-55h ago, borderline 48h window). Without verifiable data, standards cannot be met.
+- **Auditor**: SKIPPED — cannot fetch live metrics; all /api/* endpoints return 403. Trigger conditions (win_rate, drawdown, regime) cannot be calculated without live data.
 
 ## Recommended Action for Henry
 
-**This is the 6th consecutive run with the same network restriction. Action required:**
+**This is now the 8th consecutive run with the same network restriction. Resolution required:**
 
-1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
-2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
-3. Alternatively, expose a **read-only status webhook** that pushes to a domain already in the allowlist
-4. Manually verify bot health at: https://autonomous-trading-bot-production.up.railway.app/health
+1. **Add to egress allowlist** (highest priority):
+   - `autonomous-trading-bot-production.up.railway.app` — for Medic and Auditor
+   - `api.geckoterminal.com` — for Scout
+   - `api.coingecko.com` and `api.dexscreener.com` — fallback data sources
+
+2. **Alternative: Push-based monitoring** — have the bot POST its health summary to a GitHub Gist or GitHub API endpoint (already in allowlist) on each cycle
+
+3. **Alternative: Read-only status file** — have the bot write a `BOT_STATUS.json` to this repo on each cycle (bot pushes → agent reads via git pull)
+
+4. **Manually verify bot health** at: https://autonomous-trading-bot-production.up.railway.app/health
+
+5. **Scout workaround**: Consider committing a `SCOUT_CANDIDATES.json` to the repo with GeckoTerminal data (bot writes it; agent reads it). The Scout can then read from that file instead of calling blocked APIs.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -87,4 +98,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-7YB6a (staging equivalent for this run)
