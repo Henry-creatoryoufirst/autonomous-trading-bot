@@ -304,6 +304,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "BENJI", name: "Basenji", coingeckoId: "basenji",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout) ===
+  KTA: {
+    address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
+    symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  ELSA: {
+    address: "0x29cc30f9d113b356ce408667aa6433589cecbdca",
+    symbol: "ELSA", name: "HeyElsa", coingeckoId: "heyelsa",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
