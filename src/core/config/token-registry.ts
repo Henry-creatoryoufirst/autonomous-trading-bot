@@ -147,6 +147,16 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VADER", name: "VaderAI by Virtuals", coingeckoId: "vaderai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  TIBBIR: {
+    address: "0x1b52e2eedaab38e198a349f50f74fc3d12722e4c",
+    symbol: "TIBBIR", name: "Ribbita by Virtuals", coingeckoId: "ribbita-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  AXR: {
+    address: "0x58db197e91bc8cf1587f75850683e4bd0730e6bf",
+    symbol: "AXR", name: "Axelrod by Virtuals", coingeckoId: "axelrod-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
