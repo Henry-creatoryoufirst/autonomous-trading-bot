@@ -277,6 +277,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "TIBBIR", name: "Ribbita by Virtuals", coingeckoId: "ribbita-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  BNKR: {
+    address: "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b",
+    symbol: "BNKR", name: "BankrCoin", coingeckoId: "bankercoin-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
