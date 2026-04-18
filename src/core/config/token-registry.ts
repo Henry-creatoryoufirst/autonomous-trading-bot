@@ -283,6 +283,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "HYDX", name: "Hydrex", coingeckoId: "hydrex",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  LMTS: {
+    address: "0x9EadbE35F3Ee3bF3e28180070C429298a1b02F93",
+    symbol: "LMTS", name: "Limitless", coingeckoId: "limitless-3",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   MEZO: {
     address: "0x8e4cbbcc33db6c0a18561fde1f6ba35906d4848b",
     symbol: "MEZO", name: "Mezo", coingeckoId: "mezo",
