@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-17T12:00 UTC
+# MEDIC REPORT — 2026-04-18T03:05 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #7)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #8)
 
 ## Environment
-- Run timestamp: 2026-04-17T12:00 UTC
+- Run timestamp: 2026-04-18T03:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-Rt1gZ
 
 ## Problem
 
@@ -41,7 +41,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #4 | 2026-04-16T10:18 UTC | PATTERN D update |
 | #5 | 2026-04-16T11:20 UTC | PATTERN D update |
 | #6 | 2026-04-17T00:00 UTC | PATTERN D update |
-| #7 | 2026-04-17T12:00 UTC | This report (same issue) |
+| #7 | 2026-04-17T12:00 UTC | PATTERN D update |
+| #8 | 2026-04-18T03:05 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -67,14 +68,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #7)
+## Jobs Status This Run (Run #8)
 
-- **Scout**: SKIPPED — last scout commit was 2026-04-16 10:52 EDT (~25h ago, within 48h window)
+- **Scout**: SKIPPED — last scout commit was 2026-04-16 09:15 UTC (~42h ago, within 48h window)
 - **Auditor**: SKIPPED — cannot fetch live metrics; all /api/* endpoints return 403
 
 ## Recommended Action for Henry
 
-**This is the 6th consecutive run with the same network restriction. Action required:**
+**This is the 7th consecutive run with the same network restriction. Action required:**
 
 1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
 2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
@@ -87,4 +88,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-Rt1gZ per session branch requirements
