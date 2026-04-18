@@ -769,7 +769,7 @@ export const TWAP_OBSERVATION_SECONDS = 900;
 // ============================================================================
 
 /** Position must be up this % from cost basis to qualify for scale-up */
-export const SCALE_UP_MIN_GAIN_PCT = 3;
+export const SCALE_UP_MIN_GAIN_PCT = 5; // Bear-adjusted Apr-2026: 3→5 — 3% gains reverse easily in 46-day bear; require stronger confirmation before adding capital
 
 /** Buy ratio must exceed this % to confirm momentum for scale-up */
 export const SCALE_UP_BUY_RATIO_MIN = 55;
