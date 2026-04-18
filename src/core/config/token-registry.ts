@@ -293,6 +293,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "RIVER", name: "River Protocol", coingeckoId: "river",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === DEFI (auto-discovered) ===
+  RAVE: {
+    address: "0x1aa8fd5bcce2231c6100d55bf8b377cff33acfc3",
+    symbol: "RAVE", name: "RaveDAO", coingeckoId: "ravedao",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  CHECK: {
+    address: "0x9126236476efba9ad8ab77855c60eb5bf37586eb",
+    symbol: "CHECK", name: "Checkmate", coingeckoId: "check",
+    sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (discovered) ===
   SKI: {
     address: "0x768be13e1680b5ebe0024c42c896e3db59ec0149",
