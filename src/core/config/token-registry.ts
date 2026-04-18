@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA", "TIBBIR"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -261,6 +261,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x1111111111166b7fe7bd91427724b487980afc69",
     symbol: "ZORA", name: "Zora", coingeckoId: "zora",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  TIBBIR: {
+    address: "0xa4a2e2ca3fbfe21aed83471d28b6f65a233c6e00",
+    symbol: "TIBBIR", name: "Ribbita by Virtuals", coingeckoId: "ribbita-by-virtuals",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === DEFI (expanded) ===
   WELL: {
