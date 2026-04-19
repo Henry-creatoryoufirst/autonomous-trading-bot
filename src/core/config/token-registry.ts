@@ -335,6 +335,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "ELSA", name: "HeyElsa", coingeckoId: "heyelsa",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  EDEL: {
+    address: "0xfb31f85a8367210b2e4ed2360d2da9dc2d2ccc95",
+    symbol: "EDEL", name: "Edel", coingeckoId: "edel",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
