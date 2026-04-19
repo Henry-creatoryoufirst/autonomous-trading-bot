@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-17T22:09 UTC
+# MEDIC REPORT — 2026-04-19T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #9)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #10)
 
 ## Environment
-- Run timestamp: 2026-04-17T22:09 UTC
+- Run timestamp: 2026-04-19T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -43,23 +43,23 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #6 | 2026-04-17T00:00 UTC | PATTERN D update |
 | #7 | 2026-04-17T12:00 UTC | PATTERN D update |
 | #8 | 2026-04-17T18:42 UTC | PATTERN D update |
-| #9 | 2026-04-17T22:09 UTC | This report (same issue) |
+| #9 | 2026-04-17T22:09 UTC | PATTERN D update |
+| #10 | 2026-04-19T00:00 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the bot is clearly active:
+Despite API being unreachable from medic, the staging branch is active with autonomous updates:
 
+- `2026-04-19 00:00 UTC` — Scout (Run #10) added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
 - `2026-04-16 05:15 UTC` — Scout added BENJI to TOKEN_REGISTRY
 - `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
 - `2026-04-16 00:21 UTC` — Scout added SPX to TOKEN_REGISTRY
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 - `2026-04-15 12:25 UTC` — Auditor lowered VOL_TARGET_DAILY_PCT 2→1.5 (bear-market)
 
-Bot is alive and making autonomous adjustments for bear market conditions.
+**Staging branch is substantially ahead of main** — many queued tokens (TIBBIR, AXR, BNKR, LBTC, ELSA, EDEL, KTA, ETHY) and tightened risk params not yet promoted to production.
 
-**Run #5 Auditor Note:** Bear market trigger confirmed by 3 auditor runs in last 22h.
-Parameters are already heavily tightened (KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%).
-Auditor skipped this run to prevent over-tightening without fresh API metrics.
+**Risk params in staging (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
 
 ## What Is NOT Known
 
@@ -69,19 +69,21 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #9)
+## Jobs Status This Run (Run #10)
 
-- **Scout**: SKIPPED — last scout commit was 2026-04-16 05:15 UTC (~41h ago, within 48h window)
-- **Auditor**: SKIPPED — cannot fetch live metrics; all /api/* endpoints return 403
+- **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
+- **Scout**: RAN — last scout was 2026-04-16 (72h ago, >48h threshold). Added ETHY (Ethy AI by Virtuals). Liquidity: $393k, 24h vol: $51-90k, score: 6/10.
+- **Auditor**: SKIPPED — cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive. All Railway endpoints return 403.
 
 ## Recommended Action for Henry
 
-**This is the 9th consecutive run with the same network restriction. Action required:**
+**This is the 10th consecutive run with the same network restriction. Action required:**
 
 1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
-2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
+2. Also add `api.geckoterminal.com` and `api.dexscreener.com` to the allowlist for Scout
 3. Alternatively, expose a **read-only status webhook** that pushes to a domain already in the allowlist
 4. Manually verify bot health at: https://autonomous-trading-bot-production.up.railway.app/health
+5. **IMPORTANT:** Staging branch has many queued improvements not on main. Consider `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
