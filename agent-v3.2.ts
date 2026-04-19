@@ -1,95 +1,13 @@
 /**
  * Henry's Autonomous Trading Agent — NVR Capital
  *
- * Current version: tracked in package.json (exposed as BOT_VERSION).
+ * Current version: tracked in package.json (exposed as BOT_VERSION below).
  * Architecture: 5-silo refactor (proposer → reviewer → executor), plus
  * capital sleeves scaffolding (SPEC-010) and rotation indexer (SPEC-011
  * Phase 1, observation-only on staging).
  *
- * Historical changelog below is preserved intentionally. For the current
- * state, read package.json, CLAUDE.md, and the specs in ~/Desktop/NVR-HQ/
- * rather than this banner.
- *
- * PHASE 3: RECURSIVE SELF-IMPROVEMENT ENGINE + v5.1 INTELLIGENCE UPGRADE
- *
- * CHANGES IN V5.1.1:
- * - NEW: Tiered Profit Harvesting — scale out of winners in 4 tranches (+8%, +15%, +25%, +40%)
- * - NEW: Time-based rebalancing — positions held 72h+ with +5% gain get a 10% trim
- * - NEW: Per-tier cooldowns — each harvest tier has independent 6h cooldowns
- * - NEW: Harvested profits tracking — dashboard shows total banked profits +harvest history
- * - NEW: "Harvested" metric card on dashboard with harvest count + last harvest details
- * - UPGRADED: AI prompt teaches profit harvesting philosophy and smart money exit signals
- * - LOWERED: minHoldingUSD from $10 to $5, cooldown from 24h to 6h for faster harvesting cycles
- *
- * CHANGES IN V5.1:
- * - NEW: Binance Long/Short Ratios — global retail vs top trader (smart money) positioning
- * - NEW: Composite Positioning Signals — SMART_MONEY_LONG/SHORT, OVERLEVERAGED detection
- * - NEW: OI-Price Divergence Detection — identifies squeeze setups before they trigger
- * - NEW: Cross-Asset Correlation — Gold (PAXG real-time), Oil, VIX, S&P 500 as direct signals
- * - NEW: Cross-Asset Signal Engine — RISK_ON/RISK_OFF/FLIGHT_TO_SAFETY from traditional markets
- * - NEW: Shadow Model Validation — threshold changes require 3+ statistical confirmations before promoting
- * - NEW: MEV Protection — adaptive slippage based on trade size + market conditions
- * - NEW: Dashboard panels for Derivatives Positioning, Cross-Asset Intelligence, Shadow Proposals
- * - UPGRADED: AI prompt now receives positioning intelligence + cross-asset signals
- *
- * CHANGES IN V5.0.1:
- * - BUGFIX: Performance reviews now properly stored (were computed but discarded)
- * - BUGFIX: lastReviewTradeIndex and lastReviewTimestamp now persist after each review
- * - BUGFIX: Dashboard "trades until next" now shows remaining trades, not elapsed trades
- * - BUGFIX: Pattern analysis rebuilds on deploy to pick up new v5.0 trades with signalContext
- * - NEW: Circuit breakers — hard halt at 20% drawdown, caution mode (half positions) at 12%
- *
- * CHANGES IN V5.0:
- * - Strategy Pattern Memory: auto-classifies trades into strategy buckets, tracks win/loss rates
- * - Performance Review Cycle: structured analysis every 10 trades or 24h with actionable insights
- * - Adaptive Threshold Engine: RSI, confluence, profit-take, stop-loss thresholds self-tune based on performance
- * - Confidence-Weighted Position Sizing: proven patterns get full size, unproven get smaller exploratory sizes
- * - Anti-Stagnation / Exploration: triggers $3 exploration trades after 48h inactivity
- * - Self-improvement prompt injection: AI sees its own patterns, insights, and threshold changes
- * - New API endpoints: /api/patterns, /api/reviews, /api/thresholds
- * - Dashboard: Intelligence section showing top patterns, adaptive thresholds, latest insights
- *
- * CHANGES IN V4.5.3:
- * - Fixed FRED API auth: uses api_key query parameter (not Bearer header)
- * - FRED macro data now flowing: Fed Rate, 10Y Yield, CPI, M2, Dollar Index
- *
- * CHANGES IN V4.5.2:
- * - Last-known-prices cache prevents $0 portfolio between cycles
- * - Intelligence fetches run in parallel with price reads (faster cycles)
- *
- * CHANGES IN V4.5.1:
- * - Fixed CryptoPanic: proper API v1 endpoint with auth_token (env: CRYPTOPANIC_AUTH_TOKEN)
- * - Fixed FRED API: added env var check + warning (auth fixed in v4.5.3)
- * - Price fallback chain: on-chain → DexScreener → Chainlink (no external API dependencies)
- *
- * CHANGES IN V4.5:
- * - CryptoPanic news sentiment: bullish/bearish news classification, per-token mentions, headline tracking
- * - FRED macro data: Fed Funds Rate, 10Y Treasury, yield curve, CPI, M2 money supply, dollar index
- * - Macro signal engine: composite RISK_ON / RISK_OFF / NEUTRAL based on Fed policy + liquidity + dollar
- * - News sentiment scoring: -100 to +100 composite, per-token bullish/bearish mention tracking
- * - Macro-aware strategy: regime × macro cross-rules for position sizing and conviction
- * - 8 data sources feeding every decision cycle
- * - Upgraded AI prompt: 8-dimensional market awareness
- *
- * CHANGES IN V4.0 (Phase 1):
- * - DefiLlama integration: Base chain TVL, DEX volumes, protocol-level TVL changes
- * - Binance derivatives: BTC/ETH funding rates + open interest (leading indicators)
- * - Enhanced trade logging: full signal context, market regime, indicator snapshots
- * - Trade performance scoring: win rate, avg return, signal effectiveness tracking
- * - Market regime detection: trending/ranging/volatile based on multi-factor analysis
- *
- * CHANGES IN V3.5:
- * - Cost basis tracking: avg purchase price, realized/unrealized P&L per token
- * - Profit-taking guard: auto-sell 30% when token up 20%+ from avg cost
- * - Stop-loss guard: auto-sell 50% when token down 25%+ (or 20% trailing from peak)
- * - Live dashboard: real-time web UI at / with portfolio, P&L, holdings, trades
- * - API endpoints: /api/portfolio, /api/balances, /api/sectors, /api/trades, /api/indicators
- *
- * Sectors:
- * - BLUE_CHIP (40%): ETH, cbBTC, cbETH
- * - AI_TOKENS (20%): VIRTUAL, AIXBT, HIGHER
- * - MEME_COINS (15%): BRETT, DEGEN, TOSHI
- * - DEFI (18%): AERO, MORPHO, PENDLE, RSR, AAVE, CRV, ENA, ETHFI
+ * For current state, read package.json, CLAUDE.md, and the specs in
+ * ~/Desktop/NVR-HQ/. For version history, use `git log --oneline main`.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
