@@ -147,6 +147,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VADER", name: "VaderAI by Virtuals", coingeckoId: "vaderai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  FAI: {
+    address: "0xb33ff54b9f7242ef1593d2c9bcd8f9df46c77935",
+    symbol: "FAI", name: "Freysa AI", coingeckoId: "freysa-ai",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
