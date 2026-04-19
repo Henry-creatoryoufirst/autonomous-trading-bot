@@ -10,6 +10,7 @@ import axios from "axios";
 import type { TradeRecord } from "../types/index.js";
 import type { OnChainCapitalFlows, BasescanTransfer } from "../types/services.js";
 import { activeChain } from "../config/chain-config.js";
+import { detectCapitalFlowsViaRpc } from "./rpc-deposits.js";
 
 const BLOCKSCOUT_API_URL = activeChain.explorer.apiUrl; // v21.3: chain-aware explorer
 
@@ -25,6 +26,31 @@ export async function detectOnChainCapitalFlows(
 ): Promise<OnChainCapitalFlows> {
   if (!forceRefresh && cachedCapitalFlows && (Date.now() - capitalFlowsLastFetched) < CAPITAL_FLOWS_CACHE_MS) {
     return cachedCapitalFlows;
+  }
+
+  // v22.0: RPC-based path for CDP Smart Wallets (ERC-4337). Blockscout's
+  // wallet-centric tokentx endpoint is blind to Transfer events that arrive
+  // through UserOperation indirection, so smart wallet deposits silently
+  // disappear and P&L baselines fall back to stale INITIAL_DEPOSIT_USD env
+  // vars. The RPC path reads Transfer logs directly — no wallet attribution
+  // layer, no misses. Gated on USE_RPC_DEPOSIT_DETECTION so existing EOA
+  // bots can stay on Blockscout until we've soaked the new path.
+  if (process.env.USE_RPC_DEPOSIT_DETECTION === 'true') {
+    try {
+      const rpcResult = await detectCapitalFlowsViaRpc(walletAddress as `0x${string}`);
+      cachedCapitalFlows = rpcResult;
+      capitalFlowsLastFetched = Date.now();
+      console.log(
+        `  💰 [ON-CHAIN/RPC] Deposits: $${rpcResult.totalDeposited.toFixed(2)} (${rpcResult.deposits.length} txs) | Withdrawals: $${rpcResult.totalWithdrawn.toFixed(2)} (${rpcResult.withdrawals.length} txs) | Net: $${rpcResult.netCapitalIn.toFixed(2)}`,
+      );
+      return rpcResult;
+    } catch (err: any) {
+      // Graceful fallback: if RPC scan fails, fall through to Blockscout so
+      // we never block the cycle on a transient RPC issue.
+      console.warn(
+        `  ⚠️ [ON-CHAIN/RPC] Scan failed (${err?.message?.slice(0, 100) ?? 'unknown'}), falling back to Blockscout`,
+      );
+    }
   }
 
   const wallet = walletAddress.toLowerCase();
