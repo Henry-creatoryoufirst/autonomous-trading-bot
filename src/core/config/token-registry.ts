@@ -304,6 +304,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "BENJI", name: "Basenji", coingeckoId: "basenji",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  // === LIQUID STAKING / BTC DERIVATIVES (auto-discovered) ===
+  LBTC: {
+    address: "0xecac9c5f704e954931349da37f60e39f515c11c1",
+    symbol: "LBTC", name: "Lombard Staked Bitcoin", coingeckoId: "lombard-staked-btc",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 50, decimals: 8,
+  },
+  weETH: {
+    address: "0x04c0599ae5a44757c0af6f9ec3b93da8976c150a",
+    symbol: "weETH", name: "Wrapped eETH", coingeckoId: "wrapped-eeth",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
