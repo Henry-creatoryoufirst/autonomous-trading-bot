@@ -262,6 +262,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "ZORA", name: "Zora", coingeckoId: "zora",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  BNKR: {
+    address: "0x22af33fe49fd1fa80c7149773dde5890d3c76f3b",
+    symbol: "BNKR", name: "BankrCoin", coingeckoId: "bankercoin-2",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
@@ -291,6 +296,11 @@ export const TOKEN_REGISTRY: Record<string, {
   RIVER: {
     address: "0xdA7AD9dea9397cffdDAE2F8a052B82f1484252B3",
     symbol: "RIVER", name: "River Protocol", coingeckoId: "river",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  LMTS: {
+    address: "0x9eadbe35f3ee3bf3e28180070c429298a1b02f93",
+    symbol: "LMTS", name: "Limitless Exchange", coingeckoId: "limitless-exchange",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === MEME COINS (discovered) ===
