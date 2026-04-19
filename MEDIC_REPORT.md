@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-19T00:00 UTC
+# MEDIC REPORT — 2026-04-19T23:07 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #10)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #11)
 
 ## Environment
-- Run timestamp: 2026-04-19T00:00 UTC
+- Run timestamp: 2026-04-19T23:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -44,7 +44,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #7 | 2026-04-17T12:00 UTC | PATTERN D update |
 | #8 | 2026-04-17T18:42 UTC | PATTERN D update |
 | #9 | 2026-04-17T22:09 UTC | PATTERN D update |
-| #10 | 2026-04-19T00:00 UTC | This report (same issue) |
+| #10 | 2026-04-19T00:00 UTC | PATTERN D update |
+| #11 | 2026-04-19T23:07 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -72,8 +73,8 @@ Because the API is unreachable, the medic cannot determine:
 ## Jobs Status This Run (Run #10)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: RAN — last scout was 2026-04-16 (72h ago, >48h threshold). Added ETHY (Ethy AI by Virtuals). Liquidity: $393k, 24h vol: $51-90k, score: 6/10.
-- **Auditor**: SKIPPED — cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive. All Railway endpoints return 403.
+- **Scout**: SKIPPED — last scout ran at 2026-04-19T21:11 UTC (1h 56min ago, <48h threshold).
+- **Auditor**: SKIPPED — Medic PATTERN D triggered stop.
 
 ## Recommended Action for Henry
 
