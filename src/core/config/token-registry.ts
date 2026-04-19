@@ -116,6 +116,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "cbXRP", name: "Coinbase Wrapped XRP", coingeckoId: "ripple",
     sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 6,
   },
+  LBTC: {
+    address: "0xecAc9C5F704e954931349Da37F60E39f515c11c1",
+    symbol: "LBTC", name: "Lombard Staked BTC", coingeckoId: "lombard-staked-btc",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 50, decimals: 18,
+  },
   // === AI & AGENT TOKENS (20%) ===
   VIRTUAL: {
     address: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b",
