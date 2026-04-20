@@ -474,6 +474,13 @@ import {
   CULL_MAX_MOMENTUM,
   CULL_INTERVAL_CYCLES,
   CULL_MAX_PER_RUN,
+  // Stale position exit — fast-exit discipline for meaningful positions
+  STALE_POSITION_MIN_AGE_HOURS,
+  STALE_POSITION_MIN_USD,
+  STALE_POSITION_MAX_GAIN_PCT,
+  STALE_POSITION_MAX_MOMENTUM_PCT,
+  STALE_POSITION_MAX_EXITS_PER_CYCLE,
+  STALE_POSITION_CHECK_INTERVAL_CYCLES,
   // v21.11: Dry powder reserve — proactive capital availability
   MIN_DRY_POWDER_PCT,
   RESERVE_CHECK_INTERVAL_CYCLES,
@@ -1277,6 +1284,82 @@ function cullStalePositions(
       toToken: 'USDC',
       amountUSD: usdValue,
       reasoning: `CULL: Research position stale — $${usdValue.toFixed(2)}, held ${ageHours.toFixed(0)}h, ${unrealizedPnlPct.toFixed(1)}% P&L, ${change24h.toFixed(1)}% 24h momentum. Freeing capital for higher-conviction opportunities.`,
+      sector: TOKEN_REGISTRY[b.symbol]?.sector,
+    });
+  }
+
+  return decisions;
+}
+
+/**
+ * Stale Position Exit — Time-in-position discipline for meaningful holdings
+ *
+ * Complements cullStalePositions() which targets <$100 research positions held
+ * 7d+. This function catches meaningful-sized positions ($100+) that have been
+ * held long enough to prove their thesis (48h+) but remain flat with weak flow.
+ * Exit so capital moves to fresh signals or refills the alpha-strike reserve.
+ *
+ * Aligned with the "fast safe exits" pillar: don't sit through dead money.
+ * See project_nvr_strategy_shape memory for strategic rationale.
+ */
+function checkStalePositions(
+  balances: any[],
+  state: any,
+  marketTokens: MarketData["tokens"],
+): TradeDecision[] {
+  const now = Date.now();
+  const NEVER_EXIT = new Set(['USDC', 'ETH', 'WETH']);
+  const decisions: TradeDecision[] = [];
+
+  const priceChange24h = new Map<string, number>();
+  for (const token of marketTokens) {
+    if (token.symbol) {
+      priceChange24h.set(token.symbol.toUpperCase(), token.priceChange24h ?? 0);
+    }
+  }
+
+  for (const b of balances) {
+    if (decisions.length >= STALE_POSITION_MAX_EXITS_PER_CYCLE) break;
+
+    const symbol = (b.symbol || '').toUpperCase();
+    if (NEVER_EXIT.has(symbol)) continue;
+
+    const usdValue = b.usdValue || 0;
+    // Size gate: only meaningful positions — smaller tier is cullStalePositions' job
+    if (usdValue < STALE_POSITION_MIN_USD) continue;
+
+    // Skip ICU — actively managed
+    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
+
+    // Need cost basis to evaluate
+    const cb = state.costBasis[b.symbol];
+    if (!cb?.firstBuyDate) continue;
+
+    // Age gate: must have had time to prove itself
+    const ageHours = (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60);
+    if (ageHours < STALE_POSITION_MIN_AGE_HOURS) continue;
+
+    // Gain gate: skip quiet winners — let them run
+    const currentPrice = b.price || (b.balance > 0 ? usdValue / b.balance : 0);
+    const unrealizedPnlPct = cb.averageCostBasis > 0
+      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
+      : 0;
+    if (unrealizedPnlPct > STALE_POSITION_MAX_GAIN_PCT) continue;
+
+    // Momentum gate: if the token is moving in either direction, thesis may still play — don't exit
+    const change24h = priceChange24h.get(symbol) ?? 0;
+    if (Math.abs(change24h) > STALE_POSITION_MAX_MOMENTUM_PCT) continue;
+
+    // Skip circuit-broken tokens (handled elsewhere)
+    if (isTokenBlocked(symbol)) continue;
+
+    decisions.push({
+      action: 'SELL' as const,
+      fromToken: b.symbol,
+      toToken: 'USDC',
+      amountUSD: usdValue,
+      percent: 90,
+      reasoning: `STALE_EXIT: Position $${usdValue.toFixed(2)} held ${ageHours.toFixed(0)}h, ${unrealizedPnlPct.toFixed(1)}% gain, ${change24h.toFixed(1)}% 24h momentum — thesis stopped working. Freeing capital for fresh signals or alpha reserve.`,
       sector: TOKEN_REGISTRY[b.symbol]?.sector,
     });
   }
@@ -6861,10 +6944,40 @@ async function runTradingCycle() {
       }
     }
 
-    // === v21.11: DRY POWDER RESERVE — Proactive capital availability ===
-    // Every RESERVE_CHECK_INTERVAL_CYCLES, ensure USDC >= 10% of portfolio.
-    // If below target, sell the lowest-opportunity-cost position to restore it.
-    // This fires BEFORE Claude's decision so capital is always ready when alpha arrives.
+    // === STALE POSITION EXIT — meaningful positions that played out ===
+    // Every STALE_POSITION_CHECK_INTERVAL_CYCLES, scan for meaningful positions
+    // ($100+) held 48h+ with <3% gain and weak flow. Complements the 7d+/<$100
+    // culling tier. Aligned with the "fast safe exits" pillar — don't sit
+    // through dead money; move capital to fresh signals or refill the reserve.
+    if (state.totalCycles % STALE_POSITION_CHECK_INTERVAL_CYCLES === 0) {
+      const staleExits = checkStalePositions(balances, state, marketData.tokens);
+      if (staleExits.length > 0) {
+        console.log(`\n⏳ STALE_EXIT: Found ${staleExits.length} meaningful position(s) that played out`);
+        const exitedSymbols: string[] = [];
+        for (const se of staleExits) {
+          console.log(`   ⏳ Stale-exit: ${se.fromToken} $${se.amountUSD?.toFixed(2)} — ${se.reasoning?.slice(0, 100)}`);
+          const result = await executeTrade(se, marketData);
+          if (result.success) {
+            clearTradeFailures(se.fromToken!);
+            exitedSymbols.push(se.fromToken!);
+            console.log(`   ✅ Stale-exit complete: ${se.fromToken}`);
+          } else {
+            console.log(`   ❌ Stale-exit failed: ${se.fromToken}`);
+          }
+        }
+        if (exitedSymbols.length > 0) {
+          const refreshed = await getBalances();
+          if (refreshed && refreshed.length > 0) balances = refreshed;
+          markStateDirty(true);
+        }
+      }
+    }
+
+    // === DRY POWDER RESERVE — Proactive capital availability (25% floor) ===
+    // Every RESERVE_CHECK_INTERVAL_CYCLES, ensure USDC >= MIN_DRY_POWDER_PCT (25%)
+    // of portfolio. If below target, sell the lowest-opportunity-cost position to
+    // restore it. Fires BEFORE Claude's decision so capital is always ready when
+    // alpha arrives. The ONE hardcoded capital rule — see strategy_shape memory.
     if (state.totalCycles % RESERVE_CHECK_INTERVAL_CYCLES === 0) {
       const reserveSells = maintainDryPowder(balances, state);
       if (reserveSells.length > 0) {

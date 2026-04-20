@@ -862,6 +862,37 @@ export const CULL_INTERVAL_CYCLES = 20;
 export const CULL_MAX_PER_RUN = 3;
 
 // ============================================================================
+// STALE POSITION EXIT — Fast-exit discipline for meaningful positions
+//
+// Complements CULL_* (which targets <$100 research positions held 7+ days).
+// This rule catches meaningful-sized positions ($100+) that have been held
+// long enough to prove their thesis (48h+) but remain flat with weak flow.
+// When a position sits without working, capital should move — either to a
+// fresh signal or back to the alpha-strike reserve.
+//
+// Aligned with the "fast safe exits" pillar — don't sit through dead money.
+// Strategic rationale: see project_nvr_strategy_shape memory.
+// ============================================================================
+
+/** Minimum age before a meaningful position is eligible for stale-exit */
+export const STALE_POSITION_MIN_AGE_HOURS = 48;
+
+/** Only consider positions above this USD value — smaller tier is cullStalePositions' job */
+export const STALE_POSITION_MIN_USD = 100;
+
+/** Max unrealized gain %; above this, the position is a quiet winner — let it run */
+export const STALE_POSITION_MAX_GAIN_PCT = 3;
+
+/** Max absolute 24h move %; above this, the token still has life — don't exit */
+export const STALE_POSITION_MAX_MOMENTUM_PCT = 2;
+
+/** Max stale-exits per check pass — avoid fire-sale */
+export const STALE_POSITION_MAX_EXITS_PER_CYCLE = 2;
+
+/** How often (in cycles) to run the stale-exit check (~1h at 15min intervals) */
+export const STALE_POSITION_CHECK_INTERVAL_CYCLES = 4;
+
+// ============================================================================
 // DRY POWDER RESERVE — The alpha-strike readiness discipline
 //
 // The ONE hardcoded capital rule: ~25% of portfolio stays in USDC as rolling
