@@ -9603,6 +9603,11 @@ const sleeveRegistry: SleeveRegistry = _buildDefaultRegistry({
   getCoreState: () => ({
     costBasis: state.costBasis,
     tradeHistory: state.tradeHistory,
+    // Daily payout ledger feeds the rolling 7d Sharpe in CoreSleeve.getStats().
+    // Only `date` + `realizedPnL` are read — full record passed through for simplicity.
+    dailyPayouts: state.dailyPayouts ?? [],
+    // Current snapshot of portfolio value (used as the Sharpe denominator).
+    totalPortfolioValue: state.trading?.totalPortfolioValue ?? 0,
   }),
   // Phase 2: coreDecideFn wraps makeTradeDecision() as a pass-through so the
   // sleeve is *capable* of producing real decisions. Nothing calls decide()

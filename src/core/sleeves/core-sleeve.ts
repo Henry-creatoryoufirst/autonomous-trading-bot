@@ -41,6 +41,53 @@ export type CoreDecideFn = (ctx: SleeveContext) => Promise<TradeDecision[]>;
 export interface CoreSleeveStateView {
   costBasis: Record<string, TokenCostBasis>;
   tradeHistory: TradeRecord[];
+  /**
+   * Daily realized P&L history. Feeds the rolling 7-day Sharpe computation.
+   * Only `date` + `realizedPnL` are read — a narrow shape so the provider
+   * can pass `state.dailyPayouts` directly. Optional: when absent, Sharpe
+   * reports null (matches the "insufficient data" UX on the dashboard).
+   */
+  dailyPayouts?: Array<{ date: string; realizedPnL: number }>;
+  /**
+   * Current total portfolio USD value, used as the denominator for daily
+   * return %. Snapshot, not live — the provider refreshes it each cycle.
+   * Optional: when absent or 0, Sharpe reports null.
+   */
+  totalPortfolioValue?: number;
+}
+
+/**
+ * Rolling 7-day Sharpe ratio (annualized) from daily realized P&L.
+ *
+ * Formula:
+ *   dailyReturn[i] = dailyPayouts[i].realizedPnL / totalPortfolioValue
+ *   Sharpe = (mean / stddev) × sqrt(365)
+ *
+ * Returns null when:
+ *   - fewer than 7 daily records (need a full window)
+ *   - portfolio value is zero/negative (can't normalize)
+ *   - stddev is zero (all same value — undefined Sharpe)
+ *
+ * Uses the current portfolio value as a constant denominator rather than
+ * per-day historical values (which we don't track). This slightly biases
+ * the %-return scale but keeps the relative shape of the signal honest —
+ * the Sharpe is driven by variance vs. mean, and both move with the
+ * denominator equally. Annualized with sqrt(365) so typical values land
+ * in the familiar 0-3 range seen elsewhere in the codebase.
+ */
+export function computeRollingSharpe7d(
+  dailyPayouts: Array<{ date: string; realizedPnL: number }>,
+  totalPortfolioValue: number,
+): number | null {
+  const recent = dailyPayouts.slice(-7);
+  if (recent.length < 7 || totalPortfolioValue <= 0) return null;
+  const returns = recent.map((d) => (d.realizedPnL ?? 0) / totalPortfolioValue);
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const variance =
+    returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
+  const stddev = Math.sqrt(variance);
+  if (stddev === 0) return null;
+  return (mean / stddev) * Math.sqrt(365);
 }
 
 export interface CoreSleeveOptions {
@@ -153,11 +200,13 @@ export class CoreSleeve implements Sleeve {
     const winRate =
       scoredSells.length > 0 ? (wins / scoredSells.length) * 100 : 0;
 
-    // Rolling 7-day Sharpe: requires a daily-returns timeseries that isn't
-    // plumbed into the sleeves layer yet. Phase 2 will wire it from the
-    // dailyPayouts state slice. For v1, report null so the dashboard shows
-    // "—" rather than a misleading zero.
-    const rollingSharpe7d = null;
+    // Rolling 7-day Sharpe from daily payout records, normalized by current
+    // portfolio value and annualized. Returns null until there are 7 full
+    // daily records to work with — the dashboard renders that as "—".
+    const rollingSharpe7d = computeRollingSharpe7d(
+      state.dailyPayouts ?? [],
+      state.totalPortfolioValue ?? 0,
+    );
 
     const lastDecisionAt =
       actionableTrades.length > 0

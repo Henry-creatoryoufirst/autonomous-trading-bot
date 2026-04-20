@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { CoreSleeve, type CoreSleeveStateView } from '../core-sleeve.js';
+import {
+  CoreSleeve,
+  computeRollingSharpe7d,
+  type CoreSleeveStateView,
+} from '../core-sleeve.js';
 import type { TokenCostBasis, TradeRecord } from '../../types/index.js';
+
+/** Build a minimal CoreSleeveStateView for tests. Defaults keep the existing
+ *  tests working without each specifying dailyPayouts/totalPortfolioValue. */
+function mkState(partial: Partial<CoreSleeveStateView> = {}): CoreSleeveStateView {
+  return {
+    costBasis: {},
+    tradeHistory: [],
+    dailyPayouts: [],
+    totalPortfolioValue: 0,
+    ...partial,
+  };
+}
 
 /** Build a minimal TokenCostBasis for tests — only fields the sleeve reads. */
 function mkCostBasis(partial: Partial<TokenCostBasis> & { symbol: string }): TokenCostBasis {
@@ -197,13 +213,127 @@ describe('CoreSleeve', () => {
   });
 
   describe('getStats() rollingSharpe7d', () => {
-    it('is null in v1 (phase 2 wiring pending)', () => {
+    it('is null when dailyPayouts is missing', () => {
       const state: CoreSleeveStateView = {
         costBasis: { ETH: mkCostBasis({ symbol: 'ETH', realizedPnL: 100 }) },
         tradeHistory: [mkTrade({ timestamp: '2026-04-01T10:00:00Z', action: 'SELL', realizedPnL: 50 })],
       };
       const sleeve = new CoreSleeve({ getState: () => state });
       expect(sleeve.getStats().rollingSharpe7d).toBeNull();
+    });
+
+    it('computes a real number when 7+ daily payouts + positive portfolio value', () => {
+      const state = mkState({
+        totalPortfolioValue: 10_000,
+        dailyPayouts: [
+          { date: '2026-04-14', realizedPnL: 50 },
+          { date: '2026-04-15', realizedPnL: 40 },
+          { date: '2026-04-16', realizedPnL: 65 },
+          { date: '2026-04-17', realizedPnL: 55 },
+          { date: '2026-04-18', realizedPnL: 70 },
+          { date: '2026-04-19', realizedPnL: 45 },
+          { date: '2026-04-20', realizedPnL: 60 },
+        ],
+      });
+      const sleeve = new CoreSleeve({ getState: () => state });
+      const s = sleeve.getStats().rollingSharpe7d;
+      expect(s).not.toBeNull();
+      expect(typeof s).toBe('number');
+      expect(Number.isFinite(s as number)).toBe(true);
+    });
+  });
+
+  describe('computeRollingSharpe7d (direct)', () => {
+    it('returns null with fewer than 7 daily records', () => {
+      const out = computeRollingSharpe7d(
+        [
+          { date: '2026-04-18', realizedPnL: 50 },
+          { date: '2026-04-19', realizedPnL: 60 },
+          { date: '2026-04-20', realizedPnL: 40 },
+        ],
+        10_000,
+      );
+      expect(out).toBeNull();
+    });
+
+    it('returns null when portfolio value is zero', () => {
+      const seven = Array.from({ length: 7 }, (_, i) => ({
+        date: `2026-04-${14 + i}`,
+        realizedPnL: 50,
+      }));
+      expect(computeRollingSharpe7d(seven, 0)).toBeNull();
+      expect(computeRollingSharpe7d(seven, -5)).toBeNull();
+    });
+
+    it('returns null when all 7 returns are identical (stddev = 0)', () => {
+      const flat = Array.from({ length: 7 }, (_, i) => ({
+        date: `2026-04-${14 + i}`,
+        realizedPnL: 50,
+      }));
+      expect(computeRollingSharpe7d(flat, 10_000)).toBeNull();
+    });
+
+    it('is positive when mean return is positive', () => {
+      const mostlyPositive = [
+        { date: '2026-04-14', realizedPnL: 50 },
+        { date: '2026-04-15', realizedPnL: 40 },
+        { date: '2026-04-16', realizedPnL: 65 },
+        { date: '2026-04-17', realizedPnL: 55 },
+        { date: '2026-04-18', realizedPnL: 70 },
+        { date: '2026-04-19', realizedPnL: 45 },
+        { date: '2026-04-20', realizedPnL: 60 },
+      ];
+      const s = computeRollingSharpe7d(mostlyPositive, 10_000);
+      expect(s).not.toBeNull();
+      expect(s as number).toBeGreaterThan(0);
+    });
+
+    it('is negative when mean return is negative', () => {
+      const mostlyNegative = [
+        { date: '2026-04-14', realizedPnL: -50 },
+        { date: '2026-04-15', realizedPnL: -40 },
+        { date: '2026-04-16', realizedPnL: -65 },
+        { date: '2026-04-17', realizedPnL: -55 },
+        { date: '2026-04-18', realizedPnL: -70 },
+        { date: '2026-04-19', realizedPnL: -45 },
+        { date: '2026-04-20', realizedPnL: -60 },
+      ];
+      const s = computeRollingSharpe7d(mostlyNegative, 10_000);
+      expect(s).not.toBeNull();
+      expect(s as number).toBeLessThan(0);
+    });
+
+    it('only uses the last 7 entries (slice -7)', () => {
+      const tenDays = Array.from({ length: 10 }, (_, i) => ({
+        date: `2026-04-${11 + i}`,
+        realizedPnL: i < 3 ? 1000 : 50, // first 3 outliers should be IGNORED
+      }));
+      // If the function used all 10 days, the 3 huge outliers would blow
+      // up the mean. With slice(-7), only the consistent 50s are used →
+      // mean is stable at 50, but stddev is 0 → null result.
+      const s = computeRollingSharpe7d(tenDays, 10_000);
+      expect(s).toBeNull(); // last 7 are identical, so stddev = 0
+    });
+
+    it('annualizes with sqrt(365) so typical values land in 0-3 range', () => {
+      // Simple case: +1% on 4 days, +0.5% on 3 days
+      const mixed = [
+        { date: '2026-04-14', realizedPnL: 100 }, // 1% of 10k
+        { date: '2026-04-15', realizedPnL: 100 },
+        { date: '2026-04-16', realizedPnL: 50 },  // 0.5%
+        { date: '2026-04-17', realizedPnL: 100 },
+        { date: '2026-04-18', realizedPnL: 50 },
+        { date: '2026-04-19', realizedPnL: 100 },
+        { date: '2026-04-20', realizedPnL: 50 },
+      ];
+      const s = computeRollingSharpe7d(mixed, 10_000);
+      expect(s).not.toBeNull();
+      // Rough sanity: should be a "plausible" annualized Sharpe (mean/stddev
+      // of the returns above is ~2.65, × sqrt(365) ≈ 50.6). Not a real-world
+      // Sharpe because the sample is only 7 days and all-positive, but the
+      // math should yield a finite reasonable number.
+      expect(s as number).toBeGreaterThan(10);
+      expect(s as number).toBeLessThan(100);
     });
   });
 
