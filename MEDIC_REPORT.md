@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-17T12:00 UTC
+# MEDIC REPORT — 2026-04-20T07:10 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #7)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #8)
 
 ## Environment
-- Run timestamp: 2026-04-17T12:00 UTC
+- Run timestamp: 2026-04-20T07:10 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-78DVh
 
 ## Problem
 
@@ -41,7 +41,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #4 | 2026-04-16T10:18 UTC | PATTERN D update |
 | #5 | 2026-04-16T11:20 UTC | PATTERN D update |
 | #6 | 2026-04-17T00:00 UTC | PATTERN D update |
-| #7 | 2026-04-17T12:00 UTC | This report (same issue) |
+| #7 | 2026-04-17T12:00 UTC | PATTERN D update |
+| #8 | 2026-04-20T07:10 UTC | This report (same issue, 3-day gap since #7) |
 
 ## Bot Health Evidence (from git history)
 
@@ -67,19 +68,36 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #7)
+## Jobs Status This Run (Run #8)
 
-- **Scout**: SKIPPED — last scout commit was 2026-04-16 10:52 EDT (~25h ago, within 48h window)
-- **Auditor**: SKIPPED — cannot fetch live metrics; all /api/* endpoints return 403
+- **Scout**: RAN — last scout commit was 2026-04-16 10:52 EDT (~96h ago, >48h). GeckoTerminal API blocked; used WebSearch. Evaluated: NORMIE (exploited/dead), MOCHI (liquidity <$100k), PONKE (primarily Solana), A0X (volume $1.3k/day, far below $50k threshold), TYBG (volume $4.9k/day, below threshold). No qualifying tokens found — standards maintained.
+- **Auditor**: RAN — cannot fetch live metrics from /api/ endpoints. Research completed via WebSearch. All 4 search areas completed. No finding reached priority ≥ 2.0 for auto-implementation. Key insight: bear-market adjustments (KELLY_FRACTION=0.35, VOL_TARGET=1.5%, BREAKER_DD=7%) from prior auditor runs are still appropriate.
 
 ## Recommended Action for Henry
 
-**This is the 6th consecutive run with the same network restriction. Action required:**
+**This is now run #8 (spanning ~6 days) with the same network restriction. Action required:**
 
 1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
 2. Also add `api.geckoterminal.com` to the allowlist for Scout to function
 3. Alternatively, expose a **read-only status webhook** that pushes to a domain already in the allowlist
 4. Manually verify bot health at: https://autonomous-trading-bot-production.up.railway.app/health
+5. **Scout note:** GeckoTerminal and DexScreener both blocked; future scouts will be limited to WebSearch until egress is fixed. Token candidates evaluated this run: NORMIE (exploited), MOCHI (low liquidity), PONKE (Solana-primary), A0X (volume $1.3k/day), TYBG (volume $4.9k/day) — all rejected.
+
+## Auditor Research Summary (Run #8)
+
+| Area | Finding | Impact | Complexity | Priority | Action |
+|------|---------|--------|------------|----------|--------|
+| Signal Quality | Smart Money wallet confluence (Nansen-style) | 3/5 | 4/5 | 0.75 | Watch list — requires external API |
+| Execution | Aerodrome MetaDEX03/Slipstream V3 (Q2 2026) | 2/5 | 2/5 | 1.0 | Watch — await protocol launch |
+| Position Sizing | VAPS/Half-Kelly in volatile regime | 3/5 | 2/5 | 1.5 | ALREADY DONE (KELLY_FRACTION=0.35 per Apr-2026 auditor) |
+| Competitive Intel | Private mempool MEV protection | 3/5 | 3/5 | 1.0 | Watch list — medium risk |
+
+No finding reached priority ≥ 2.0 threshold. No code changes made.
+
+**Watch list for Henry:**
+- Smart Money confluence via Nansen API ($150/mo) — high value if win rate improves signal quality
+- MEV-protected routing (Banana Gun / private mempool) for meme-coin swaps on Base
+- Aerodrome Aero (MetaDEX03 unified DEX) — integrate when Q2 2026 launch confirms
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -87,4 +105,5 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-78DVh (session branch) per MEDIC SAFETY protocol
+- Scout ran but found no qualifying tokens (all below $50k/day volume or $100k liquidity thresholds)
