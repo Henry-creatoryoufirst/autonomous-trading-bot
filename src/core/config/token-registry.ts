@@ -355,6 +355,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "ETHY", name: "Ethy AI by Virtuals", coingeckoId: "ethy-ai",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  GHST: {
+    address: "0xcD2F22236DD9Dfe2356D7C543161D4d260FD9BcB",
+    symbol: "GHST", name: "Aavegotchi", coingeckoId: "aavegotchi",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
