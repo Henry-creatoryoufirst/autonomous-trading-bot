@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-04-20T17:00 UTC
+# MEDIC REPORT — 2026-04-20T18:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #14)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
 
 ## Environment
 - Run timestamp: 2026-04-20T17:00 UTC
@@ -51,7 +51,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #11 | 2026-04-19T23:07 UTC | PATTERN D update |
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
-| #14 | 2026-04-20T17:00 UTC | This report (same issue) |
+| #14 | 2026-04-20T17:00 UTC | PATTERN D update |
+| #15 | 2026-04-20T18:00 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -80,15 +81,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #14)
+## Jobs Status This Run (Run #15)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T05:12 UTC (~12h ago, well within 48h threshold). Scout research completed but TIBBIR already in registry from prior run.
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T15:51 UTC (~2h ago, well within 48h threshold).
 - **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all 403); trigger conditions unverifiable.
 
 ## Recommended Action for Henry
 
-**This is the 13th consecutive run with the same network restriction. Action urgently required:**
+**This is the 14th consecutive run with the same network restriction. Action urgently required:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
