@@ -3,7 +3,7 @@
 ## Overview
 Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycles analyzing market conditions via technical indicators, confluence scoring, and adversarial risk review.
 
-## Current Version: v21.12.0 (see package.json — source of truth)
+## Current Version: v21.13.0 (see package.json — source of truth)
 
 ## Quick Reference
 - **Main file:** `agent-v3.2.ts` (~850KB)
@@ -79,11 +79,25 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 - Target at scale: $2-4/bot/month (tiered models + shared infra)
 
 ## Version History (recent — see `git log` for the full trail)
-- v21.12 (main, 2026-04-20): Strategy shape discipline — 25% USDC
+- v21.13 (main, 2026-04-20 PM): Sleeves Phase 2 LIVE ON PROD with
+  SLEEVES_DRIVE_DECISIONS=true — all heavy-cycle AI decisions now route
+  decisionStage → makeTradeDecisionViaSleeve → coreSleeve.decide() →
+  coreDecideFn → makeTradeDecision. Single-sleeve world today (Core at
+  100%). Outcome-feedback loop closed: fetchOutcomeSummary polls
+  signal-service /outcomes on 30-min cache and injects "ALPHA LEDGER"
+  block into heavy-cycle prompt. CoreSleeve.getStats() now computes
+  real rollingSharpe7d from state.dailyPayouts (sqrt(365) annualized).
+  New endpoints: /api/sleeves, /api/outcomes-summary. Prompt additions:
+  "CASH DISCIPLINE (THE ONE HARD RULE)" 25% reserve section, "THESIS
+  PLAYED OUT" line for the stale-exit rule. Schema alignment: SleeveDecision
+  = TradeDecision alias. Feature-flag orchestrator wrap (makeTradeDecisionViaSleeve)
+  keeps the old direct path as instant-rollback via env var.
+- v21.12 (main, 2026-04-20 AM): Strategy shape discipline — 25% USDC
   alpha-strike reserve (hardcoded dry powder, MIN_DRY_POWDER_PCT), time-in-
   position exit for meaningful positions ($100+, 48h+, <3% gain, weak flow),
   ghost-emergency guard on price-stream (-50% sanity floor), deploy script
   staging URL fix, RPC-based capital flows (needs BASE_RPC_URL to activate),
+  Sleeves Phase 1 scaffolding (read-only /api/sleeves endpoint),
   /api/price-snapshot endpoint, /api/auto-harvest double-count fix,
   cycleIntervalSec + threshold + backendHealth dashboard exposure.
 - v21.11.x: Gas reservoir self-funding, prompt compression Tier 1+2 (~360K
@@ -91,7 +105,8 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 - v21.9: Capital Liberation (capital follows conviction), Smart Wallet exit
   tracking (checkSmartWalletActivity in signal-service), Outcome Tracker
   recursive learning (outcome-tracker.ts in signal-service, records + hit
-  rates — note: outcome data not yet wired back into agent-v3.2.ts decisions),
+  rates — ✅ wired back into agent-v3.2.ts decisions in v21.13 via
+  fetchOutcomeSummary + prompt injection),
   Alpha Hunter pipeline (signal-service /alpha endpoint + dashboard panel)
 - v21.8: Force-sell + outcome tracker
 - v21.3–21.7: 5-silo refactor (setup/intelligence/metrics/decision/filters
