@@ -22,7 +22,16 @@ import type {
   SleeveStats,
   SleeveMode,
 } from './types.js';
-import type { TokenCostBasis, TradeRecord } from '../types/index.js';
+import type { TokenCostBasis, TradeRecord, TradeDecision } from '../types/index.js';
+
+/**
+ * Signature of the function a Core sleeve delegates its `decide()` to.
+ * Receives the sleeve context (whose `extras` carries per-cycle bot state
+ * like balances, marketData, sectorAllocations during Phase 2) and returns
+ * trade decisions. Kept as a standalone type so the orchestrator in
+ * agent-v3.2.ts can reference it without circular imports.
+ */
+export type CoreDecideFn = (ctx: SleeveContext) => Promise<TradeDecision[]>;
 
 /**
  * Minimal state view the Core sleeve needs to compute its stats. Kept as a
@@ -47,6 +56,13 @@ export interface CoreSleeveOptions {
    * for safety during early boot before state is loaded.
    */
   getState?: () => CoreSleeveStateView;
+  /**
+   * Delegate that actually produces trade decisions. In Phase 2 this wraps
+   * the bot's existing `makeTradeDecision()` pipeline; the sleeve is a
+   * pass-through. When omitted, `decide()` returns `[]` — matches the Phase 1
+   * behavior so early-boot and tests stay deterministic.
+   */
+  decideFn?: CoreDecideFn;
 }
 
 const ZERO_STATS: SleeveStats = {
@@ -71,20 +87,30 @@ export class CoreSleeve implements Sleeve {
   readonly maxCapitalPct = 1.0;
 
   private readonly getState?: () => CoreSleeveStateView;
+  private readonly decideFn?: CoreDecideFn;
 
   constructor(opts: CoreSleeveOptions = {}) {
     this.mode = opts.mode ?? 'live';
     this.displayName = opts.displayName ?? 'Core Strategy';
     this.getState = opts.getState;
+    this.decideFn = opts.decideFn;
   }
 
   /**
-   * Phase 1 placeholder: returns no decisions. The actual wrapping of the
-   * existing heavy-cycle decision stage lands in Phase 2 once the registry
-   * is integrated into the orchestrator.
+   * Produce this cycle's intended trades. When `decideFn` is injected, the
+   * sleeve delegates to it (the Phase 2 wrap of the existing heavy-cycle
+   * decision pipeline). When no `decideFn` is provided, returns `[]` — the
+   * same safe default the Phase 1 scaffolding shipped with.
+   *
+   * The orchestrator in agent-v3.2.ts decides when/whether to route decisions
+   * through this method based on the `SLEEVES_DRIVE_DECISIONS` feature flag.
+   * Callers should NOT assume decisions returned here will be executed — the
+   * orchestrator may be in shadow-log mode (off flag + still calling decide()
+   * to compare output against the direct path for equivalence verification).
    */
-  async decide(_ctx: SleeveContext): Promise<SleeveDecision[]> {
-    return [];
+  async decide(ctx: SleeveContext): Promise<SleeveDecision[]> {
+    if (!this.decideFn) return [];
+    return await this.decideFn(ctx);
   }
 
   /**

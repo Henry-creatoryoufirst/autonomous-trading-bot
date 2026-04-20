@@ -13,7 +13,11 @@
  */
 
 import type { CapitalAllocator, Sleeve } from './types.js';
-import { CoreSleeve, type CoreSleeveStateView } from './core-sleeve.js';
+import {
+  CoreSleeve,
+  type CoreSleeveStateView,
+  type CoreDecideFn,
+} from './core-sleeve.js';
 import { defaultStaticAllocator } from './allocator.js';
 
 export interface DefaultRegistryOptions {
@@ -23,6 +27,12 @@ export interface DefaultRegistryOptions {
    * Omit in tests or during early boot.
    */
   getCoreState?: () => CoreSleeveStateView;
+  /**
+   * Delegate invoked when the orchestrator calls `coreSleeve.decide()`.
+   * Typically wraps the bot's existing `makeTradeDecision()` pipeline.
+   * Omit to leave the Core sleeve as a no-op (Phase 1 behavior).
+   */
+  coreDecideFn?: CoreDecideFn;
 }
 
 export interface SleeveRegistry {
@@ -75,7 +85,10 @@ class InMemorySleeveRegistry implements SleeveRegistry {
  */
 export function buildDefaultRegistry(opts: DefaultRegistryOptions = {}): SleeveRegistry {
   return new InMemorySleeveRegistry(
-    [new CoreSleeve({ getState: opts.getCoreState })],
+    [new CoreSleeve({
+      getState: opts.getCoreState,
+      decideFn: opts.coreDecideFn,
+    })],
     defaultStaticAllocator(),
   );
 }

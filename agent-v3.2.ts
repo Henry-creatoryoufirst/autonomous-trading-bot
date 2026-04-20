@@ -9432,6 +9432,36 @@ const sleeveRegistry: SleeveRegistry = _buildDefaultRegistry({
     costBasis: state.costBasis,
     tradeHistory: state.tradeHistory,
   }),
+  // Phase 2: coreDecideFn wraps makeTradeDecision() as a pass-through so the
+  // sleeve is *capable* of producing real decisions. Nothing calls decide()
+  // yet — the SLEEVES_DRIVE_DECISIONS feature flag (shipped next) controls
+  // whether the orchestrator routes through this path or keeps the direct
+  // makeTradeDecision() call. Per-cycle bot state (balances, marketData, etc.)
+  // is passed via `ctx.extras` since SleeveContext's clean fields don't yet
+  // cover everything makeTradeDecision() needs.
+  coreDecideFn: async (ctx) => {
+    const extras = (ctx.extras ?? {}) as {
+      balances?: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[];
+      marketData?: MarketData;
+      totalPortfolioValue?: number;
+      sectorAllocations?: SectorAllocation[];
+      cashDeployment?: CashDeploymentResult;
+      heavyCycleReason?: string;
+    };
+    if (!extras.balances || !extras.marketData) {
+      // Called without the full cycle payload (tests, early boot, shadow-log
+      // pre-wiring). Return [] rather than crash — matches Phase 1 behavior.
+      return [];
+    }
+    return await makeTradeDecision(
+      extras.balances,
+      extras.marketData,
+      extras.totalPortfolioValue ?? 0,
+      extras.sectorAllocations ?? [],
+      extras.cashDeployment,
+      extras.heavyCycleReason,
+    );
+  },
 });
 
 function apiSleeves() {

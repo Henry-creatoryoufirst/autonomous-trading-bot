@@ -207,22 +207,67 @@ describe('CoreSleeve', () => {
     });
   });
 
-  describe('decide() Phase 1', () => {
-    it('returns no decisions (orchestrator still drives trading in Phase 1)', async () => {
+  describe('decide()', () => {
+    const ctx = {
+      capitalBudgetUSD: 1000,
+      positions: [],
+      availableUSDC: 1000,
+      market: {
+        cycleNumber: 1,
+        builtAt: '2026-04-20T12:00:00Z',
+        prices: {},
+        regime: 'TRENDING_UP',
+        fearGreed: 50,
+      },
+    };
+
+    it('returns [] when no decideFn is injected (Phase 1 safe default)', async () => {
       const sleeve = new CoreSleeve();
-      const decisions = await sleeve.decide({
-        capitalBudgetUSD: 1000,
-        positions: [],
-        availableUSDC: 1000,
-        market: {
-          cycleNumber: 1,
-          builtAt: '2026-04-20T12:00:00Z',
-          prices: {},
-          regime: 'TRENDING_UP',
-          fearGreed: 50,
+      expect(await sleeve.decide(ctx)).toEqual([]);
+    });
+
+    it('delegates to injected decideFn and returns its result', async () => {
+      const mockDecision = {
+        timestamp: '2026-04-20T12:00:00Z',
+        cycle: 1,
+        action: 'BUY' as const,
+        fromToken: 'USDC',
+        toToken: 'ETH',
+        amountUSD: 100,
+        success: true,
+        portfolioValueBefore: 1000,
+        reasoning: 'mock signal',
+        marketConditions: { fearGreed: 50, ethPrice: 3000, btcPrice: 60000 },
+      };
+      const sleeve = new CoreSleeve({
+        decideFn: async () => [mockDecision],
+      });
+      const decisions = await sleeve.decide(ctx);
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0].action).toBe('BUY');
+      expect(decisions[0].toToken).toBe('ETH');
+      expect(decisions[0].amountUSD).toBe(100);
+    });
+
+    it('passes the sleeve context through to decideFn untouched', async () => {
+      let capturedCtx: unknown;
+      const sleeve = new CoreSleeve({
+        decideFn: async (c) => {
+          capturedCtx = c;
+          return [];
         },
       });
-      expect(decisions).toEqual([]);
+      await sleeve.decide(ctx);
+      expect(capturedCtx).toBe(ctx);
+    });
+
+    it('propagates errors from decideFn (callers must handle)', async () => {
+      const sleeve = new CoreSleeve({
+        decideFn: async () => {
+          throw new Error('decision pipeline failed');
+        },
+      });
+      await expect(sleeve.decide(ctx)).rejects.toThrow('decision pipeline failed');
     });
   });
 });

@@ -17,7 +17,11 @@ export type {
 } from './types.js';
 
 export { CoreSleeve } from './core-sleeve.js';
-export type { CoreSleeveOptions, CoreSleeveStateView } from './core-sleeve.js';
+export type {
+  CoreSleeveOptions,
+  CoreSleeveStateView,
+  CoreDecideFn,
+} from './core-sleeve.js';
 
 export { StaticAllocator, defaultStaticAllocator } from './allocator.js';
 
