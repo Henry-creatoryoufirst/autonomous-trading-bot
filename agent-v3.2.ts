@@ -3664,6 +3664,106 @@ async function fetchSignalIntel(): Promise<{
 }
 
 // ============================================================================
+// OUTCOME LEDGER — recursive-learning feedback loop (closes v21.9 claim)
+//
+// Signal Service's /outcomes endpoint tracks the actual 1h/4h/24h price
+// performance of every alpha candidate it has surfaced, plus per-wallet
+// hit rates and per-signal-type edge (edge = avg return when signal is
+// present minus avg return when absent). Before today, that data was
+// internal to signal-service — the bot never saw it. This function pulls
+// a compact summary every ~30 min and injects it into the decision prompt
+// so Claude can weight signals by their historical accuracy.
+//
+// Gracefully fails to null on any error — bot runs as before without it.
+// ============================================================================
+interface OutcomeSummary {
+  totalTracked: number;
+  topProposerWallet: string | null;
+  topProposerHitRate: number; // 0-1
+  topProposerSignals: number;
+  haikuEntryEdgePct: number | null;
+  smartWalletStrongEdgePct: number | null;
+  lpLockedEdgePct: number | null;
+  fetchedAt: number; // epoch ms
+}
+
+const OUTCOME_CACHE_TTL_MS = 30 * 60 * 1000; // 30 min
+let outcomeSummaryCache: OutcomeSummary | null = null;
+
+async function fetchOutcomeSummary(): Promise<OutcomeSummary | null> {
+  const serviceUrl = process.env.SIGNAL_SERVICE_URL;
+  if (!serviceUrl) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`${serviceUrl}/outcomes`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      totalTracked?: number;
+      walletHitRates?: Array<{ walletId: string; hitRate4h: number; totalSignals: number }>;
+      signalAccuracy?: Array<{ metric: string; edge: number; totalSamples: number }>;
+    };
+    const whr = Array.isArray(data.walletHitRates) ? data.walletHitRates : [];
+    const topProp = whr
+      .filter((w) => w.totalSignals >= 10)
+      .sort((a, b) => b.hitRate4h - a.hitRate4h)[0];
+    const sa = Array.isArray(data.signalAccuracy) ? data.signalAccuracy : [];
+    const edgeOf = (metric: string): number | null => {
+      const entry = sa.find((s) => s.metric === metric);
+      return entry && entry.totalSamples >= 5 ? entry.edge : null;
+    };
+    return {
+      totalTracked: data.totalTracked ?? 0,
+      topProposerWallet: topProp?.walletId ?? null,
+      topProposerHitRate: topProp?.hitRate4h ?? 0,
+      topProposerSignals: topProp?.totalSignals ?? 0,
+      haikuEntryEdgePct: edgeOf('haikuEntryZone'),
+      smartWalletStrongEdgePct: edgeOf('smartWalletStrong'),
+      lpLockedEdgePct: edgeOf('lpLocked'),
+      fetchedAt: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getCachedOutcomeSummary(): OutcomeSummary | null {
+  if (!outcomeSummaryCache) return null;
+  if (Date.now() - outcomeSummaryCache.fetchedAt > OUTCOME_CACHE_TTL_MS) return null;
+  return outcomeSummaryCache;
+}
+
+async function refreshOutcomeSummaryIfStale(): Promise<OutcomeSummary | null> {
+  if (getCachedOutcomeSummary()) return outcomeSummaryCache;
+  const fresh = await fetchOutcomeSummary();
+  if (fresh) outcomeSummaryCache = fresh;
+  return outcomeSummaryCache;
+}
+
+/**
+ * Format the outcome summary as a compact prompt block. Returns empty string
+ * when there's no data yet (no tracked outcomes, or signal-service missing),
+ * so the prompt doesn't carry dead weight.
+ */
+function formatOutcomePromptBlock(s: OutcomeSummary | null): string {
+  if (!s || s.totalTracked === 0) return '';
+  const parts: string[] = [`${s.totalTracked} tracked`];
+  const fmtEdge = (label: string, edge: number | null): string | null =>
+    edge === null ? null : `${label} ${edge >= 0 ? '+' : ''}${edge.toFixed(1)}%`;
+  const edgeHaiku = fmtEdge('Haiku ENTRY edge', s.haikuEntryEdgePct);
+  const edgeSW = fmtEdge('Smart-wallet STRONG edge', s.smartWalletStrongEdgePct);
+  const edgeLP = fmtEdge('LP-locked edge', s.lpLockedEdgePct);
+  if (edgeHaiku) parts.push(edgeHaiku);
+  if (edgeSW) parts.push(edgeSW);
+  if (edgeLP) parts.push(edgeLP);
+  if (s.topProposerHitRate > 0 && s.topProposerSignals >= 10) {
+    parts.push(`top proposer ${(s.topProposerHitRate * 100).toFixed(0)}% over ${s.topProposerSignals} signals`);
+  }
+  return `\n═══ ALPHA LEDGER (outcome-weighted) ═══\n${parts.join(' · ')}\nSignals with negative edge should require stronger confirmation before a BUY.\n`;
+}
+
+// ============================================================================
 // TECHNICAL INDICATORS — delegated to src/algorithm/indicators.ts
 // ============================================================================
 const calculateRSI = _calculateRSI;
@@ -4571,6 +4671,11 @@ ${discoveryIntel}${hotMoverIntel}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 30%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}`;
 
+  // Outcome ledger — recursive learning from past alpha outcomes. Refresh if
+  // stale (~30 min TTL); first heavy cycle after boot populates the cache.
+  await refreshOutcomeSummaryIfStale();
+  const outcomeBlock = formatOutcomePromptBlock(getCachedOutcomeSummary());
+
   // v20.6: Dynamic addenda only included on heavy (full strategy) cycles
   const dynamicStrategyAddenda = `${cashDeployment?.active ? `
 ═══ CASH STATUS ═══
@@ -4580,7 +4685,7 @@ ONLY deploy if you see real momentum and conviction. Do NOT buy just to reduce c
 If the market is dead, HOLD is the best trade. Protect capital for when opportunity arrives.
 ` : ''}${payoutUrgency ? `
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
-` : ''}`;
+` : ''}${outcomeBlock}`;
 
   // v21.1: Model routing — Sonnet for all cycles in difficult markets.
   // Haiku is only used for routine cycles when the market is calm (F&G > 25, trending up).
@@ -9550,6 +9655,21 @@ function apiSleeves() {
   };
 }
 
+// Exposes the cached outcome-ledger summary the bot is using in its decision
+// prompt. Shows Henry what the bot "knows" about past alpha accuracy without
+// hitting signal-service directly from the dashboard.
+function apiOutcomesSummary() {
+  const s = outcomeSummaryCache;
+  return {
+    hasSummary: s !== null,
+    ageSec: s ? Math.max(0, Math.floor((Date.now() - s.fetchedAt) / 1000)) : null,
+    ttlSec: Math.floor(OUTCOME_CACHE_TTL_MS / 1000),
+    summary: s,
+    promptBlock: formatOutcomePromptBlock(s),
+    version: BOT_VERSION,
+  };
+}
+
 const serverCtx: ServerContext = {
   state, breakerState, CONFIG, cdpClient, CDP_ACCOUNT_NAME,
   CAPITAL_FLOOR_ABSOLUTE_USD, PRESERVATION_RING_BUFFER_SIZE,
@@ -9623,6 +9743,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/sleeves':
         sendJSON(res, 200, apiSleeves());
+        break;
+      case '/api/outcomes-summary':
+        sendJSON(res, 200, apiOutcomesSummary());
         break;
       case '/api/capital-flows':
         await handleCapitalFlows(res, serverCtx);
