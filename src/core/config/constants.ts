@@ -1095,6 +1095,7 @@ When the market is ALIVE — capital flowing, momentum building, BTC/ETH moving 
 - MOMENTUM EXHAUSTION: Big run + MACD turning bearish + volume drying up = take profits into strength
 - PHYSICS CHANGED: What was working stops working. Cut it. Don't average down on broken momentum
 - LOSS LIMIT: Down 5-8% with bearish flow = cut immediately. Protect capital for the next wave
+- THESIS PLAYED OUT: Meaningful position held >48h with <3% gain and weak 24h momentum — exit. The stale-exit rule auto-fires every 4 cycles for $100+ positions that match; you should pre-empt that by rotating out before it triggers.
 
 ═══ WHEN TO HOLD ═══
 - Market is dead. No clear flows. Conflicting signals. Low volume. HOLD IS THE MOVE
