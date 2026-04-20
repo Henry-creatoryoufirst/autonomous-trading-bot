@@ -3,7 +3,7 @@
 ## Overview
 Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycles analyzing market conditions via technical indicators, confluence scoring, and adversarial risk review.
 
-## Current Version: v21.11.0 (see package.json — source of truth)
+## Current Version: v21.12.0 (see package.json — source of truth)
 
 ## Quick Reference
 - **Main file:** `agent-v3.2.ts` (~850KB)
@@ -41,7 +41,13 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 ## Trading Architecture
 - **Cycle:** Every 15 minutes, 24/7
 - **AI Model:** Claude Sonnet 4 (routine cycles use Haiku for cost savings)
-- **Sectors:** Blue Chip (40%), AI (20%), Meme (20%), DeFi (20%), Tokenized Stocks (new)
+- **Capital discipline (the ONE hardcoded rule):** ~25% of portfolio stays in
+  USDC as rolling alpha-strike reserve (`MIN_DRY_POWDER_PCT = 0.25`). The
+  other ~75% is bot-governed across sectors. See `project_nvr_strategy_shape`
+  memory for rationale.
+- **Sector targets (guidelines, not rules — bot free to follow conviction):**
+  Blue Chip (45%), AI Tokens (20%), Meme (15%), DeFi (15%), RWAs (5%).
+  See `src/core/config/token-registry.ts` for authoritative definitions.
 - **Indicators:** RSI, MACD, Bollinger Bands, SMA, Fear & Greed Index
 - **Decision flow:** Technical analysis → Confluence scoring → AI review → Adversarial risk review → Execute
 - **Router:** Aerodrome Slipstream (50%+ of Base volume)
@@ -73,12 +79,20 @@ Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycl
 - Target at scale: $2-4/bot/month (tiered models + shared infra)
 
 ## Version History (recent — see `git log` for the full trail)
-- v21.12 (staging): /api/price-snapshot endpoint, /api/auto-harvest double-count
-  fix, cycleIntervalSec + threshold + backendHealth exposure for dashboard
+- v21.12 (main, 2026-04-20): Strategy shape discipline — 25% USDC
+  alpha-strike reserve (hardcoded dry powder, MIN_DRY_POWDER_PCT), time-in-
+  position exit for meaningful positions ($100+, 48h+, <3% gain, weak flow),
+  ghost-emergency guard on price-stream (-50% sanity floor), deploy script
+  staging URL fix, RPC-based capital flows (needs BASE_RPC_URL to activate),
+  /api/price-snapshot endpoint, /api/auto-harvest double-count fix,
+  cycleIntervalSec + threshold + backendHealth dashboard exposure.
 - v21.11.x: Gas reservoir self-funding, prompt compression Tier 1+2 (~360K
   tokens/day saved), canonical decision feed (pub/sub Phase 1-3a)
 - v21.9: Capital Liberation (capital follows conviction), Smart Wallet exit
-  tracking, Outcome Tracker recursive learning, 7-layer Alpha Hunter
+  tracking (checkSmartWalletActivity in signal-service), Outcome Tracker
+  recursive learning (outcome-tracker.ts in signal-service, records + hit
+  rates — note: outcome data not yet wired back into agent-v3.2.ts decisions),
+  Alpha Hunter pipeline (signal-service /alpha endpoint + dashboard panel)
 - v21.8: Force-sell + outcome tracker
 - v21.3–21.7: 5-silo refactor (setup/intelligence/metrics/decision/filters
   extraction), Phase 5c execution stage promotion

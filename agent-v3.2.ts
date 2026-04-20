@@ -1927,12 +1927,21 @@ function initPriceStream() {
               if (lastCheck && lastCheck > 0) {
                 const change = (price - lastCheck) / lastCheck;
                 if (change <= EMERGENCY_DROP_THRESHOLD && !adaptiveCycle.emergencyMode) {
-                  console.log(`\n🚨 EMERGENCY DETECTED: ${entry[0]} dropped ${(change * 100).toFixed(1)}% — activating rapid-fire mode!`);
-                  adaptiveCycle.emergencyMode = true;
-                  adaptiveCycle.emergencyUntil = now + 5 * 60 * 1000; // 5 minutes of emergency mode
-                  // Force immediate cycle
-                  if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
-                  scheduleNextCycle();
+                  // Guard against false "-100%" alerts from broken price feeds.
+                  // A legitimate crash in a ~10s window rarely exceeds -50%; drops
+                  // below that are almost certainly data issues (new scout token,
+                  // dust price reading, stale DexScreener pair). Log as warning
+                  // instead of triggering rapid-fire mode + cycle preemption.
+                  if (change <= -0.5) {
+                    console.log(`   ⚠️ [PriceStream] ${entry[0]} reporting ${(change * 100).toFixed(1)}% change — likely broken feed, skipping emergency (lastCheck=$${lastCheck.toFixed(6)}, price=$${price.toFixed(6)})`);
+                  } else {
+                    console.log(`\n🚨 EMERGENCY DETECTED: ${entry[0]} dropped ${(change * 100).toFixed(1)}% — activating rapid-fire mode!`);
+                    adaptiveCycle.emergencyMode = true;
+                    adaptiveCycle.emergencyUntil = now + 5 * 60 * 1000; // 5 minutes of emergency mode
+                    // Force immediate cycle
+                    if (adaptiveCycleTimer) clearTimeout(adaptiveCycleTimer);
+                    scheduleNextCycle();
+                  }
                 }
               }
             }
