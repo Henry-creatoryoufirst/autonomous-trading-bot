@@ -62,6 +62,14 @@ export interface AgentState {
   lastDailyPayoutDate: string | null;
   dailyPayoutByRecipient: Record<string, number>;
   /**
+   * v21.14: Payout accrual buckets.
+   * Small daily shares (e.g. $0.03) that fall below DAILY_PAYOUT_MIN_TRANSFER_USD
+   * accumulate here instead of being silently skipped. When a bucket crosses
+   * the minimum, it transfers in a single tx and resets to 0.
+   * Gas-efficient for family bots with small realized P&L.
+   */
+  pendingPayoutsByRecipient?: Record<string, number>;
+  /**
    * v21.15/v21.13-fix: Harvest-on-sell reservation.
    * Accumulates `profit × totalRecipientPct/100` on every profitable sell so
    * the fee can't be re-deployed before the 8AM UTC daily payout fires.

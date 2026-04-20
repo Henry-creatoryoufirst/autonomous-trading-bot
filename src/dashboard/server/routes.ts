@@ -626,6 +626,24 @@ export function handleAutoHarvest(
   // legacy counter, which covers both historical and current payouts.
   // Same issue applies to transferCount and recipients[].totalTransferred.
 
+  // v21.14: Surface accrual state so the dashboard can show
+  // "pending: $0.67 of $1.00 threshold" per recipient without lying.
+  const pendingByRecipient = ctx.state.pendingPayoutsByRecipient || {};
+  const totalPendingUSD = Object.values(pendingByRecipient).reduce(
+    (sum: number, v) => sum + (typeof v === 'number' ? v : 0),
+    0,
+  );
+
+  // Most recent payout where any USDC actually left the wallet — this is what
+  // the customer really wants to know ("when did I last receive anything?").
+  const recentPayouts = ctx.state.dailyPayouts || [];
+  const lastSuccessfulPayout = [...recentPayouts].reverse()
+    .find(p => (p.totalDistributed || 0) > 0) || null;
+
+  // Minimum-transfer threshold surfaced so UI can compute progress bars.
+  const transferMinUSD = (ctx as any).DAILY_PAYOUT_MIN_TRANSFER_USD ?? 1;
+  const accrualEnabled = (process.env.PAYOUT_ACCRUAL_ENABLED ?? 'true').toLowerCase() !== 'false';
+
   ctx.sendJSON(res, 200, {
     enabled: ctx.CONFIG.autoHarvest.enabled,
     mode: 'daily',
@@ -642,8 +660,15 @@ export function handleAutoHarvest(
       wallet: r.wallet.slice(0, 6) + '...' + r.wallet.slice(-4),
       percent: r.percent,
       totalTransferred: ctx.state.autoHarvestByRecipient[r.label] || 0,
+      pending: pendingByRecipient[r.label] || 0,
     })),
     reinvestPercent: 100 - (ctx.CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
+    // v21.14: accrual surface for dashboard honesty pass
+    accrualEnabled,
+    transferMinUSD,
+    totalPendingUSD,
+    pendingByRecipient,
+    lastSuccessfulPayout,
     dailyPayout: {
       lastPayoutDate: ctx.state.lastDailyPayoutDate,
       dailyPayoutCount: ctx.state.dailyPayoutCount,

@@ -6018,6 +6018,17 @@ async function executeDailyPayout(): Promise<void> {
     return;
   }
 
+  // v21.14: Accrual mode — shares below the per-recipient min don't get
+  // silently skipped anymore. They accumulate in state.pendingPayoutsByRecipient
+  // and fire as a single tx once the bucket crosses DAILY_PAYOUT_MIN_TRANSFER_USD.
+  // Fixes the "dashboard says $7 sent but on-chain is $0" class of bug on small-
+  // balance family bots where realized P&L × recipient-pct < $1 every day.
+  // Kill switch: set PAYOUT_ACCRUAL_ENABLED=false to revert to pre-v21.14 behavior.
+  const ACCRUAL_ENABLED = (process.env.PAYOUT_ACCRUAL_ENABLED ?? 'true').toLowerCase() !== 'false';
+  if (ACCRUAL_ENABLED) {
+    state.pendingPayoutsByRecipient ??= {};
+  }
+
   const now = new Date();
   const yesterday = new Date(now);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
@@ -6155,34 +6166,52 @@ async function executeDailyPayout(): Promise<void> {
 
   for (const recipient of recipients) {
     const fullShare = effectiveRealizedPnL * (recipient.percent / 100);
-    const share = fullShare * fairnessRatio;
+    const scaledShare = fullShare * fairnessRatio;
 
-    if (share < DAILY_PAYOUT_MIN_TRANSFER_USD) {
+    // v21.14: Accrue the full share into the pending bucket. The bucket is the
+    // source-of-truth for what we'll send this cycle; scaledShare is only the
+    // fallback when ACCRUAL_ENABLED=false (legacy behavior).
+    if (ACCRUAL_ENABLED && state.pendingPayoutsByRecipient) {
+      state.pendingPayoutsByRecipient[recipient.label] =
+        (state.pendingPayoutsByRecipient[recipient.label] || 0) + fullShare;
+    }
+    const pending = state.pendingPayoutsByRecipient?.[recipient.label] || 0;
+    const desiredSend = ACCRUAL_ENABLED ? pending : scaledShare;
+
+    if (desiredSend < DAILY_PAYOUT_MIN_TRANSFER_USD) {
       transferResults.push({
         label: recipient.label,
         wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
         amount: 0,
-        error: fairnessRatio < 1
-          ? `Scaled share $${share.toFixed(2)} below min (USDC scarce, ratio ${(fairnessRatio * 100).toFixed(0)}%)`
-          : `Share $${share.toFixed(2)} below min $${DAILY_PAYOUT_MIN_TRANSFER_USD}`,
+        ...(ACCRUAL_ENABLED ? { pending, status: 'ACCRUING' as const } : {}),
+        error: ACCRUAL_ENABLED
+          ? `Accruing $${pending.toFixed(2)} toward $${DAILY_PAYOUT_MIN_TRANSFER_USD} threshold (today's share: $${fullShare.toFixed(2)})`
+          : (fairnessRatio < 1
+              ? `Scaled share $${scaledShare.toFixed(2)} below min (USDC scarce, ratio ${(fairnessRatio * 100).toFixed(0)}%)`
+              : `Share $${scaledShare.toFixed(2)} below min $${DAILY_PAYOUT_MIN_TRANSFER_USD}`),
       });
       continue;
     }
 
     const remainingSendable = sendableUSDC - totalSent;
     const remainingHeadroom = headroom - totalSent;
-    const transferAmount = Math.min(share, remainingSendable, remainingHeadroom);
+    const transferAmount = Math.min(desiredSend, remainingSendable, remainingHeadroom);
 
     if (transferAmount < DAILY_PAYOUT_MIN_TRANSFER_USD) {
       transferResults.push({
         label: recipient.label,
         wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
-        amount: 0, error: `Capped to $${transferAmount.toFixed(2)} — below minimum`,
+        amount: 0,
+        ...(ACCRUAL_ENABLED ? { pending, status: 'CAPPED_BELOW_MIN' as const } : {}),
+        error: `Capped to $${transferAmount.toFixed(2)} — below minimum`,
       });
       continue;
     }
 
-    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${recipient.percent}% of $${effectiveRealizedPnL.toFixed(2)}) → ${recipient.wallet.slice(0, 6)}...${recipient.wallet.slice(-4)}`);
+    const intentLabel = ACCRUAL_ENABLED && transferAmount === pending
+      ? `accrued $${pending.toFixed(2)}`
+      : `${recipient.percent}% of $${effectiveRealizedPnL.toFixed(2)}`;
+    console.log(`[Daily Payout] -> ${recipient.label}: $${transferAmount.toFixed(2)} (${intentLabel}) → ${recipient.wallet.slice(0, 6)}...${recipient.wallet.slice(-4)}`);
 
     // v10.4: Retry once on failure — transient nonce/gas issues shouldn't cause missed payouts
     let txHash: string | null = null;
@@ -6213,6 +6242,14 @@ async function executeDailyPayout(): Promise<void> {
       state.dailyPayoutByRecipient[recipient.label] =
         (state.dailyPayoutByRecipient[recipient.label] || 0) + transferAmount;
 
+      // v21.14: Drain the pending bucket by exactly what we sent.
+      // If a partial send happened (USDC scarcity → transferAmount < pending),
+      // the remainder stays in the bucket for next cycle.
+      if (ACCRUAL_ENABLED && state.pendingPayoutsByRecipient) {
+        state.pendingPayoutsByRecipient[recipient.label] =
+          Math.max(0, (state.pendingPayoutsByRecipient[recipient.label] || 0) - transferAmount);
+      }
+
       // Update legacy counters for backward compat
       state.totalAutoHarvestedUSD += transferAmount;
       state.autoHarvestCount++;
@@ -6220,10 +6257,14 @@ async function executeDailyPayout(): Promise<void> {
         (state.autoHarvestByRecipient[recipient.label] || 0) + transferAmount;
     } else {
       console.error(`[Daily Payout] ❌❌ ${recipient.label}: FAILED after 2 attempts — ${lastError}`);
+      // v21.14: Leave pending bucket intact — next cycle retries the same accrued total.
+      const pendingAfterFail = state.pendingPayoutsByRecipient?.[recipient.label] || 0;
       transferResults.push({
         label: recipient.label,
         wallet: recipient.wallet.slice(0, 6) + '...' + recipient.wallet.slice(-4),
-        amount: 0, error: lastError,
+        amount: 0,
+        ...(ACCRUAL_ENABLED ? { pending: pendingAfterFail, status: 'RETRY_NEXT_CYCLE' as const } : {}),
+        error: lastError,
       });
     }
   }
