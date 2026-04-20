@@ -16,7 +16,7 @@
 
 set -e
 
-STAGING_URL="${STAGING_BOT_URL:-https://staging-bot.up.railway.app}"
+STAGING_URL="${STAGING_BOT_URL:-https://autonomous-trading-bot-staging.up.railway.app}"
 PRODUCTION_URL="https://autonomous-trading-bot-production.up.railway.app"
 HEALTHCHECK_TIMEOUT=360  # 6 minutes max
 HEALTHCHECK_INTERVAL=15  # Check every 15 seconds
