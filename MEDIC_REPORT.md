@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-19T23:07 UTC
+# MEDIC REPORT — 2026-04-20T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #11)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #12)
 
 ## Environment
-- Run timestamp: 2026-04-19T23:07 UTC
+- Run timestamp: 2026-04-20T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -12,14 +12,17 @@
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `Host not in allowlist` or `403 Forbidden`:
+All endpoints attempted returned `403 Forbidden`:
 
 ```
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
-→ Host not in allowlist
+→ 403 Forbidden
 
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
-→ Host not in allowlist
+→ 403 Forbidden
+
+curl -s https://autonomous-trading-bot-production.up.railway.app/api/health
+→ 403 Forbidden
 ```
 
 GeckoTerminal API also blocked (same egress restriction):
@@ -45,16 +48,20 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #8 | 2026-04-17T18:42 UTC | PATTERN D update |
 | #9 | 2026-04-17T22:09 UTC | PATTERN D update |
 | #10 | 2026-04-19T00:00 UTC | PATTERN D update |
-| #11 | 2026-04-19T23:07 UTC | This report (same issue) |
+| #11 | 2026-04-19T23:07 UTC | PATTERN D update |
+| #12 | 2026-04-20T00:00 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
 Despite API being unreachable from medic, the staging branch is active with autonomous updates:
 
-- `2026-04-19 00:00 UTC` — Scout (Run #10) added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
+- `2026-04-19 21:11 UTC` — Scout added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
+- `2026-04-19 20:10 UTC` — Scout added LBTC to TOKEN_REGISTRY
+- `2026-04-19 09:08 UTC` — Scout added EDEL to TOKEN_REGISTRY
+- `2026-04-18 23:10 UTC` — Scout added BNKR to TOKEN_REGISTRY
+- `2026-04-18 22:15 UTC` — Auditor raised stagnation threshold 4h→6h (extreme-fear RANGING)
 - `2026-04-16 05:15 UTC` — Scout added BENJI to TOKEN_REGISTRY
 - `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
-- `2026-04-16 00:21 UTC` — Scout added SPX to TOKEN_REGISTRY
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 - `2026-04-15 12:25 UTC` — Auditor lowered VOL_TARGET_DAILY_PCT 2→1.5 (bear-market)
 
@@ -70,21 +77,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #10)
+## Jobs Status This Run (Run #12)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-19T21:11 UTC (1h 56min ago, <48h threshold).
+- **Scout**: SKIPPED — last scout ran at 2026-04-19T21:11 UTC (~21h ago, within 48h threshold).
 - **Auditor**: SKIPPED — Medic PATTERN D triggered stop.
 
 ## Recommended Action for Henry
 
-**This is the 10th consecutive run with the same network restriction. Action required:**
+**This is the 12th consecutive run with the same network restriction. Action urgently required:**
 
-1. Add `autonomous-trading-bot-production.up.railway.app` to the Claude Code egress allowlist
-2. Also add `api.geckoterminal.com` and `api.dexscreener.com` to the allowlist for Scout
-3. Alternatively, expose a **read-only status webhook** that pushes to a domain already in the allowlist
-4. Manually verify bot health at: https://autonomous-trading-bot-production.up.railway.app/health
-5. **IMPORTANT:** Staging branch has many queued improvements not on main. Consider `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+1. **Add to Claude Code egress allowlist:**
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+2. **Or** expose a read-only status webhook on an already-allowed domain
+3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
