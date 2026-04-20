@@ -3027,19 +3027,85 @@ function buildDeploymentCtxDeps(): DeploymentCtxDeps {
 }
 
 // ============================================================================
+// Feature flag: SLEEVES_DRIVE_DECISIONS
+// ----------------------------------------------------------------------------
+// When true, decisionStage's makeTradeDecision call is routed through
+// coreSleeve.decide() → coreDecideFn → makeTradeDecision. Same result in a
+// single-sleeve world, but proves the sleeve interface works end-to-end.
+// When false (default), the old direct path runs. Toggled via env var so
+// staging can flip without a code change. Read once at module init;
+// restart required to change mode.
+// ============================================================================
+const SLEEVES_DRIVE_DECISIONS = process.env.SLEEVES_DRIVE_DECISIONS === 'true';
+
+// ============================================================================
 // Phase 5h: buildDecisionDeps — routes AI call (makeTradeDecision) or central
 // signal fetch (fetchCentralSignals) based on the module-level signalMode.
 // Takes heavyCycleReason so makeTradeDecision can use tiered model routing.
+//
+// Phase 2 wrap (2026-04-20): when SLEEVES_DRIVE_DECISIONS is on, the
+// makeTradeDecision reference in the returned deps is replaced with a wrapper
+// that routes the call through coreSleeve.decide(). Zero behavior change in a
+// single-sleeve world — same makeTradeDecision still runs inside the sleeve's
+// decideFn — but the route validates the sleeve interface in real conditions.
 // ============================================================================
 function buildDecisionDeps(heavyCycleReason?: string): DecisionDeps {
   return {
     signalMode,
     fetchCentralSignals,
-    makeTradeDecision,
+    makeTradeDecision: SLEEVES_DRIVE_DECISIONS
+      ? makeTradeDecisionViaSleeve
+      : makeTradeDecision,
     getLatestSwarmDecisions,
     maxBuySize:       CONFIG.trading.maxBuySize,
     heavyCycleReason,
   };
+}
+
+// Wrapper with the same signature as makeTradeDecision that routes through
+// the Core sleeve's decide() method. Packs cycle-time state into SleeveContext
+// (mostly via `extras` for now — future phases will narrow that boundary).
+async function makeTradeDecisionViaSleeve(
+  balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
+  marketData: MarketData,
+  totalPortfolioValue: number,
+  sectorAllocations: SectorAllocation[],
+  cashDeployment?: CashDeploymentResult,
+  heavyCycleReason?: string,
+): Promise<TradeDecision[]> {
+  const coreSleeve = sleeveRegistry.get('core');
+  if (!coreSleeve) {
+    // Defensive: registry should always have 'core' in Phase 2.
+    // Fall back to the direct path to avoid silently stalling the cycle.
+    console.warn('[SLEEVES] core sleeve not found in registry — falling back to direct path');
+    return await makeTradeDecision(balances, marketData, totalPortfolioValue, sectorAllocations, cashDeployment, heavyCycleReason);
+  }
+  const usdcBalance = balances.find(b => b.symbol === 'USDC');
+  const availableUSDC = Math.max(0, (usdcBalance?.usdValue ?? 0) - (state.pendingFeeUSDC || 0));
+  const prices: Record<string, number> = {};
+  for (const t of marketData.tokens) {
+    if (t.symbol && typeof t.price === 'number') prices[t.symbol] = t.price;
+  }
+  return await coreSleeve.decide({
+    capitalBudgetUSD: totalPortfolioValue,
+    positions: [],
+    availableUSDC,
+    market: {
+      cycleNumber: state.totalCycles,
+      builtAt: new Date().toISOString(),
+      prices,
+      regime: 'UNKNOWN',
+      fearGreed: lastFearGreedValue ?? 50,
+    },
+    extras: {
+      balances,
+      marketData,
+      totalPortfolioValue,
+      sectorAllocations,
+      cashDeployment,
+      heavyCycleReason,
+    },
+  });
 }
 
 // ============================================================================
@@ -9060,6 +9126,7 @@ async function main() {
     });
   } else {
     console.log(`\n✅ STARTUP: Trading is LIVE — no blockers detected`);
+    console.log(`   🎯 Decision routing: ${SLEEVES_DRIVE_DECISIONS ? 'VIA SLEEVES (SLEEVES_DRIVE_DECISIONS=true)' : 'DIRECT (default)'}`);
     await telegramService.sendAlert({
       severity: "INFO",
       title: "Bot Started v21.11 — Trading LIVE 🟢",
