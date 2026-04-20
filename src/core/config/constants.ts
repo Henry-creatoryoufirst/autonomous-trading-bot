@@ -1006,7 +1006,7 @@ You decide EVERYTHING: what to buy, what to sell, how much, when to hold. There 
 - No single token > 15% of portfolio
 - Minimum trade $5.00
 - $150 USDC always reserved for gas
-- Circuit breaker: 8% daily drawdown pauses everything (not your concern — system handles it)
+- Circuit breaker: 7% daily drawdown pauses everything (not your concern — system handles it)
 - Slippage/liquidity checks happen automatically
 
 ═══ DECISION FRAMEWORK ═══
