@@ -8,9 +8,12 @@
  *
  * See NVR-SPEC-010 for the full architecture.
  *
- * This file is SCAFFOLDING only — none of these types are wired into the
- * heavy cycle yet. Consumers import them from '@/core/sleeves'.
+ * Phase 1 (shipped v21.12.0): registry + stats, read-only, no decision wiring.
+ * Phase 2 (in progress): sleeve.decide() becomes capable of producing the
+ *   bot's primary trade decisions; orchestrator routes via a feature flag.
  */
+
+import type { TradeDecision } from '../types/index.js';
 
 // ============================================================================
 // POSITION + DECISION
@@ -40,17 +43,13 @@ export type SleeveAction = 'BUY' | 'SELL' | 'HOLD';
 /**
  * A decision produced by a sleeve for this cycle. The bot's execution stage
  * is responsible for actually placing the trade; a decision is just intent.
+ *
+ * Aligned with `TradeDecision` so sleeve outputs flow directly into the
+ * existing execution pipeline (adjustments + executeTrade) with no mapper.
+ * Future allocator-weighting logic can read `signalContext.confluenceScore`
+ * (already carried by TradeDecision) instead of a separate `confidence` field.
  */
-export interface SleeveDecision {
-  action: SleeveAction;
-  fromToken: string;
-  toToken: string;
-  /** Trade size in USD (not token units). */
-  amountUSD: number;
-  reasoning: string;
-  /** 0-1. Used by the allocator to weight future capital. */
-  confidence: number;
-}
+export type SleeveDecision = TradeDecision;
 
 // ============================================================================
 // CONTEXT
