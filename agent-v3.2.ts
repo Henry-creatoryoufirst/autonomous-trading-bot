@@ -532,6 +532,11 @@ import {
   executeChatTool as _executeChatTool, handleChatRequest as _handleChatRequest,
   getDashboardHTML as _getDashboardHTML,
 } from "./src/dashboard/api.js";
+// Capital Sleeves (SPEC-010 Phase 1) — registry is read-only here; decide() wrapping lands in Phase 2
+import {
+  buildDefaultRegistry as _buildDefaultRegistry,
+  type SleeveRegistry,
+} from "./src/core/sleeves/index.js";
 // Phase 13: Extracted HTTP server route handlers
 import {
   type ServerContext,
@@ -9413,6 +9418,41 @@ const ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:5173",
 ]);
 
+// ============================================================================
+// Capital Sleeves registry (SPEC-010 Phase 1)
+// ----------------------------------------------------------------------------
+// Phase 1 is READ-ONLY: the registry exists, reports real stats from the bot's
+// live state, and is exposed via /api/sleeves so the dashboard can show the
+// "Core Strategy 100% +$X" tile. The orchestrator does NOT yet route decisions
+// through the sleeve — the existing heavy cycle still owns all trading. That
+// wrapping lands in Phase 2 once this foundation has soaked.
+// ============================================================================
+const sleeveRegistry: SleeveRegistry = _buildDefaultRegistry({
+  getCoreState: () => ({
+    costBasis: state.costBasis,
+    tradeHistory: state.tradeHistory,
+  }),
+});
+
+function apiSleeves() {
+  const sleeves = sleeveRegistry.sleeves();
+  const weights = sleeveRegistry.allocator().computeWeights(sleeves);
+  return {
+    phase: 1,
+    mode: 'read-only',
+    sleeves: sleeves.map((s) => ({
+      id: s.id,
+      displayName: s.displayName,
+      mode: s.mode,
+      minCapitalPct: s.minCapitalPct,
+      maxCapitalPct: s.maxCapitalPct,
+      targetCapitalPct: weights[s.id] ?? 0,
+      stats: s.getStats(),
+    })),
+    version: BOT_VERSION,
+  };
+}
+
 const serverCtx: ServerContext = {
   state, breakerState, CONFIG, cdpClient, CDP_ACCOUNT_NAME,
   CAPITAL_FLOOR_ABSOLUTE_USD, PRESERVATION_RING_BUFFER_SIZE,
@@ -9483,6 +9523,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/portfolio':
         sendJSON(res, 200, apiPortfolio());
+        break;
+      case '/api/sleeves':
+        sendJSON(res, 200, apiSleeves());
         break;
       case '/api/capital-flows':
         await handleCapitalFlows(res, serverCtx);

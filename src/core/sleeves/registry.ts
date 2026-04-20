@@ -13,8 +13,17 @@
  */
 
 import type { CapitalAllocator, Sleeve } from './types.js';
-import { CoreSleeve } from './core-sleeve.js';
+import { CoreSleeve, type CoreSleeveStateView } from './core-sleeve.js';
 import { defaultStaticAllocator } from './allocator.js';
+
+export interface DefaultRegistryOptions {
+  /**
+   * Provider for the Core sleeve's stats. Called on each `getStats()`.
+   * Typically `() => ({ costBasis: state.costBasis, tradeHistory: state.tradeHistory })`.
+   * Omit in tests or during early boot.
+   */
+  getCoreState?: () => CoreSleeveStateView;
+}
 
 export interface SleeveRegistry {
   sleeves(): ReadonlyArray<Sleeve>;
@@ -59,9 +68,16 @@ class InMemorySleeveRegistry implements SleeveRegistry {
  * The registry is intentionally NOT a singleton module-level export — the
  * orchestrator constructs it during startup so it can be replaced in tests
  * and swapped per-bot (e.g., family bots may disable alpha sleeves).
+ *
+ * Pass `getCoreState` so the Core sleeve can compute real stats from the
+ * bot's live cost basis + trade history. Omit in tests or when you want
+ * zeroed stats.
  */
-export function buildDefaultRegistry(): SleeveRegistry {
-  return new InMemorySleeveRegistry([new CoreSleeve()], defaultStaticAllocator());
+export function buildDefaultRegistry(opts: DefaultRegistryOptions = {}): SleeveRegistry {
+  return new InMemorySleeveRegistry(
+    [new CoreSleeve({ getState: opts.getCoreState })],
+    defaultStaticAllocator(),
+  );
 }
 
 /**

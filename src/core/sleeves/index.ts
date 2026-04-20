@@ -17,9 +17,9 @@ export type {
 } from './types.js';
 
 export { CoreSleeve } from './core-sleeve.js';
-export type { CoreSleeveOptions } from './core-sleeve.js';
+export type { CoreSleeveOptions, CoreSleeveStateView } from './core-sleeve.js';
 
 export { StaticAllocator, defaultStaticAllocator } from './allocator.js';
 
 export { buildDefaultRegistry, buildRegistry } from './registry.js';
-export type { SleeveRegistry } from './registry.js';
+export type { SleeveRegistry, DefaultRegistryOptions } from './registry.js';
