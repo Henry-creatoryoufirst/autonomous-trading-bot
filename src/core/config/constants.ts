@@ -862,14 +862,24 @@ export const CULL_INTERVAL_CYCLES = 20;
 export const CULL_MAX_PER_RUN = 3;
 
 // ============================================================================
-// v21.11: DRY POWDER RESERVE — Proactive capital availability
-// Always keep MIN_DRY_POWDER_PCT of portfolio as deployable USDC.
-// Fires every RESERVE_CHECK_INTERVAL_CYCLES regardless of BUY signals.
+// DRY POWDER RESERVE — The alpha-strike readiness discipline
+//
+// The ONE hardcoded capital rule: ~25% of portfolio stays in USDC as rolling
+// dry powder for alpha strikes (meme/alt swings with fast exits). The other
+// 75% is free for conviction-driven deployment across any sector — sector
+// composition stays bot-governed, cash readiness does not.
+//
+// Reserve is NOT idle — it cycles: USDC → alpha entry → fast exit → USDC.
+// When reserve drops below target, maintainDryPowder() sells the weakest
+// positions (oldest + most negative P&L + smallest) to refill. Fires every
+// RESERVE_CHECK_INTERVAL_CYCLES regardless of BUY signals.
+//
 // Distinct from liberateCapital() which is reactive (triggered by BUY signal).
+// Strategic rationale: see project_nvr_strategy_shape memory.
 // ============================================================================
 
-/** Minimum USDC as % of total portfolio — always kept as dry powder */
-export const MIN_DRY_POWDER_PCT = 0.10; // 10%
+/** Minimum USDC as % of total portfolio — the alpha-strike reserve */
+export const MIN_DRY_POWDER_PCT = 0.25; // 25% — 2026-04-20 raised from 10%
 
 /** How often (in cycles) to check dry powder levels (~75min at 15min intervals) */
 export const RESERVE_CHECK_INTERVAL_CYCLES = 5;
@@ -1083,7 +1093,10 @@ If your win rate today is below 20%, stop and HOLD until next cycle. Something i
 ═══ DECISION PRIORITY ═══
 Capital Flow & Momentum > Price Action > On-Chain Flow (buy ratio, volume) > Technical Indicators (RSI, MACD) > Everything Else
 
-Sector balance is a GUIDELINE, not a rule. If DeFi is where the wave is, go 100% DeFi. If memes are ripping, ride memes. Follow the money, not the spreadsheet.`;
+Sector balance is a GUIDELINE, not a rule. If DeFi is where the wave is, go 100% DeFi. If memes are ripping, ride memes. Follow the money, not the spreadsheet.
+
+═══ CASH DISCIPLINE (THE ONE HARD RULE) ═══
+Maintain ~25% of portfolio in USDC as dry powder. This is a RULE, not a guideline. The reserve exists for alpha strikes — when a meme/alt opportunity appears, deploy from the reserve and exit fast. Do NOT drain the reserve to add to existing winners or chase sector rotations — that's what the other 75% is for. If USDC drops below 25%, the reserve restorer will auto-sell the weakest positions to refill; avoid triggering that by leaving room before deploying aggressively. The reserve is rolling, not idle: USDC → alpha entry → fast exit → USDC.`;
 
 /** Rough token estimator: chars / 4 */
 export function estimateTokens(text: string): number {
