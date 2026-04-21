@@ -533,17 +533,22 @@ import {
   executeChatTool as _executeChatTool, handleChatRequest as _handleChatRequest,
   getDashboardHTML as _getDashboardHTML,
 } from "./src/dashboard/api.js";
-// Capital Sleeves (SPEC-010) — v21.15 Phase 1.2b: orchestrator loops every
-// registered sleeve, logs decisions (live/paper/shadow), projects costBasis
-// into Core's balance sheet, and writes trade effects back to per-sleeve state.
+// Capital Sleeves (SPEC-010) — v21.16 Phase 2: paper-trade simulation. Paper
+// sleeves now produce real decisions that get virtually executed against
+// per-sleeve virtual budgets — generating a shadow P&L track record while
+// leaving real capital untouched. See orchestrator + paper-sim modules.
 import {
   buildDefaultRegistry as _buildDefaultRegistry,
   type SleeveRegistry,
+  type DiscoveryCandidate,
   migrateStateToSleeves,
   resolveEffectiveMode,
   syncCoreSleevePositions,
   recordTradeOnSleeve,
   logSleeveDecision,
+  simulatePaperDecision,
+  markToMarketSleeve,
+  availablePaperUSDC,
   MAX_DECISIONS_PER_SLEEVE as _MAX_DECISIONS_PER_SLEEVE,
 } from "./src/core/sleeves/index.js";
 // Phase 13: Extracted HTTP server route handlers
@@ -3090,15 +3095,18 @@ function buildDecisionDeps(heavyCycleReason?: string): DecisionDeps {
   };
 }
 
-// v21.15 Phase 1.2b: route all registered sleeves — not just Core.
+// v21.16 Phase 2: orchestrator routes all sleeves and simulates paper decisions.
 // For each sleeve:
 //   1. Resolve effective mode from (sleeve.mode, allocation, enabled, override)
-//   2. Build a SleeveContext with ownership-filtered positions + sleeve-scoped budget
-//   3. Call decide()
-//   4. Log every decision (HOLD counts) to sleeveOwnership[id].decisions with mode tag
-//   5. Only 'live' decisions flow out for execution. Paper + shadow are observability.
-// Core stays the only live sleeve in this phase — Alpha Hunter + Alpha Rotation
-// are paper stubs that return [] (HOLD shadow gets logged for cadence data).
+//   2. Mark paper sleeves to market (update valueUSD on their virtual positions)
+//   3. Build a SleeveContext with ownership-filtered positions + discovery data
+//      + either real USDC (live) or virtual paper budget (paper/shadow)
+//   4. Call decide()
+//   5. Log every decision (HOLD counts) to sleeveOwnership[id].decisions
+//   6. For paper sleeves: virtually execute each decision via simulatePaperDecision
+//      (updates positions, realized P&L, trades, wins — on the sleeve's own
+//      balance sheet, never touching real capital)
+//   7. Only 'live' decisions flow out for execution. Paper + shadow are tracked.
 async function makeTradeDecisionViaSleeve(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
   marketData: MarketData,
@@ -3128,8 +3136,28 @@ async function makeTradeDecisionViaSleeve(
     if (t.symbol && typeof t.price === 'number') prices[t.symbol] = t.price;
   }
 
+  // v21.16 Phase 2: Build discovery candidates from the existing token-discovery
+  // engine. Shared across all sleeves via SleeveContext.market.discovery.
+  // Alpha Hunter consumes these scores; Core ignores them (its extras path feeds
+  // the full bot payload separately).
+  const discovery: { candidates: DiscoveryCandidate[]; scannedAt?: string } | undefined =
+    tokenDiscoveryEngine
+      ? {
+          candidates: (tokenDiscoveryEngine.getTopOpportunities(10) || []).map((t) => ({
+            symbol: t.symbol,
+            convictionScore: t.compositeScore ?? 0,
+            sector: t.sector,
+            price: t.priceUSD,
+            volume24h: t.volume24hUSD,
+            priceChange24h: t.priceChange24h,
+            isRunner: t.isRunner,
+          })),
+          scannedAt: new Date().toISOString(),
+        }
+      : undefined;
+
   const liveDecisions: TradeDecision[] = [];
-  const sleeveActivity: Array<{ id: string; mode: string; count: number }> = [];
+  const sleeveActivity: Array<{ id: string; mode: string; count: number; paperTrades?: number }> = [];
 
   for (const sleeve of sleeves) {
     const allocation = weights[sleeve.id] ?? 0;
@@ -3138,26 +3166,44 @@ async function makeTradeDecisionViaSleeve(
     const effectiveMode = resolveEffectiveMode(sleeve.mode, allocation, enabled, modeOverride);
 
     const ownership = state.sleeveOwnership?.[sleeve.id];
+
+    // Paper/shadow sleeves: mark their virtual positions to current prices
+    // so decide() sees an accurate valueUSD, and getStats() reports fresh
+    // unrealized P&L. Core's mark-to-market is handled elsewhere.
+    if (effectiveMode !== 'live' && ownership) {
+      markToMarketSleeve(ownership, prices);
+    }
+
     const positions = Object.values(ownership?.positions ?? {});
-    const capitalBudgetUSD = totalPortfolioValue * allocation;
+
+    // Live sleeves size against their portfolio allocation.
+    // Paper/shadow sleeves size against their virtual paper budget (minus
+    // capital already deployed in simulated positions).
+    const paperBudget = config?.paperBudgetsUSD?.[sleeve.id] ?? (sleeve.id === 'core' ? 0 : 1000);
+    const capitalBudgetUSD = effectiveMode === 'live'
+      ? totalPortfolioValue * allocation
+      : paperBudget;
+    const ctxAvailableUSDC = effectiveMode === 'live'
+      ? availableUSDC
+      : availablePaperUSDC(ownership, paperBudget);
 
     let sleeveDecisions: TradeDecision[] = [];
     try {
       sleeveDecisions = await sleeve.decide({
         capitalBudgetUSD,
         positions,
-        // Only live sleeves get the actual available USDC; paper/shadow see 0
-        // so their decide() cannot accidentally size against real capital.
-        availableUSDC: effectiveMode === 'live' ? availableUSDC : 0,
+        availableUSDC: ctxAvailableUSDC,
         market: {
           cycleNumber: state.totalCycles,
           builtAt: new Date().toISOString(),
           prices,
           regime,
           fearGreed: lastFearGreedValue ?? 50,
+          discovery,
         },
         // Core still receives the full bot payload via extras since its
-        // decideFn wraps makeTradeDecision(). Alpha sleeves don't need this.
+        // decideFn wraps makeTradeDecision(). Alpha sleeves consume
+        // market.discovery instead.
         extras: sleeve.id === 'core' ? {
           balances,
           marketData,
@@ -3173,23 +3219,50 @@ async function makeTradeDecisionViaSleeve(
     }
 
     // Log decisions (HOLD when none, to keep per-cycle cadence in the record)
+    let paperTradesThisCycle = 0;
     if (sleeveDecisions.length === 0) {
       logSleeveDecision(state, sleeve.id, null, effectiveMode, regime);
     } else {
       for (const d of sleeveDecisions) {
-        logSleeveDecision(state, sleeve.id, d, effectiveMode, regime);
         if (effectiveMode === 'live') {
+          // Live: log + return for execution
+          logSleeveDecision(state, sleeve.id, d, effectiveMode, regime);
           d.ownerSleeve = sleeve.id;
           liveDecisions.push(d);
+        } else if (ownership) {
+          // Paper/shadow: simulate against the sleeve's virtual balance sheet.
+          // Result feeds the decision log + ownership counters.
+          const result = simulatePaperDecision(sleeve.id, ownership, d, prices, state.totalCycles);
+          const executed = result?.action === 'BUY' || result?.action === 'SELL';
+          logSleeveDecision(state, sleeve.id, d, effectiveMode, regime, {
+            executed,
+            realizedPnL: result?.realizedPnLUSD,
+          });
+          if (executed) paperTradesThisCycle++;
+        } else {
+          // No ownership record (shouldn't happen post-migration) — just log
+          logSleeveDecision(state, sleeve.id, d, effectiveMode, regime);
         }
       }
     }
-    sleeveActivity.push({ id: sleeve.id, mode: effectiveMode, count: sleeveDecisions.length });
+    sleeveActivity.push({
+      id: sleeve.id,
+      mode: effectiveMode,
+      count: sleeveDecisions.length,
+      paperTrades: paperTradesThisCycle || undefined,
+    });
   }
 
   if (sleeveActivity.length > 1) {
-    const activitySummary = sleeveActivity.map(a => `${a.id}:${a.mode}(${a.count})`).join(' ');
+    const activitySummary = sleeveActivity
+      .map(a => `${a.id}:${a.mode}(${a.count}${a.paperTrades ? `→${a.paperTrades}paper` : ''})`)
+      .join(' ');
     console.log(`[SLEEVES] cycle ${state.totalCycles} — ${activitySummary}`);
+  }
+
+  // Persist updated sleeve state now that paper trades may have mutated it.
+  if (sleeveActivity.some(a => (a.paperTrades ?? 0) > 0)) {
+    markStateDirty(true);
   }
 
   return liveDecisions;
@@ -9797,12 +9870,14 @@ const sleeveRegistry: SleeveRegistry = _buildDefaultRegistry({
       extras.heavyCycleReason,
     );
   },
-  // v21.15 Phase 1.2b: Alpha sleeves read their own ownership records for
-  // stats. They stay paper and return [] from decide() until Phase 2.x ships
-  // real strategy code.
+  // v21.15 Phase 1.2b: Alpha sleeves read their own ownership records for stats.
+  // v21.16 Phase 2: Alpha Hunter now has a real strategy; exit overrides are
+  // read from SleeveConfig at decide() time so they're hot-reloadable.
   getAlphaHunterOwnership: () => state.sleeveOwnership?.['alpha-hunter'],
   getAlphaRotationOwnership: () => state.sleeveOwnership?.['alpha-rotation'],
   getPortfolioValue: () => state.trading?.totalPortfolioValue ?? 0,
+  getAlphaHunterExitOverride: () => state.sleeveConfig?.exitOverrides?.['alpha-hunter'],
+  getAlphaRotationExitOverride: () => state.sleeveConfig?.exitOverrides?.['alpha-rotation'],
 });
 
 // v21.15 Phase 1.2b: ensure state has per-sleeve ownership for every

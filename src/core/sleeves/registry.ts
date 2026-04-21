@@ -13,7 +13,7 @@
  */
 
 import type { CapitalAllocator, Sleeve } from './types.js';
-import type { SleeveOwnership } from './state-types.js';
+import type { SleeveOwnership, SleeveExitOverride } from './state-types.js';
 import {
   CoreSleeve,
   type CoreSleeveStateView,
@@ -49,6 +49,12 @@ export interface DefaultRegistryOptions {
    * reports null (matches the "insufficient data" UX).
    */
   getPortfolioValue?: () => number;
+  /**
+   * v21.16 Phase 2: per-sleeve exit discipline overrides from SleeveConfig.
+   * When omitted, sleeves fall back to their hard-coded defaults.
+   */
+  getAlphaHunterExitOverride?: () => SleeveExitOverride | undefined;
+  getAlphaRotationExitOverride?: () => SleeveExitOverride | undefined;
 }
 
 export interface SleeveRegistry {
@@ -113,6 +119,7 @@ export function buildDefaultRegistry(opts: DefaultRegistryOptions = {}): SleeveR
       new AlphaHunterSleeve({
         getOwnership: opts.getAlphaHunterOwnership,
         getPortfolioValue: opts.getPortfolioValue,
+        getExitOverride: opts.getAlphaHunterExitOverride,
       }),
       new AlphaRotationSleeve({
         getOwnership: opts.getAlphaRotationOwnership,

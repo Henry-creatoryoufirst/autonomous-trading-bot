@@ -74,8 +74,40 @@ export interface SharedMarketContext {
   regime: string;
   /** Fear & greed index (0-100). */
   fearGreed: number;
+  /**
+   * v21.16 Phase 2: Discovery engine output. Ranked token candidates with
+   * conviction scores that Alpha Hunter consumes to decide which meme/alt
+   * swings are worth striking. Populated by the orchestrator from the
+   * bot's existing token-discovery service.
+   */
+  discovery?: {
+    candidates: DiscoveryCandidate[];
+    /** ISO timestamp of the discovery scan. Stale scans → sleeves should hold. */
+    scannedAt?: string;
+  };
   /** Anything the orchestrator wants to expose without typing it yet. */
   extras?: Record<string, unknown>;
+}
+
+/**
+ * A single token candidate surfaced by the discovery engine.
+ * Shape is intentionally narrow — sleeves should depend on the minimum
+ * fields necessary for their decision, not the full internal representation.
+ */
+export interface DiscoveryCandidate {
+  symbol: string;
+  /** 0-100 composite conviction score. */
+  convictionScore: number;
+  /** Sector tag (e.g. 'MEME', 'AI'). */
+  sector?: string;
+  /** Last observed USD price. Used by sleeves for sizing. */
+  price?: number;
+  /** 24h USD volume, if known. */
+  volume24h?: number;
+  /** 24h % price change, if known. */
+  priceChange24h?: number;
+  /** True when the discovery engine flagged this as an exceptional "runner". */
+  isRunner?: boolean;
 }
 
 /**
@@ -92,6 +124,14 @@ export interface SleeveContext {
   availableUSDC: number;
   /** Shared read-only market context. */
   market: SharedMarketContext;
+  /**
+   * Escape hatch for the bot's heavy-cycle payload (balances, marketData,
+   * sectorAllocations, cashDeployment, heavyCycleReason) passed through
+   * without narrowing the type. Read by CoreSleeve's decideFn wrapper
+   * around the legacy makeTradeDecision() path. Alpha sleeves should NOT
+   * depend on this — they consume market.discovery and market.prices.
+   */
+  extras?: Record<string, unknown>;
 }
 
 // ============================================================================

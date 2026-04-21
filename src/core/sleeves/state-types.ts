@@ -140,8 +140,36 @@ export interface SleeveConfig {
    * When absent, the sleeve's declared mode wins.
    */
   modeOverrides: Record<string, 'paper' | 'live'>;
+  /**
+   * v21.16 Phase 2: virtual USD budget per paper sleeve.
+   * Paper sleeves trade against this virtual pool (not their 0%
+   * allocation) so they can build a real track record before graduating
+   * to real capital. Default seed: $1000 per Alpha sleeve.
+   * Only read when effectiveMode is 'paper' or 'shadow'; live sleeves
+   * size against allocation × portfolio value instead.
+   */
+  paperBudgetsUSD: Record<string, number>;
+  /**
+   * v21.16 Phase 2: per-sleeve exit discipline overrides. Alpha sleeves
+   * typically run tighter exits than Core (shorter max-hold, harder
+   * drawdown cut). Undefined keeps the sleeve on Core's default rules.
+   */
+  exitOverrides?: Record<string, SleeveExitOverride>;
   /** ISO timestamp of the last config reload. */
   updatedAt: string;
+}
+
+/**
+ * Per-sleeve exit discipline overrides. Each field is independent — leave
+ * undefined to fall back to the sleeve's default (Core's rules).
+ */
+export interface SleeveExitOverride {
+  /** Drawdown % that triggers forced exit (negative; e.g. -5 = -5%). */
+  drawdownOverridePct?: number;
+  /** Max hold duration in hours before forced stale-exit consideration. */
+  maxHoldHours?: number;
+  /** Min gain % under which a position is considered "played out" for stale-exit. */
+  staleMaxGainPct?: number;
 }
 
 /** Bounded size of the per-sleeve decision log. Older entries are trimmed. */

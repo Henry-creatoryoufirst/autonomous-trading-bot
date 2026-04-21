@@ -13,6 +13,7 @@ export type {
   SleevePosition,
   SleeveStats,
   SharedMarketContext,
+  DiscoveryCandidate,
   CapitalAllocator,
 } from './types.js';
 
@@ -48,6 +49,7 @@ export type {
   SleeveDecisionMode,
   SleeveRegimeReturns,
   SleeveConfig,
+  SleeveExitOverride,
 } from './state-types.js';
 export {
   MAX_DECISIONS_PER_SLEEVE,
@@ -61,3 +63,13 @@ export {
   recordTradeOnSleeve,
   logSleeveDecision,
 } from './orchestrator.js';
+
+// v21.16 Phase 2: paper trade simulation
+export {
+  simulatePaperDecision,
+  simulatePaperBuy,
+  simulatePaperSell,
+  markToMarketSleeve,
+  availablePaperUSDC,
+} from './paper-sim.js';
+export type { PaperTradeResult } from './paper-sim.js';

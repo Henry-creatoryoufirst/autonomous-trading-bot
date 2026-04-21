@@ -17,6 +17,7 @@
 
 import type {
   SleeveConfig,
+  SleeveExitOverride,
   SleeveOwnership,
 } from './state-types.js';
 import type { SleevePosition, Sleeve } from './types.js';
@@ -135,12 +136,29 @@ export function migrateStateToSleeves<S extends MigratableState>(
     state.sleeveAllocation[sleeve.id] = sleeve.id === 'core' ? 1.0 : 0.0;
   }
 
-  // 3. Seed default config if missing
+  // 3. Seed default config if missing (or fill gaps on already-migrated state)
+  const defaultPaperBudget = (sleeveId: string) => (sleeveId === 'core' ? 0 : 1000);
+  const defaultExitOverride = (sleeveId: string): SleeveExitOverride | undefined => {
+    // Alpha sleeves run tighter exits than Core — this is their discipline edge.
+    if (sleeveId === 'alpha-hunter') {
+      return { drawdownOverridePct: -5, maxHoldHours: 48, staleMaxGainPct: 2 };
+    }
+    if (sleeveId === 'alpha-rotation') {
+      return { drawdownOverridePct: -5, maxHoldHours: 72, staleMaxGainPct: 2 };
+    }
+    return undefined;
+  };
   if (!state.sleeveConfig) {
     state.sleeveConfig = {
       allocations: { ...state.sleeveAllocation },
       enabled: Object.fromEntries(sleeves.map((s) => [s.id, true])),
       modeOverrides: {},
+      paperBudgetsUSD: Object.fromEntries(sleeves.map((s) => [s.id, defaultPaperBudget(s.id)])),
+      exitOverrides: Object.fromEntries(
+        sleeves
+          .map((s) => [s.id, defaultExitOverride(s.id)])
+          .filter(([, v]) => v !== undefined),
+      ),
       updatedAt: now,
     };
   } else {
@@ -152,6 +170,16 @@ export function migrateStateToSleeves<S extends MigratableState>(
       }
       if (state.sleeveConfig.allocations[sleeve.id] === undefined) {
         state.sleeveConfig.allocations[sleeve.id] = state.sleeveAllocation[sleeve.id] ?? 0;
+      }
+      // v21.16 Phase 2 additions — safe to add to existing config on live bots
+      if (!state.sleeveConfig.paperBudgetsUSD) state.sleeveConfig.paperBudgetsUSD = {};
+      if (state.sleeveConfig.paperBudgetsUSD[sleeve.id] === undefined) {
+        state.sleeveConfig.paperBudgetsUSD[sleeve.id] = defaultPaperBudget(sleeve.id);
+      }
+      if (!state.sleeveConfig.exitOverrides) state.sleeveConfig.exitOverrides = {};
+      if (state.sleeveConfig.exitOverrides[sleeve.id] === undefined) {
+        const def = defaultExitOverride(sleeve.id);
+        if (def) state.sleeveConfig.exitOverrides[sleeve.id] = def;
       }
     }
   }
