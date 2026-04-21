@@ -1,6 +1,6 @@
 {
   "name": "henry-autonomous-trading-agent",
-  "version": "21.16.0",
+  "version": "21.17.0",
   "description": "Autonomous Trading Agent - Live CDP SDK Execution + Sector Allocation + Risk Management",
   "type": "module",
   "main": "agent-v3.2.ts",

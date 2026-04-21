@@ -196,6 +196,11 @@ export function markToMarketSleeve(
  * Dispatch a decision to the correct paper-sim path based on action.
  * Returns the simulation result (for logging). Mutates `ownership`.
  * Returns null if the decision isn't a BUY or SELL (no-op for HOLD, etc.).
+ *
+ * When a regime tag is provided and the decision produces realized P&L (a
+ * successful paper SELL), the realized delta is bucketed into
+ * ownership.regimeReturns[regime] so the dashboard's regime-conditional
+ * chart reflects real data as it accumulates.
  */
 export function simulatePaperDecision(
   sleeveId: string,
@@ -203,6 +208,7 @@ export function simulatePaperDecision(
   decision: TradeDecision,
   prices: Record<string, number>,
   cycle: number,
+  regime: string = 'UNKNOWN',
   nowIso: string = new Date().toISOString(),
 ): PaperTradeResult | null {
   if (decision.action === 'BUY') {
@@ -215,7 +221,81 @@ export function simulatePaperDecision(
     const price = prices[decision.fromToken] ?? 0;
     const result = simulatePaperSell(ownership, decision, price, cycle, nowIso);
     result.sleeveId = sleeveId;
+    if (result.action === 'SELL' && typeof result.realizedPnLUSD === 'number') {
+      recordRegimeReturn(ownership, regime, result.realizedPnLUSD);
+    }
     return result;
   }
   return null;
+}
+
+/**
+ * Append a realized return to the sleeve's regime-conditional ledger.
+ * Bucketed by regime tag; dailyReturnsUSD is the ordered sequence, with
+ * totalReturnUSD the running sum and samples the count. Bounded to keep
+ * state files tractable.
+ */
+export function recordRegimeReturn(
+  ownership: SleeveOwnership,
+  regime: string,
+  realizedPnLUSD: number,
+): void {
+  const bucket = ownership.regimeReturns[regime] ?? {
+    dailyReturnsUSD: [],
+    totalReturnUSD: 0,
+    samples: 0,
+  };
+  bucket.dailyReturnsUSD.push(realizedPnLUSD);
+  bucket.totalReturnUSD += realizedPnLUSD;
+  bucket.samples += 1;
+  // Bound the array to prevent unbounded growth; the running total stays
+  // accurate across trimming.
+  if (bucket.dailyReturnsUSD.length > 180) {
+    bucket.dailyReturnsUSD = bucket.dailyReturnsUSD.slice(-180);
+  }
+  ownership.regimeReturns[regime] = bucket;
+}
+
+/**
+ * Compute a sleeve's current total equity in USD.
+ *   Paper sleeve:  virtualUSDC + positions.valueUSD = paperBudget + realizedPnL + unrealized
+ *   Live sleeve:   portfolioValue × allocation (better: ownership-derived when tracked)
+ *
+ * Returns 0 when ownership is missing (sleeve not yet migrated).
+ */
+export function computeSleeveEquityUSD(
+  ownership: SleeveOwnership | undefined,
+  paperBudgetUSD: number,
+): number {
+  if (!ownership) return 0;
+  const positionsValue = Object.values(ownership.positions).reduce(
+    (sum, p) => sum + (p.valueUSD ?? 0),
+    0,
+  );
+  const positionsCost = Object.values(ownership.positions).reduce(
+    (sum, p) => sum + (p.costBasisUSD ?? 0),
+    0,
+  );
+  const virtualUSDC = Math.max(0, paperBudgetUSD + ownership.realizedPnLUSD - positionsCost);
+  return virtualUSDC + positionsValue;
+}
+
+/**
+ * Update a sleeve's peak-capital high-water mark from the current equity.
+ * Idempotent: only moves the peak up, never down. Seeds peak = current on
+ * first touch. Feeds drawdown% computation in /api/sleeves/compare.
+ */
+export function updateSleevePeak(
+  ownership: SleeveOwnership | undefined,
+  currentEquityUSD: number,
+): void {
+  if (!ownership) return;
+  const prev = ownership.peakCapitalUSD ?? 0;
+  if (currentEquityUSD > prev) {
+    ownership.peakCapitalUSD = currentEquityUSD;
+  } else if (prev === 0 && currentEquityUSD > 0) {
+    // First valid touch — seed peak to current equity rather than leaving 0,
+    // which would report a misleading 0% drawdown forever.
+    ownership.peakCapitalUSD = currentEquityUSD;
+  }
 }

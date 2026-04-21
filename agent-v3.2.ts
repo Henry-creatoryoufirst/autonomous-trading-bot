@@ -549,6 +549,8 @@ import {
   simulatePaperDecision,
   markToMarketSleeve,
   availablePaperUSDC,
+  computeSleeveEquityUSD,
+  updateSleevePeak,
   MAX_DECISIONS_PER_SLEEVE as _MAX_DECISIONS_PER_SLEEVE,
 } from "./src/core/sleeves/index.js";
 // Phase 13: Extracted HTTP server route handlers
@@ -3174,6 +3176,17 @@ async function makeTradeDecisionViaSleeve(
       markToMarketSleeve(ownership, prices);
     }
 
+    // v21.17 dashboard-honesty: refresh peak-capital high-water mark before
+    // decide() fires so getStats()/compare surfaces always see a truthful
+    // drawdown baseline. Live sleeves peak-track against portfolio equity.
+    if (ownership) {
+      const paperBudgetForPeak = config?.paperBudgetsUSD?.[sleeve.id] ?? (sleeve.id === 'core' ? 0 : 1000);
+      const currentEquity = effectiveMode === 'live' && sleeve.id === 'core'
+        ? totalPortfolioValue
+        : computeSleeveEquityUSD(ownership, paperBudgetForPeak);
+      updateSleevePeak(ownership, currentEquity);
+    }
+
     const positions = Object.values(ownership?.positions ?? {});
 
     // Live sleeves size against their portfolio allocation.
@@ -3231,8 +3244,9 @@ async function makeTradeDecisionViaSleeve(
           liveDecisions.push(d);
         } else if (ownership) {
           // Paper/shadow: simulate against the sleeve's virtual balance sheet.
-          // Result feeds the decision log + ownership counters.
-          const result = simulatePaperDecision(sleeve.id, ownership, d, prices, state.totalCycles);
+          // Result feeds the decision log + ownership counters. Regime tag
+          // lets paper-sim bucket any realized P&L into regimeReturns.
+          const result = simulatePaperDecision(sleeve.id, ownership, d, prices, state.totalCycles, regime);
           const executed = result?.action === 'BUY' || result?.action === 'SELL';
           logSleeveDecision(state, sleeve.id, d, effectiveMode, regime, {
             executed,
@@ -9975,6 +9989,25 @@ function apiSleevesCompare() {
         realizedPnL: d.realizedPnL ?? null,
       }));
 
+      // v21.17 dashboard-honesty: compute current equity + drawdown% per sleeve.
+      // Core uses bot-wide portfolio value; Alpha sleeves use their own virtual
+      // equity (paperBudget + realized + unrealized). Both fall back gracefully
+      // when peak isn't seeded yet — "no data" reads as 0 by the dashboard
+      // per feedback_admin_dash_is_cockpit.
+      const paperBudgetForEquity = config?.paperBudgetsUSD?.[s.id] ?? (s.id === 'core' ? 0 : 1000);
+      const currentEquityUSD = s.id === 'core'
+        ? totalPortfolioValue
+        : (ownership ? (() => {
+            const positionsValue = Object.values(ownership.positions).reduce((sum, p) => sum + (p.valueUSD ?? 0), 0);
+            const positionsCost = Object.values(ownership.positions).reduce((sum, p) => sum + (p.costBasisUSD ?? 0), 0);
+            const virtualUSDC = Math.max(0, paperBudgetForEquity + ownership.realizedPnLUSD - positionsCost);
+            return virtualUSDC + positionsValue;
+          })() : 0);
+      const peakEquityUSD = ownership?.peakCapitalUSD ?? 0;
+      const drawdownPct = peakEquityUSD > 0
+        ? Math.max(0, ((peakEquityUSD - currentEquityUSD) / peakEquityUSD) * 100)
+        : 0;
+
       return {
         id: s.id,
         displayName: s.displayName,
@@ -9986,6 +10019,9 @@ function apiSleevesCompare() {
         enabled,
         allocationPct: allocation,
         capitalUSD: totalPortfolioValue * allocation,
+        currentEquityUSD,
+        peakEquityUSD,
+        drawdownPct,
         minCapitalPct: s.minCapitalPct,
         maxCapitalPct: s.maxCapitalPct,
         realizedPnLUSD: stats.realizedPnLUSD,

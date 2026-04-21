@@ -113,6 +113,14 @@ export interface SleeveOwnership {
    * gate for graduation-eligibility calculations (SPEC-016 soak duration).
    */
   createdAt: string;
+  /**
+   * v21.17: high-water mark of the sleeve's total equity (cash + positions).
+   * Updated on each mark-to-market pass. Feeds drawdownPct in the dashboard
+   * compare surface so "Dashboards must not lie" holds: drawdown is a real
+   * measured number, not a UI-side default.
+   * Units: USD. Optional for backward compat with pre-v21.17 state files.
+   */
+  peakCapitalUSD?: number;
 }
 
 /**

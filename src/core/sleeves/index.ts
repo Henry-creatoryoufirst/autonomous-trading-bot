@@ -65,11 +65,15 @@ export {
 } from './orchestrator.js';
 
 // v21.16 Phase 2: paper trade simulation
+// v21.17 dashboard-honesty: + regime returns, peak tracking, equity compute
 export {
   simulatePaperDecision,
   simulatePaperBuy,
   simulatePaperSell,
   markToMarketSleeve,
   availablePaperUSDC,
+  recordRegimeReturn,
+  computeSleeveEquityUSD,
+  updateSleevePeak,
 } from './paper-sim.js';
 export type { PaperTradeResult } from './paper-sim.js';

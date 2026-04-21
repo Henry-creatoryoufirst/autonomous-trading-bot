@@ -5,6 +5,9 @@ import {
   markToMarketSleeve,
   availablePaperUSDC,
   simulatePaperDecision,
+  recordRegimeReturn,
+  computeSleeveEquityUSD,
+  updateSleevePeak,
 } from '../paper-sim.js';
 import type { SleeveOwnership } from '../state-types.js';
 import type { TradeDecision } from '../../types/market-data.js';
@@ -207,5 +210,72 @@ describe('simulatePaperDecision dispatch', () => {
       reasoning: 'hold',
     };
     expect(simulatePaperDecision('alpha-hunter', own, hold, {}, 1)).toBeNull();
+  });
+
+  it('buckets realized P&L into regimeReturns when regime is passed', () => {
+    const own = mkOwnership();
+    simulatePaperBuy(own, mkBuy('VIRTUAL', 100), 1.0, 1);
+    const result = simulatePaperDecision(
+      'alpha-hunter',
+      own,
+      mkSell('VIRTUAL', 150),
+      { VIRTUAL: 1.5 },
+      2,
+      'BULL',
+    );
+    expect(result?.realizedPnLUSD).toBe(50);
+    expect(own.regimeReturns['BULL']).toBeDefined();
+    expect(own.regimeReturns['BULL'].totalReturnUSD).toBe(50);
+    expect(own.regimeReturns['BULL'].samples).toBe(1);
+    expect(own.regimeReturns['BULL'].dailyReturnsUSD).toEqual([50]);
+  });
+});
+
+describe('recordRegimeReturn', () => {
+  it('appends returns, accumulates total, and increments samples', () => {
+    const own = mkOwnership();
+    recordRegimeReturn(own, 'CHOP', 10);
+    recordRegimeReturn(own, 'CHOP', -5);
+    recordRegimeReturn(own, 'BULL', 20);
+
+    expect(own.regimeReturns['CHOP'].totalReturnUSD).toBe(5);
+    expect(own.regimeReturns['CHOP'].samples).toBe(2);
+    expect(own.regimeReturns['CHOP'].dailyReturnsUSD).toEqual([10, -5]);
+    expect(own.regimeReturns['BULL'].totalReturnUSD).toBe(20);
+  });
+
+  it('trims dailyReturnsUSD to 180 entries while preserving total', () => {
+    const own = mkOwnership();
+    for (let i = 0; i < 200; i++) recordRegimeReturn(own, 'RANGE', 1);
+    expect(own.regimeReturns['RANGE'].dailyReturnsUSD.length).toBe(180);
+    expect(own.regimeReturns['RANGE'].totalReturnUSD).toBe(200); // sum intact
+    expect(own.regimeReturns['RANGE'].samples).toBe(200);
+  });
+});
+
+describe('computeSleeveEquityUSD + updateSleevePeak', () => {
+  it('computes virtual USDC + position value for paper sleeve equity', () => {
+    const own = mkOwnership();
+    simulatePaperBuy(own, mkBuy('X', 300), 1.0, 1); // 300 tokens @ $1, cost $300
+    markToMarketSleeve(own, { X: 1.5 }); // valueUSD = 300 * 1.5 = 450
+    // paperBudget $1000, realized 0, cost $300 → virtualUSDC = $700
+    // Equity = $700 + $450 = $1150
+    expect(computeSleeveEquityUSD(own, 1000)).toBe(1150);
+  });
+
+  it('updates peak only upward; seeds peak on first touch', () => {
+    const own = mkOwnership();
+    expect(own.peakCapitalUSD).toBeUndefined();
+    updateSleevePeak(own, 1000);
+    expect(own.peakCapitalUSD).toBe(1000);
+    updateSleevePeak(own, 800); // lower — should not move peak
+    expect(own.peakCapitalUSD).toBe(1000);
+    updateSleevePeak(own, 1200); // higher — moves peak
+    expect(own.peakCapitalUSD).toBe(1200);
+  });
+
+  it('is a no-op on undefined ownership', () => {
+    expect(() => updateSleevePeak(undefined, 500)).not.toThrow();
+    expect(computeSleeveEquityUSD(undefined, 1000)).toBe(0);
   });
 });
