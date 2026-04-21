@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-20T17:00 UTC
+# MEDIC REPORT — 2026-04-21T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #14)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
 
 ## Environment
-- Run timestamp: 2026-04-20T17:00 UTC
+- Run timestamp: 2026-04-21T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-Fdemz
 
 ## Problem
 
@@ -51,12 +51,14 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #11 | 2026-04-19T23:07 UTC | PATTERN D update |
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
-| #14 | 2026-04-20T17:00 UTC | This report (same issue) |
+| #14 | 2026-04-20T17:00 UTC | PATTERN D update |
+| #15 | 2026-04-21T00:00 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
 Despite API being unreachable from medic, the staging branch is active with autonomous updates:
 
+- `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
 - `2026-04-20 05:12 UTC` — Scout added AXL (Axelar) to TOKEN_REGISTRY
 - `2026-04-19 21:11 UTC` — Scout added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
 - `2026-04-19 20:10 UTC` — Scout added LBTC to TOKEN_REGISTRY
@@ -80,10 +82,10 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #14)
+## Jobs Status This Run (Run #15)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T05:12 UTC (~12h ago, well within 48h threshold). Scout research completed but TIBBIR already in registry from prior run.
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~3h ago, well within 48h threshold). Added GHST (Aavegotchi).
 - **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all 403); trigger conditions unverifiable.
 
 ## Recommended Action for Henry
