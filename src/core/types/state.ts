@@ -5,6 +5,7 @@
 
 import type { StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, TradeRecord, TokenCostBasis, SectorAllocation } from './index.js';
 import type { ConfigDirective } from '../services/strategy-config.js';
+import type { SleeveOwnership, SleeveConfig } from '../sleeves/state-types.js';
 
 // ============================================================================
 // AGENT STATE — The core global state persisted across cycles
@@ -103,6 +104,22 @@ export interface AgentState {
   // User & config directives
   userDirectives?: UserDirective[];
   configDirectives?: ConfigDirective[];
+  // ==========================================================================
+  // v21.15 Phase 1.2a: Capital Sleeves per-sleeve state
+  //
+  // Optional during 1.2a rollout — migration.ts populates these on first run
+  // once the orchestrator wires the migration call (Phase 1.2b). Downstream
+  // consumers should treat absence as "pre-migration" and fall back to
+  // global state.
+  //
+  // See NVR-SPEC-010 and src/core/sleeves/state-types.ts for the shape.
+  // ==========================================================================
+  /** sleeveId -> balance sheet (positions, realized P&L, decisions, regime returns) */
+  sleeveOwnership?: Record<string, SleeveOwnership>;
+  /** sleeveId -> target weight [0..1]; sum ≤ 1.0, remainder held as USDC reserve */
+  sleeveAllocation?: Record<string, number>;
+  /** Hot-reloadable config (allocations, enabled flags, mode overrides) */
+  sleeveConfig?: SleeveConfig;
 }
 
 // ============================================================================

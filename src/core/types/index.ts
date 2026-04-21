@@ -64,6 +64,26 @@ export interface TradeRecord {
   // v12.2: Store realized P&L at trade time
   realizedPnL?: number;
   signalContext?: SignalContext;
+  /**
+   * v21.15 Phase 1.2a: which sleeve owns this trade. 'core' for all
+   * existing trades; Alpha sleeves tag their own trades when they
+   * graduate to live. Optional for backward compatibility — absent is
+   * treated as 'core' by downstream consumers.
+   */
+  ownerSleeve?: string;
+  /**
+   * v21.15 Phase 1.2a: signal source that was decisive for this decision
+   * ("confluence-score", "hunter-conviction", "rotation-detector",
+   * "stale-exit", "drawdown-override", etc). Enables post-mortem of which
+   * signals actually earn their keep across sleeves.
+   */
+  attribution?: string;
+  /**
+   * v21.15 Phase 1.2a: regime tag at trade time. Redundant with
+   * signalContext.marketRegime but hoisted up for cheap filtering in the
+   * sleeves comparison API.
+   */
+  regime?: string;
 }
 
 export interface SignalContext {

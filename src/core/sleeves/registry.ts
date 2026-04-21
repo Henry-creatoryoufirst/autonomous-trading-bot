@@ -13,11 +13,14 @@
  */
 
 import type { CapitalAllocator, Sleeve } from './types.js';
+import type { SleeveOwnership } from './state-types.js';
 import {
   CoreSleeve,
   type CoreSleeveStateView,
   type CoreDecideFn,
 } from './core-sleeve.js';
+import { AlphaHunterSleeve } from './alpha-hunter.js';
+import { AlphaRotationSleeve } from './alpha-rotation.js';
 import { defaultStaticAllocator } from './allocator.js';
 
 export interface DefaultRegistryOptions {
@@ -33,6 +36,19 @@ export interface DefaultRegistryOptions {
    * Omit to leave the Core sleeve as a no-op (Phase 1 behavior).
    */
   coreDecideFn?: CoreDecideFn;
+  /**
+   * v21.15 Phase 1.2a: providers for Alpha sleeve stats. Each returns the
+   * sleeve's ownership record from AgentState. Omit to leave Alpha sleeves
+   * with zeroed stats (safe default for early boot).
+   */
+  getAlphaHunterOwnership?: () => SleeveOwnership | undefined;
+  getAlphaRotationOwnership?: () => SleeveOwnership | undefined;
+  /**
+   * Shared portfolio-value provider — denominator for each sleeve's rolling
+   * Sharpe computation. Called on each getStats(). When omitted or 0, Sharpe
+   * reports null (matches the "insufficient data" UX).
+   */
+  getPortfolioValue?: () => number;
 }
 
 export interface SleeveRegistry {
@@ -72,23 +88,37 @@ class InMemorySleeveRegistry implements SleeveRegistry {
 }
 
 /**
- * Returns the default v1 registry: a single CoreSleeve at 100%. This is
- * what the bot ships with until alpha sleeves are introduced.
+ * Returns the default registry used by the production bot.
+ *
+ * v21.15 Phase 1.2a roster:
+ *   - Core at 100% live (the existing strategy — unchanged behavior)
+ *   - Alpha Hunter at 0% paper (stub, accumulates shadow decisions)
+ *   - Alpha Rotation at 0% paper (stub, accumulates shadow decisions)
+ *
+ * Alpha sleeves are registered but allocated 0% — they run decide() each
+ * cycle so a shadow track record accumulates, but never touch capital
+ * until graduated per NVR-SPEC-016.
  *
  * The registry is intentionally NOT a singleton module-level export — the
  * orchestrator constructs it during startup so it can be replaced in tests
  * and swapped per-bot (e.g., family bots may disable alpha sleeves).
- *
- * Pass `getCoreState` so the Core sleeve can compute real stats from the
- * bot's live cost basis + trade history. Omit in tests or when you want
- * zeroed stats.
  */
 export function buildDefaultRegistry(opts: DefaultRegistryOptions = {}): SleeveRegistry {
   return new InMemorySleeveRegistry(
-    [new CoreSleeve({
-      getState: opts.getCoreState,
-      decideFn: opts.coreDecideFn,
-    })],
+    [
+      new CoreSleeve({
+        getState: opts.getCoreState,
+        decideFn: opts.coreDecideFn,
+      }),
+      new AlphaHunterSleeve({
+        getOwnership: opts.getAlphaHunterOwnership,
+        getPortfolioValue: opts.getPortfolioValue,
+      }),
+      new AlphaRotationSleeve({
+        getOwnership: opts.getAlphaRotationOwnership,
+        getPortfolioValue: opts.getPortfolioValue,
+      }),
+    ],
     defaultStaticAllocator(),
   );
 }
