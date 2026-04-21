@@ -883,8 +883,16 @@ export const STALE_POSITION_MIN_USD = 100;
 /** Max unrealized gain %; above this, the position is a quiet winner — let it run */
 export const STALE_POSITION_MAX_GAIN_PCT = 3;
 
-/** Max absolute 24h move %; above this, the token still has life — don't exit */
+/** v21.14 SPEC-015: UP-momentum threshold for exemption. Only *positive* moves above
+ * this exempt a position from stale-exit. A bleeding micro-cap always has noise;
+ * down-momentum must not hide it. See [[Pulling profits is the edge, not picking winners]]. */
 export const STALE_POSITION_MAX_MOMENTUM_PCT = 2;
+
+/** v21.14 SPEC-015: Drawdown override — positions at this unrealized P&L or worse
+ * exit regardless of momentum. -8% is 1% below the default stop-loss (7%), so the
+ * two rules don't fire on the same cycle with conflicting reasons. Tune if data
+ * shows we're cutting recoveries too eagerly (2-week re-baseline window). */
+export const STALE_POSITION_DRAWDOWN_OVERRIDE_PCT = -8;
 
 /** Max stale-exits per check pass — avoid fire-sale */
 export const STALE_POSITION_MAX_EXITS_PER_CYCLE = 2;

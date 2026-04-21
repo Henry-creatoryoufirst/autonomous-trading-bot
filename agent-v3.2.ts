@@ -479,6 +479,7 @@ import {
   STALE_POSITION_MIN_USD,
   STALE_POSITION_MAX_GAIN_PCT,
   STALE_POSITION_MAX_MOMENTUM_PCT,
+  STALE_POSITION_DRAWDOWN_OVERRIDE_PCT,
   STALE_POSITION_MAX_EXITS_PER_CYCLE,
   STALE_POSITION_CHECK_INTERVAL_CYCLES,
   // v21.11: Dry powder reserve — proactive capital availability
@@ -1344,19 +1345,38 @@ function checkStalePositions(
     const ageHours = (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60);
     if (ageHours < STALE_POSITION_MIN_AGE_HOURS) continue;
 
-    // Gain gate: skip quiet winners — let them run
+    // P&L
     const currentPrice = b.price || (b.balance > 0 ? usdValue / b.balance : 0);
     const unrealizedPnlPct = cb.averageCostBasis > 0
       ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
       : 0;
+    const change24h = priceChange24h.get(symbol) ?? 0;
+
+    // Skip circuit-broken tokens — handled by the emergency exit path
+    if (isTokenBlocked(symbol)) continue;
+
+    // v21.14 SPEC-015: Drawdown override — deep losers exit regardless of momentum.
+    // Noise doesn't save bleeders. Kill switch: STALE_EXIT_DRAWDOWN_OVERRIDE=false reverts to old symmetric rule.
+    const drawdownOverrideEnabled = process.env.STALE_EXIT_DRAWDOWN_OVERRIDE !== 'false';
+    if (drawdownOverrideEnabled && unrealizedPnlPct <= STALE_POSITION_DRAWDOWN_OVERRIDE_PCT) {
+      decisions.push({
+        action: 'SELL' as const,
+        fromToken: b.symbol,
+        toToken: 'USDC',
+        amountUSD: usdValue,
+        percent: 90,
+        reasoning: `DRAWDOWN_OVERRIDE: Position $${usdValue.toFixed(2)} held ${ageHours.toFixed(0)}h at ${unrealizedPnlPct.toFixed(1)}% unrealized P&L — deep drawdown exits regardless of 24h noise. Pulling profits is the edge.`,
+        sector: TOKEN_REGISTRY[b.symbol]?.sector,
+      });
+      continue;
+    }
+
+    // Gain gate: skip quiet winners — let them run
     if (unrealizedPnlPct > STALE_POSITION_MAX_GAIN_PCT) continue;
 
-    // Momentum gate: if the token is moving in either direction, thesis may still play — don't exit
-    const change24h = priceChange24h.get(symbol) ?? 0;
-    if (Math.abs(change24h) > STALE_POSITION_MAX_MOMENTUM_PCT) continue;
-
-    // Skip circuit-broken tokens (handled elsewhere)
-    if (isTokenBlocked(symbol)) continue;
+    // v21.14 SPEC-015: Asymmetric momentum gate — only UP-momentum exempts. Down-momentum
+    // on a bleeder is not "signs of life" — it's exactly what this rule should catch.
+    if (change24h > STALE_POSITION_MAX_MOMENTUM_PCT) continue;
 
     decisions.push({
       action: 'SELL' as const,
@@ -7178,23 +7198,38 @@ async function runTradingCycle() {
     if (state.totalCycles % STALE_POSITION_CHECK_INTERVAL_CYCLES === 0) {
       const staleExits = checkStalePositions(balances, state, marketData.tokens);
       if (staleExits.length > 0) {
-        console.log(`\n⏳ STALE_EXIT: Found ${staleExits.length} meaningful position(s) that played out`);
+        const drawdownCount = staleExits.filter(s => s.reasoning?.startsWith('DRAWDOWN_OVERRIDE')).length;
+        const flatCount = staleExits.length - drawdownCount;
+        console.log(`\n⏳ STALE_EXIT: Found ${staleExits.length} meaningful position(s) that played out (${drawdownCount} drawdown-override, ${flatCount} flat)`);
         const exitedSymbols: string[] = [];
+        const drawdownSymbols: string[] = [];
         for (const se of staleExits) {
-          console.log(`   ⏳ Stale-exit: ${se.fromToken} $${se.amountUSD?.toFixed(2)} — ${se.reasoning?.slice(0, 100)}`);
+          const isDrawdown = se.reasoning?.startsWith('DRAWDOWN_OVERRIDE');
+          const icon = isDrawdown ? '🩸' : '⏳';
+          console.log(`   ${icon} ${isDrawdown ? 'Drawdown-override' : 'Stale-exit'}: ${se.fromToken} $${se.amountUSD?.toFixed(2)} — ${se.reasoning?.slice(0, 120)}`);
           const result = await executeTrade(se, marketData);
           if (result.success) {
             clearTradeFailures(se.fromToken!);
             exitedSymbols.push(se.fromToken!);
-            console.log(`   ✅ Stale-exit complete: ${se.fromToken}`);
+            if (isDrawdown) drawdownSymbols.push(se.fromToken!);
+            console.log(`   ✅ ${isDrawdown ? 'Drawdown-override' : 'Stale-exit'} complete: ${se.fromToken}`);
           } else {
-            console.log(`   ❌ Stale-exit failed: ${se.fromToken}`);
+            console.log(`   ❌ ${isDrawdown ? 'Drawdown-override' : 'Stale-exit'} failed: ${se.fromToken}`);
           }
         }
         if (exitedSymbols.length > 0) {
           const refreshed = await getBalances();
           if (refreshed && refreshed.length > 0) balances = refreshed;
           markStateDirty(true);
+
+          // v21.14 SPEC-015: Alert when the drawdown-override rule fires so Henry can see it at work.
+          if (drawdownSymbols.length > 0) {
+            await telegramService.sendAlert({
+              severity: "INFO",
+              title: `🩸 Drawdown-Override Exit${drawdownSymbols.length > 1 ? 's' : ''}`,
+              message: `SPEC-015 fired on ${drawdownSymbols.length} position(s) at ≤ -${Math.abs(STALE_POSITION_DRAWDOWN_OVERRIDE_PCT)}% unrealized P&L:\n${drawdownSymbols.map(s => `• ${s}`).join('\n')}\n\nCapital freed. Bleeders no longer hide behind 24h noise.`,
+            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
+          }
         }
       }
     }
