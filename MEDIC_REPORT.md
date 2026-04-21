@@ -1,28 +1,28 @@
-# MEDIC REPORT — 2026-04-20T17:00 UTC
+# MEDIC REPORT — 2026-04-21T01:07 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #14)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
 
 ## Environment
-- Run timestamp: 2026-04-20T17:00 UTC
+- Run timestamp: 2026-04-21T01:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-lSBFO
 
 ## Problem
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `403 Forbidden`:
+All endpoints attempted returned `403 Forbidden` / `Host not in allowlist`:
 
 ```
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
-→ 403 Forbidden
+→ Host not in allowlist
 
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
-→ 403 Forbidden
+→ Host not in allowlist
 
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/health
-→ 403 Forbidden
+→ Host not in allowlist
 ```
 
 GeckoTerminal API also blocked (same egress restriction):
@@ -51,12 +51,15 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #11 | 2026-04-19T23:07 UTC | PATTERN D update |
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
-| #14 | 2026-04-20T17:00 UTC | This report (same issue) |
+| #14 | 2026-04-20T17:00 UTC | PATTERN D update |
+| #15 | 2026-04-21T01:07 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the staging branch is active with autonomous updates:
+Despite API being unreachable from medic, the branch is active with autonomous updates:
 
+- `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
+- `2026-04-20 22:22 UTC` — v21.14 payouts: accrue shares below min-transfer threshold
 - `2026-04-20 05:12 UTC` — Scout added AXL (Axelar) to TOKEN_REGISTRY
 - `2026-04-19 21:11 UTC` — Scout added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
 - `2026-04-19 20:10 UTC` — Scout added LBTC to TOKEN_REGISTRY
@@ -68,9 +71,11 @@ Despite API being unreachable from medic, the staging branch is active with auto
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 - `2026-04-15 12:25 UTC` — Auditor lowered VOL_TARGET_DAILY_PCT 2→1.5 (bear-market)
 
-**Staging branch is substantially ahead of main** — many queued tokens (TIBBIR, AXR, BNKR, LBTC, ELSA, EDEL, KTA, ETHY) and tightened risk params not yet promoted to production.
+**Branch (claude/cool-sagan-lSBFO) is substantially ahead of main** — many queued tokens
+(GHST, AXL, ETHY, LBTC, EDEL, BNKR, BENJI) and tightened risk params not yet promoted
+to production. Also includes v21.13+v21.14 sleeves/payouts features.
 
-**Risk params in staging (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
+**Risk params in branch (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
 
 ## What Is NOT Known
 
@@ -80,15 +85,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #14)
+## Jobs Status This Run (Run #15)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T05:12 UTC (~12h ago, well within 48h threshold). Scout research completed but TIBBIR already in registry from prior run.
-- **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all 403); trigger conditions unverifiable.
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~4h ago, well within 48h threshold).
+- **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all blocked); trigger conditions unverifiable.
 
 ## Recommended Action for Henry
 
-**This is the 13th consecutive run with the same network restriction. Action urgently required:**
+**This is the 15th consecutive run with the same network restriction. Action urgently required:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -96,7 +101,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a read-only status webhook on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **IMPORTANT:** Branch has many queued improvements (7+ new tokens, v21.13/v21.14 features,
+   tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -104,4 +110,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-lSBFO only per MEDIC SAFETY protocol
