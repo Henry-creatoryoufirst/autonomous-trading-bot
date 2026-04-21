@@ -3129,7 +3129,10 @@ async function makeTradeDecisionViaSleeve(
 
   const weights = sleeveRegistry.allocator().computeWeights(sleeves as any);
   const config = state.sleeveConfig;
-  const regime = state.trading?.marketRegime ?? 'UNKNOWN';
+  // v21.19 dashboard-honesty: prefer live marketData.marketRegime over state
+  // mirror. Orchestrator runs BEFORE state.trading.marketRegime gets written
+  // elsewhere in the cycle, so reading state here saw stale/unknown regimes.
+  const regime = marketData.marketRegime ?? state.trading?.marketRegime ?? 'UNKNOWN';
 
   const usdcBalance = balances.find(b => b.symbol === 'USDC');
   const availableUSDC = Math.max(0, (usdcBalance?.usdValue ?? 0) - (state.pendingFeeUSDC || 0));
@@ -3179,12 +3182,18 @@ async function makeTradeDecisionViaSleeve(
     // v21.17 dashboard-honesty: refresh peak-capital high-water mark before
     // decide() fires so getStats()/compare surfaces always see a truthful
     // drawdown baseline. Live sleeves peak-track against portfolio equity.
+    // v21.19: For Core, inherit the bot's long-running state.trading.peakValue
+    // so sleeve drawdown matches the bot's existing drawdown metric instead
+    // of seeding to current-equity (which would hide real drawdowns).
     if (ownership) {
       const paperBudgetForPeak = config?.paperBudgetsUSD?.[sleeve.id] ?? (sleeve.id === 'core' ? 0 : 1000);
       const currentEquity = effectiveMode === 'live' && sleeve.id === 'core'
         ? totalPortfolioValue
         : computeSleeveEquityUSD(ownership, paperBudgetForPeak);
       updateSleevePeak(ownership, currentEquity);
+      if (sleeve.id === 'core' && (state.trading?.peakValue ?? 0) > (ownership.peakCapitalUSD ?? 0)) {
+        ownership.peakCapitalUSD = state.trading!.peakValue;
+      }
     }
 
     const positions = Object.values(ownership?.positions ?? {});
