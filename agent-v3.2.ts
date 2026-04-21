@@ -533,10 +533,18 @@ import {
   executeChatTool as _executeChatTool, handleChatRequest as _handleChatRequest,
   getDashboardHTML as _getDashboardHTML,
 } from "./src/dashboard/api.js";
-// Capital Sleeves (SPEC-010 Phase 1) — registry is read-only here; decide() wrapping lands in Phase 2
+// Capital Sleeves (SPEC-010) — v21.15 Phase 1.2b: orchestrator loops every
+// registered sleeve, logs decisions (live/paper/shadow), projects costBasis
+// into Core's balance sheet, and writes trade effects back to per-sleeve state.
 import {
   buildDefaultRegistry as _buildDefaultRegistry,
   type SleeveRegistry,
+  migrateStateToSleeves,
+  resolveEffectiveMode,
+  syncCoreSleevePositions,
+  recordTradeOnSleeve,
+  logSleeveDecision,
+  MAX_DECISIONS_PER_SLEEVE as _MAX_DECISIONS_PER_SLEEVE,
 } from "./src/core/sleeves/index.js";
 // Phase 13: Extracted HTTP server route handlers
 import {
@@ -3082,9 +3090,15 @@ function buildDecisionDeps(heavyCycleReason?: string): DecisionDeps {
   };
 }
 
-// Wrapper with the same signature as makeTradeDecision that routes through
-// the Core sleeve's decide() method. Packs cycle-time state into SleeveContext
-// (mostly via `extras` for now — future phases will narrow that boundary).
+// v21.15 Phase 1.2b: route all registered sleeves — not just Core.
+// For each sleeve:
+//   1. Resolve effective mode from (sleeve.mode, allocation, enabled, override)
+//   2. Build a SleeveContext with ownership-filtered positions + sleeve-scoped budget
+//   3. Call decide()
+//   4. Log every decision (HOLD counts) to sleeveOwnership[id].decisions with mode tag
+//   5. Only 'live' decisions flow out for execution. Paper + shadow are observability.
+// Core stays the only live sleeve in this phase — Alpha Hunter + Alpha Rotation
+// are paper stubs that return [] (HOLD shadow gets logged for cadence data).
 async function makeTradeDecisionViaSleeve(
   balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[],
   marketData: MarketData,
@@ -3093,39 +3107,92 @@ async function makeTradeDecisionViaSleeve(
   cashDeployment?: CashDeploymentResult,
   heavyCycleReason?: string,
 ): Promise<TradeDecision[]> {
-  const coreSleeve = sleeveRegistry.get('core');
-  if (!coreSleeve) {
-    // Defensive: registry should always have 'core' in Phase 2.
-    // Fall back to the direct path to avoid silently stalling the cycle.
-    console.warn('[SLEEVES] core sleeve not found in registry — falling back to direct path');
+  const sleeves = sleeveRegistry.sleeves();
+  if (sleeves.length === 0) {
+    console.warn('[SLEEVES] registry is empty — falling back to direct path');
     return await makeTradeDecision(balances, marketData, totalPortfolioValue, sectorAllocations, cashDeployment, heavyCycleReason);
   }
+
+  // Project global costBasis → Core's sleeve positions so the sleeve API
+  // reflects reality before any decide() fires.
+  syncCoreSleevePositions(state);
+
+  const weights = sleeveRegistry.allocator().computeWeights(sleeves as any);
+  const config = state.sleeveConfig;
+  const regime = state.trading?.marketRegime ?? 'UNKNOWN';
+
   const usdcBalance = balances.find(b => b.symbol === 'USDC');
   const availableUSDC = Math.max(0, (usdcBalance?.usdValue ?? 0) - (state.pendingFeeUSDC || 0));
   const prices: Record<string, number> = {};
   for (const t of marketData.tokens) {
     if (t.symbol && typeof t.price === 'number') prices[t.symbol] = t.price;
   }
-  return await coreSleeve.decide({
-    capitalBudgetUSD: totalPortfolioValue,
-    positions: [],
-    availableUSDC,
-    market: {
-      cycleNumber: state.totalCycles,
-      builtAt: new Date().toISOString(),
-      prices,
-      regime: 'UNKNOWN',
-      fearGreed: lastFearGreedValue ?? 50,
-    },
-    extras: {
-      balances,
-      marketData,
-      totalPortfolioValue,
-      sectorAllocations,
-      cashDeployment,
-      heavyCycleReason,
-    },
-  });
+
+  const liveDecisions: TradeDecision[] = [];
+  const sleeveActivity: Array<{ id: string; mode: string; count: number }> = [];
+
+  for (const sleeve of sleeves) {
+    const allocation = weights[sleeve.id] ?? 0;
+    const enabled = config?.enabled?.[sleeve.id] !== false;
+    const modeOverride = config?.modeOverrides?.[sleeve.id];
+    const effectiveMode = resolveEffectiveMode(sleeve.mode, allocation, enabled, modeOverride);
+
+    const ownership = state.sleeveOwnership?.[sleeve.id];
+    const positions = Object.values(ownership?.positions ?? {});
+    const capitalBudgetUSD = totalPortfolioValue * allocation;
+
+    let sleeveDecisions: TradeDecision[] = [];
+    try {
+      sleeveDecisions = await sleeve.decide({
+        capitalBudgetUSD,
+        positions,
+        // Only live sleeves get the actual available USDC; paper/shadow see 0
+        // so their decide() cannot accidentally size against real capital.
+        availableUSDC: effectiveMode === 'live' ? availableUSDC : 0,
+        market: {
+          cycleNumber: state.totalCycles,
+          builtAt: new Date().toISOString(),
+          prices,
+          regime,
+          fearGreed: lastFearGreedValue ?? 50,
+        },
+        // Core still receives the full bot payload via extras since its
+        // decideFn wraps makeTradeDecision(). Alpha sleeves don't need this.
+        extras: sleeve.id === 'core' ? {
+          balances,
+          marketData,
+          totalPortfolioValue,
+          sectorAllocations,
+          cashDeployment,
+          heavyCycleReason,
+        } : undefined,
+      });
+    } catch (e: any) {
+      console.warn(`[SLEEVES] ${sleeve.id}.decide() threw: ${e?.message?.slice(0, 120)}`);
+      sleeveDecisions = [];
+    }
+
+    // Log decisions (HOLD when none, to keep per-cycle cadence in the record)
+    if (sleeveDecisions.length === 0) {
+      logSleeveDecision(state, sleeve.id, null, effectiveMode, regime);
+    } else {
+      for (const d of sleeveDecisions) {
+        logSleeveDecision(state, sleeve.id, d, effectiveMode, regime);
+        if (effectiveMode === 'live') {
+          d.ownerSleeve = sleeve.id;
+          liveDecisions.push(d);
+        }
+      }
+    }
+    sleeveActivity.push({ id: sleeve.id, mode: effectiveMode, count: sleeveDecisions.length });
+  }
+
+  if (sleeveActivity.length > 1) {
+    const activitySummary = sleeveActivity.map(a => `${a.id}:${a.mode}(${a.count})`).join(' ');
+    console.log(`[SLEEVES] cycle ${state.totalCycles} — ${activitySummary}`);
+  }
+
+  return liveDecisions;
 }
 
 // ============================================================================
@@ -5097,7 +5164,7 @@ async function executeTrade(
       if (twapResult.slicesExecuted > 0) {
         const aggregateAmountUSD = decision.amountUSD * (twapResult.slicesExecuted / twapResult.slicesTotal);
         const twapPortfolioValue = state.trading.totalPortfolioValue;
-        state.tradeHistory.push({
+        const twapRecord: TradeRecord = {
           cycle: 0,
           timestamp: new Date().toISOString(),
           action: decision.action,
@@ -5129,9 +5196,14 @@ async function executeTrade(
             isExploration: decision.isExploration || false,
             isForced: decision.isForced || false,
           },
-        });
+          // v21.15 Phase 1.2b: sleeve tagging
+          ownerSleeve: decision.ownerSleeve ?? 'core',
+          regime: marketData.marketRegime,
+        };
+        state.tradeHistory.push(twapRecord);
         if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
         markStateDirty(true);
+        recordTradeOnSleeve(state, twapRecord);
       }
       // v11.4.7: Record successful trade in dedup log
       if (twapResult.success) {
@@ -5614,9 +5686,13 @@ async function executeDirectDexSwap(
     };
     // v20.0: Skip trade history for TWAP slices — parent records the aggregate
     if (!decision.isTWAPSlice) {
+      // v21.15 Phase 1.2b: tag sleeve ownership + regime before push, then write-back to per-sleeve state
+      record.ownerSleeve = decision.ownerSleeve ?? 'core';
+      record.regime = marketData.marketRegime;
       state.tradeHistory.push(record);
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
       markStateDirty(true);
+      recordTradeOnSleeve(state, record);
     }
     recordExecuted(decision.action === 'BUY' ? (decision.toToken || '') : (decision.fromToken || ''), decision.action, dedupTier, decision.amountUSD);
 
@@ -5927,10 +6003,14 @@ async function executeSingleSwap(
     };
     // v20.0: Skip trade history for TWAP slices — parent records the aggregate
     if (!decision.isTWAPSlice) {
+      // v21.15 Phase 1.2b: tag sleeve ownership + regime before push, then write-back to per-sleeve state
+      record.ownerSleeve = decision.ownerSleeve ?? 'core';
+      record.regime = marketData.marketRegime;
       state.tradeHistory.push(record);
       // v10.2: Cap trade history to prevent unbounded memory growth
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
       markStateDirty(true);
+      recordTradeOnSleeve(state, record);
     }
 
     // v21.3: Reset trade drought tracker on successful trade
@@ -6010,11 +6090,15 @@ async function executeSingleSwap(
     };
     // v20.0: Skip trade history for TWAP slices — parent records the aggregate
     if (!decision.isTWAPSlice) {
+      // v21.15 Phase 1.2b: tag sleeve ownership + regime before push, then write-back to per-sleeve state
+      record.ownerSleeve = decision.ownerSleeve ?? 'core';
+      record.regime = marketData.marketRegime;
       state.tradeHistory.push(record);
       if (state.tradeHistory.length > 5000) state.tradeHistory = state.tradeHistory.slice(-5000);
       // v11.4.20: Don't increment totalTrades for failed trades — was inflating the counter
       // totalTrades should only count successful executions (line 6967)
       markStateDirty(true);
+      recordTradeOnSleeve(state, record);
     }
 
     return { success: false, error: errorMsg };
@@ -9685,12 +9769,10 @@ const sleeveRegistry: SleeveRegistry = _buildDefaultRegistry({
     // Current snapshot of portfolio value (used as the Sharpe denominator).
     totalPortfolioValue: state.trading?.totalPortfolioValue ?? 0,
   }),
-  // Phase 2: coreDecideFn wraps makeTradeDecision() as a pass-through so the
-  // sleeve is *capable* of producing real decisions. Nothing calls decide()
-  // yet — the SLEEVES_DRIVE_DECISIONS feature flag (shipped next) controls
-  // whether the orchestrator routes through this path or keeps the direct
-  // makeTradeDecision() call. Per-cycle bot state (balances, marketData, etc.)
-  // is passed via `ctx.extras` since SleeveContext's clean fields don't yet
+  // Phase 2 wrap: coreDecideFn wraps makeTradeDecision() as a pass-through so
+  // the sleeve is capable of producing real decisions. The orchestrator routes
+  // through this path when SLEEVES_DRIVE_DECISIONS=true. Per-cycle bot state
+  // is passed via ctx.extras since SleeveContext's clean fields don't yet
   // cover everything makeTradeDecision() needs.
   coreDecideFn: async (ctx) => {
     const extras = (ctx.extras ?? {}) as {
@@ -9715,23 +9797,139 @@ const sleeveRegistry: SleeveRegistry = _buildDefaultRegistry({
       extras.heavyCycleReason,
     );
   },
+  // v21.15 Phase 1.2b: Alpha sleeves read their own ownership records for
+  // stats. They stay paper and return [] from decide() until Phase 2.x ships
+  // real strategy code.
+  getAlphaHunterOwnership: () => state.sleeveOwnership?.['alpha-hunter'],
+  getAlphaRotationOwnership: () => state.sleeveOwnership?.['alpha-rotation'],
+  getPortfolioValue: () => state.trading?.totalPortfolioValue ?? 0,
 });
+
+// v21.15 Phase 1.2b: ensure state has per-sleeve ownership for every
+// registered sleeve. Idempotent; safe on already-migrated state. Populates
+// Core's ownership from the existing costBasis on first run.
+migrateStateToSleeves(state, sleeveRegistry.sleeves() as any);
 
 function apiSleeves() {
   const sleeves = sleeveRegistry.sleeves();
-  const weights = sleeveRegistry.allocator().computeWeights(sleeves);
+  const weights = sleeveRegistry.allocator().computeWeights(sleeves as any);
+  const totalPortfolioValue = state.trading?.totalPortfolioValue ?? 0;
   return {
-    phase: 1,
-    mode: 'read-only',
-    sleeves: sleeves.map((s) => ({
-      id: s.id,
-      displayName: s.displayName,
-      mode: s.mode,
-      minCapitalPct: s.minCapitalPct,
-      maxCapitalPct: s.maxCapitalPct,
-      targetCapitalPct: weights[s.id] ?? 0,
-      stats: s.getStats(),
-    })),
+    // v21.15 Phase 1.2b: per-sleeve state is now live — sleeves each carry
+    // their own ownership, decisions log, and (where relevant) positions.
+    phase: 2,
+    mode: 'live',
+    sleeves: sleeves.map((s) => {
+      const ownership = state.sleeveOwnership?.[s.id];
+      const allocation = weights[s.id] ?? 0;
+      return {
+        id: s.id,
+        displayName: s.displayName,
+        mode: s.mode,
+        minCapitalPct: s.minCapitalPct,
+        maxCapitalPct: s.maxCapitalPct,
+        targetCapitalPct: allocation,
+        capitalUSD: totalPortfolioValue * allocation,
+        stats: s.getStats(),
+        positionsCount: ownership ? Object.keys(ownership.positions).length : 0,
+        decisionsCount: ownership?.decisions?.length ?? 0,
+        createdAt: ownership?.createdAt ?? null,
+      };
+    }),
+    version: BOT_VERSION,
+  };
+}
+
+// v21.15 Phase 1.2b: side-by-side comparison surface matching Stream B's
+// dashboard contract. Returns every sleeve with allocation, P&L, Sharpe,
+// regime-conditional returns, and the last 5 decisions — so Henry can see
+// at a glance which hypotheses are earning their keep.
+function apiSleevesCompare() {
+  const sleeves = sleeveRegistry.sleeves();
+  const weights = sleeveRegistry.allocator().computeWeights(sleeves as any);
+  const totalPortfolioValue = state.trading?.totalPortfolioValue ?? 0;
+  const config = state.sleeveConfig;
+
+  return {
+    sleeves: sleeves.map((s) => {
+      const allocation = weights[s.id] ?? 0;
+      const stats = s.getStats();
+      const ownership = state.sleeveOwnership?.[s.id];
+      const decisions = ownership?.decisions ?? [];
+
+      // Effective mode accounts for kill switch + mode override (runtime).
+      const enabled = config?.enabled?.[s.id] !== false;
+      const modeOverride = config?.modeOverrides?.[s.id];
+      const effectiveMode = !enabled
+        ? 'shadow'
+        : (modeOverride ?? s.mode) === 'paper'
+          ? 'paper'
+          : allocation > 0
+            ? 'live'
+            : 'shadow';
+
+      // Mode distribution across the decision log (lets the dashboard show
+      // "92 shadow / 8 paper" style counts).
+      let shadowDecisionsCount = 0;
+      let paperDecisionsCount = 0;
+      let liveDecisionsCount = 0;
+      for (const d of decisions) {
+        if (d.mode === 'shadow') shadowDecisionsCount++;
+        else if (d.mode === 'paper') paperDecisionsCount++;
+        else if (d.mode === 'live') liveDecisionsCount++;
+      }
+
+      // Flatten regime returns to {regime: totalReturnUSD} for the dashboard.
+      const regimeReturns: Record<string, number> = {};
+      for (const [regime, bucket] of Object.entries(ownership?.regimeReturns ?? {})) {
+        regimeReturns[regime] = bucket.totalReturnUSD;
+      }
+
+      // Last 5 decisions, newest first — with the fields the UI needs.
+      const topDecisions = decisions.slice(-5).reverse().map((d) => ({
+        cycle: d.cycle,
+        timestamp: d.timestamp,
+        action: d.action,
+        symbol: d.symbol,
+        amountUSD: d.amountUSD ?? null,
+        mode: d.mode,
+        executed: d.executed,
+        attribution: d.attribution ?? null,
+        regime: d.regime ?? null,
+        reasoning: d.reasoning ?? null,
+        realizedPnL: d.realizedPnL ?? null,
+      }));
+
+      return {
+        id: s.id,
+        displayName: s.displayName,
+        // Declared mode (paper/live) — kept distinct from effectiveMode so the
+        // dashboard can show both "this sleeve thinks it's LIVE" and "right
+        // now it's being run as SHADOW because allocation=0".
+        mode: s.mode,
+        effectiveMode,
+        enabled,
+        allocationPct: allocation,
+        capitalUSD: totalPortfolioValue * allocation,
+        minCapitalPct: s.minCapitalPct,
+        maxCapitalPct: s.maxCapitalPct,
+        realizedPnLUSD: stats.realizedPnLUSD,
+        unrealizedPnLUSD: stats.unrealizedPnLUSD,
+        rollingSharpe7d: stats.rollingSharpe7d,
+        winRate: stats.winRate,
+        trades: stats.trades,
+        positionsCount: ownership ? Object.keys(ownership.positions).length : 0,
+        decisionsCount: decisions.length,
+        shadowDecisionsCount,
+        paperDecisionsCount,
+        liveDecisionsCount,
+        regimeReturns,
+        topDecisions,
+        lastDecisionAt: stats.lastDecisionAt,
+        createdAt: ownership?.createdAt ?? null,
+      };
+    }),
+    updatedAt: new Date().toISOString(),
     version: BOT_VERSION,
   };
 }
@@ -9824,6 +10022,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/sleeves':
         sendJSON(res, 200, apiSleeves());
+        break;
+      case '/api/sleeves/compare':
+        sendJSON(res, 200, apiSleevesCompare());
         break;
       case '/api/outcomes-summary':
         sendJSON(res, 200, apiOutcomesSummary());

@@ -167,6 +167,15 @@ export interface TradeDecision {
   isExploration?: boolean;
   isForced?: boolean;
   isTWAPSlice?: boolean;
+  /**
+   * v21.15 Phase 1.2b: which sleeve originated this decision. Set by the
+   * sleeve orchestrator so execution can tag the resulting TradeRecord with
+   * the owning sleeve. Optional for backward compatibility — absent is
+   * treated as 'core' by downstream consumers.
+   */
+  ownerSleeve?: string;
+  /** v21.15 Phase 1.2b: optional explicit percent sell (honored over amountUSD when SELL). */
+  percent?: number;
   signalContext?: {
     marketRegime: string;
     confluenceScore: number;

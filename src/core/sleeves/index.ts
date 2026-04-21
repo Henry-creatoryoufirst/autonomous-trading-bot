@@ -53,3 +53,11 @@ export {
   MAX_DECISIONS_PER_SLEEVE,
   MAX_REGIME_SAMPLES,
 } from './state-types.js';
+
+// v21.15 Phase 1.2b: orchestrator helpers
+export {
+  resolveEffectiveMode,
+  syncCoreSleevePositions,
+  recordTradeOnSleeve,
+  logSleeveDecision,
+} from './orchestrator.js';
