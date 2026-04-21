@@ -5134,7 +5134,11 @@ async function executeTrade(
     const tokenPrice = marketData.tokens.find(t => t.symbol === decision.fromToken)?.price || 0;
     if (cb && cb.averageCostBasis > 0 && tokenPrice > 0) {
       const lossPct = ((tokenPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100;
-      const isStopLoss = decision.reasoning?.includes('STOP_LOSS') || decision.reasoning?.includes('TRAILING_STOP') || decision.reasoning?.includes('HARD_STOP') || decision.reasoning?.includes('SOFT_STOP') || decision.reasoning?.includes('CONCENTRATED_STOP') || decision.reasoning?.includes('DIRECTIVE_SELL');
+      // v21.18: DRAWDOWN_OVERRIDE (SPEC-015) is a DELIBERATE exit condition, same
+      // shape as stop-loss — bypass the green-market loss gate so it fires in all
+      // conditions. Without this, SPEC-015 only works in red markets, which is
+      // exactly when its value is lowest. See session 2026-04-21 (TOSHI case).
+      const isStopLoss = decision.reasoning?.includes('STOP_LOSS') || decision.reasoning?.includes('TRAILING_STOP') || decision.reasoning?.includes('HARD_STOP') || decision.reasoning?.includes('SOFT_STOP') || decision.reasoning?.includes('CONCENTRATED_STOP') || decision.reasoning?.includes('DIRECTIVE_SELL') || decision.reasoning?.includes('DRAWDOWN_OVERRIDE');
       const marketIsGreen = (lastMomentumSignal?.btcChange24h || 0) > 0.5 && (lastMomentumSignal?.ethChange24h || 0) > 0.5;
       if (lossPct < -8 && marketIsGreen && !isStopLoss) {
         console.warn(`\n  🛡️ SELL LOSS GATE: Blocking ${decision.fromToken} sell at ${lossPct.toFixed(1)}% loss in green market (BTC +${(lastMomentumSignal?.btcChange24h || 0).toFixed(1)}%)`);
