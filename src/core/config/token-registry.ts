@@ -360,6 +360,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "GHST", name: "Aavegotchi", coingeckoId: "aavegotchi",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  CLAWD: {
+    address: "0x9f86db9fc6f7c9408e8fda3ff8ce4e78ac7a6b07",
+    symbol: "CLAWD", name: "clawd.atg.eth", coingeckoId: "clawd-atg-eth",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
