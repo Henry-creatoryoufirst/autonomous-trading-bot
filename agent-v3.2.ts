@@ -571,6 +571,7 @@ import {
   handleWithdraw, handleStateBackup, handleStateRestore,
   handleConfidence,
   handleModelTelemetry,
+  handlePolicy,
   handleTicker,
   handlePriceSnapshot,
 } from "./src/dashboard/server/index.js";
@@ -10477,6 +10478,10 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/model-telemetry':
         handleModelTelemetry(res, serverCtx);
+        break;
+      case '/api/policy':
+        // v21.20 NVR-SPEC-018: read-only view of NVR-REGIME's current policy.json
+        handlePolicy(res, serverCtx);
         break;
       case '/api/healing-stats': {
         // Self-Healing Intelligence — full surface for dashboard visibility

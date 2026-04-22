@@ -15,6 +15,7 @@ import type { ConfidenceScore } from '../../simulation/types.js';
 import { runConfidenceGate } from '../../../scripts/confidence-gate.js';
 import { getModelTelemetry, getAgreementRate, type ModelTelemetry, type GemmaMode } from '../../core/services/model-client.js';
 import { activeChain } from '../../core/config/chain-config.js';
+import { loadPolicy, DEFAULT_POLICY } from '../../core/services/policy.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -2378,5 +2379,32 @@ export function handlePriceSnapshot(
     });
   } catch (err: any) {
     ctx.sendJSON(res, 503, { error: 'Prices unavailable' });
+  }
+}
+
+// ============================================================================
+// Route handler: /api/policy
+// NVR-SPEC-018 Brain+Hands: read-only view of today's policy (written by
+// NVR-REGIME, consumed by NVR-TRADER every cycle). If no policy file exists
+// the endpoint reports `source: "default"` so the dashboard can show a
+// "REGIME hasn't run yet" state honestly.
+// ============================================================================
+
+export function handlePolicy(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    const policy = loadPolicy();
+    const isDefault = policy.generatedBy === 'default';
+    ctx.sendJSON(res, 200, {
+      source: isDefault ? 'default' : 'nvr-regime',
+      policy,
+      ossTraderMode: (process.env.OSS_TRADER_MODE || 'disabled'),
+      defaultPolicy: isDefault ? undefined : DEFAULT_POLICY,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    ctx.sendJSON(res, 500, { error: `Policy read failed: ${err.message}` });
   }
 }

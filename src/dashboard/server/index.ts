@@ -80,6 +80,9 @@ export {
   // Model telemetry
   handleModelTelemetry,
 
+  // v21.20 NVR-SPEC-018: Current policy.json (NVR-REGIME output)
+  handlePolicy,
+
   // Trade ticker
   handleTicker,
 
