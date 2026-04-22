@@ -1,34 +1,31 @@
-# MEDIC REPORT — 2026-04-21T00:00 UTC
+# MEDIC REPORT — 2026-04-22T05:06 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
 
 ## Environment
-- Run timestamp: 2026-04-21T00:00 UTC
+- Run timestamp: 2026-04-22T05:06 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-9KGQy (staging branch absent from checkout)
 
 ## Problem
 
 The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
 
-All endpoints attempted returned `403 Forbidden`:
+All endpoints attempted returned `403 Forbidden` or `Host not in allowlist`:
 
 ```
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/errors
-→ 403 Forbidden
+→ Host not in allowlist
 
 curl -s https://autonomous-trading-bot-production.up.railway.app/api/balances
-→ 403 Forbidden
-
-curl -s https://autonomous-trading-bot-production.up.railway.app/api/health
-→ 403 Forbidden
+→ Host not in allowlist
 ```
 
 GeckoTerminal API also blocked (same egress restriction):
 ```
 GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools?page=1
-→ 403 Forbidden
+→ Host not in allowlist
 ```
 
 ## Root Cause
@@ -52,25 +49,24 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
-| #15 | 2026-04-21T00:00 UTC | This report (same issue) |
+| #15 | 2026-04-21T00:00 UTC | PATTERN D update |
+| #16 | 2026-04-22T05:06 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the staging branch is active with autonomous updates:
+Despite API being unreachable from medic, the repo shows active development with 6 commits since last report:
 
+- `2026-04-21 (main)` — v21.19 dashboard-honesty: regime flowing + Core drawdown inherits bot peak
+- `2026-04-21 (main)` — v21.18 SPEC-015 unblock: DRAWDOWN_OVERRIDE bypasses green-market loss gate
+- `2026-04-21 (main)` — v21.17 dashboard-honesty: drawdownPct + regime returns wired into /api/sleeves/compare
+- `2026-04-21 (main)` — v21.16 Sleeves Phase 2: paper-trade simulation + Alpha Hunter v1 strategy
+- `2026-04-21 (main)` — v21.15 Phase 1.2b: multi-sleeve orchestrator + per-sleeve write-back + /api/sleeves/compare
+- `2026-04-21 (main)` — v21.15 Phase 1.2a: per-sleeve balance-sheet schema + Alpha stubs
+- `2026-04-21 (main)` — v21.14 SPEC-015 asymmetric exit momentum + drawdown override
 - `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
 - `2026-04-20 05:12 UTC` — Scout added AXL (Axelar) to TOKEN_REGISTRY
-- `2026-04-19 21:11 UTC` — Scout added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
-- `2026-04-20 (main)` — v21.14 payout shares accrual below min-transfer threshold
-- `2026-04-20 (main)` — v21.13 Sleeves Phase 2 LIVE with SLEEVES_DRIVE_DECISIONS=true
-- `2026-04-19 20:10 UTC` — Scout added LBTC to TOKEN_REGISTRY
-- `2026-04-18 22:15 UTC` — Auditor raised stagnation threshold 4h→6h (extreme-fear RANGING)
-- `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
-- `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 
-**Staging branch is substantially ahead of main** — many queued tokens and tightened risk params not yet promoted to production.
-
-**Risk params in staging (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
+**Note on staging branch:** The staging branch is not present in this repo checkout — only `main` and `claude/cool-sagan-9KGQy` exist. All recent development appears to have been merged directly into main.
 
 ## What Is NOT Known
 
@@ -80,23 +76,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #15)
+## Jobs Status This Run (Run #16)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~3h ago, well within 48h threshold). GHST added in that run.
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~32 hours ago, within 48h threshold).
 - **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all return "Host not in allowlist"); trigger conditions unverifiable.
 
 ## Recommended Action for Henry
 
-**This is the 14th consecutive run with the same network restriction. Action urgently required:**
+**This is the 15th consecutive run (of 16 total) with the same network restriction. This blocks all three autonomous jobs indefinitely.**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist** (most important fix):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a read-only status webhook on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Check staging branch status** — the staging branch doesn't appear to exist in this checkout; verify deployment workflow is intact.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -104,4 +100,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to development branch per MEDIC SAFETY protocol
