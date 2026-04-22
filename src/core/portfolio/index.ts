@@ -37,3 +37,18 @@ export {
   MIGRATION_FLAG_KEY,
   MIGRATION_VERSION,
 } from './migration-v21-18.js';
+
+// v21.20 — realized P&L sanitizer (poison defense)
+export {
+  validateRealizedPnL,
+  maybeResyncCumulativePnL,
+  findSuspectTrades,
+  PER_TRADE_POSITION_MULT,
+  PER_TRADE_PORTFOLIO_MULT,
+  CUMULATIVE_POISON_MULT,
+  type PnLSanitizerInput,
+  type PnLSanitizerResult,
+  type ResyncInput,
+  type ResyncResult,
+  type SuspectTrade,
+} from './pnl-sanitizer.js';

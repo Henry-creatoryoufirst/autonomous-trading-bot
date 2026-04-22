@@ -637,6 +637,7 @@ import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt,
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/core/portfolio/index.js";
 import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
+import { maybeResyncCumulativePnL, findSuspectTrades } from "./src/core/portfolio/pnl-sanitizer.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
 import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/core/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/core/diagnostics/index.js";
@@ -9501,6 +9502,27 @@ async function main() {
     backupDir: CONFIG.logFile.substring(0, CONFIG.logFile.lastIndexOf('/')) || './logs',
   });
 
+  // v21.20: Realized-P&L poison guard (2026-04-22 incident).
+  // After the v21.18 migration runs, there are still live states in production
+  // where cumulative realizedPnL is >10× portfolio (e.g. -$2.65M on $3.6k).
+  // The ground-truth rebuild only fixes cost-basis corruption; it doesn't help
+  // when a single day like 2026-04-18 booked -$330K on $747 of volume due to
+  // decimals/wei-unit errors that produce phantom losses exceeding position
+  // size. This re-sync replays with the per-trade sanitizer as a filter and
+  // rewrites cb.realizedPnL only (preserving all other fields).
+  try {
+    const resyncResult = maybeResyncCumulativePnL({
+      costBasis: state.costBasis,
+      trades: state.tradeHistory,
+      portfolioValue: state.trading.totalPortfolioValue || 0,
+    });
+    if (resyncResult.fired) {
+      saveTradeHistory();
+    }
+  } catch (err: any) {
+    console.error(`⚠️ pnl-sanitizer resync failed: ${err?.message || err}`);
+  }
+
   // Restore discovery state if available
   if (tokenDiscoveryEngine) {
     try {
@@ -10381,6 +10403,27 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/admin/health-audit':
         handleHealthAudit(req, res, serverCtx);
         break;
+      case '/api/diagnostics/realized-pnl-audit': {
+        // v21.20 — 2026-04-22 poison-incident monitoring.
+        // Returns top-N trades ranked by |realizedPnL|/volume so we can see
+        // at a glance whether the accumulator has been re-poisoned. Also
+        // exposes cumulative + portfolio ratio so dashboards can wire alerts.
+        const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '10', 10)));
+        const portfolioValue = state.trading.totalPortfolioValue || 0;
+        const suspects = findSuspectTrades(state.tradeHistory, portfolioValue, limit);
+        const cumulativeRealized = Object.values(state.costBasis)
+          .reduce((s: number, cb: any) => s + (cb?.realizedPnL ?? 0), 0);
+        sendJSON(res, 200, {
+          generatedAt: new Date().toISOString(),
+          portfolioValue,
+          cumulativeRealizedPnL: Number(cumulativeRealized.toFixed(2)),
+          cumulativeRatio: portfolioValue > 0 ? Number((Math.abs(cumulativeRealized) / portfolioValue).toFixed(2)) : null,
+          poisonThreshold: 10,
+          suspectTradeCount: suspects.filter(s => s.wouldReject).length,
+          suspects,
+        });
+        break;
+      }
       case '/api/win-rate-truth':
         handleWinRateTruth(res, serverCtx);
         break;
