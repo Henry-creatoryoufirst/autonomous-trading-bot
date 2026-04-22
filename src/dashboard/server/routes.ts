@@ -187,8 +187,35 @@ export function handleHealth(
   const healthDrawdown = ctx.state.trading.peakValue > 0 ? ((ctx.state.trading.peakValue - ctx.state.trading.totalPortfolioValue) / ctx.state.trading.peakValue) * 100 : 0;
   if (healthDrawdown >= 20) healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown`);
   if (ctx.state.trading.totalPortfolioValue > 0 && ctx.state.trading.totalPortfolioValue < ctx.CAPITAL_FLOOR_ABSOLUTE_USD) healthBlockers.push(`Capital floor breach: $${ctx.state.trading.totalPortfolioValue.toFixed(2)}`);
-  const timeSinceTradeHealth = Date.now() - ctx.lastSuccessfulTradeAt;
-  const recentTradeCount = ctx.state.tradeHistory.filter((t: any) => t.success && t.action !== 'HOLD').length;
+  // v21.19-counters: derive "last live execution" from trade history directly so
+  // the field reflects reality instead of a stale snapshot. The previous
+  // implementation read ctx.lastSuccessfulTradeAt, which is a primitive value
+  // captured at ServerContext construction time — it never updated when the
+  // module-level `lastSuccessfulTradeAt` in agent-v3.2.ts was reassigned after
+  // a trade, which is how prod ended up reporting hoursSinceLastTrade=13.9
+  // (≈ uptime hours) while /api/daily-pnl showed 30 trades the same day.
+  const actionableHistory = ctx.state.tradeHistory.filter(
+    (t: any) => t.success && (t.action === 'BUY' || t.action === 'SELL'),
+  );
+  const lastLiveExecution = actionableHistory.length > 0
+    ? actionableHistory[actionableHistory.length - 1]
+    : null;
+  const lastLiveExecutionAt: string | null = lastLiveExecution?.timestamp ?? null;
+  const msSinceLastLive = lastLiveExecutionAt
+    ? Date.now() - new Date(lastLiveExecutionAt).getTime()
+    : Infinity;
+  const hoursSinceLastLiveExecution = msSinceLastLive === Infinity
+    ? null
+    : Math.round((msSinceLastLive / 3600000) * 10) / 10;
+  // Canonical "trades since this process started" — counted off the in-memory
+  // tradeHistory buffer (capped at 5000). This is the number most engineers
+  // actually want in /health because it reflects what THIS process has done.
+  const tradesSinceRestart = actionableHistory.length;
+  // All-time monotonically-incremented counter, persisted as lifetimeTotalTrades.
+  // Survives restarts and the 5000-row tradeHistory cap. Source of truth for
+  // cumulative activity — diverges from tradesSinceRestart once the buffer rolls.
+  const totalTradesAllTime = ctx.state.trading.totalTrades ?? 0;
+  const successfulTradesAllTime = ctx.state.trading.successfulTrades ?? 0;
 
   ctx.sendJSON(res, isHealthy ? 200 : 503, {
     status: isHealthy ? "ok" : "degraded",
@@ -199,8 +226,17 @@ export function handleHealth(
     tradingEnabled: ctx.CONFIG.trading.enabled,
     tradingMode: ctx.CONFIG.trading.enabled ? "LIVE" : "DRY_RUN",
     tradingBlockers: healthBlockers,
-    totalTradesExecuted: recentTradeCount,
-    hoursSinceLastTrade: Math.round(timeSinceTradeHealth / 3600000 * 10) / 10,
+    // v21.19-counters: canonical names.
+    totalTradesAllTime,
+    successfulTradesAllTime,
+    tradesSinceRestart,
+    lastLiveExecutionAt,
+    hoursSinceLastLiveExecution,
+    // Deprecated aliases — kept for one release so external callers don't
+    // break. New consumers should prefer the canonical names above.
+    // TODO(v21.21): remove once dashboards + stage.sh migrate.
+    totalTradesExecuted: tradesSinceRestart,
+    hoursSinceLastTrade: hoursSinceLastLiveExecution,
     portfolioValue: Math.round(ctx.state.trading.totalPortfolioValue * 100) / 100,
     drawdownPercent: Math.round(healthDrawdown * 10) / 10,
   });
