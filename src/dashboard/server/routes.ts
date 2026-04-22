@@ -2072,11 +2072,49 @@ export function handleModelTelemetry(
       ? claudeEntries.reduce((s, t) => s + t.latencyMs, 0) / claudeEntries.length
       : 0;
 
-    // Cost estimation: Haiku ~$0.0002/call, Sonnet ~$0.003/call, Gemma = $0
-    const haikuCalls = telemetry.filter(t => t.tier === 'HAIKU').length;
-    const sonnetCalls = telemetry.filter(t => t.tier === 'SONNET').length;
-    const estimatedClaudeCost = (haikuCalls * 0.0002) + (sonnetCalls * 0.003);
-    const estimatedSavings = gemmaEntries.length * 0.0002; // What those calls would have cost on Haiku
+    // v21.20: Real cost math using per-call token counts × published Anthropic prices
+    // (previous hardcoded per-call estimates underreported Sonnet by ~30×).
+    // Prices in USD per 1M tokens. Keep in sync with https://www.anthropic.com/pricing
+    const PRICE_PER_MTOK = {
+      sonnet: { input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreate: 3.75 },
+      haiku:  { input: 1.0, output:  5.0, cacheRead: 0.10, cacheCreate: 1.25 },
+    };
+    const costForEntry = (t: ModelTelemetry): number => {
+      if (t.backend !== 'anthropic') return 0; // Groq/Cerebras/Ollama treated as $0 for now
+      const p = t.tier === 'SONNET' ? PRICE_PER_MTOK.sonnet : PRICE_PER_MTOK.haiku;
+      const inTok = t.inputTokens ?? 0;
+      const outTok = t.outputTokens ?? 0;
+      const cacheRead = t.cacheReadInputTokens ?? 0;
+      const cacheCreate = t.cacheCreationInputTokens ?? 0;
+      // Anthropic bills cache_read tokens at 10% of input, cache_create at 125%.
+      // `inputTokens` returned by the API already EXCLUDES cached tokens, so sum linearly:
+      return (inTok * p.input + outTok * p.output + cacheRead * p.cacheRead + cacheCreate * p.cacheCreate) / 1_000_000;
+    };
+    const estimatedClaudeCost = telemetry.reduce((sum, t) => sum + costForEntry(t), 0);
+
+    // Cache hit rate: fraction of input tokens served from cache across all Claude calls
+    const totalClaudeInputTokens = claudeEntries.reduce(
+      (s, t) => s + (t.inputTokens ?? 0) + (t.cacheReadInputTokens ?? 0) + (t.cacheCreationInputTokens ?? 0),
+      0,
+    );
+    const cacheReadTokens = claudeEntries.reduce((s, t) => s + (t.cacheReadInputTokens ?? 0), 0);
+    const cacheCreateTokens = claudeEntries.reduce((s, t) => s + (t.cacheCreationInputTokens ?? 0), 0);
+    const cacheHitRate = totalClaudeInputTokens > 0 ? cacheReadTokens / totalClaudeInputTokens : 0;
+
+    // Extrapolate daily cost from the buffer's observed time span
+    const oldestTs = telemetry.length > 0 ? new Date(telemetry[0].timestamp).getTime() : Date.now();
+    const newestTs = telemetry.length > 0 ? new Date(telemetry[telemetry.length - 1].timestamp).getTime() : Date.now();
+    const bufferSpanSec = Math.max(1, (newestTs - oldestTs) / 1000);
+    const estimatedDailyCostUSD = bufferSpanSec >= 60
+      ? estimatedClaudeCost * (86400 / bufferSpanSec)
+      : 0; // insufficient data to extrapolate
+
+    // What those calls WOULD have cost on Claude if cheap backend hadn't handled them.
+    // Assume Haiku-equivalent for accounting purposes.
+    const estimatedSavings = gemmaEntries.reduce(
+      (sum, t) => sum + ((t.inputTokens ?? 0) * PRICE_PER_MTOK.haiku.input + (t.outputTokens ?? 0) * PRICE_PER_MTOK.haiku.output) / 1_000_000,
+      0,
+    );
 
     // Determine current tier from most recent entry
     const lastEntry = allEntries[allEntries.length - 1];
@@ -2149,8 +2187,17 @@ export function handleModelTelemetry(
       claudeCycles: claudeEntries.length,
       gemmaAvgLatencyMs: Math.round(gemmaAvgLatency),
       claudeAvgLatencyMs: Math.round(claudeAvgLatency),
-      estimatedSavingsUSD: Math.round(estimatedSavings * 100) / 100,
-      monthlyClaudeCostUSD: Math.round(estimatedClaudeCost * 100) / 100,
+      estimatedSavingsUSD: Math.round(estimatedSavings * 10000) / 10000,
+      // v21.20: `monthlyClaudeCostUSD` name preserved for dashboard backward-compat but now
+      // represents the cumulative cost of all Claude calls currently in the 1000-entry buffer,
+      // computed from real per-call tokens × published prices (not the old hardcoded estimate).
+      // Use `estimatedDailyCostUSD` for a forward-looking extrapolation.
+      monthlyClaudeCostUSD: Math.round(estimatedClaudeCost * 10000) / 10000,
+      estimatedDailyCostUSD: Math.round(estimatedDailyCostUSD * 100) / 100,
+      bufferSpanSec: Math.round(bufferSpanSec),
+      cacheHitRate: Math.round(cacheHitRate * 1000) / 10, // percentage with 1 decimal
+      cacheReadTokens,
+      cacheCreateTokens,
       escalations,
       // v21.12: Per-backend health block (gemma always present; groq/cerebras only when keys set).
       backendHealth,

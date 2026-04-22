@@ -4885,14 +4885,31 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
 
   // v20.6: Compressed prompt system — CORE (always) + STRATEGY (heavy cycles only) + dynamic data (always)
+  // v21.20: Structured as content blocks with cache_control on stable prefix sections.
+  // SYSTEM_PROMPT_CORE (~1.9k tok) and SYSTEM_PROMPT_STRATEGY (~1.3k tok) change only on bot
+  // version bump / redeploy, so they cache across consecutive cycles. Dynamic market data stays
+  // as a plain un-cached block at the end. Expected savings: ~90% off input cost on cached tokens
+  // once the cache is warm (first call per deploy is a cache-miss, subsequent calls are hits).
   const isFullPrompt = needsSonnet;
-  const promptForAI = isFullPrompt
-    ? SYSTEM_PROMPT_CORE + '\n\n' + dynamicData + '\n\n' + SYSTEM_PROMPT_STRATEGY + '\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
-    : SYSTEM_PROMPT_CORE + '\n\n' + dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
+  const dynamicBlock = isFullPrompt
+    ? dynamicData + '\n\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
+    : dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
 
-  const promptTokens = estimateTokens(promptForAI);
+  const promptBlocks = isFullPrompt
+    ? [
+        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const } },
+        { type: 'text' as const, text: dynamicBlock },
+      ]
+    : [
+        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const } },
+        { type: 'text' as const, text: dynamicBlock },
+      ];
+
+  const promptTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : '') + dynamicBlock);
+  const cacheableTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : ''));
   console.log(`  [AI] Using ${modelLabel} for cycle | Reason: ${heavyCycleReason || 'unknown'}`);
-  console.log(`  [Prompt] ${isFullPrompt ? 'Full' : 'Compact'} prompt: ~${promptTokens} tokens`);
+  console.log(`  [Prompt] ${isFullPrompt ? 'Full' : 'Compact'} prompt: ~${promptTokens} tokens (cacheable prefix: ~${cacheableTokens})`);
 
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -4900,7 +4917,7 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
       // v21.2: Model routing — Gemma for routine, Claude for difficult markets
       const { response: modelResponse, telemetry: modelTelemetry } = await callModelWithShadow(
         {
-          messages: [{ role: 'user', content: promptForAI }],
+          messages: [{ role: 'user', content: promptBlocks }],
           maxTokens: needsSonnet ? 2000 : 500,
           jsonMode: true,
           timeoutMs: 90_000,

@@ -33,21 +33,55 @@ import {
 // TYPES
 // ============================================================================
 
+/**
+ * A single text block. `cache_control: 'ephemeral'` marks the end of a cacheable
+ * prefix when sent to Anthropic (ignored by other backends after flattening).
+ */
+export interface TextBlock {
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral' };
+}
+
+/**
+ * Message content may be a plain string (single untyped body, default) OR
+ * an array of text blocks when the caller wants prompt caching on stable
+ * prefix sections. Cheap backends (Groq/Cerebras/Ollama) don't support
+ * cache_control, so block arrays are flattened to a single string before dispatch.
+ */
+export type MessageContent = string | TextBlock[];
+
 /** Unified response from any model backend */
 export interface ModelResponse {
   text: string;
   model: string;
   backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
-  usage: { inputTokens: number; outputTokens: number };
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+  };
   latencyMs: number;
 }
 
 /** Request options (shared across backends) */
 export interface ModelRequestOptions {
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: MessageContent }>;
   maxTokens: number;
   jsonMode?: boolean;
   timeoutMs?: number;
+}
+
+/** Flatten a block array to a single string for OpenAI-compatible backends. */
+export function flattenContent(content: MessageContent): string {
+  if (typeof content === 'string') return content;
+  return content.map(b => b.text).join('\n\n');
+}
+
+/** Return messages with all block-array content flattened to strings. */
+function messagesAsStrings(messages: ModelRequestOptions['messages']): Array<{ role: 'user' | 'assistant' | 'system'; content: string }> {
+  return messages.map(m => ({ role: m.role, content: flattenContent(m.content) }));
 }
 
 /** Model routing tiers */
@@ -65,6 +99,8 @@ export interface ModelTelemetry {
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
   success: boolean;
   escalated: boolean;
   escalationReason?: string;
@@ -142,7 +178,7 @@ export async function callOllama(options: ModelRequestOptions): Promise<ModelRes
   const startMs = Date.now();
   const baseUrl = getOllamaBaseUrl();
 
-  const messages = [...options.messages];
+  const messages = messagesAsStrings(options.messages);
 
   const body: Record<string, unknown> = {
     model: AI_MODEL_GEMMA,
@@ -224,7 +260,7 @@ export async function callGroq(options: ModelRequestOptions): Promise<ModelRespo
     throw new Error('GROQ_API_KEY is not set');
   }
 
-  const messages = [...options.messages];
+  const messages = messagesAsStrings(options.messages);
 
   const body: Record<string, unknown> = {
     model: GROQ_MODEL_FAST,
@@ -305,7 +341,7 @@ export async function callCerebras(options: ModelRequestOptions): Promise<ModelR
     throw new Error('CEREBRAS_API_KEY is not set');
   }
 
-  const messages = [...options.messages];
+  const messages = messagesAsStrings(options.messages);
 
   const body: Record<string, unknown> = {
     model: CEREBRAS_MODEL,
@@ -377,28 +413,41 @@ export async function callAnthropic(
 ): Promise<ModelResponse> {
   const startMs = Date.now();
 
-  // Anthropic SDK uses 'user'/'assistant' messages only (no 'system' in messages array)
-  // The existing bot sends everything in a single 'user' message
+  // Anthropic SDK uses 'user'/'assistant' messages only (no 'system' in messages array).
+  // Content may be a plain string OR an array of TextBlockParam with optional cache_control
+  // for prompt caching on stable prefix blocks.
   const messages = options.messages
     .filter(m => m.role !== 'system')
-    .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+    .map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content as string | TextBlock[],
+    }));
 
   const response = await client.messages.create({
     model,
     max_tokens: options.maxTokens,
-    messages,
+    messages: messages as Parameters<typeof client.messages.create>[0]['messages'],
   });
 
   const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
   const latencyMs = Date.now() - startMs;
+
+  const usage = response.usage as {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  } | undefined;
 
   return {
     text,
     model,
     backend: 'anthropic',
     usage: {
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+      cacheReadInputTokens: usage?.cache_read_input_tokens ?? 0,
+      cacheCreationInputTokens: usage?.cache_creation_input_tokens ?? 0,
     },
     latencyMs,
   };
@@ -600,6 +649,8 @@ export async function callModelWithShadow(
       latencyMs: response.latencyMs,
       inputTokens: response.usage.inputTokens,
       outputTokens: response.usage.outputTokens,
+      cacheReadInputTokens: response.usage.cacheReadInputTokens,
+      cacheCreationInputTokens: response.usage.cacheCreationInputTokens,
       success: true,
       escalated: false,
     };
@@ -665,6 +716,8 @@ async function callShadowMode(
     latencyMs: claudeResponse.latencyMs,
     inputTokens: claudeResponse.usage.inputTokens,
     outputTokens: claudeResponse.usage.outputTokens,
+    cacheReadInputTokens: claudeResponse.usage.cacheReadInputTokens,
+    cacheCreationInputTokens: claudeResponse.usage.cacheCreationInputTokens,
     success: true,
     escalated: false,
     shadowComparison: gemmaResponse ? {
@@ -720,6 +773,8 @@ async function callGemmaPrimary(
       latencyMs: response.latencyMs,
       inputTokens: response.usage.inputTokens,
       outputTokens: response.usage.outputTokens,
+      cacheReadInputTokens: response.usage.cacheReadInputTokens,
+      cacheCreationInputTokens: response.usage.cacheCreationInputTokens,
       success: true,
       escalated: true,
       escalationReason: `${cheapBackendLabel} failed: ${(err as Error).message}`,
@@ -742,6 +797,8 @@ async function callGemmaPrimary(
       latencyMs: claudeResponse.latencyMs,
       inputTokens: claudeResponse.usage.inputTokens,
       outputTokens: claudeResponse.usage.outputTokens,
+      cacheReadInputTokens: claudeResponse.usage.cacheReadInputTokens,
+      cacheCreationInputTokens: claudeResponse.usage.cacheCreationInputTokens,
       success: true,
       escalated: true,
       escalationReason: escalation.reason,
