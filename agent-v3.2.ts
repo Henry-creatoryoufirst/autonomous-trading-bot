@@ -895,6 +895,7 @@ const anthropic = (process.env.SIGNAL_MODE !== 'central')
 // v21.2: Gemma 4 local model integration
 import { callModelWithShadow, logModelTelemetry } from './src/core/services/model-client.js';
 import type { GemmaMode } from './src/core/services/model-client.js';
+import { loadPolicy, renderPolicyPromptBlock } from './src/core/services/policy.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -4926,10 +4927,18 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
     ? dynamicData + '\n\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
     : dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
 
+  // v21.20 SPEC-018: policy block from NVR-REGIME injected between STRATEGY and
+  // dynamic market data. Its own cache_control breakpoint means policy updates
+  // (once-per-day) only invalidate the policy block onward, not CORE+STRATEGY.
+  const policyBlock = ossTraderPrimary
+    ? renderPolicyPromptBlock(loadPolicy())
+    : null;
+
   const promptBlocks = isFullPrompt
     ? [
         { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
+        ...(policyBlock ? [{ type: 'text' as const, text: policyBlock, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }] : []),
         { type: 'text' as const, text: dynamicBlock },
       ]
     : [
