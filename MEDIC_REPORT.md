@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-21T00:00 UTC
+# MEDIC REPORT — 2026-04-22T00:09 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
 
 ## Environment
-- Run timestamp: 2026-04-21T00:00 UTC
+- Run timestamp: 2026-04-22T00:09 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-4hoWw
 
 ## Problem
 
@@ -52,7 +52,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
-| #15 | 2026-04-21T00:00 UTC | This report (same issue) |
+| #15 | 2026-04-21T00:00 UTC | PATTERN D update |
+| #16 | 2026-04-22T00:09 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -80,11 +81,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #15)
+## Jobs Status This Run (Run #16)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~3h ago, well within 48h threshold). GHST added in that run.
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~27h ago, within 48h threshold). GHST added in that run.
 - **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all return "Host not in allowlist"); trigger conditions unverifiable.
+
+## Recent Bot Activity (from git log, run #16 context)
+
+Since run #15, the following code changes landed on the branch:
+- `2026-04-21 12:03 EDT` — v21.19: regime flowing + Core drawdown inherits bot peak
+- `2026-04-21 11:32 EDT` — v21.18: DRAWDOWN_OVERRIDE bypasses green-market loss gate (SPEC-015 unblock)
+- `2026-04-21 11:14 EDT` — v21.17: drawdownPct + regime returns wired into /api/sleeves/compare
+- `2026-04-21 10:52 EDT` — v21.16: paper-trade simulation + Alpha Hunter v1 strategy
+- `2026-04-21 09:49 EDT` — v21.15: multi-sleeve orchestrator + per-sleeve write-back
+
+The repeated drawdown-related fixes (v21.17–v21.19) suggest the bot may be in a drawdown regime. Henry should manually verify current portfolio metrics.
 
 ## Recommended Action for Henry
 
