@@ -61,6 +61,15 @@ export interface AgentState {
   totalDailyPayoutsUSD: number;
   dailyPayoutCount: number;
   lastDailyPayoutDate: string | null;
+  /**
+   * v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix.
+   * Actual UTC execution date of the last successful transfer (YYYY-MM-DD).
+   * Distinct from `lastDailyPayoutDate`, which holds the settlement-period
+   * key (yesterday-as-of-cron) used for idempotency. Customer-facing
+   * dashboards should read THIS field for "last paid on ___" so the widget
+   * reflects the real payout date rather than the dedup key.
+   */
+  lastDailyPayoutExecutedDate?: string | null;
   dailyPayoutByRecipient: Record<string, number>;
   /**
    * v21.14: Payout accrual buckets.

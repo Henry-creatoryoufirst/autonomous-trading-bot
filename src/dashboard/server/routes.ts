@@ -670,7 +670,14 @@ export function handleAutoHarvest(
     pendingByRecipient,
     lastSuccessfulPayout,
     dailyPayout: {
-      lastPayoutDate: ctx.state.lastDailyPayoutDate,
+      // v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix: expose both the
+      // execution-date (customer-facing "last paid on") and the settlement
+      // period (idempotency key / audit). Customer widgets should read
+      // `lastPayoutDate`; power-user diagnostics can reference
+      // `lastPayoutSettlementDate`.
+      lastPayoutDate:
+        ctx.state.lastDailyPayoutExecutedDate || ctx.state.lastDailyPayoutDate,
+      lastPayoutSettlementDate: ctx.state.lastDailyPayoutDate,
       dailyPayoutCount: ctx.state.dailyPayoutCount,
       totalDailyPayoutsUSD: ctx.state.totalDailyPayoutsUSD,
       nextPayoutUTC: nextPayoutDate.toISOString(),
