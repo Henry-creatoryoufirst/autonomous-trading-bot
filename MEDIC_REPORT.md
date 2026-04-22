@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-04-21T00:00 UTC
+# MEDIC REPORT — 2026-04-22T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
 
 ## Environment
 - Run timestamp: 2026-04-21T00:00 UTC
@@ -52,7 +52,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
-| #15 | 2026-04-21T00:00 UTC | This report (same issue) |
+| #15 | 2026-04-21T00:00 UTC | PATTERN D update |
+| #16 | 2026-04-22T00:00 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
@@ -80,15 +81,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #15)
+## Jobs Status This Run (Run #16)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~3h ago, well within 48h threshold). GHST added in that run.
-- **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all return "Host not in allowlist"); trigger conditions unverifiable.
+- **Scout**: SKIPPED (MEDIC PATTERN D stop). Last scout ran at 2026-04-20T21:09 UTC (~48h ago — approaching threshold, should run on next cycle if API becomes reachable).
+- **Auditor**: SKIPPED (MEDIC PATTERN D stop). Cannot fetch live metrics; trigger conditions unverifiable.
 
 ## Recommended Action for Henry
 
-**This is the 14th consecutive run with the same network restriction. Action urgently required:**
+**This is the 15th consecutive run with the same network restriction. Action urgently required:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -96,7 +97,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a read-only status webhook on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params, v21.19 sleeves). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+5. **Scout threshold warning:** Last scout ran 2026-04-20T21:09 UTC — ~48h ago. Scout will need to run on the next cycle, but remains blocked until egress is resolved.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
