@@ -828,6 +828,17 @@ export function apiDailyPnL() {
           pnl = trade.amountUSD - costOfSold;
         }
       }
+      // v21.20.1 (2026-04-22): per-trade phantom filter on daily rollup.
+      // Historical trade records can carry phantom realizedPnL values (e.g. a
+      // SELL of $2.49 reporting +$23.98 realized from a corrupted avgCostBasis).
+      // These pre-date the per-trade sanitizer shipped in v21.20 and are
+      // baked into trade.realizedPnL on disk. Reject any per-trade |pnl|
+      // exceeding 5× the trade's own USD volume — matches the sanitizer
+      // philosophy. No portfolio context needed here.
+      const tradeAmountUSD = Math.max(trade.amountUSD || 0, 1);
+      if (Math.abs(pnl) > 5 * tradeAmountUSD) {
+        pnl = 0;
+      }
       dailyMap[day].realized += pnl;
       if (pnl > 0) dailyMap[day].wins++;
     }
