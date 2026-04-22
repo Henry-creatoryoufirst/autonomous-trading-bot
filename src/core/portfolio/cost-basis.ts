@@ -8,6 +8,7 @@
 
 import type { TokenCostBasis, TradeRecord } from "../types/index.js";
 import { getState } from '../state/index.js';
+import { validateRealizedPnL } from './pnl-sanitizer.js';
 
 type PriceMap = Record<string, { price: number; [key: string]: any }>;
 
@@ -183,10 +184,25 @@ export function updateCostBasisAfterSell(
   // Sanity clamp: can't lose more than the USDC invested in this position.
   // Without this, a corrupted averageCostBasis can produce phantom losses of thousands of dollars per sell.
   const impliedInvestment = cb.averageCostBasis * tokensSold;
-  const realizedPnL = impliedInvestment > 0 ? Math.max(rawPnL, -impliedInvestment) : rawPnL;
-  if (rawPnL !== realizedPnL) {
-    console.warn(`  ⚠️ P&L clamp: ${symbol} raw $${rawPnL.toFixed(2)} → clamped $${realizedPnL.toFixed(2)} (avgCost $${cb.averageCostBasis.toFixed(6)} may be corrupted)`);
+  const clampedPnL = impliedInvestment > 0 ? Math.max(rawPnL, -impliedInvestment) : rawPnL;
+  if (rawPnL !== clampedPnL) {
+    console.warn(`  ⚠️ P&L clamp: ${symbol} raw $${rawPnL.toFixed(2)} → clamped $${clampedPnL.toFixed(2)} (avgCost $${cb.averageCostBasis.toFixed(6)} may be corrupted)`);
   }
+  // v21.20: Second-line defense — reject P&Ls that are absurd relative to the
+  // position or portfolio. The per-sell clamp above fails when avgCost itself
+  // is poisoned (the clamp floor IS avgCost × tokens). The sanitizer uses the
+  // trade's actual USD volume and the live portfolio value as honest anchors.
+  const portfolioValue = (getState() as unknown as { trading?: { totalPortfolioValue?: number } })
+    .trading?.totalPortfolioValue ?? 0;
+  const sanitized = validateRealizedPnL({
+    symbol,
+    realizedPnL: clampedPnL,
+    amountUSD,
+    tokensSold,
+    averageCostBasis: cb.averageCostBasis,
+    portfolioValue,
+  });
+  const realizedPnL = sanitized.sanitizedPnL;
   cb.realizedPnL += realizedPnL;
   // v11.4.17: Clamp proportionSold to [0,1]
   const proportionSold = Math.min(1, cb.totalTokensAcquired > 0 ? tokensSold / cb.totalTokensAcquired : 0);
