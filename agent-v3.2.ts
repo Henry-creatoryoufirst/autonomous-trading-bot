@@ -687,6 +687,14 @@ import type { ProtocolYield } from "./src/core/services/yield-optimizer.js";
 import { createDecelState, updateBuyRatioHistory, detectDeceleration } from "./src/core/services/deceleration-detector.js";
 import type { DecelState } from "./src/core/services/deceleration-detector.js";
 
+// v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix: single source of truth
+// for fee accrual. Both executeDirectDexSwap AND executeSingleSwap must call
+// this so every profitable sell contributes to pendingFeeUSDC regardless of
+// execution route. Prior to this the accrual block only fired for the 3 tokens
+// in DEX_SWAP_TOKENS and pendingFeeUSDC sat at $0 despite +$910/day of
+// realized profit going through the CDP SDK route.
+import { accruePayoutFee as _accruePayoutFee, expectedPendingFee as _expectedPendingFee } from "./src/core/services/testable/payout-accrual.js";
+
 // === v19.0: MULTI-TIMEFRAME FLOW AGGREGATION ===
 import { createFlowTimeframeState, recordFlowReading, getFlowTimeframes } from "./src/core/services/flow-timeframes.js";
 import type { FlowTimeframeState } from "./src/core/services/flow-timeframes.js";
@@ -2100,7 +2108,17 @@ let state: AgentState = {
   }>,
   totalDailyPayoutsUSD: 0,
   dailyPayoutCount: 0,
+  // v9.3 — settlement-period key: the date of the P&L window that was paid
+  // out. Used as the idempotency guard in executeDailyPayout(). For an 8 AM UTC
+  // run on 2026-04-22 this equals "2026-04-21" (yesterday's P&L). DO NOT
+  // change the semantics of this field without also updating dedup logic.
   lastDailyPayoutDate: null as string | null,
+  // v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix: actual wall-clock
+  // UTC date on which the last successful transfer fired. Separate from
+  // lastDailyPayoutDate (which is the settlement window, not the execution
+  // date) so the dashboard's "last payout" widget can show the date the
+  // customer actually got paid rather than the settled-for date.
+  lastDailyPayoutExecutedDate: null as string | null,
   dailyPayoutByRecipient: {} as Record<string, number>,
   // Phase 3: Self-Improvement Engine
   strategyPatterns: {},
@@ -5743,12 +5761,12 @@ async function executeDirectDexSwap(
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
       // v21.15: Harvest-on-sell — reserve fee USDC at moment of profitable sell
       // so it can't be re-deployed before the 8AM payout runs.
-      if (tradeRealizedPnL > 0 && CONFIG.autoHarvest.enabled && CONFIG.autoHarvest.recipients.length > 0) {
-        const totalPct = CONFIG.autoHarvest.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
-        const feeAccrued = tradeRealizedPnL * (totalPct / 100);
-        state.pendingFeeUSDC = (state.pendingFeeUSDC || 0) + feeAccrued;
+      // v21.19.1 (2026-04-22): delegate to shared accruePayoutFee() so this
+      // path stays in lockstep with executeSingleSwap's accrual call below.
+      const _acc = _accruePayoutFee(state, tradeRealizedPnL, CONFIG.autoHarvest);
+      if (_acc.accrued > 0) {
         markStateDirty();  // v21.13-fix: persist immediately so a restart before 8AM UTC doesn't lose the reserve
-        console.log(`  💰 Fee reserved: +$${feeAccrued.toFixed(2)} on $${tradeRealizedPnL.toFixed(2)} profit → pending $${state.pendingFeeUSDC.toFixed(2)}`);
+        console.log(`  💰 Fee reserved: +$${_acc.accrued.toFixed(2)} on $${tradeRealizedPnL.toFixed(2)} profit → pending $${_acc.newPending.toFixed(2)} (DEX path)`);
       }
       // v20.0: Clean up trailing stop after sell
       removeTrailingStop(decision.fromToken);
@@ -6069,6 +6087,17 @@ async function executeSingleSwap(
       const tokensSold = actualTokens > 0 ? actualTokens : (decision.tokenAmount || (decision.amountUSD / tokenPrice));
       actualTokenAmount = tokensSold;
       tradeRealizedPnL = updateCostBasisAfterSell(decision.fromToken, decision.amountUSD, tokensSold);
+      // v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix:
+      // Harvest-on-sell for the CDP SDK route. Previously only executeDirectDexSwap
+      // accrued into pendingFeeUSDC, which meant every non-DEX_SWAP_TOKENS sell
+      // (i.e. ~all sells) silently bypassed the reserve. Prod evidence
+      // 2026-04-22 12:14 UTC: +$910.53 realized via 23 sells today,
+      // pendingFeeUSDC = $0. This call closes that gap.
+      const _acc = _accruePayoutFee(state, tradeRealizedPnL, CONFIG.autoHarvest);
+      if (_acc.accrued > 0) {
+        markStateDirty();
+        console.log(`  💰 Fee reserved: +$${_acc.accrued.toFixed(2)} on $${tradeRealizedPnL.toFixed(2)} profit → pending $${_acc.newPending.toFixed(2)} (CDP path)`);
+      }
     }
 
     // Record trade with full signal context (V4.0)
@@ -6521,6 +6550,13 @@ async function executeDailyPayout(): Promise<void> {
   if (totalSent > 0) state.dailyPayoutCount++;
   // lastDailyPayoutDate already persisted above (pre-transfer idempotency guard)
   state.lastAutoHarvestTime = now.toISOString();
+  // v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix: record the actual
+  // execution date (today UTC) separately from the settlement-period date.
+  // The dashboard's "last payout" widget reads this so customers see the
+  // real "when did I last get paid?" rather than the dedup key.
+  if (totalSent > 0) {
+    state.lastDailyPayoutExecutedDate = now.toISOString().slice(0, 10);
+  }
   // v21.15: Reset pending fee accumulator — funds were sent (or attempted)
   state.pendingFeeUSDC = 0;
   markStateDirty();  // v21.13-fix: persist reset so a crash-post-payout doesn't re-pay
@@ -10244,6 +10280,58 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/auto-harvest/trigger':
         handleAutoHarvestTrigger(req, res, serverCtx);
         break;
+      case '/api/diagnostics/payout-accrual': {
+        // v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix companion
+        // endpoint. Mirrors Agent A's realized-pnl-audit diagnostic. Answers
+        // "is pendingFeeUSDC actually accruing from today's realized sells,
+        // or are we back to the v21.15-pre-fix silent-drop state?"
+        //
+        // Compares:
+        //   - expected: today's realized × sum(recipient.percent) / 100
+        //   - actual:   state.pendingFeeUSDC
+        //   - drift:    actual - expected (positive = overpaid, negative = underpaid)
+        //
+        // Drift should be ~0 on a healthy bot. A large negative drift is the
+        // prod-2026-04-22 signature. This endpoint is READ-ONLY — it does
+        // not mutate state and is safe to hit from monitors / dashboards.
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const dailyData = apiDailyPnL();
+        const todayEntry = dailyData.days.find(d => d.date === todayStr);
+        const realizedToday = todayEntry?.realized || 0;
+        const expected = _expectedPendingFee(realizedToday, CONFIG.autoHarvest);
+        const actual = state.pendingFeeUSDC || 0;
+        const drift = actual - expected;
+        const totalPct = (CONFIG.autoHarvest.recipients || []).reduce(
+          (s: number, r: HarvestRecipient) => s + (r.percent || 0),
+          0,
+        );
+        sendJSON(res, 200, {
+          asOf: new Date().toISOString(),
+          today: todayStr,
+          realizedPnLToday: realizedToday,
+          sellsToday: todayEntry?.sells || 0,
+          tradesToday: todayEntry?.trades || 0,
+          winsToday: todayEntry?.wins || 0,
+          feePercent: totalPct,                // e.g. 35 for the prod config
+          expectedPendingFeeUSDC: expected,    // what it SHOULD be right now
+          actualPendingFeeUSDC: actual,        // what it IS right now
+          driftUSDC: drift,                    // actual - expected
+          driftAbs: Math.abs(drift),
+          // Bucket this into a healthy/alert signal for dashboards/monitors.
+          // $1 tolerance covers rounding and the edge window between a sell
+          // settling on-chain and the accrual call firing.
+          status:
+            Math.abs(drift) < 1 ? 'healthy'
+            : drift < -1 ? 'underaccruing'    // the bug's signature
+            : 'overaccruing',
+          lastAccrualTimestamp: state.lastAutoHarvestTime || null,
+          lastPayoutExecutedDate: state.lastDailyPayoutExecutedDate || null,
+          lastPayoutSettlementDate: state.lastDailyPayoutDate || null,
+          autoHarvestEnabled: CONFIG.autoHarvest.enabled,
+          recipientCount: (CONFIG.autoHarvest.recipients || []).length,
+        });
+        break;
+      }
       case '/api/adaptive':
         handleAdaptive(res, serverCtx);
         break;

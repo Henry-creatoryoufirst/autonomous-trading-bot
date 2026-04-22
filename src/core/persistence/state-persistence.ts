@@ -202,6 +202,9 @@ export function loadTradeHistory(): void {
       state.totalDailyPayoutsUSD = parsed.totalDailyPayoutsUSD || 0;
       state.dailyPayoutCount = parsed.dailyPayoutCount || 0;
       state.lastDailyPayoutDate = parsed.lastDailyPayoutDate || null;
+      // v21.19.1 (2026-04-22): separate execution-date field (customer-facing
+      // "last paid on") from the settlement-period idempotency key above.
+      state.lastDailyPayoutExecutedDate = parsed.lastDailyPayoutExecutedDate || null;
       state.dailyPayoutByRecipient = parsed.dailyPayoutByRecipient || {};
       // v21.15-fix: Harvest-on-sell reservation. Previously lived only as
       // (state as any).pendingFeeUSDC so it was lost on every restart. Now
@@ -403,6 +406,8 @@ export function saveTradeHistory(): void {
       totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
       dailyPayoutCount: state.dailyPayoutCount,
       lastDailyPayoutDate: state.lastDailyPayoutDate,
+      // v21.19.1 (2026-04-22): execution-date counterpart to lastDailyPayoutDate.
+      lastDailyPayoutExecutedDate: state.lastDailyPayoutExecutedDate || null,
       dailyPayoutByRecipient: state.dailyPayoutByRecipient,
       pendingFeeUSDC: state.pendingFeeUSDC || 0,
       strategyPatterns: state.strategyPatterns,

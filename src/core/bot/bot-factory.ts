@@ -65,6 +65,8 @@ export function createInitialAgentState(): AgentState {
     totalDailyPayoutsUSD:   0,
     dailyPayoutCount:       0,
     lastDailyPayoutDate:    null,
+    // v21.19.1 (2026-04-22) — see state.ts for rationale.
+    lastDailyPayoutExecutedDate: null,
     dailyPayoutByRecipient: {},
     pendingFeeUSDC:         0,
     strategyPatterns:       {},

@@ -295,7 +295,18 @@ export function apiPortfolio() {
         })),
         reinvestPercent: 100 - (CONFIG.autoHarvest.recipients || []).reduce((s: number, r: HarvestRecipient) => s + r.percent, 0),
         // v9.3: Daily Payout
-        lastPayoutDate: state.lastDailyPayoutDate,
+        // v21.19.1 (2026-04-22) — payout-accrual-2026-04-22 fix:
+        // `lastPayoutDate` is what the customer-facing Morning Payout widget
+        // shows as "last paid on ___". Previously it was `lastDailyPayoutDate`
+        // (the settlement-period key — yesterday's date as of the 8 AM UTC
+        // cron, used for idempotency) which made "today's 8 AM payout ran" show
+        // yesterday's date on the dashboard. Now we prefer the actual
+        // wall-clock execution date, falling back to the settlement key for
+        // bots that haven't run a payout yet under v21.19.1.
+        lastPayoutDate:
+          state.lastDailyPayoutExecutedDate || state.lastDailyPayoutDate,
+        // Settlement-period key retained for audit / power-user dashboards.
+        lastPayoutSettlementDate: state.lastDailyPayoutDate,
         dailyPayoutCount: state.dailyPayoutCount,
         totalDailyPayoutsUSD: state.totalDailyPayoutsUSD,
         // v21.13-fix: actual USDC currently reserved for the next 8AM UTC payout.
