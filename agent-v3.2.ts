@@ -637,7 +637,7 @@ import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt,
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/core/portfolio/index.js";
 import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
-import { maybeResyncCumulativePnL, findSuspectTrades } from "./src/core/portfolio/pnl-sanitizer.js";
+import { maybeResyncCumulativePnL, findSuspectTrades, resyncPhantomPerToken } from "./src/core/portfolio/pnl-sanitizer.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
 import { logError, recordTradeFailure, clearTradeFailures, isTokenBlocked, logMissedOpportunity as _logMissedOpportunity, updateOpportunityCosts as _updateOpportunityCosts, getOpportunityCostSummary as _getOpportunityCostSummary } from "./src/core/diagnostics/index.js";
 import type { OpportunityCostLog } from "./src/core/diagnostics/index.js";
@@ -9521,6 +9521,20 @@ async function main() {
     }
   } catch (err: any) {
     console.error(`⚠️ pnl-sanitizer resync failed: ${err?.message || err}`);
+  }
+
+  // v21.20.1 (2026-04-22 follow-up): per-token phantom realized-PnL cleanup.
+  // Bot at +$3,358 cumulative passed the 10× cumulative guard, but VADER
+  // reported +$1,951 on $358 invested (5.4× inv) and KEYCAT/LUNA/AAVE showed
+  // $0 invested with $100+ realized — compositional phantom from the `|| 1`
+  // price fallback at sell paths. Fires every boot (idempotent).
+  try {
+    const phantomResult = resyncPhantomPerToken({ costBasis: state.costBasis });
+    if (phantomResult.fired) {
+      saveTradeHistory();
+    }
+  } catch (err: any) {
+    console.error(`⚠️ per-token phantom cleanup failed: ${err?.message || err}`);
   }
 
   // Restore discovery state if available

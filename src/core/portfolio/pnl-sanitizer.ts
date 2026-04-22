@@ -447,6 +447,87 @@ interface PoisonLogPayload {
   reason: string;
 }
 
+// ---------------------------------------------------------------------------
+// Per-token phantom detection (v21.20.1)
+// ---------------------------------------------------------------------------
+
+export const PHANTOM_ZERO_INV_USD = 50;
+export const PHANTOM_INV_MULT = 3;
+export const PHANTOM_MIN_CHECK_USD = 10;
+
+export interface PerTokenPhantomResult {
+  fired: boolean;
+  tokensZeroed: Array<{
+    symbol: string;
+    beforeRealized: number;
+    totalInvested: number;
+    reason: string;
+  }>;
+  totalZeroedUSD: number;
+}
+
+export interface PerTokenPhantomInput {
+  costBasis: Record<string, TokenCostBasis>;
+  log?: (msg: string) => void;
+}
+
+/**
+ * Per-token phantom detection. Complements the cumulative-ratio resync —
+ * catches compositional phantoms (reasonable cumulative made of mostly-bogus
+ * per-token gains from corrupted avgCostBasis, from the `|| 1` price
+ * fallback at sell paths).
+ *
+ * Seen 2026-04-22: cumulative +$3,358 (0.93× portfolio, passed 10× cumulative
+ * guard) but VADER +$1,951 on $358 inv (5.4×) and KEYCAT/LUNA/AAVE all at $0
+ * invested with $100+ realized.
+ *
+ * Idempotent: safe every startup.
+ */
+export function resyncPhantomPerToken(input: PerTokenPhantomInput): PerTokenPhantomResult {
+  const { costBasis } = input;
+  const log = input.log ?? ((m: string) => console.log(m));
+
+  const zeroed: PerTokenPhantomResult['tokensZeroed'] = [];
+  let totalZeroedUSD = 0;
+
+  for (const [symbol, cb] of Object.entries(costBasis)) {
+    const realized = cb?.realizedPnL ?? 0;
+    const invested = cb?.totalInvestedUSD ?? 0;
+    if (Math.abs(realized) < PHANTOM_MIN_CHECK_USD) continue;
+
+    let reason = '';
+    if (invested === 0 && Math.abs(realized) > PHANTOM_ZERO_INV_USD) {
+      reason = `zero-invested with |realized|=$${Math.abs(realized).toFixed(2)}`;
+    } else if (invested > 0 && Math.abs(realized) > invested * PHANTOM_INV_MULT) {
+      reason = `|realized|=$${Math.abs(realized).toFixed(2)} > ${PHANTOM_INV_MULT}× invested ($${invested.toFixed(2)})`;
+    }
+
+    if (reason) {
+      zeroed.push({ symbol, beforeRealized: realized, totalInvested: invested, reason });
+      totalZeroedUSD += realized;
+      cb.realizedPnL = 0;
+    }
+  }
+
+  if (zeroed.length > 0) {
+    log('');
+    log('=================================================================');
+    log('  🧹 PER-TOKEN PHANTOM REALIZED PNL (v21.20.1)');
+    log(`     Zeroing ${zeroed.length} tokens totaling $${totalZeroedUSD.toFixed(2)}`);
+    for (const z of zeroed) {
+      log(`       ${z.symbol.padEnd(10)} $${z.beforeRealized.toFixed(2)} → $0  (${z.reason})`);
+    }
+    log('=================================================================');
+    log('');
+  }
+
+  return {
+    fired: zeroed.length > 0,
+    tokensZeroed: zeroed,
+    totalZeroedUSD,
+  };
+}
+
 /** Loud console banner — visible in Railway logs. */
 function logPoisonDetection(p: PoisonLogPayload): void {
   console.error('');
