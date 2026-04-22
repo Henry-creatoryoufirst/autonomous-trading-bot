@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-21T09:00 UTC
+# MEDIC REPORT — 2026-04-22T21:06 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #17)
 
 ## Environment
-- Run timestamp: 2026-04-21T09:00 UTC
+- Run timestamp: 2026-04-22T21:06 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-aCd8h
 
 ## Problem
 
@@ -53,18 +53,23 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
-| #16 | 2026-04-21T09:00 UTC | This report (same issue) |
+| #16 | 2026-04-21T09:00 UTC | PATTERN D update |
+| #17 | 2026-04-22T21:06 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the staging branch is extremely active with autonomous updates. Since Run #15 (2026-04-21T00:00), staging advanced from v21.13 to **v21.19** with 6 new commits:
+The claude/cool-sagan-aCd8h branch is **10 commits ahead of main** since last medic report. Recent commits show active bot development:
 
-- `v21.19` (staging HEAD) — fix(sleeves): dashboard-honesty — regime flowing + Core drawdown inherits bot peak
-- `v21.18` — fix(exits): SPEC-015 unblock — DRAWDOWN_OVERRIDE bypasses green-market loss gate
-- `v21.17` — feat(sleeves): dashboard-honesty — drawdownPct + regime returns wired into /api/sleeves/compare
-- `v21.16` — feat(sleeves): Phase 2 — paper-trade simulation + Alpha Hunter v1 strategy
-- `v21.15` Phase 1.2a/b — multi-sleeve orchestrator + per-sleeve write-back + /api/sleeves/compare
-- `v21.14` — feat(exits): SPEC-015 asymmetric exit momentum + drawdown override
+- `a54fd33` — fix(pnl): tighten daily-pnl phantom filter — catch 1:1 fallback signatures
+- `69f9df3` — fix(pnl): per-trade phantom filter on daily-pnl rollup (v21.20.1 follow-on)
+- `d064c8f` — fix(pnl): per-token phantom realized cleanup (v21.20.1)
+- `2fdd016` — Merge fix/realized-pnl-poison-2026-04-18 into staging
+- `9818b94` — Merge fix/payout-accrual-2026-04-22 into staging
+- `2c3bf5a` — Merge fix/trade-counter-reconcile into staging
+- `fd289b9` — fix(payout): accrue pendingFeeUSDC in CDP sell path + separate execution date
+- `57bc876` — fix(pnl): two-layer realized-P&L sanitizer + startup re-sync + audit endpoint
+- `5480dc6` — fix(cost): v21.20 use 1h cache TTL
+- `868cb9d` — feat(cost): v21.20 prompt caching on heavy-cycle Sonnet calls + real telemetry cost math
 
 Earlier evidence still valid from prior runs:
 - `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
@@ -74,9 +79,7 @@ Earlier evidence still valid from prior runs:
 - `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 
-**Staging branch is substantially ahead of main** — v21.14 through v21.19 queued for promotion.
-
-**Risk params in staging (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
+**Staging branch is substantially ahead of main** — v21.14+ queued for promotion with payout accrual fixes, P&L sanitizer, and prompt caching.
 
 ## What Is NOT Known
 
@@ -86,15 +89,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #16)
+## Jobs Status This Run (Run #17)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~12h ago, within 48h threshold).
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~47h 56m ago, just under 48h threshold).
 - **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all return 403); trigger conditions unverifiable.
 
 ## Recommended Action for Henry
 
-**This is the 15th consecutive run with the same network restriction. Action urgently required:**
+**This is the 17th consecutive run with the same network restriction. Action urgently required:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -102,7 +105,7 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a read-only status webhook on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **IMPORTANT:** Staging branch has many queued improvements (payout fixes, P&L sanitizer, prompt caching). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -110,4 +113,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-aCd8h only per MEDIC SAFETY protocol
