@@ -236,6 +236,14 @@ export function apiPortfolio() {
     maxDrawdownPercent: state.trading.maxDrawdownPercent || 0, // v21.4: Lifetime max drawdown
     realizedPnL: totalRealized,
     unrealizedPnL: totalUnrealized,
+    // v21.19-counters: canonical all-time counters (persisted as
+    // lifetimeTotalTrades in state file, so they survive restarts and the
+    // tradeHistory 5000-row cap). These diverge from /health's
+    // tradesSinceRestart by design — that's the whole point of reconciliation.
+    totalTradesAllTime: state.trading.totalTrades,
+    successfulTradesAllTime: state.trading.successfulTrades,
+    // Deprecated aliases — kept for one release while dashboards migrate.
+    // TODO(v21.21): remove once all UIs read *AllTime fields.
     totalTrades: state.trading.totalTrades,
     successfulTrades: state.trading.successfulTrades,
     // v12.2.4: Real P&L win rate (profitable sells / total sells) — NOT execution success rate
@@ -347,6 +355,8 @@ export function apiPortfolio() {
       truePnL: fallbackPnL,
       truePnLPercent: fallbackPnLPct,
       totalDeposited: fallbackDeposited,
+      // v21.19-counters: emit canonical + deprecated alias in fallback path too.
+      totalTradesAllTime: state.trading.totalTrades,
       totalTrades: state.trading.totalTrades,
       totalCycles: state.totalCycles,
       version: BOT_VERSION,
@@ -395,6 +405,10 @@ export function apiTrades(limit: number, includeFailures: boolean = false) {
     : state.tradeHistory.filter(t => t.success !== false);
   return {
     trades: filtered.slice(-limit).reverse(),
+    // v21.19-counters: canonical lifetime counters.
+    totalTradesAllTime: state.trading.totalTrades,
+    successfulTradesAllTime: state.trading.successfulTrades,
+    // Deprecated aliases — TODO(v21.21): remove after one release.
     totalTrades: state.trading.totalTrades,
     successfulTrades: state.trading.successfulTrades,
   };

@@ -10041,6 +10041,14 @@ function apiSleevesCompare() {
         unrealizedPnLUSD: stats.unrealizedPnLUSD,
         rollingSharpe7d: stats.rollingSharpe7d,
         winRate: stats.winRate,
+        // v21.19-counters: sleeve stats.trades is computed off state.tradeHistory,
+        // which is capped at 5000 rows — so for Core it matches /health's
+        // tradesSinceRestart, not /api/portfolio.totalTradesAllTime. Alias
+        // under the honest name so dashboards don't silently show a number
+        // that diverges from the lifetime counter.
+        tradesSinceRestart: stats.trades,
+        // Deprecated: legacy `trades` field. Kept for one release.
+        // TODO(v21.21): remove once dashboards read tradesSinceRestart.
         trades: stats.trades,
         positionsCount: ownership ? Object.keys(ownership.positions).length : 0,
         decisionsCount: decisions.length,
