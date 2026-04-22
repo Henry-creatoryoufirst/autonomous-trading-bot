@@ -2075,9 +2075,13 @@ export function handleModelTelemetry(
     // v21.20: Real cost math using per-call token counts × published Anthropic prices
     // (previous hardcoded per-call estimates underreported Sonnet by ~30×).
     // Prices in USD per 1M tokens. Keep in sync with https://www.anthropic.com/pricing
+    //
+    // `cacheCreate` uses the 1-hour-TTL price (2× base input). We request 1h TTL via
+    // the `extended-cache-ttl-2025-04-11` beta header in callAnthropic. If the API ever
+    // silently falls back to 5m TTL, actual spend will be lower than this estimate.
     const PRICE_PER_MTOK = {
-      sonnet: { input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreate: 3.75 },
-      haiku:  { input: 1.0, output:  5.0, cacheRead: 0.10, cacheCreate: 1.25 },
+      sonnet: { input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreate: 6.00 },
+      haiku:  { input: 1.0, output:  5.0, cacheRead: 0.10, cacheCreate: 2.00 },
     };
     const costForEntry = (t: ModelTelemetry): number => {
       if (t.backend !== 'anthropic') return 0; // Groq/Cerebras/Ollama treated as $0 for now

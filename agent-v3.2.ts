@@ -4897,12 +4897,12 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
 
   const promptBlocks = isFullPrompt
     ? [
-        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const } },
-        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         { type: 'text' as const, text: dynamicBlock },
       ]
     : [
-        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         { type: 'text' as const, text: dynamicBlock },
       ];
 

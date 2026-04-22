@@ -36,11 +36,17 @@ import {
 /**
  * A single text block. `cache_control: 'ephemeral'` marks the end of a cacheable
  * prefix when sent to Anthropic (ignored by other backends after flattening).
+ *
+ * `ttl` defaults to 5m (Anthropic default). Set to '1h' when calls are spaced
+ * further than 5 min apart — requires the `extended-cache-ttl-2025-04-11` beta
+ * header, which `callAnthropic` always sends. Without extended TTL, cache writes
+ * are net-negative when callers exceed the 5-min gap (writes cost 1.25× base and
+ * expire before the next read).
  */
 export interface TextBlock {
   type: 'text';
   text: string;
-  cache_control?: { type: 'ephemeral' };
+  cache_control?: { type: 'ephemeral'; ttl?: '5m' | '1h' };
 }
 
 /**
@@ -423,11 +429,19 @@ export async function callAnthropic(
       content: m.content as string | TextBlock[],
     }));
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: options.maxTokens,
-    messages: messages as Parameters<typeof client.messages.create>[0]['messages'],
-  });
+  // Beta header unlocks `cache_control.ttl: '1h'` on Sonnet/Haiku. 1h TTL is required
+  // for our cycle cadence (15+ min between heavy cycles) — with the default 5-min TTL,
+  // the cache would expire between calls and writes (billed 1.25× base) would never be read.
+  const response = await client.messages.create(
+    {
+      model,
+      max_tokens: options.maxTokens,
+      messages: messages as Parameters<typeof client.messages.create>[0]['messages'],
+    },
+    {
+      headers: { 'anthropic-beta': 'extended-cache-ttl-2025-04-11' },
+    },
+  );
 
   const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
   const latencyMs = Date.now() - startMs;
