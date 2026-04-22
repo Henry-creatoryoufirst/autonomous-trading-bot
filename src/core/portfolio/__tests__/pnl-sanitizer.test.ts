@@ -12,6 +12,7 @@ import {
   validateRealizedPnL,
   maybeResyncCumulativePnL,
   findSuspectTrades,
+  resyncPhantomPerToken,
 } from '../pnl-sanitizer.js';
 import { updateCostBasisAfterBuy, updateCostBasisAfterSell } from '../cost-basis.js';
 

@@ -994,10 +994,13 @@ async function callOSSTraderPrimary(
   let ossResponse: ModelResponse | null = null;
   let firstErr: Error | null = null;
 
+  // Groq gets the trader-specific model override (default Llama 3.3 70B) here —
+  // NOT the GROQ_MODEL_FAST 8B pre-screen default. The small model can't make real
+  // trade decisions; the 70B tier is our Sonnet-substitute when DeepInfra is absent.
   const backendAttempts: Array<{ label: string; fn: () => Promise<ModelResponse> }> = [];
   if (await isDeepInfraAvailable()) backendAttempts.push({ label: 'DeepInfra', fn: () => callDeepInfra(options) });
   if (await isCerebrasAvailable()) backendAttempts.push({ label: 'Cerebras',  fn: () => callCerebras(options) });
-  if (await isGroqAvailable())     backendAttempts.push({ label: 'Groq',      fn: () => callGroq(options) });
+  if (await isGroqAvailable())     backendAttempts.push({ label: 'Groq',      fn: () => callGroq(options, getGroqTraderModel()) });
   if (await isOllamaAvailable())   backendAttempts.push({ label: 'Ollama',    fn: () => callOllama(options) });
 
   for (const attempt of backendAttempts) {
