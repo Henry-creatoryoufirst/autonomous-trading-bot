@@ -828,15 +828,28 @@ export function apiDailyPnL() {
           pnl = trade.amountUSD - costOfSold;
         }
       }
-      // v21.20.1 (2026-04-22): per-trade phantom filter on daily rollup.
-      // Historical trade records can carry phantom realizedPnL values (e.g. a
-      // SELL of $2.49 reporting +$23.98 realized from a corrupted avgCostBasis).
-      // These pre-date the per-trade sanitizer shipped in v21.20 and are
-      // baked into trade.realizedPnL on disk. Reject any per-trade |pnl|
-      // exceeding 5× the trade's own USD volume — matches the sanitizer
-      // philosophy. No portfolio context needed here.
+      // v21.20.1 (2026-04-22): two-tier phantom filter on daily rollup.
+      // Historical trade records can carry phantom realizedPnL values and
+      // pre-date the per-trade sanitizer. Two signatures:
+      //
+      //  (a) EXTREME phantoms: |pnl| > 5× amount. Big unit-error events
+      //      like the Apr-18 $330K-on-$747 day.
+      //
+      //  (b) 1:1 FALLBACK phantoms: |pnl| >~ amount. When avgCostBasis got
+      //      corrupted to ~$0 (via the `|| 1` price fallback at sell paths),
+      //      the bot books realized ≈ full amountUSD as pseudo-gain on every
+      //      sell of that token. Individually each trade looks like a 100%
+      //      margin; in aggregate they inflate daily realized. Seen today:
+      //      25 sells summing to $1,006 realized on a $3.6k portfolio while
+      //      portfolio moved only +$97 — impossible except by this bug.
+      //
+      // Reject per-trade |pnl| > 90% of the trade's own amountUSD. Legit
+      // margins on short-cycle automated trades are routinely 1–10%; anything
+      // near 100% is accounting phantom, not real alpha.
       const tradeAmountUSD = Math.max(trade.amountUSD || 0, 1);
       if (Math.abs(pnl) > 5 * tradeAmountUSD) {
+        pnl = 0;
+      } else if (Math.abs(pnl) > 0.9 * tradeAmountUSD) {
         pnl = 0;
       }
       dailyMap[day].realized += pnl;
