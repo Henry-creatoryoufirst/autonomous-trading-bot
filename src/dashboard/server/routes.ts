@@ -2225,7 +2225,25 @@ export function handleModelTelemetry(
       };
     }
 
+    // v21.20 NVR-SPEC-018: DeepInfra backend (DeepSeek V3.2, the NVR-TRADER primary)
+    if (process.env.DEEPINFRA_API_KEY) {
+      const deepinfraEntries = telemetry.filter(t => t.backend === 'deepinfra');
+      const deepinfraLast = deepinfraEntries.length > 0 ? deepinfraEntries[deepinfraEntries.length - 1] : null;
+      backendHealth.deepinfra = {
+        healthy: deepinfraEntries.length > 0 && deepinfraEntries.slice(-10).every(t => t.success !== false),
+        lastUsed: deepinfraLast ? deepinfraLast.timestamp : null,
+        avgLatencyMs: deepinfraEntries.length > 0
+          ? Math.round(deepinfraEntries.reduce((s, t) => s + t.latencyMs, 0) / deepinfraEntries.length)
+          : 0,
+      };
+    }
+
+    // v21.20 NVR-SPEC-018: Expose OSS_TRADER_MODE so dashboards can show whether
+    // Brain+Hands is disabled / shadow / primary at a glance.
+    const ossTraderMode = (process.env.OSS_TRADER_MODE || 'disabled') as 'disabled' | 'shadow' | 'primary';
+
     ctx.sendJSON(res, 200, {
+      ossTraderMode,
       currentTier,
       gemmaMode,
       agreementRate: Math.round(agreement.rate * 1000) / 10, // percentage with 1 decimal

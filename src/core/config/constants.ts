@@ -100,6 +100,37 @@ export const CEREBRAS_MODEL = 'llama-3.3-70b';
 export const CEREBRAS_REQUEST_TIMEOUT_MS = 15_000;
 
 // ============================================================================
+// DEEPINFRA INTEGRATION (v21.20 — NVR-SPEC-018 Brain+Hands Architecture)
+// DeepSeek V3.2 is the primary NVR-TRADER workhorse: ~90% of Sonnet-4 reasoning
+// quality at ~1/10 the cost. OpenAI-compatible endpoint.
+// Pricing (2026-04): $0.28/MTok input, $0.42/MTok output.
+// ============================================================================
+
+/** DeepInfra OpenAI-compatible API base URL */
+export const DEEPINFRA_BASE_URL = 'https://api.deepinfra.com/v1/openai';
+
+/** DeepSeek V3.2 via DeepInfra — Sonnet-class reasoning at OSS prices */
+export const DEEPINFRA_MODEL_DEFAULT = 'deepseek-ai/DeepSeek-V3';
+
+/** Timeout for DeepInfra requests */
+export const DEEPINFRA_REQUEST_TIMEOUT_MS = 60_000;
+
+// ============================================================================
+// NVR-SPEC-018 BRAIN+HANDS MODE (v21.20)
+// Flip the default: OSS makes per-cycle decisions, Claude supervises.
+// OSS_TRADER_MODE env controls the master switch.
+// ============================================================================
+
+/** Trade % of portfolio that forces GUARDIAN (Claude review) */
+export const GUARDIAN_RISKY_PCT_DEFAULT = 0.05;
+
+/** Token age (hours) under which GUARDIAN always reviews */
+export const GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT = 48;
+
+/** OSS confidence below this triggers GUARDIAN review */
+export const GUARDIAN_MIN_CONFIDENCE_DEFAULT = 0.55;
+
+// ============================================================================
 // TRADING CYCLE TIMING
 // ============================================================================
 

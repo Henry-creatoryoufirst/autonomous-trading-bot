@@ -4892,16 +4892,25 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // v21.1: Model routing — Sonnet for all cycles in difficult markets.
   // Haiku is only used for routine cycles when the market is calm (F&G > 25, trending up).
   // In fear/ranging/volatile conditions, every decision matters — use full intelligence.
+  //
+  // v21.20 NVR-SPEC-018: OSS_TRADER_MODE=primary overrides this gate entirely —
+  // DeepSeek V3.2 handles every decision and gets the full STRATEGY context.
+  // `needsSonnet` becomes a no-op in primary mode; Claude only fires via GUARDIAN.
   const reasonLower = (heavyCycleReason || '').toLowerCase();
   const currentFG = lastFearGreedValue ?? 50;
   const currentRegime = state.trading.marketRegime || 'UNKNOWN';
   const isDifficultMarket = currentFG < 25 || currentRegime === 'RANGING' || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
-  const needsSonnet = !heavyCycleReason  // No reason = unknown, play safe with Sonnet
+  const ossTraderPrimary = (process.env.OSS_TRADER_MODE === 'primary');
+  const needsSonnet = !ossTraderPrimary && (
+    !heavyCycleReason  // No reason = unknown, play safe with Sonnet
     || SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()))
     || (cashDeployment?.active)  // Cash deployment mode needs full intelligence
-    || isDifficultMarket;  // v21.1: Difficult markets get Sonnet ALWAYS — no intern during a crisis
+    || isDifficultMarket  // v21.1: Difficult markets get Sonnet ALWAYS — no intern during a crisis
+  );
   const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
-  const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
+  const modelLabel = ossTraderPrimary
+    ? 'DeepSeek V3.2 (NVR-TRADER, SPEC-018)'
+    : needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
 
   // v20.6: Compressed prompt system — CORE (always) + STRATEGY (heavy cycles only) + dynamic data (always)
   // v21.20: Structured as content blocks with cache_control on stable prefix sections.
@@ -4909,7 +4918,10 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // version bump / redeploy, so they cache across consecutive cycles. Dynamic market data stays
   // as a plain un-cached block at the end. Expected savings: ~90% off input cost on cached tokens
   // once the cache is warm (first call per deploy is a cache-miss, subsequent calls are hits).
-  const isFullPrompt = needsSonnet;
+  //
+  // v21.20 SPEC-018: OSS_TRADER_MODE=primary always uses the full prompt too — OSS is the
+  // decision-maker and needs the same STRATEGY context Sonnet would have had.
+  const isFullPrompt = needsSonnet || ossTraderPrimary;
   const dynamicBlock = isFullPrompt
     ? dynamicData + '\n\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
     : dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
@@ -4934,10 +4946,11 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       // v21.2: Model routing — Gemma for routine, Claude for difficult markets
+      // v21.20 SPEC-018: OSS primary = full-context, 2k output budget for multi-trade decisions
       const { response: modelResponse, telemetry: modelTelemetry } = await callModelWithShadow(
         {
           messages: [{ role: 'user', content: promptBlocks }],
-          maxTokens: needsSonnet ? 2000 : 500,
+          maxTokens: (needsSonnet || ossTraderPrimary) ? 2000 : 500,
           jsonMode: true,
           timeoutMs: 90_000,
         },

@@ -27,6 +27,9 @@ import {
   CEREBRAS_BASE_URL,
   CEREBRAS_MODEL,
   CEREBRAS_REQUEST_TIMEOUT_MS,
+  DEEPINFRA_BASE_URL,
+  DEEPINFRA_MODEL_DEFAULT,
+  DEEPINFRA_REQUEST_TIMEOUT_MS,
 } from '../config/constants.js';
 
 // ============================================================================
@@ -61,7 +64,7 @@ export type MessageContent = string | TextBlock[];
 export interface ModelResponse {
   text: string;
   model: string;
-  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
+  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras' | 'deepinfra';
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -91,17 +94,34 @@ function messagesAsStrings(messages: ModelRequestOptions['messages']): Array<{ r
 }
 
 /** Model routing tiers */
-export type ModelTier = 'CEREBRAS' | 'GROQ' | 'GEMMA' | 'HAIKU' | 'SONNET';
+export type ModelTier = 'DEEPINFRA' | 'CEREBRAS' | 'GROQ' | 'GEMMA' | 'HAIKU' | 'SONNET';
 
-/** Gemma operating mode */
+/** Gemma operating mode (legacy, pre-SPEC-018) */
 export type GemmaMode = 'disabled' | 'shadow' | 'supervised' | 'graduated' | 'production';
+
+/**
+ * NVR-SPEC-018 Brain+Hands master switch.
+ * - `disabled` (default): pre-SPEC-018 behavior, falls through to GemmaMode
+ * - `shadow`: Claude decides, DeepInfra runs parallel for agreement measurement
+ * - `primary`: DeepInfra decides, Claude reviews via GUARDIAN on risky decisions
+ */
+export type OSSTraderMode = 'disabled' | 'shadow' | 'primary';
+
+export function getOSSTraderMode(): OSSTraderMode {
+  const raw = (process.env.OSS_TRADER_MODE || 'disabled') as OSSTraderMode;
+  if (raw !== 'disabled' && raw !== 'shadow' && raw !== 'primary') {
+    console.warn(`[SPEC-018] Invalid OSS_TRADER_MODE="${raw}", falling back to "disabled"`);
+    return 'disabled';
+  }
+  return raw;
+}
 
 /** Per-call telemetry */
 export interface ModelTelemetry {
   timestamp: string;
   tier: ModelTier;
   model: string;
-  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
+  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras' | 'deepinfra';
   latencyMs: number;
   inputTokens: number;
   outputTokens: number;
@@ -122,7 +142,7 @@ export interface ModelTelemetry {
 interface RoutingDecision {
   tier: ModelTier;
   model: string;
-  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras';
+  backend: 'anthropic' | 'ollama' | 'groq' | 'cerebras' | 'deepinfra';
   reason: string;
 }
 
@@ -406,6 +426,91 @@ export async function callCerebras(options: ModelRequestOptions): Promise<ModelR
 }
 
 // ============================================================================
+// DEEPINFRA BACKEND — NVR-SPEC-018 (v21.20)
+// DeepSeek V3.2 primary workhorse. OpenAI-compatible, $0.28/$0.42 per MTok.
+// Benchmarked at ~90% Sonnet-4 quality on reasoning. This is the default
+// NVR-TRADER path when OSS_TRADER_MODE=primary.
+// ============================================================================
+
+/** Check if DeepInfra is available (verifies DEEPINFRA_API_KEY is set). */
+export async function isDeepInfraAvailable(): Promise<boolean> {
+  return typeof process.env.DEEPINFRA_API_KEY === 'string' && process.env.DEEPINFRA_API_KEY.length > 0;
+}
+
+/** Get the DeepInfra model name — default DeepSeek V3, env-overridable for A/B testing. */
+export function getDeepInfraModel(): string {
+  return process.env.DEEPINFRA_MODEL || DEEPINFRA_MODEL_DEFAULT;
+}
+
+/** Call DeepInfra's OpenAI-compatible chat completions endpoint. */
+export async function callDeepInfra(options: ModelRequestOptions): Promise<ModelResponse> {
+  const startMs = Date.now();
+  const apiKey = process.env.DEEPINFRA_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('DEEPINFRA_API_KEY is not set');
+  }
+
+  const messages = messagesAsStrings(options.messages);
+  const model = getDeepInfraModel();
+
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    stream: false,
+    temperature: 0.1,
+    max_tokens: options.maxTokens,
+  };
+
+  if (options.jsonMode) {
+    body.response_format = { type: 'json_object' };
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? DEEPINFRA_REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${DEEPINFRA_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      throw new Error(`DeepInfra returned ${res.status}: ${await res.text()}`);
+    }
+
+    const data = await res.json() as {
+      choices: Array<{ message: { content: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+
+    const text = data.choices?.[0]?.message?.content ?? '';
+    const latencyMs = Date.now() - startMs;
+
+    return {
+      text,
+      model,
+      backend: 'deepinfra',
+      usage: {
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
+      },
+      latencyMs,
+    };
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+// ============================================================================
 // ANTHROPIC BACKEND (wraps existing SDK)
 // ============================================================================
 
@@ -650,6 +755,18 @@ export async function callModelWithShadow(
   anthropicClient: Anthropic,
   gemmaMode: GemmaMode,
 ): Promise<{ response: ModelResponse; telemetry: ModelTelemetry }> {
+  // ── NVR-SPEC-018 BRAIN+HANDS MODE: takes precedence when active ──
+  // OSS_TRADER_MODE=primary flips the default: DeepInfra (DeepSeek V3.2) decides,
+  // Claude Sonnet reviews via GUARDIAN only for risky decisions. Bypasses
+  // the legacy needsSonnet gate entirely. Hot-rollback by flipping back to
+  // OSS_TRADER_MODE=disabled (single env var, no redeploy).
+  const ossTraderMode = getOSSTraderMode();
+  if (ossTraderMode === 'primary') {
+    return callOSSTraderPrimary(options, context, anthropicClient);
+  }
+  // NOTE: `shadow` mode for OSS_TRADER_MODE not yet implemented — falls through
+  // to legacy GemmaMode.shadow path below. Target for Day 2 if Henry wants it.
+
   const routing = await resolveModelRouting(context, gemmaMode);
 
   // ── DISABLED MODE: pure Claude, existing behavior ──
@@ -833,6 +950,126 @@ async function callGemmaPrimary(
     escalated: false,
   };
   return { response: gemmaResponse, telemetry };
+}
+
+// ============================================================================
+// NVR-SPEC-018 BRAIN+HANDS: OSS_TRADER_MODE=primary
+// OSS makes per-cycle decisions; Claude (GUARDIAN) reviews only the risky ones.
+// ============================================================================
+
+/**
+ * Tier label for OSS backends (used in telemetry so the dashboard can
+ * distinguish which cheap backend actually served the call).
+ */
+function ossTierForBackend(backend: 'deepinfra' | 'cerebras' | 'groq' | 'ollama'): ModelTier {
+  switch (backend) {
+    case 'deepinfra': return 'DEEPINFRA';
+    case 'cerebras':  return 'CEREBRAS';
+    case 'groq':      return 'GROQ';
+    case 'ollama':    return 'GEMMA';
+  }
+}
+
+/**
+ * OSS_TRADER_MODE=primary path: DeepInfra-first cascade for the decision,
+ * then GUARDIAN (Sonnet) reviews if `checkEscalation` flags the OSS output as risky.
+ *
+ * Fallback chain for the decision itself: DeepInfra → Cerebras → Groq → Ollama → Sonnet.
+ * Never fails open — if every OSS backend is unreachable, Sonnet takes the cycle
+ * (logged as an escalation so Henry sees the OSS outage).
+ *
+ * GUARDIAN triggers (handled by existing `checkEscalation` under 'production' mode):
+ *   - malformed / non-JSON OSS response
+ *   - trade size > GEMMA_ESCALATION_CONFIG.maxTradePercentOfPortfolio (5%) of portfolio
+ *   - trade size > GEMMA_ESCALATION_CONFIG.maxTradeAmountUSD ($200)
+ *   - uncertainty keywords in reasoning
+ *   - more concurrent non-HOLD actions than the config cap
+ */
+async function callOSSTraderPrimary(
+  options: ModelRequestOptions,
+  context: ModelCallContext,
+  anthropicClient: Anthropic,
+): Promise<{ response: ModelResponse; telemetry: ModelTelemetry }> {
+  // Pick the first available OSS backend in priority order.
+  let ossResponse: ModelResponse | null = null;
+  let firstErr: Error | null = null;
+
+  const backendAttempts: Array<{ label: string; fn: () => Promise<ModelResponse> }> = [];
+  if (await isDeepInfraAvailable()) backendAttempts.push({ label: 'DeepInfra', fn: () => callDeepInfra(options) });
+  if (await isCerebrasAvailable()) backendAttempts.push({ label: 'Cerebras',  fn: () => callCerebras(options) });
+  if (await isGroqAvailable())     backendAttempts.push({ label: 'Groq',      fn: () => callGroq(options) });
+  if (await isOllamaAvailable())   backendAttempts.push({ label: 'Ollama',    fn: () => callOllama(options) });
+
+  for (const attempt of backendAttempts) {
+    try {
+      ossResponse = await attempt.fn();
+      break;
+    } catch (err) {
+      console.warn(`[OSS-TRADER] ${attempt.label} failed: ${(err as Error).message?.slice(0, 200)}`);
+      firstErr = firstErr ?? (err as Error);
+    }
+  }
+
+  // No OSS backend succeeded — escalate to Sonnet as last resort.
+  if (!ossResponse) {
+    const reason = firstErr?.message ?? 'No OSS backend configured';
+    console.warn(`[OSS-TRADER] All OSS backends unavailable (${reason}) — Sonnet taking the cycle`);
+    const claudeResponse = await callAnthropic(options, anthropicClient, AI_MODEL_HEAVY);
+    const telemetry: ModelTelemetry = {
+      timestamp: new Date().toISOString(),
+      tier: 'SONNET',
+      model: AI_MODEL_HEAVY,
+      backend: 'anthropic',
+      latencyMs: claudeResponse.latencyMs,
+      inputTokens: claudeResponse.usage.inputTokens,
+      outputTokens: claudeResponse.usage.outputTokens,
+      cacheReadInputTokens: claudeResponse.usage.cacheReadInputTokens,
+      cacheCreationInputTokens: claudeResponse.usage.cacheCreationInputTokens,
+      success: true,
+      escalated: true,
+      escalationReason: `All OSS backends unavailable: ${reason}`,
+    };
+    return { response: claudeResponse, telemetry };
+  }
+
+  // GUARDIAN: reuse existing escalation logic under 'production' severity to
+  // decide whether Claude Sonnet needs to review the OSS decision.
+  const portfolioValue = context.portfolioValue ?? 0;
+  const guardian = checkEscalation(ossResponse.text, portfolioValue, 'production');
+
+  if (guardian.shouldEscalate) {
+    console.log(`[GUARDIAN] ${ossResponse.backend}→Sonnet review: ${guardian.reason}`);
+    const claudeResponse = await callAnthropic(options, anthropicClient, AI_MODEL_HEAVY);
+    const telemetry: ModelTelemetry = {
+      timestamp: new Date().toISOString(),
+      tier: 'SONNET',
+      model: AI_MODEL_HEAVY,
+      backend: 'anthropic',
+      latencyMs: claudeResponse.latencyMs,
+      inputTokens: claudeResponse.usage.inputTokens,
+      outputTokens: claudeResponse.usage.outputTokens,
+      cacheReadInputTokens: claudeResponse.usage.cacheReadInputTokens,
+      cacheCreationInputTokens: claudeResponse.usage.cacheCreationInputTokens,
+      success: true,
+      escalated: true,
+      escalationReason: `GUARDIAN: ${guardian.reason}`,
+    };
+    return { response: claudeResponse, telemetry };
+  }
+
+  // OSS decision accepted — no GUARDIAN intervention needed.
+  const telemetry: ModelTelemetry = {
+    timestamp: new Date().toISOString(),
+    tier: ossTierForBackend(ossResponse.backend as 'deepinfra' | 'cerebras' | 'groq' | 'ollama'),
+    model: ossResponse.model,
+    backend: ossResponse.backend,
+    latencyMs: ossResponse.latencyMs,
+    inputTokens: ossResponse.usage.inputTokens,
+    outputTokens: ossResponse.usage.outputTokens,
+    success: true,
+    escalated: false,
+  };
+  return { response: ossResponse, telemetry };
 }
 
 // ============================================================================
