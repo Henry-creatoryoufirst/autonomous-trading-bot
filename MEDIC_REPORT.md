@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-21T00:00 UTC
+# MEDIC REPORT — 2026-04-22T03:06 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #15)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
 
 ## Environment
-- Run timestamp: 2026-04-21T00:00 UTC
+- Run timestamp: 2026-04-22T03:06 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-7V3wA
 
 ## Problem
 
@@ -52,25 +52,29 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #12 | 2026-04-20T00:00 UTC | PATTERN D update |
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
-| #15 | 2026-04-21T00:00 UTC | This report (same issue) |
+| #15 | 2026-04-21T00:00 UTC | PATTERN D update |
+| #16 | 2026-04-22T03:06 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the staging branch is active with autonomous updates:
+Despite API being unreachable from medic, the repo shows active autonomous development:
 
+- `2026-04-21 16:03 EDT` — v21.19 dashboard-honesty: regime flowing + Core drawdown inherits bot peak
+- `2026-04-21 15:32 EDT` — v21.18 SPEC-015 unblock: DRAWDOWN_OVERRIDE bypasses green-market loss gate
+- `2026-04-21 15:14 EDT` — v21.17 dashboard-honesty: drawdownPct + regime wired into /api/sleeves/compare
+- `2026-04-21 14:52 EDT` — v21.16 Sleeves Phase 2: paper-trade simulation + Alpha Hunter v1 strategy
+- `2026-04-21 13:49 EDT` — v21.15 Sleeves Phase 1.2b: multi-sleeve orchestrator + per-sleeve write-back
 - `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
 - `2026-04-20 05:12 UTC` — Scout added AXL (Axelar) to TOKEN_REGISTRY
 - `2026-04-19 21:11 UTC` — Scout added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
-- `2026-04-20 (main)` — v21.14 payout shares accrual below min-transfer threshold
-- `2026-04-20 (main)` — v21.13 Sleeves Phase 2 LIVE with SLEEVES_DRIVE_DECISIONS=true
 - `2026-04-19 20:10 UTC` — Scout added LBTC to TOKEN_REGISTRY
 - `2026-04-18 22:15 UTC` — Auditor raised stagnation threshold 4h→6h (extreme-fear RANGING)
 - `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
 - `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
 
-**Staging branch is substantially ahead of main** — many queued tokens and tightened risk params not yet promoted to production.
+**main branch is at v21.19** with Sleeves Phase 2 fully wired. Active development continues.
 
-**Risk params in staging (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
+**Risk params active (from constants.ts, not yet verifiable via API):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
 
 ## What Is NOT Known
 
@@ -80,15 +84,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
 
-## Jobs Status This Run (Run #15)
+## Jobs Status This Run (Run #16)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~3h ago, well within 48h threshold). GHST added in that run.
-- **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all return "Host not in allowlist"); trigger conditions unverifiable.
+- **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes to agent-v3.2.ts.
+- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~30h ago, within 48h threshold). GHST added in that run.
+- **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all blocked by sandbox egress); trigger conditions unverifiable.
 
 ## Recommended Action for Henry
 
-**This is the 14th consecutive run with the same network restriction. Action urgently required:**
+**This is the 15th consecutive run with the same network restriction. Action urgently required:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -96,7 +100,7 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a read-only status webhook on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Note:** Next scout window opens in ~18h (48h since last GHST scout on Apr 20 21:09 UTC, expires Apr 22 ~21:09 UTC)
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
@@ -104,4 +108,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental
 ## Safety
 - No code changes made to agent-v3.2.ts
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
+- Report committed to claude/cool-sagan-7V3wA per harness branch requirements
