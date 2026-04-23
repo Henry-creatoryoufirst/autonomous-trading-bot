@@ -365,6 +365,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "GHST", name: "Aavegotchi", coingeckoId: "aavegotchi",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  LMTS: {
+    address: "0x9EadbE35F3Ee3bF3e28180070C429298a1b02F93",
+    symbol: "LMTS", name: "Limitless", coingeckoId: "limitless-3",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   MFER: {
     address: "0xe3086852a4b125803c815a158249ae468a3254ca",
     symbol: "MFER", name: "mfercoin", coingeckoId: "mfercoin",
