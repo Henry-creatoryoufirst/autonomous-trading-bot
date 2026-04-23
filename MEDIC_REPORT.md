@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-21T09:00 UTC
+# MEDIC REPORT — 2026-04-23T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #17)
 
 ## Environment
-- Run timestamp: 2026-04-21T09:00 UTC
+- Run timestamp: 2026-04-23T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-EK6cN
 
 ## Problem
 
@@ -53,30 +53,21 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
-| #16 | 2026-04-21T09:00 UTC | This report (same issue) |
+| #16 | 2026-04-21T09:00 UTC | PATTERN D update |
+| #17 | 2026-04-23T00:00 UTC | This report — Scout ran successfully |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the staging branch is extremely active with autonomous updates. Since Run #15 (2026-04-21T00:00), staging advanced from v21.13 to **v21.19** with 6 new commits:
+Despite API being unreachable from medic, the bot repo is active. Recent commits on main:
 
-- `v21.19` (staging HEAD) — fix(sleeves): dashboard-honesty — regime flowing + Core drawdown inherits bot peak
-- `v21.18` — fix(exits): SPEC-015 unblock — DRAWDOWN_OVERRIDE bypasses green-market loss gate
-- `v21.17` — feat(sleeves): dashboard-honesty — drawdownPct + regime returns wired into /api/sleeves/compare
-- `v21.16` — feat(sleeves): Phase 2 — paper-trade simulation + Alpha Hunter v1 strategy
-- `v21.15` Phase 1.2a/b — multi-sleeve orchestrator + per-sleeve write-back + /api/sleeves/compare
-- `v21.14` — feat(exits): SPEC-015 asymmetric exit momentum + drawdown override
+- `dd96ed6` — feat(governance): refuse to start on non-canonical CDP project
+- `35752c7` — chore: trigger staging redeploy for bc26dcb
+- `bc26dcb` — fix(rotation): route indexer through shared multi-endpoint rpcCall
+- `a65b9a9` — feat(rotation): Phase 1 indexer + event log (NVR-SPEC-011)
 
-Earlier evidence still valid from prior runs:
-- `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
-- `2026-04-20 05:12 UTC` — Scout added AXL (Axelar) to TOKEN_REGISTRY
-- `2026-04-19 21:11 UTC` — Scout added ETHY (Ethy AI by Virtuals) to TOKEN_REGISTRY
-- `2026-04-18 22:15 UTC` — Auditor raised stagnation threshold 4h→6h (extreme-fear RANGING)
-- `2026-04-16 00:25 UTC` — Auditor tightened BREAKER_DAILY_DD_PCT 8→7 (bear-market)
-- `2026-04-15 16:35 UTC` — Auditor lowered KELLY_FRACTION 0.5→0.35 (bear-market)
-
-**Staging branch is substantially ahead of main** — v21.14 through v21.19 queued for promotion.
-
-**Risk params in staging (not yet on main):** KELLY 0.35, VOL_TARGET 1.5%, BREAKER_DD 7%.
+**Scout ran this run (Run #17):** Last scout was 2026-04-20T21:09 UTC (~72h ago, >48h threshold).
+- **Added OVPP (OpenVPP)** to TOKEN_REGISTRY — tokenized energy/RWA protocol on Aerodrome Base
+  - Pool liquidity: $831k | 24h vol: $1,160k | Pool age: 37 days | Score: 7.5/10
 
 ## What Is NOT Known
 
@@ -85,16 +76,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance or P&L state
+- Auditor trigger conditions (win_rate, drawdown, losing_streak, marketRegime)
 
-## Jobs Status This Run (Run #16)
+## Jobs Status This Run (Run #17)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). No code changes.
-- **Scout**: SKIPPED — last scout ran at 2026-04-20T21:09 UTC (~12h ago, within 48h threshold).
+- **Medic**: API unreachable (same persistent constraint). No critical condition confirmed. No code changes.
+- **Scout**: ✅ COMPLETED — added OVPP (OpenVPP) to TOKEN_REGISTRY (last scout was 72h ago, >48h threshold met). Committed and pushed.
 - **Auditor**: SKIPPED — cannot fetch live metrics (/api/trades, /api/portfolio, /api/patterns, /api/adaptive all return 403); trigger conditions unverifiable.
+
+## Token Scout Candidates Evaluated (Run #17)
+
+| Token | Symbol | Liquidity | 24h Vol | Pool Age | Score | Result |
+|-------|--------|-----------|---------|----------|-------|--------|
+| OpenVPP | OVPP | $831k | $1,160k | 37 days | 7.5/10 | ✅ ADDED |
+| RaveDAO | RAVE | $607 | ~$0 (Base) | — | 1/10 | ❌ Liquidity too low |
+| HermesOS | HERMESOS | $2,765 | $135 | — | 1/10 | ❌ Liquidity & vol too low |
+| BSX | BSX | — | $507 | — | 1/10 | ❌ Volume too low |
 
 ## Recommended Action for Henry
 
-**This is the 15th consecutive run with the same network restriction. Action urgently required:**
+**This is the 16th consecutive run with the same network restriction. Action urgently required:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -102,12 +103,13 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a read-only status webhook on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **IMPORTANT:** Staging branch has many queued improvements (6+ new tokens, tightened risk params). Consider promoting: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Review OVPP addition:** OpenVPP is a tokenized energy RWA on Aerodrome Base — verify the token before promoting to production.
+5. **IMPORTANT:** This branch (`claude/cool-sagan-EK6cN`) has OVPP added — merge to staging, verify, then promote.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable, persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
 - No code changes made to agent-v3.2.ts
+- Only token-registry.ts and MEDIC_REPORT.md changed
 - No production changes
-- Report committed to staging only per MEDIC SAFETY protocol
