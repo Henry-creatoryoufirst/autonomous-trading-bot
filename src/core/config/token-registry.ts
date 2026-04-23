@@ -324,6 +324,16 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === MEME COINS (discovered) ===
+  RUSSELL: {
+    address: "0x0c5142bc58f9a61ab8c3d2085dd2f4e550c5ce0b",
+    symbol: "RUSSELL", name: "Russell", coingeckoId: "russell",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  TYBG: {
+    address: "0x0d97f261b1e88845184f678e2d1e7a98d9fd38de",
+    symbol: "TYBG", name: "Base God", coingeckoId: "base-god",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   SKI: {
     address: "0x768be13e1680b5ebe0024c42c896e3db59ec0149",
     symbol: "SKI", name: "Ski Mask Dog", coingeckoId: "ski-mask-dog",
