@@ -335,6 +335,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === AUTO-DISCOVERED (scout) ===
+  TIG: {
+    address: "0x0C03Ce270B4826Ec62e7DD007f0B716068639F7B",
+    symbol: "TIG", name: "The Innovation Game", coingeckoId: "the-innovation-game",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   KTA: {
     address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
     symbol: "KTA", name: "Keeta", coingeckoId: "keeta",
