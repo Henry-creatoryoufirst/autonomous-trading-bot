@@ -385,6 +385,16 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "RAVE", name: "RaveDAO", coingeckoId: "ravedao",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  MOG: {
+    address: "0x2Da56AcB9Ea78330f947bD57C54119Debda7AF71",
+    symbol: "MOG", name: "Mog Coin", coingeckoId: "based-mog-coin",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  TYBG: {
+    address: "0x0d97f261b1e88845184f678e2d1e7a98d9fd38de",
+    symbol: "TYBG", name: "Base God", coingeckoId: "base-god",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
