@@ -23,3 +23,5 @@ build/
 
 # Outcome tracker persistence (runtime data, not source)
 data/*.json
+data/*.yaml
+data/critic-reports/
