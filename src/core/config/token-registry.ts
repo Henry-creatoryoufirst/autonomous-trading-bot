@@ -15,7 +15,7 @@ export const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "AXL"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "AXL", "cbADA"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
@@ -260,6 +260,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x23ee2343b892b1bb63503a4fabc840e0e2c6810f",
     symbol: "AXL", name: "Axelar", coingeckoId: "axelar",
     sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
+  },
+  cbADA: {
+    address: "0xcbADA732173e39521CDBE8bf59a6Dc85A9fc7b8c",
+    symbol: "cbADA", name: "Coinbase Wrapped ADA", coingeckoId: "coinbase-wrapped-ada",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 50, decimals: 6,
   },
   // === AI & AGENT TOKENS (expanded) ===
   VVV: {
