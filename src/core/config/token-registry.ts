@@ -360,6 +360,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "GHST", name: "Aavegotchi", coingeckoId: "aavegotchi",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  OVPP: {
+    address: "0x8c0d3adcf8ce094e1ae437557ec90a6374dc9bdd",
+    symbol: "OVPP", name: "OpenVPP", coingeckoId: "openvpp",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 9,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
