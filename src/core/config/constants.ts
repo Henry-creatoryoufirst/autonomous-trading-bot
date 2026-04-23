@@ -786,8 +786,9 @@ export const TWAP_MILD_THRESHOLD_PCT = 1.0;
 /** Number of ticks above and below current to read for depth analysis */
 export const TICK_DEPTH_RANGE = 5;
 
-/** Large trade threshold in USD — trades above this are "smart money" */
-export const LARGE_TRADE_THRESHOLD_USD = 5000;
+/** Large trade threshold in USD — trades above this are "smart money"
+ *  Base L2 pools ($100K-$1.5M typical) see whale moves at $2.5K+ not $5K+ (Ethereum floor) */
+export const LARGE_TRADE_THRESHOLD_USD = 2500;
 
 /** Uniswap V3 Swap event topic hash */
 export const SWAP_EVENT_TOPIC = '0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67';
