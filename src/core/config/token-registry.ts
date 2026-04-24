@@ -334,6 +334,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "BENJI", name: "Basenji", coingeckoId: "basenji",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  BASEDPEPE: {
+    address: "0x52b492a33E447Cdb854c7FC19F1e57E8BfA1777D",
+    symbol: "BASEDPEPE", name: "Based Pepe", coingeckoId: "based-pepe",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === AUTO-DISCOVERED (scout) ===
   KTA: {
     address: "0xc0634090F2Fe6c6d75e61Be2b949464aBB498973",
