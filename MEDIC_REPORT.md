@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-23T00:00 UTC
+# MEDIC REPORT — 2026-04-24T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #17)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
 
 ## Environment
-- Run timestamp: 2026-04-23T00:00 UTC
+- Run timestamp: 2026-04-24T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -47,17 +47,19 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
-| #17 | 2026-04-23T00:00 UTC | This report (conflict resolved, same persistent issue) |
+| #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
+| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #16:
+Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
 
-- `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY (this run)
-- `2026-04-23` — Scout: TIG, MFER, LMTS added to TOKEN_REGISTRY (earlier runs today)
+- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
+- `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
+- `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
+- `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
 - `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
-- `2026-04-23` — feat(spec-018): Groq trader-model override + /api/policy + /api/training-export
-- `2026-04-23` — fix(pnl): tighten daily-pnl phantom filter (3-layer fix)
 - `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
 - `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
 
@@ -71,11 +73,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #17)
+## Jobs Status This Run (Run #18)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT conflict resolved.
-- **Scout**: COMPLETED — added OVPP (OpenVPP, $831K liq, $1.4M vol) and RAVE (RaveDAO, $522K liq, $5.3M vol). TIG already present, skipped.
-- **Auditor**: Cannot verify trigger conditions (all /api/* return 403). Running research searches; no code changes without confirmed trigger.
+- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
+- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
+- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
 ## Recommended Action for Henry
 
