@@ -37,7 +37,11 @@ export const SONNET_REQUIRED_REASONS = [
   'EMERGENCY',
   'moved',         // price move — could trigger trade
   'exited cooldown', // token ready to trade again
-  'Forced interval', // v21.1: routine forced cycles also need Sonnet in difficult markets
+  // 'Forced interval' REMOVED v21.21.1 — routine forced-interval heartbeats are exactly the
+  // cycle type v21.21 routing wants on the cheap tier. v21.1 put it here to force Sonnet in
+  // "difficult markets", but v21.21 tightened isDifficultMarket so the difficult-market path
+  // catches the real emergencies on its own. Keeping this entry made v21.21 a no-op on ~95%
+  // of cycles — routine heartbeats fire with reason='Forced interval' and were matching here.
 ] as const;
 
 // ============================================================================
