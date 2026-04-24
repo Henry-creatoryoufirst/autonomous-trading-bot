@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-21T09:00 UTC
+# MEDIC REPORT — 2026-04-24T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #16)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #17)
 
 ## Environment
-- Run timestamp: 2026-04-21T09:00 UTC
+- Run timestamp: 2026-04-24T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-5lg2g (staging branch not present in this checkout)
 
 ## Problem
 
@@ -53,18 +53,30 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #13 | 2026-04-20T12:00 UTC | PATTERN D update |
 | #14 | 2026-04-20T17:00 UTC | PATTERN D update |
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
-| #16 | 2026-04-21T09:00 UTC | This report (same issue) |
+| #16 | 2026-04-21T09:00 UTC | PATTERN D update |
+| #17 | 2026-04-24T00:00 UTC | This report (same issue) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, the staging branch is extremely active with autonomous updates. Since Run #15 (2026-04-21T00:00), staging advanced from v21.13 to **v21.19** with 6 new commits:
+Despite API being unreachable from medic, the repo is active with autonomous updates. Since Run #16 (2026-04-21T09:00), the following commits landed:
 
-- `v21.19` (staging HEAD) — fix(sleeves): dashboard-honesty — regime flowing + Core drawdown inherits bot peak
-- `v21.18` — fix(exits): SPEC-015 unblock — DRAWDOWN_OVERRIDE bypasses green-market loss gate
-- `v21.17` — feat(sleeves): dashboard-honesty — drawdownPct + regime returns wired into /api/sleeves/compare
-- `v21.16` — feat(sleeves): Phase 2 — paper-trade simulation + Alpha Hunter v1 strategy
-- `v21.15` Phase 1.2a/b — multi-sleeve orchestrator + per-sleeve write-back + /api/sleeves/compare
-- `v21.14` — feat(exits): SPEC-015 asymmetric exit momentum + drawdown override
+- `fix(pnl): tighten daily-pnl phantom filter` — catch 1:1 fallback signatures
+- `fix(pnl): per-trade phantom filter on daily-pnl rollup` (v21.20.1 follow-on)
+- `fix(pnl): per-token phantom realized cleanup` (v21.20.1)
+- `Merge fix/realized-pnl-poison-2026-04-18 into staging`
+- `Merge fix/payout-accrual-2026-04-22 into staging`
+- `Merge fix/trade-counter-reconcile into staging`
+- `fix(payout): accrue pendingFeeUSDC in CDP sell path + separate execution date`
+- `fix(pnl): two-layer realized-P&L sanitizer + startup re-sync + audit endpoint`
+- `fix(cost): v21.20 use 1h cache TTL — 5m default would be net-negative at 15-min cycle cadence`
+- `feat(cost): v21.20 prompt caching on heavy-cycle Sonnet calls + real telemetry cost math`
+- `fix(health): reconcile trade counters and derive live-exec timestamp`
+
+This run also added **MAMO** and **UP (Superform)** to TOKEN_REGISTRY via Scout.
+
+## Scout Run (2026-04-24)
+- MAMO: AI-powered DeFi on Base, $457K 24h vol, $3.2M liquidity, May 2025 launch → AI_TOKENS, HIGH risk
+- UP (Superform): DeFi yield optimizer, $5.67M 24h vol, established Aerodrome Ignition pool → DEFI, MEDIUM risk
 
 Earlier evidence still valid from prior runs:
 - `2026-04-20 21:09 UTC` — Scout added GHST (Aavegotchi) to TOKEN_REGISTRY
