@@ -4891,28 +4891,41 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
 ` : ''}${outcomeBlock}`;
 
-  // v21.1: Model routing — Sonnet for all cycles in difficult markets.
-  // Haiku is only used for routine cycles when the market is calm (F&G > 25, trending up).
-  // In fear/ranging/volatile conditions, every decision matters — use full intelligence.
+  // v21.21 Routing reset + SPEC-018 OSS_TRADER_MODE integration.
   //
-  // v21.20 NVR-SPEC-018: OSS_TRADER_MODE=primary overrides this gate entirely —
-  // DeepSeek V3.2 handles every decision and gets the full STRATEGY context.
-  // `needsSonnet` becomes a no-op in primary mode; Claude only fires via GUARDIAN.
+  // The OLD v21.1 "play safe with Sonnet" default meant EVERY cycle was Sonnet:
+  // `!heavyCycleReason` + RANGING regime both tripped the gate, and RANGING is
+  // the crypto norm, not a crisis. Cheap-backend keys (Groq/Cerebras) were set
+  // across the fleet but never actually invoked. And Sonnet wasn't earning its
+  // cost either — $500 off peak in a green market made the picture clear.
+  //
+  // Two levers now, in priority order:
+  //   1. OSS_TRADER_MODE=primary  → big red lever. DeepSeek V3.2 (NVR-TRADER)
+  //      handles every decision. needsSonnet → false, Claude only fires via
+  //      GUARDIAN. Use this when you want full OSS cutover.
+  //   2. Tiered default (v21.21) → Sonnet reserved for genuinely high-stakes cycles:
+  //      explicit SONNET_REQUIRED_REASON, active cashDeployment, F&G<20, VOLATILE,
+  //      or TRENDING_DOWN. Everything else routes to the cheap tier
+  //      (Cerebras → Groq → Ollama → Haiku) via model-client.
+  //
+  // Kill switches (no code redeploy):
+  //   - `OSS_TRADER_MODE=disabled` turns off primary lever
+  //   - `GEMMA_MODE=disabled` routes everything back to Claude even if cheap keys exist
   const reasonLower = (heavyCycleReason || '').toLowerCase();
   const currentFG = lastFearGreedValue ?? 50;
   const currentRegime = state.trading.marketRegime || 'UNKNOWN';
-  const isDifficultMarket = currentFG < 25 || currentRegime === 'RANGING' || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
+  const isDifficultMarket = currentFG < 20 || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
+  const hasExplicitSonnetReason = Boolean(heavyCycleReason) && SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()));
   const ossTraderPrimary = (process.env.OSS_TRADER_MODE === 'primary');
   const needsSonnet = !ossTraderPrimary && (
-    !heavyCycleReason  // No reason = unknown, play safe with Sonnet
-    || SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()))
-    || (cashDeployment?.active)  // Cash deployment mode needs full intelligence
-    || isDifficultMarket  // v21.1: Difficult markets get Sonnet ALWAYS — no intern during a crisis
+    hasExplicitSonnetReason
+    || Boolean(cashDeployment?.active)
+    || isDifficultMarket
   );
   const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
   const modelLabel = ossTraderPrimary
     ? 'DeepSeek V3.2 (NVR-TRADER, SPEC-018)'
-    : needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
+    : needsSonnet ? 'Sonnet (heavy)' : 'Routine (cheap tier)';
 
   // v20.6: Compressed prompt system — CORE (always) + STRATEGY (heavy cycles only) + dynamic data (always)
   // v21.20: Structured as content blocks with cache_control on stable prefix sections.
