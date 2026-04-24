@@ -323,6 +323,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "RIVER", name: "River Protocol", coingeckoId: "river",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  TYBG: {
+    address: "0x0d97f261b1e88845184f678e2d1e7a98d9fd38de",
+    symbol: "TYBG", name: "Base God", coingeckoId: "base-god",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (discovered) ===
   SKI: {
     address: "0x768be13e1680b5ebe0024c42c896e3db59ec0149",
