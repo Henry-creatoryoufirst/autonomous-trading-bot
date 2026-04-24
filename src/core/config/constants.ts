@@ -962,6 +962,25 @@ export const RESERVE_CHECK_INTERVAL_CYCLES = 5;
 /** Max positions to sell per reserve restore pass */
 export const RESERVE_MAX_SELLS = 2;
 
+/**
+ * v21.23: Dry-powder cost-basis gate.
+ *
+ * CRITIC Audit 2026-04-24 revealed dry_powder_rebalance fired 64× in 7 days,
+ * win rate 27%, aggregate –$196 realized. The scoring actively preferred selling
+ * losers ("winners are protected" — correctly ranked, but the pool was
+ * dominated by losers). The bot was systematically realizing losses to top up
+ * a USDC target that could have waited.
+ *
+ * New rule: only sell a position for dry-powder restoration if its unrealized
+ * P&L is ≥ this threshold (as a % of cost basis). Default 0 — break-even or
+ * better. Operationalizes the "pulling profits is the edge, not picking
+ * winners" principle for the USDC-reserve rule.
+ *
+ * Kill switch: set env `DRY_POWDER_COST_BASIS_GATE=disabled` to revert to the
+ * old behavior (no gate — any position eligible) without redeploy.
+ */
+export const DRY_POWDER_MIN_UNREALIZED_PCT = 0;
+
 // ============================================================================
 // v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely
 // ============================================================================
