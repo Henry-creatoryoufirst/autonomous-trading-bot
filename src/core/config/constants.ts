@@ -410,13 +410,13 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  * After a recent trade, re-entry requires a HIGHER confluence score.
  * Normal BUY entry:  confluence >= +25
  * Re-entry BUY:      confluence >= +40 (within TRADE_EXECUTED window)
- * Normal SELL entry: confluence <= -20
+ * Normal SELL entry: confluence <= -16 (bear-adjusted Apr-2026 from -20)
  * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
  */
 export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
 export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
 export const NORMAL_CONFLUENCE_BUY = 25;
-export const NORMAL_CONFLUENCE_SELL = -20;
+export const NORMAL_CONFLUENCE_SELL = -16;  // Bear-adjusted Apr-2026: -20→-16 — 46-day bear; exit 20% faster when momentum turns negative
 
 // ========================================================================
 // v7.0: PARALLEL EVALUATION ENGINE
