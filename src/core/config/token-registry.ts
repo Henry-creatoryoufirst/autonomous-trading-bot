@@ -395,6 +395,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "TYBG", name: "Base God", coingeckoId: "base-god",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  B3: {
+    address: "0xb3b32f9f8827d4634fe7d973fa1034ec9fddb3b3",
+    symbol: "B3", name: "B3 Gaming Chain", coingeckoId: "b3",
+    sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
