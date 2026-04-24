@@ -360,6 +360,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "GHST", name: "Aavegotchi", coingeckoId: "aavegotchi",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  RUSSELL: {
+    address: "0x0c5142bc58f9a61ab8c3d2085dd2f4e550c5ce0b",
+    symbol: "RUSSELL", name: "Russell", coingeckoId: "russell",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
