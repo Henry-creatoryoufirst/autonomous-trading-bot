@@ -4694,12 +4694,48 @@ async function makeTradeDecision(
       `Standard risk reviewer and position limits still apply.\n`
     : "";
 
+  // v21.22: Compute routing decision EARLY so we can skip building heavy prompt
+  // sections on routine cycles. Previously the bot did full swarm + full indicator
+  // dump + full 11-dim intel summary + full DEX intel on every cycle, even when
+  // the decision was going to go to the cheap tier. That wasted ~4k tokens per
+  // routine cycle and pushed the prompt over Groq's 6k TPM free-tier cap.
+  // v21.21 Routing reset + SPEC-018 OSS_TRADER_MODE integration.
+  const _reasonLower = (heavyCycleReason || '').toLowerCase();
+  const _currentFG = lastFearGreedValue ?? 50;
+  const _currentRegime = state.trading.marketRegime || 'UNKNOWN';
+  const _isDifficultMarket = _currentFG < 20 || _currentRegime === 'VOLATILE' || _currentRegime === 'TRENDING_DOWN';
+  const _hasExplicitSonnetReason = Boolean(heavyCycleReason) && SONNET_REQUIRED_REASONS.some(r => _reasonLower.includes(r.toLowerCase()));
+  const _ossTraderPrimary = (process.env.OSS_TRADER_MODE === 'primary');
+  const _needsSonnet = !_ossTraderPrimary && (
+    _hasExplicitSonnetReason
+    || Boolean(cashDeployment?.active)
+    || _isDifficultMarket
+  );
+  const _isFullPrompt = _needsSonnet || _ossTraderPrimary;
+
   // Build technical indicators summary for the AI
-  const indicatorsSummary = formatIndicatorsForPrompt(marketData.indicators, marketData.tokens);
+  // v21.22: Full indicator dump on heavy cycles; compact top-signals list on routine.
+  const indicatorsSummary = _isFullPrompt
+    ? formatIndicatorsForPrompt(marketData.indicators, marketData.tokens)
+    : (() => {
+        // Compact: just top 5 tokens by |confluenceScore| with essentials only
+        const ranked = Object.entries(marketData.indicators)
+          .filter(([sym, ind]) => sym !== 'USDC' && ind && ind.confluenceScore !== undefined)
+          .sort(([, a], [, b]) => Math.abs(b.confluenceScore) - Math.abs(a.confluenceScore))
+          .slice(0, 5)
+          .map(([sym, ind]) => {
+            const rsi = ind.rsi14 !== null ? `RSI=${ind.rsi14.toFixed(0)}` : '';
+            const trend = `Trend=${ind.trendDirection}`;
+            const signal = `${ind.overallSignal}(${ind.confluenceScore > 0 ? '+' : ''}${ind.confluenceScore})`;
+            return `  ${sym}: ${[rsi, trend, signal].filter(Boolean).join(' | ')}`;
+          });
+        return ranked.length > 0 ? ranked.join('\n') : '  No strong signals';
+      })();
 
   // v15.0: Run swarm before Claude call — inject consensus as context
+  // v21.22: Skip swarm on routine cycles (CPU + prompt-size savings).
   let swarmPromptSection = '';
-  if (SIGNAL_ENGINE === 'swarm') {
+  if (_isFullPrompt && SIGNAL_ENGINE === 'swarm') {
     try {
       const swarmTokens = marketData.tokens.filter(t => t.symbol !== 'USDC' && t.symbol !== 'WETH').map(t => {
         // v17.0: Compute price distance from 30-day high
@@ -4796,8 +4832,11 @@ async function makeTradeDecision(
     ? `\n═══ VOLUME SPIKE ALERTS ═══\n${volumeSpikeAlerts.join('\n')}\nThese tokens have unusual activity — investigate for accumulation or distribution.\n`
     : '';
 
-  // V4.0: Build intelligence layers
-  const intelligenceSummary = formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData, marketData.globalMarket, marketData.smartRetailDivergence, marketData.fundingMeanReversion, marketData.tvlPriceDivergence, marketData.stablecoinSupply);
+  // V4.0: Build intelligence layers (heavy — 11-dim macro/DeFi/derivatives/news summary)
+  // v21.22: Only built on full-prompt cycles; routine cycles skip to save ~1.5k tokens.
+  const intelligenceSummary = _isFullPrompt
+    ? formatIntelligenceForPrompt(marketData.defiLlama, marketData.derivatives, marketData.marketRegime, marketData.newsSentiment, marketData.macroData, marketData.globalMarket, marketData.smartRetailDivergence, marketData.fundingMeanReversion, marketData.tvlPriceDivergence, marketData.stablecoinSupply)
+    : `═══ REGIME ═══\nRegime: ${marketData.marketRegime} | F&G: ${marketData.fearGreed.value} (${marketData.fearGreed.classification})`;
 
   // v11.4.23 + v12.2: Compute today's realized P&L for payout-awareness (use stored P&L when available)
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -4825,8 +4864,9 @@ async function makeTradeDecision(
     : "No completed sell trades yet — performance tracking will begin after first sell";
 
   // v21.10: Sector rotation signal — detect correlated momentum across sector peers
-  const sectorRotations = detectSectorRotation(marketData.tokens);
-  const rotationSummary = formatSectorRotationSummary(sectorRotations);
+  // v21.22: Heavy-cycle concern; routine cycles skip (~300 tokens saved).
+  const sectorRotations = _isFullPrompt ? detectSectorRotation(marketData.tokens) : [];
+  const rotationSummary = _isFullPrompt ? formatSectorRotationSummary(sectorRotations) : '';
 
   // v20.6: Build dynamic data sections (always included regardless of prompt tier)
   const dynamicData = `
@@ -4866,12 +4906,12 @@ ${swarmPromptSection}
 
 ${intelligenceSummary}
 
-${lastDexIntelligence?.aiSummary || ''}
+${_isFullPrompt ? (lastDexIntelligence?.aiSummary || '') : ''}
 ${volumeSpikeSection}
 ═══ RECENT TRADE HISTORY ═══
-${tradeHistoryContext}${tradeHistorySummary}
+${tradeHistoryContext}${_isFullPrompt ? tradeHistorySummary : recentTrades.slice(-3).map(t => `  ${t.timestamp.slice(5, 16)} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"}`).join("\n") || '  No trades yet'}
 
-${discoveryIntel}${hotMoverIntel}═══ TRADING LIMITS ═══
+${_isFullPrompt ? discoveryIntel : ''}${_isFullPrompt ? hotMoverIntel : ''}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 30%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}`;
 
@@ -4911,17 +4951,12 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // Kill switches (no code redeploy):
   //   - `OSS_TRADER_MODE=disabled` turns off primary lever
   //   - `GEMMA_MODE=disabled` routes everything back to Claude even if cheap keys exist
-  const reasonLower = (heavyCycleReason || '').toLowerCase();
-  const currentFG = lastFearGreedValue ?? 50;
-  const currentRegime = state.trading.marketRegime || 'UNKNOWN';
-  const isDifficultMarket = currentFG < 20 || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
-  const hasExplicitSonnetReason = Boolean(heavyCycleReason) && SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()));
-  const ossTraderPrimary = (process.env.OSS_TRADER_MODE === 'primary');
-  const needsSonnet = !ossTraderPrimary && (
-    hasExplicitSonnetReason
-    || Boolean(cashDeployment?.active)
-    || isDifficultMarket
-  );
+  // v21.22: Routing decision was computed earlier (before heavy-section build)
+  // so those sections could be skipped on routine cycles. Alias to the canonical
+  // names the rest of this function uses.
+  const needsSonnet = _needsSonnet;
+  const ossTraderPrimary = _ossTraderPrimary;
+  const isFullPrompt = _isFullPrompt;
   const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
   const modelLabel = ossTraderPrimary
     ? 'DeepSeek V3.2 (NVR-TRADER, SPEC-018)'
@@ -4936,7 +4971,6 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   //
   // v21.20 SPEC-018: OSS_TRADER_MODE=primary always uses the full prompt too — OSS is the
   // decision-maker and needs the same STRATEGY context Sonnet would have had.
-  const isFullPrompt = needsSonnet || ossTraderPrimary;
   const dynamicBlock = isFullPrompt
     ? dynamicData + '\n\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
     : dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
