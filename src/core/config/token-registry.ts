@@ -360,6 +360,16 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "GHST", name: "Aavegotchi", coingeckoId: "aavegotchi",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  MAMO: {
+    address: "0x7300b37dfdfab110d83290a29dfb31b1740219fe",
+    symbol: "MAMO", name: "Mamo", coingeckoId: "mamo",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  UP: {
+    address: "0x5b2193fdc451c1f847be09ca9d13a4bf60f8c86b",
+    symbol: "UP", name: "Superform", coingeckoId: "superform",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
