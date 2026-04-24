@@ -671,7 +671,7 @@ export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v20.3.1: 25% → 20% (match 
  *  CASH_DEPLOY_FEAR_THRESHOLDS removed — threshold is always CASH_DEPLOYMENT_THRESHOLD_PCT. */
 
 /** Legacy — still used as the URGENT tier's confluence discount for directive stacking */
-export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 20;
+export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 15; // auditor Apr-2026: 20→15 BEAR regime — requires 5 more confluence pts before deploying excess USDC, reduces trigger-happy cash deployment in downtrends
 
 /** Legacy — kept for reference; tiers now define per-tier deploy percentages */
 export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 80;
