@@ -1448,10 +1448,23 @@ function maintainDryPowder(
 
   const deficit = targetReserve - usdcBalance;
 
+  // v21.23: Cost-basis gate. CRITIC found dry_powder_rebalance fired 64× in 7d
+  // at 27% win rate, aggregate –$196 realized — the bot was systematically
+  // locking in losses to top up USDC. Now we refuse to sell a position that's
+  // underwater beyond a configurable gate; if nothing is eligible, the USDC
+  // target stays aspirational until prices recover or a BUY-path exit fires.
+  // Kill switch: DRY_POWDER_COST_BASIS_GATE=disabled reverts.
+  const gateEnabled = process.env.DRY_POWDER_COST_BASIS_GATE !== 'disabled';
+  const gatePct = Number.isFinite(Number(process.env.DRY_POWDER_MIN_UNREALIZED_PCT))
+    ? Number(process.env.DRY_POWDER_MIN_UNREALIZED_PCT)
+    : DRY_POWDER_MIN_UNREALIZED_PCT;
+
   // Score all held positions by opportunity cost — we want to sell the one
-  // with the LEAST reason to hold: oldest + most negative P&L + smallest size
+  // with the LEAST reason to hold: oldest + smallest size. Losers are excluded
+  // entirely by the gate above; winners are ranked by age/size.
   const now = Date.now();
-  const candidates: Array<{ symbol: string; usdValue: number; score: number }> = [];
+  const candidates: Array<{ symbol: string; usdValue: number; unrealizedPnlPct: number; score: number }> = [];
+  let gatedOutCount = 0;
 
   for (const b of balances) {
     const symbol = (b.symbol || '').toUpperCase();
@@ -1474,18 +1487,28 @@ function maintainDryPowder(
       ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
       : 0;
 
-    // Opportunity cost score: higher = more expendable
-    // Age penalty: longest-held stale positions first
+    // v21.23: Cost-basis gate — skip anything underwater below threshold.
+    // With gatePct=0 (default), this is "no realized losses for rebalancing."
+    if (gateEnabled && unrealizedPnlPct < gatePct) {
+      gatedOutCount++;
+      continue;
+    }
+
+    // Opportunity cost score: higher = more expendable.
+    // Age penalty: longest-held (stalest, coldest profit) first
     const agePenalty = Math.min(ageHours / 168, 1.0) * 40;
-    // P&L penalty: losers first (winners are protected)
-    const pnlPenalty = Math.max(0, -unrealizedPnlPct) * 0.5;
-    // Size bonus: prefer selling smaller positions (less disruption)
+    // Size bonus: prefer selling smaller positions (less portfolio disruption)
     const sizePenalty = Math.max(0, 1 - (b.usdValue / 200)) * 10;
 
-    candidates.push({ symbol: b.symbol, usdValue: b.usdValue, score: agePenalty + pnlPenalty + sizePenalty });
+    candidates.push({ symbol: b.symbol, usdValue: b.usdValue, unrealizedPnlPct, score: agePenalty + sizePenalty });
   }
 
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) {
+    if (gatedOutCount > 0) {
+      console.log(`   💧 DRY_POWDER: ${gatedOutCount} position(s) underwater, gate holding. USDC at ${((usdcBalance / totalPortfolioValue) * 100).toFixed(1)}% vs ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}% target — waiting for recovery or harvest path.`);
+    }
+    return [];
+  }
   candidates.sort((a, b) => b.score - a.score);
 
   // Sell just enough to restore the reserve, cap at RESERVE_MAX_SELLS
@@ -1504,7 +1527,7 @@ function maintainDryPowder(
     toToken: 'USDC',
     amountUSD: pos.usdValue,
     percent: 90,
-    reasoning: `DRY_POWDER: Portfolio has ${((usdcBalance / totalPortfolioValue) * 100).toFixed(1)}% USDC (target: ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}%). Selling lowest-opportunity-cost position to restore capital availability for incoming alpha signals.`,
+    reasoning: `DRY_POWDER (v21.23 gated): Portfolio has ${((usdcBalance / totalPortfolioValue) * 100).toFixed(1)}% USDC (target: ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}%). ${pos.symbol} is up ${pos.unrealizedPnlPct >= 0 ? '+' : ''}${pos.unrealizedPnlPct.toFixed(1)}% vs cost basis — harvesting into the reserve.`,
     sector: TOKEN_REGISTRY[pos.symbol]?.sector,
   }));
 }
