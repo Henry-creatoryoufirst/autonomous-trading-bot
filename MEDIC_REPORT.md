@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-24T22:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-24T22:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ymIgs
 
 ## Problem
 
@@ -48,22 +48,23 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-24T22:00 UTC | This report; scout skipped (ran <13h ago); auditor raised HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, staging branch is extremely active. Since Run #18:
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 — bear-market signal quality (this run)
+- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (Run #18)
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (Run #18)
 - `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
 - `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
 - `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
 - `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
 - `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
-- `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
 
-**Staging is substantially ahead of main** — v21.20.1+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
+**Staging is substantially ahead of main** — v21.24+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
 
 ## What Is NOT Known
 
@@ -73,15 +74,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Medic**: PATTERN D — API unreachable (same persistent constraint, Run #19). MEDIC_REPORT updated.
+- **Scout**: SKIPPED — last scout ran at 2026-04-24 09:07 (within 48h). Added B3 that run.
+- **Auditor**: TRIGGERED — bear market carry-forward (46-day bear confirmed Run #17; 48+ hour BEAR condition met). Research ran 4 searches × 2 queries each. Top finding: HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0). Research scoring summary:
+  - Signal quality: micro-opportunity flow detection — Impact 2, Complexity 3, Priority 0.67 (not implemented)
+  - Execution: Slipstream V2 multi-pool routing — disqualified (touches execution)
+  - Execution: Permit2 batch approvals — Impact 2, Complexity 3, Priority 0.67 (not implemented)
+  - Sizing: Adaptive Kelly window 50→30 — Impact 2, Complexity 1, Risk medium (noisy estimates), Priority 2.0 (not implemented — noise concern)
+  - **Signal: HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 — Impact 3, Complexity 1, Risk low, Priority 3.0 ✅ IMPLEMENTED**
+  - MEV: tighter slippage via private RPC — disqualified (touches execution)
+  - Drawdown: recovery sizing gradient — Impact 3, Complexity 3, Priority 1.0 (not implemented)
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 19th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -89,12 +97,13 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Staging promotion candidate:** review `claude/cool-sagan-ymIgs` → merge to `staging` → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
+- 1 line changed in src/core/config/constants.ts (HOT_MOVER_MIN_BUY_RATIO 0.55→0.60)
 - No changes to agent-v3.2.ts
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- Never touched executeDirectDexSwap or executeSingleSwap
