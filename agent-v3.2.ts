@@ -897,6 +897,7 @@ const anthropic = (process.env.SIGNAL_MODE !== 'central')
 import { callModelWithShadow, logModelTelemetry } from './src/core/services/model-client.js';
 import type { GemmaMode } from './src/core/services/model-client.js';
 import { loadPolicy, renderPolicyPromptBlock } from './src/core/services/policy.js';
+import { loadCriticMemory } from './src/core/services/critic-memory.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -5005,11 +5006,23 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
     ? renderPolicyPromptBlock(loadPolicy())
     : null;
 
+  // v21.24: CRITIC memory block — nightly audit summary of the bot's recent
+  // pattern outcomes (capture ratio, bailed-on-winners, failing patterns). Only
+  // injected on heavy-cycle (Sonnet or OSS-primary) prompts — the goal is
+  // informed reasoning, and small cheap-tier models on routine cycles don't
+  // benefit the same way. Kill switch: CRITIC_MEMORY_ENABLED=false.
+  //
+  // Cache-control breakpoint: memory only updates when CRITIC runs (nightly),
+  // so the cache invalidates at most once per day for this block alone —
+  // CORE+STRATEGY stay cached across the refresh.
+  const criticMemoryBlock = isFullPrompt ? loadCriticMemory() : null;
+
   const promptBlocks = isFullPrompt
     ? [
         { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         ...(policyBlock ? [{ type: 'text' as const, text: policyBlock, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }] : []),
+        ...(criticMemoryBlock ? [{ type: 'text' as const, text: criticMemoryBlock, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }] : []),
         { type: 'text' as const, text: dynamicBlock },
       ]
     : [
@@ -5017,8 +5030,8 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
         { type: 'text' as const, text: dynamicBlock },
       ];
 
-  const promptTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : '') + dynamicBlock);
-  const cacheableTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : ''));
+  const promptTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : '') + (criticMemoryBlock ?? '') + dynamicBlock);
+  const cacheableTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : '') + (criticMemoryBlock ?? ''));
   console.log(`  [AI] Using ${modelLabel} for cycle | Reason: ${heavyCycleReason || 'unknown'}`);
   console.log(`  [Prompt] ${isFullPrompt ? 'Full' : 'Compact'} prompt: ~${promptTokens} tokens (cacheable prefix: ~${cacheableTokens})`);
 

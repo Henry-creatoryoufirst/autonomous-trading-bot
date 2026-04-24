@@ -30,6 +30,13 @@ import { TOKEN_REGISTRY } from '../src/core/config/token-registry.js';
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const REPORTS_DIR = path.join(DATA_DIR, 'critic-reports');
 const RULES_PROPOSAL_PATH = path.join(DATA_DIR, 'rules-proposal.yaml');
+/**
+ * Prompt-ready summary of the latest CRITIC audit. The bot reads this at
+ * cycle start (when CRITIC_MEMORY_ENABLED is true) and injects it into
+ * heavy-cycle Sonnet prompts so the decision-maker reasons with its own
+ * recent pattern outcomes, not blind each cycle.
+ */
+const MEMORY_PATH = path.join(DATA_DIR, 'critic-memory.md');
 
 const BOT_URL = process.env.BOT_URL ?? 'https://autonomous-trading-bot-production.up.railway.app';
 const WINDOW_HOURS = parseInt(process.env.CRITIC_WINDOW_HOURS ?? '168', 10);
@@ -842,6 +849,87 @@ function renderYaml(proposals: Proposal[]): string {
   return [...header, ...body, ''].join('\n');
 }
 
+/**
+ * Compact, prompt-ready CRITIC memory — the bot injects this into heavy-cycle
+ * Sonnet prompts. Target ~500–800 tokens. Structured as discrete findings with
+ * specific numbers so the LLM can reason over them, not just echo them.
+ */
+function renderCriticMemory(ctx: {
+  windowHours: number;
+  patternStats: PatternStats[];
+  roundTripSummary: RoundTripSummary;
+  portfolio: Portfolio | null;
+}): string {
+  const { windowHours, patternStats, roundTripSummary: s, portfolio } = ctx;
+  const today = new Date().toISOString().slice(0, 10);
+  const lines: string[] = [];
+
+  lines.push('═══ CRITIC MEMORY — Your Recent Pattern Outcomes ═══');
+  lines.push(`(audit window: last ${windowHours}h · generated ${today})`);
+  lines.push('');
+  if (portfolio) {
+    lines.push(`Portfolio context: $${(portfolio.totalValue ?? 0).toFixed(0)} · truePnL ${portfolio.truePnL !== undefined ? (portfolio.truePnL >= 0 ? '+' : '') + '$' + portfolio.truePnL.toFixed(0) : '—'} · drawdown ${portfolio.drawdown !== undefined ? portfolio.drawdown.toFixed(1) + '%' : '—'}`);
+    lines.push('');
+  }
+
+  // Round-trip capture story — the headline finding
+  if (s.totalRoundTrips > 0) {
+    lines.push(`CLOSED ROUND-TRIPS: ${s.totalRoundTrips} (${s.winners}W / ${s.losers}L / ${s.breakEvens}BE) · total realized ${s.totalRealizedPnL >= 0 ? '+' : ''}$${s.totalRealizedPnL.toFixed(2)} · avg hold ${s.avgHoldHours.toFixed(1)}h`);
+    if (s.tripsWithCounterfactual > 0 && s.avgCaptureRatio !== null) {
+      const pct = (s.avgCaptureRatio * 100).toFixed(0);
+      lines.push(`ALPHA CAPTURE RATIO: ${pct}% — of each entry→current move available, you realized ${pct}% on average. ${s.avgCaptureRatio < 0 ? 'Negative = you exit LOSING POSITIONS that subsequently run.' : s.avgCaptureRatio < 0.3 ? 'Below 30% means systematic early exits.' : ''}`);
+      lines.push(`POST-EXIT DRIFT: sold tokens moved ${s.avgSinceExitPct >= 0 ? '+' : ''}${s.avgSinceExitPct.toFixed(1)}% on average after you sold. ${s.avgSinceExitPct > 5 ? '⚠️ You are bailing on winners.' : s.avgSinceExitPct < -3 ? 'Good — exits generally preceded downside.' : ''}`);
+    }
+    lines.push('');
+  }
+
+  // Bailed-on-winners — concrete examples
+  if (s.bailedOnWinners.length > 0) {
+    lines.push('RECENT BAILED-ON WINNERS (you sold, token ran):');
+    for (const r of s.bailedOnWinners.slice(0, 4)) {
+      const since = r.sinceExitPct ?? 0;
+      lines.push(`  · ${r.token}: sold ${r.holdHours.toFixed(1)}h after entry for ${r.realizedPnL >= 0 ? '+' : ''}$${r.realizedPnL.toFixed(0)}, now +${since.toFixed(0)}% since exit. Entry was: ${r.buyReasoning.slice(0, 90).replace(/\s+/g, ' ')}`);
+    }
+    lines.push('');
+  }
+
+  // Pattern table — compressed to just the pattern + num + avg $ + win rate
+  const topFailing = [...patternStats]
+    .filter((p) => p.n >= 3 && p.avgPnL < 0)
+    .sort((a, b) => a.avgPnL - b.avgPnL)
+    .slice(0, 4);
+  if (topFailing.length > 0) {
+    lines.push('PATTERNS YOUR DECISIONS CURRENTLY PRODUCE LOSSES ON:');
+    for (const p of topFailing) {
+      lines.push(`  · ${p.label}: ${p.n} fires, ${(p.winRate * 100).toFixed(0)}% win rate, avg ${p.avgPnL >= 0 ? '+' : ''}$${p.avgPnL.toFixed(2)}/trade${p.note ? ' — ' + p.note : ''}`);
+    }
+    lines.push('');
+  }
+
+  const topWorking = [...patternStats]
+    .filter((p) => p.n >= 3 && p.avgPnL > 1)
+    .sort((a, b) => b.avgPnL - a.avgPnL)
+    .slice(0, 3);
+  if (topWorking.length > 0) {
+    lines.push('PATTERNS YOUR DECISIONS CURRENTLY PRODUCE WINS ON:');
+    for (const p of topWorking) {
+      lines.push(`  · ${p.label}: ${p.n} fires, ${(p.winRate * 100).toFixed(0)}% win rate, avg +$${p.avgPnL.toFixed(2)}/trade`);
+    }
+    lines.push('');
+  }
+
+  lines.push('HOW TO USE THIS MEMORY:');
+  lines.push('Do not mechanically avoid a pattern just because it has been failing. Instead, when');
+  lines.push('you\'re about to make a decision that matches a failing pattern here, ask yourself:');
+  lines.push('"Is THIS case materially different from the prior fires?" If yes, name why in your');
+  lines.push('reasoning. If you can\'t articulate a difference, reconsider. The goal is informed');
+  lines.push('decisions — not rules that fire around you.');
+  lines.push('');
+  lines.push('═══════════════════════════════════════════════════════');
+
+  return lines.join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -907,8 +995,13 @@ async function main(): Promise<void> {
   const yaml = renderYaml(proposals);
   fs.writeFileSync(RULES_PROPOSAL_PATH, yaml, 'utf8');
 
+  // v21.24: prompt-ready memory the bot reads at cycle start
+  const memory = renderCriticMemory({ windowHours: WINDOW_HOURS, patternStats, roundTripSummary, portfolio });
+  fs.writeFileSync(MEMORY_PATH, memory, 'utf8');
+
   console.log(`[CRITIC] ✓ Wrote audit to ${reportPath}`);
   console.log(`[CRITIC] ✓ Wrote ${proposals.length} proposal(s) to ${RULES_PROPOSAL_PATH}`);
+  console.log(`[CRITIC] ✓ Wrote prompt-memory (${memory.length} chars) to ${MEMORY_PATH}`);
   if (proposals.length > 0) {
     const reinforceCount = proposals.filter((p) => p.direction === 'reinforce').length;
     const weakenCount = proposals.filter((p) => p.direction === 'weaken').length;
