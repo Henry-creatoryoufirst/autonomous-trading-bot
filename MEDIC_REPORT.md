@@ -1,12 +1,12 @@
 # MEDIC REPORT — 2026-04-24T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-24T14:00 UTC (approx)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-8EaRv
 
 ## Problem
 
@@ -48,22 +48,19 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T09:07 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-24T14:00 UTC | This report; scout skipped (within 48h); auditor lowered KELLY_ROLLING_WINDOW 50→30 |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, dev branch is extremely active. Since Run #18:
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
-- `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
-- `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
-- `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
-- `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
-- `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
-- `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
+- `2026-04-24` — merge(staging): v21.24 CRITIC memory injection into heavy-cycle prompts
+- `2026-04-24` — merge(staging): v21.23 dry-powder cost-basis gate (stop rebalancing at a loss)
+- `2026-04-24` — Auditor: KELLY_ROLLING_WINDOW 50→30 — faster regime adaptation (this run)
+- `2026-04-24` — fix(routing): v21.21.1 — remove 'Forced interval' from SONNET_REQUIRED_REASONS
 
-**Staging is substantially ahead of main** — v21.20.1+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
+**Staging/dev is substantially ahead of main** — v21.24 queued with NVR-CRITIC, CRITIC memory injection, dry-powder cost-basis gate.
 
 ## What Is NOT Known
 
@@ -73,15 +70,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: SKIPPED — last run 09:07 UTC today (within 48h window).
+- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from history (46-day bear confirmed in #17). Research ran 4 searches; KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0). Source: adaptive Kelly crypto best practices 2026.
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 18th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -96,5 +93,6 @@ PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmen
 
 ## Safety
 - No changes to agent-v3.2.ts
+- Only constants.ts touched (KELLY_ROLLING_WINDOW 50→30)
 - No production changes
 - MEDIC_REPORT.md conflict resolved; committed to staging only
