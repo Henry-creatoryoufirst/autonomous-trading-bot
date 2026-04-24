@@ -21,6 +21,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { TOKEN_REGISTRY } from '../src/core/config/token-registry.js';
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -241,6 +243,257 @@ function auditOpenPositions(balances: Balance[]): OpenPositionAudit[] {
 }
 
 // ---------------------------------------------------------------------------
+// v3: Round-trip BUY → SELL analysis (the "alpha capture" question)
+// ---------------------------------------------------------------------------
+
+interface RoundTrip {
+  token: string;
+  buyAt: string;
+  buyCycle: number;
+  buyReasoning: string;
+  buyAmountUSD: number;
+  buyTokenAmount: number;
+  sellAt: string;
+  sellCycle: number;
+  sellReasoning: string;
+  sellAmountUSD: number;
+  sellTokenAmount: number;
+  holdHours: number;
+  realizedPnL: number;
+  realizedPct: number;
+  // Counterfactual (annotated after live-price fetch):
+  currentPriceUSD?: number;
+  exitPriceUSD?: number;
+  sinceExitPct?: number; // + = bot bailed on a winner, - = well-timed exit
+  /** Of the total move from entry to current price, what fraction did the bot capture? */
+  captureRatio?: number;
+}
+
+interface OpenBuy {
+  token: string;
+  buyAt: string;
+  buyCycle: number;
+  buyReasoning: string;
+  buyAmountUSD: number;
+  holdHours: number;
+  currentUSDValue: number;
+  unrealizedPnL: number;
+  unrealizedPct: number;
+}
+
+/**
+ * FIFO-lite pairing: for each SELL of a non-USDC token, match against the
+ * earliest unmatched BUY of the same token. Simplifications:
+ *   - One SELL closes one BUY (ignores partial fills; realizedPnL from the
+ *     trade is still authoritative, so the top-line $ figure is correct).
+ *   - BUYs that were executed *before* the window become unmatched SELLs and
+ *     are dropped — they're outside the audit scope.
+ *   - BUYs that haven't sold yet become "open buys" with unrealized from
+ *     /api/balances. Over-attributes gain/loss to specific BUY events when
+ *     the token was bought multiple times; captures direction reliably.
+ */
+function buildRoundTrips(trades: Trade[], balances: Balance[]): { roundTrips: RoundTrip[]; openBuys: OpenBuy[] } {
+  const ordered = [...trades].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+
+  const openByToken = new Map<string, Trade[]>();
+  const roundTrips: RoundTrip[] = [];
+
+  for (const t of ordered) {
+    if (!t.success) continue;
+    if (t.action === 'BUY') {
+      const tok = (t.toToken || '').toUpperCase();
+      if (!tok || tok === 'USDC') continue;
+      const q = openByToken.get(tok) ?? [];
+      q.push(t);
+      openByToken.set(tok, q);
+    } else if (t.action === 'SELL') {
+      const tok = (t.fromToken || '').toUpperCase();
+      if (!tok || tok === 'USDC') continue;
+      const q = openByToken.get(tok) ?? [];
+      const buy = q.shift();
+      if (!buy) continue; // unmatched SELL — BUY was outside window
+      const holdHours = (new Date(t.timestamp).getTime() - new Date(buy.timestamp).getTime()) / 3_600_000;
+      const realizedPnL = pnl(t);
+      const realizedPct = buy.amountUSD > 0 ? (realizedPnL / buy.amountUSD) * 100 : 0;
+      const buyTokenAmount = (buy as Trade & { tokenAmount?: number }).tokenAmount ?? 0;
+      const sellTokenAmount = (t as Trade & { tokenAmount?: number }).tokenAmount ?? 0;
+      roundTrips.push({
+        token: tok,
+        buyAt: buy.timestamp,
+        buyCycle: buy.cycle,
+        buyReasoning: buy.reasoning ?? '',
+        buyAmountUSD: buy.amountUSD,
+        buyTokenAmount,
+        sellAt: t.timestamp,
+        sellCycle: t.cycle,
+        sellReasoning: t.reasoning ?? '',
+        sellAmountUSD: t.amountUSD,
+        sellTokenAmount,
+        holdHours,
+        realizedPnL,
+        realizedPct,
+      });
+      openByToken.set(tok, q);
+    }
+  }
+
+  // Remaining queued BUYs → open positions
+  const balByToken = new Map<string, Balance>();
+  for (const b of balances) balByToken.set(b.symbol.toUpperCase(), b);
+
+  const openBuys: OpenBuy[] = [];
+  for (const [tok, queue] of openByToken) {
+    for (const b of queue) {
+      const bal = balByToken.get(tok);
+      const currentUSDValue = bal?.usdValue ?? 0;
+      const unrealizedPnL = bal?.unrealizedPnL ?? 0;
+      const totalInvested = bal?.totalInvested ?? b.amountUSD;
+      const unrealizedPct = totalInvested > 0 ? (unrealizedPnL / totalInvested) * 100 : 0;
+      const holdHours = (Date.now() - new Date(b.timestamp).getTime()) / 3_600_000;
+      openBuys.push({
+        token: tok,
+        buyAt: b.timestamp,
+        buyCycle: b.cycle,
+        buyReasoning: b.reasoning ?? '',
+        buyAmountUSD: b.amountUSD,
+        holdHours,
+        currentUSDValue,
+        unrealizedPnL,
+        unrealizedPct,
+      });
+    }
+  }
+
+  return { roundTrips, openBuys };
+}
+
+/**
+ * Fetch current USD spot prices for a list of token symbols via DexScreener,
+ * using addresses resolved from TOKEN_REGISTRY. Returns a map keyed by
+ * uppercase symbol. Silently skips tokens we can't resolve or that fail.
+ */
+async function fetchCurrentPricesForSymbols(symbols: string[]): Promise<Map<string, number>> {
+  const prices = new Map<string, number>();
+  const unique = [...new Set(symbols.map((s) => s.toUpperCase()))];
+
+  for (const symbol of unique) {
+    const entry =
+      (TOKEN_REGISTRY as Record<string, { address: string; symbol: string }>)[symbol]
+      ?? Object.values(TOKEN_REGISTRY).find((t) => t.symbol.toUpperCase() === symbol);
+    if (!entry || !entry.address || entry.address === 'native' || !entry.address.startsWith('0x')) continue;
+
+    try {
+      const url = `https://api.dexscreener.com/latest/dex/tokens/${entry.address}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+      if (!res.ok) continue;
+      const data = (await res.json()) as { pairs?: Array<{ chainId?: string; priceUsd?: string; liquidity?: { usd?: number } }> };
+      const all = data?.pairs ?? [];
+      const onBase = all.filter((p) => p.chainId === 'base');
+      const pool = onBase.length > 0 ? onBase : all;
+      const best = pool.sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
+      const price = parseFloat(best?.priceUsd ?? '0');
+      if (price > 0) prices.set(symbol, price);
+    } catch {
+      // continue
+    }
+  }
+  return prices;
+}
+
+/**
+ * For each round-trip with a valid exit price and a current-price lookup,
+ * compute: exit price per token, % move since exit, and capture ratio
+ * (realized move / total available move from entry to current).
+ */
+function annotateWithCounterfactual(roundTrips: RoundTrip[], currentPrices: Map<string, number>): void {
+  for (const rt of roundTrips) {
+    const current = currentPrices.get(rt.token);
+    if (!current || !rt.sellTokenAmount || rt.sellTokenAmount <= 0) continue;
+    const exitPrice = rt.sellAmountUSD / rt.sellTokenAmount;
+    if (exitPrice <= 0) continue;
+    rt.exitPriceUSD = exitPrice;
+    rt.currentPriceUSD = current;
+    rt.sinceExitPct = ((current - exitPrice) / exitPrice) * 100;
+
+    // Capture ratio: what fraction of the available entry→now move did the bot capture?
+    // Only meaningful when the total move was actually positive.
+    if (rt.buyTokenAmount > 0 && rt.buyAmountUSD > 0) {
+      const entryPrice = rt.buyAmountUSD / rt.buyTokenAmount;
+      if (entryPrice > 0) {
+        const totalMovePct = ((current - entryPrice) / entryPrice) * 100;
+        if (totalMovePct > 0.5) {
+          // Captured = our realized % return. Capped at 1.0 for display sanity.
+          rt.captureRatio = Math.min(1, rt.realizedPct / totalMovePct);
+        } else if (totalMovePct < -0.5) {
+          // Token fell — if we realized a gain here, capture ratio is > 1 (good timing)
+          rt.captureRatio = rt.realizedPct > 0 ? 1 : 0;
+        }
+      }
+    }
+  }
+}
+
+interface RoundTripSummary {
+  totalRoundTrips: number;
+  winners: number;
+  losers: number;
+  breakEvens: number;
+  totalRealizedPnL: number;
+  avgRealizedPnL: number;
+  avgHoldHours: number;
+  // Alpha-capture stats (only for trips where counterfactual resolved)
+  tripsWithCounterfactual: number;
+  /** Avg % move since we exited. Positive = we consistently bail on winners. */
+  avgSinceExitPct: number;
+  /** Avg ratio of realized/available move. < 0.3 = systematically early exits. */
+  avgCaptureRatio: number | null;
+  /** Round-trips where token went up > 10% after our exit. */
+  bailedOnWinners: RoundTrip[];
+  /** Round-trips where token went down > 5% after our exit. */
+  wellTimedExits: RoundTrip[];
+}
+
+function summarizeRoundTrips(roundTrips: RoundTrip[]): RoundTripSummary {
+  const winners = roundTrips.filter((r) => r.realizedPnL > BREAK_EVEN_ABS_USD);
+  const losers = roundTrips.filter((r) => r.realizedPnL < -BREAK_EVEN_ABS_USD);
+  const evens = roundTrips.length - winners.length - losers.length;
+  const totalRealizedPnL = roundTrips.reduce((s, r) => s + r.realizedPnL, 0);
+
+  const withCf = roundTrips.filter((r) => r.sinceExitPct !== undefined);
+  const avgSinceExitPct = withCf.length > 0 ? withCf.reduce((s, r) => s + (r.sinceExitPct ?? 0), 0) / withCf.length : 0;
+  const withCapture = roundTrips.filter((r) => r.captureRatio !== undefined);
+  const avgCaptureRatio = withCapture.length > 0
+    ? withCapture.reduce((s, r) => s + (r.captureRatio ?? 0), 0) / withCapture.length
+    : null;
+
+  const bailedOnWinners = [...withCf]
+    .filter((r) => (r.sinceExitPct ?? 0) > 10)
+    .sort((a, b) => (b.sinceExitPct ?? 0) - (a.sinceExitPct ?? 0))
+    .slice(0, 5);
+  const wellTimedExits = [...withCf]
+    .filter((r) => (r.sinceExitPct ?? 0) < -5)
+    .sort((a, b) => (a.sinceExitPct ?? 0) - (b.sinceExitPct ?? 0))
+    .slice(0, 5);
+
+  return {
+    totalRoundTrips: roundTrips.length,
+    winners: winners.length,
+    losers: losers.length,
+    breakEvens: evens,
+    totalRealizedPnL,
+    avgRealizedPnL: roundTrips.length > 0 ? totalRealizedPnL / roundTrips.length : 0,
+    avgHoldHours: roundTrips.length > 0 ? roundTrips.reduce((s, r) => s + r.holdHours, 0) / roundTrips.length : 0,
+    tripsWithCounterfactual: withCf.length,
+    avgSinceExitPct,
+    avgCaptureRatio,
+    bailedOnWinners,
+    wellTimedExits,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Proposal synthesis — turn stats into concrete "try this" suggestions
 // ---------------------------------------------------------------------------
 
@@ -251,7 +504,7 @@ interface Proposal {
   evidence: { n: number; avgPnL: number; winRate: number };
 }
 
-function buildProposals(patternStats: PatternStats[], openPositions: OpenPositionAudit[]): Proposal[] {
+function buildProposals(patternStats: PatternStats[], openPositions: OpenPositionAudit[], rtSummary?: RoundTripSummary): Proposal[] {
   const out: Proposal[] = [];
 
   for (const p of patternStats) {
@@ -303,6 +556,26 @@ function buildProposals(patternStats: PatternStats[], openPositions: OpenPositio
     }
   }
 
+  // v3: alpha-capture proposals from round-trip summary
+  if (rtSummary && rtSummary.tripsWithCounterfactual >= 5) {
+    if (rtSummary.avgCaptureRatio !== null && rtSummary.avgCaptureRatio < 0.3) {
+      out.push({
+        target: 'exit_timing/systemic_early_exits',
+        direction: 'weaken',
+        reason: `Across ${rtSummary.tripsWithCounterfactual} round-trips with counterfactual data, the bot captured only ${(rtSummary.avgCaptureRatio * 100).toFixed(0)}% of the available entry-to-current move on average. Exit rules (trailing-stop, stale-exit, dry-powder) are firing too eagerly. Widen the trailing-stop threshold and/or raise the stale-exit minimum-gain bar.`,
+        evidence: { n: rtSummary.tripsWithCounterfactual, avgPnL: rtSummary.avgRealizedPnL, winRate: rtSummary.winners / Math.max(1, rtSummary.totalRoundTrips) },
+      });
+    }
+    if (rtSummary.avgSinceExitPct > 5) {
+      out.push({
+        target: 'exit_timing/bail_pattern',
+        direction: 'investigate',
+        reason: `Sold tokens continued running +${rtSummary.avgSinceExitPct.toFixed(1)}% on average AFTER the bot exited (across ${rtSummary.tripsWithCounterfactual} round-trips). Indicates systemic premature exit — the bot is consistently bailing before the move plays out. Inspect individual bail-on-winners examples in the report below.`,
+        evidence: { n: rtSummary.tripsWithCounterfactual, avgPnL: rtSummary.avgSinceExitPct, winRate: 0 },
+      });
+    }
+  }
+
   return out;
 }
 
@@ -321,9 +594,12 @@ function renderMarkdown(ctx: {
   proposals: Proposal[];
   portfolio: Portfolio | null;
   telemetry: ModelTelemetry | null;
+  roundTrips: RoundTrip[];
+  openBuys: OpenBuy[];
+  roundTripSummary: RoundTripSummary;
 }): string {
   const today = new Date().toISOString().slice(0, 10);
-  const { windowHours, trades, sells, buys, failures, patternStats, openPositions, proposals, portfolio, telemetry } = ctx;
+  const { windowHours, trades, sells, buys, failures, patternStats, openPositions, proposals, portfolio, telemetry, roundTrips, openBuys, roundTripSummary } = ctx;
 
   const totalRealized = sells.reduce((s, t) => s + pnl(t), 0);
   const winSells = sells.filter((t) => pnl(t) > BREAK_EVEN_ABS_USD);
@@ -386,7 +662,116 @@ function renderMarkdown(ctx: {
     }
   }
 
-  // ───── Open positions ─────
+  // ───── v3: Round-trip alpha-capture audit ─────
+  lines.push('## Alpha-Capture Audit (BUY → SELL round-trips)');
+  lines.push('');
+  if (roundTrips.length === 0) {
+    lines.push('_No paired BUY→SELL round-trips in window. All entries from this period are still open._');
+  } else {
+    const s = roundTripSummary;
+    lines.push(`**${s.totalRoundTrips} round-trips closed in window** · ${s.winners}W / ${s.losers}L / ${s.breakEvens}BE · total realized ${s.totalRealizedPnL >= 0 ? '+' : ''}$${s.totalRealizedPnL.toFixed(2)}`);
+    lines.push(`**Avg hold:** ${s.avgHoldHours.toFixed(1)}h · **Avg realized per round-trip:** ${s.avgRealizedPnL >= 0 ? '+' : ''}$${s.avgRealizedPnL.toFixed(2)}`);
+    if (s.tripsWithCounterfactual > 0) {
+      lines.push('');
+      lines.push(`### Alpha-capture score (${s.tripsWithCounterfactual}/${s.totalRoundTrips} round-trips with current-price data)`);
+      lines.push('');
+      if (s.avgCaptureRatio !== null) {
+        const capturePct = (s.avgCaptureRatio * 100).toFixed(0);
+        const capSignal = s.avgCaptureRatio >= 0.6 ? '✅' : s.avgCaptureRatio >= 0.3 ? '🟡' : '🚨';
+        lines.push(`- **${capSignal} Avg capture ratio: ${capturePct}%** — of the entry-to-current-price move available on each trade, the bot realized ${capturePct}% on average.`);
+      }
+      lines.push(`- **Avg since-exit move: ${s.avgSinceExitPct >= 0 ? '+' : ''}${s.avgSinceExitPct.toFixed(1)}%** — ${s.avgSinceExitPct > 5 ? 'bot is systematically bailing on winners' : s.avgSinceExitPct < -3 ? 'bot is consistently exiting ahead of downside' : 'neutral post-exit drift'}.`);
+    } else {
+      lines.push('');
+      lines.push(`_(Counterfactual prices unresolved — DexScreener returned nothing for the sold tokens or symbols aren't in TOKEN_REGISTRY.)_`);
+    }
+    lines.push('');
+
+    if (s.bailedOnWinners.length > 0) {
+      lines.push('### 🚨 Bailed on winners (sold, then token ran)');
+      lines.push('');
+      lines.push('| token | hold | exit $/tok | now $/tok | since exit | realized | entry reasoning |');
+      lines.push('|---|---:|---:|---:|---:|---:|---|');
+      for (const r of s.bailedOnWinners) {
+        const exit = r.exitPriceUSD ?? 0;
+        const now = r.currentPriceUSD ?? 0;
+        const since = r.sinceExitPct ?? 0;
+        lines.push(
+          `| ${r.token} | ${r.holdHours.toFixed(1)}h | $${exit.toPrecision(4)} | $${now.toPrecision(4)} | **+${since.toFixed(1)}%** | ${r.realizedPnL >= 0 ? '+' : ''}$${r.realizedPnL.toFixed(2)} | ${r.buyReasoning.slice(0, 60).replace(/\s+/g, ' ')} |`,
+        );
+      }
+      lines.push('');
+    }
+
+    if (s.wellTimedExits.length > 0) {
+      lines.push('### ✅ Well-timed exits (sold, then token fell)');
+      lines.push('');
+      lines.push('| token | hold | exit $/tok | now $/tok | since exit | realized | exit reasoning |');
+      lines.push('|---|---:|---:|---:|---:|---:|---|');
+      for (const r of s.wellTimedExits) {
+        const exit = r.exitPriceUSD ?? 0;
+        const now = r.currentPriceUSD ?? 0;
+        const since = r.sinceExitPct ?? 0;
+        lines.push(
+          `| ${r.token} | ${r.holdHours.toFixed(1)}h | $${exit.toPrecision(4)} | $${now.toPrecision(4)} | **${since.toFixed(1)}%** | ${r.realizedPnL >= 0 ? '+' : ''}$${r.realizedPnL.toFixed(2)} | ${r.sellReasoning.slice(0, 60).replace(/\s+/g, ' ')} |`,
+        );
+      }
+      lines.push('');
+    }
+
+    // Top winners + losers (by realized $) regardless of counterfactual
+    const sortedByRealized = [...roundTrips].sort((a, b) => b.realizedPnL - a.realizedPnL);
+    const topWinners = sortedByRealized.slice(0, 3);
+    const topLosers = [...roundTrips].sort((a, b) => a.realizedPnL - b.realizedPnL).slice(0, 3);
+
+    if (topWinners.length > 0 && topWinners[0]!.realizedPnL > BREAK_EVEN_ABS_USD) {
+      lines.push('### Top realized winners');
+      lines.push('');
+      for (const r of topWinners) {
+        if (r.realizedPnL <= BREAK_EVEN_ABS_USD) break;
+        lines.push(`- **${r.token}** +$${r.realizedPnL.toFixed(2)} (${r.realizedPct >= 0 ? '+' : ''}${r.realizedPct.toFixed(1)}%) · held ${r.holdHours.toFixed(1)}h`);
+        lines.push(`  - Entry: ${r.buyReasoning.slice(0, 140).replace(/\s+/g, ' ')}`);
+        lines.push(`  - Exit: ${r.sellReasoning.slice(0, 140).replace(/\s+/g, ' ')}`);
+      }
+      lines.push('');
+    }
+    if (topLosers.length > 0 && topLosers[0]!.realizedPnL < -BREAK_EVEN_ABS_USD) {
+      lines.push('### Top realized losers');
+      lines.push('');
+      for (const r of topLosers) {
+        if (r.realizedPnL >= -BREAK_EVEN_ABS_USD) break;
+        lines.push(`- **${r.token}** $${r.realizedPnL.toFixed(2)} (${r.realizedPct.toFixed(1)}%) · held ${r.holdHours.toFixed(1)}h`);
+        lines.push(`  - Entry: ${r.buyReasoning.slice(0, 140).replace(/\s+/g, ' ')}`);
+        lines.push(`  - Exit: ${r.sellReasoning.slice(0, 140).replace(/\s+/g, ' ')}`);
+      }
+      lines.push('');
+    }
+  }
+
+  // ───── v3: Open BUYs (still holding — the "potential winners in flight") ─────
+  if (openBuys.length > 0) {
+    lines.push('## Open BUYs (entries still held — potential winners in flight)');
+    lines.push('');
+    const sortedOpen = [...openBuys].sort((a, b) => b.unrealizedPnL - a.unrealizedPnL);
+    lines.push(`_${openBuys.length} BUY entries haven't triggered a SELL yet. Total unrealized across these positions: ${openBuys.reduce((s, o) => s + o.unrealizedPnL, 0) >= 0 ? '+' : ''}$${openBuys.reduce((s, o) => s + o.unrealizedPnL, 0).toFixed(2)}._`);
+    lines.push('');
+    const topOpen = sortedOpen.slice(0, 5);
+    const bottomOpen = [...sortedOpen].reverse().slice(0, 5);
+    lines.push('**Top 5 unrealized gainers (if these are real, the bot picked winners — watch the exit):**');
+    for (const o of topOpen) {
+      lines.push(`- **${o.token}** ${o.unrealizedPnL >= 0 ? '+' : ''}$${o.unrealizedPnL.toFixed(2)} (${o.unrealizedPct >= 0 ? '+' : ''}${o.unrealizedPct.toFixed(1)}%) · bought ${o.holdHours.toFixed(1)}h ago for $${o.buyAmountUSD.toFixed(2)}`);
+      lines.push(`  - Entry reason: ${o.buyReasoning.slice(0, 140).replace(/\s+/g, ' ')}`);
+    }
+    lines.push('');
+    lines.push('**Bottom 5 unrealized bleeders (these entries were wrong):**');
+    for (const o of bottomOpen) {
+      lines.push(`- **${o.token}** ${o.unrealizedPnL >= 0 ? '+' : ''}$${o.unrealizedPnL.toFixed(2)} (${o.unrealizedPct >= 0 ? '+' : ''}${o.unrealizedPct.toFixed(1)}%) · bought ${o.holdHours.toFixed(1)}h ago for $${o.buyAmountUSD.toFixed(2)}`);
+      lines.push(`  - Entry reason: ${o.buyReasoning.slice(0, 140).replace(/\s+/g, ' ')}`);
+    }
+    lines.push('');
+  }
+
+  // ───── Open positions (per-token current snapshot — different lens than open BUYs above) ─────
   lines.push('## Open Positions');
   lines.push('');
   if (openPositions.length === 0) {
@@ -500,11 +885,23 @@ async function main(): Promise<void> {
 
   const patternStats = buildPatternStats(sells);
   const openPositions = auditOpenPositions(balances);
-  const proposals = buildProposals(patternStats, openPositions);
+
+  // v3: round-trip analysis + counterfactual
+  const { roundTrips, openBuys } = buildRoundTrips(trades, balances);
+  console.log(`[CRITIC] Round-trip ledger: ${roundTrips.length} paired BUY→SELL, ${openBuys.length} open BUYs (still holding).`);
+
+  // Fetch current spot prices for tokens we've sold — counterfactual comes from here
+  const soldSymbols = roundTrips.map((r) => r.token);
+  const currentPrices = soldSymbols.length > 0 ? await fetchCurrentPricesForSymbols(soldSymbols) : new Map<string, number>();
+  console.log(`[CRITIC] Resolved current prices for ${currentPrices.size}/${new Set(soldSymbols).size} distinct sold tokens.`);
+  annotateWithCounterfactual(roundTrips, currentPrices);
+  const roundTripSummary = summarizeRoundTrips(roundTrips);
+
+  const proposals = buildProposals(patternStats, openPositions, roundTripSummary);
 
   const today = new Date().toISOString().slice(0, 10);
   const reportPath = path.join(REPORTS_DIR, `${today}.md`);
-  const markdown = renderMarkdown({ windowHours: WINDOW_HOURS, trades, sells, buys, failures, patternStats, openPositions, proposals, portfolio, telemetry });
+  const markdown = renderMarkdown({ windowHours: WINDOW_HOURS, trades, sells, buys, failures, patternStats, openPositions, proposals, portfolio, telemetry, roundTrips, openBuys, roundTripSummary });
   fs.writeFileSync(reportPath, markdown, 'utf8');
 
   const yaml = renderYaml(proposals);
