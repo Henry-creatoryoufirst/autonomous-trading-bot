@@ -4889,19 +4889,29 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
 ` : ''}${outcomeBlock}`;
 
-  // v21.1: Model routing — Sonnet for all cycles in difficult markets.
-  // Haiku is only used for routine cycles when the market is calm (F&G > 25, trending up).
-  // In fear/ranging/volatile conditions, every decision matters — use full intelligence.
+  // v21.21: Routing reset — Sonnet was defaulting on EVERY cycle under v21.1's
+  // "play safe" rules. RANGING is the crypto norm (60%+ of time), not a crisis;
+  // treating it as one meant cheap-backend keys (Groq/Cerebras) were set but
+  // never actually invoked. And Sonnet wasn't earning its cost either.
+  // New rule: cheap-first by default, Sonnet only for genuinely high-stakes cycles.
+  //   Sonnet triggers:
+  //     1. Explicit reason in SONNET_REQUIRED_REASONS (price moved, exited cooldown, EMERGENCY)
+  //     2. Active cash deployment (high-intent deployment decisions)
+  //     3. Panic fear (F&G < 20 — was 25)
+  //     4. VOLATILE or TRENDING_DOWN regime (RANGING removed)
+  //   Everything else → routine tier, routed by model-client (Cerebras → Groq → Ollama → Haiku).
+  // Kill switch: Railway env `GEMMA_MODE=disabled` reverts to pure-Claude routing
+  // without a redeploy of code.
   const reasonLower = (heavyCycleReason || '').toLowerCase();
   const currentFG = lastFearGreedValue ?? 50;
   const currentRegime = state.trading.marketRegime || 'UNKNOWN';
-  const isDifficultMarket = currentFG < 25 || currentRegime === 'RANGING' || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
-  const needsSonnet = !heavyCycleReason  // No reason = unknown, play safe with Sonnet
-    || SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()))
-    || (cashDeployment?.active)  // Cash deployment mode needs full intelligence
-    || isDifficultMarket;  // v21.1: Difficult markets get Sonnet ALWAYS — no intern during a crisis
+  const isDifficultMarket = currentFG < 20 || currentRegime === 'VOLATILE' || currentRegime === 'TRENDING_DOWN';
+  const hasExplicitSonnetReason = Boolean(heavyCycleReason) && SONNET_REQUIRED_REASONS.some(r => reasonLower.includes(r.toLowerCase()));
+  const needsSonnet = hasExplicitSonnetReason
+    || Boolean(cashDeployment?.active)
+    || isDifficultMarket;
   const selectedModel = needsSonnet ? AI_MODEL_HEAVY : AI_MODEL_ROUTINE;
-  const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Haiku (routine)';
+  const modelLabel = needsSonnet ? 'Sonnet (heavy)' : 'Routine (cheap tier)';
 
   // v20.6: Compressed prompt system — CORE (always) + STRATEGY (heavy cycles only) + dynamic data (always)
   // v21.20: Structured as content blocks with cache_control on stable prefix sections.
