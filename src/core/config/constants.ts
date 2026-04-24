@@ -608,7 +608,7 @@ export const GAS_RESERVOIR_DAILY_USD = 0.50;
 // ============================================================================
 
 /** Min 1h price gain to qualify as a hot mover (%) */
-export const HOT_MOVER_MIN_CHANGE_H1_PCT = 5;
+export const HOT_MOVER_MIN_CHANGE_H1_PCT = 7; // Bear-adjusted Apr-2026: 5→7 — 46-day bear; 5% h1 pumps reverse ~70% of the time in bear markets; require stronger conviction
 
 /** Min 1h volume to confirm the move is real (not illiquid pump) */
 export const HOT_MOVER_MIN_VOLUME_H1_USD = 150_000;
