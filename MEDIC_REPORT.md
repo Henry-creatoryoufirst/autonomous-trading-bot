@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-25T23:07 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-25T23:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-E1v1E
 
 ## Problem
 
@@ -48,22 +48,22 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-25T23:07 UTC | This report; scout skipped (<48h); auditor skipped (no API data) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, the branch is extremely active. Since Run #18:
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
-- `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
-- `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
-- `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
-- `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
-- `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
-- `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
+- `2026-04-25` — merge(staging): v21.24 CRITIC memory injection into heavy-cycle prompts
+- `2026-04-25` — feat(critic): v3 — round-trip BUY→SELL audit with alpha-capture counterfactual
+- `2026-04-25` — merge(staging): v21.23 dry-powder cost-basis gate (stop rebalancing at a loss)
+- `2026-04-25` — feat(routing): v21.22 compact routine prompt — unlock cheap-tier, sharper reasoning
+- `2026-04-25` — fix(routing): v21.21.1 — remove 'Forced interval' from SONNET_REQUIRED_REASONS
+- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality
 
-**Staging is substantially ahead of main** — v21.20.1+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
+**Branch is at v21.24** — NVR-CRITIC now active with memory injection + round-trip audit.
 
 ## What Is NOT Known
 
@@ -73,15 +73,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Medic**: PATTERN D — API unreachable (same persistent constraint, run #19). MEDIC_REPORT updated.
+- **Scout**: SKIPPED — last scout ran 2026-04-24 09:07 UTC (34h ago, < 48h threshold).
+- **Auditor**: SKIPPED — cannot calculate win_rate, drawdown, or losing_streak without production API data.
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 19th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -97,4 +97,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmen
 ## Safety
 - No changes to agent-v3.2.ts
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- MEDIC_REPORT.md updated for Run #19; committed to claude/cool-sagan-E1v1E
