@@ -820,7 +820,7 @@ export const MOMENTUM_EXIT_BUY_RATIO = 45;
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
 
 /** Token must be up this %+ in 4h to qualify as a wave ride */
-export const RIDE_THE_WAVE_MIN_MOVE = 5;
+export const RIDE_THE_WAVE_MIN_MOVE = 7; // Bear-adjusted Apr-2026: 5→7 — mirrors HOT_MOVER threshold; 5% 4h pumps reverse ~70% in bear markets
 
 /** Deploy this % of portfolio on a wave ride entry */
 export const RIDE_THE_WAVE_SIZE_PCT = 4;
