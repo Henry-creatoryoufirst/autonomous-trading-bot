@@ -548,7 +548,7 @@ export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calcula
  * Portfolio-Wide Drawdown Circuit Breaker
  * Triggers on ANY of these conditions
  */
-export const BREAKER_CONSECUTIVE_LOSSES = 5;   // 5 consecutive losing trades → pause (less hair-trigger)
+export const BREAKER_CONSECUTIVE_LOSSES = 4;   // Bear-adjusted Apr-2026: 4 consecutive losses → pause (46-day bear warrants earlier trigger; was raised to 5 pre-bear for "less hair-trigger" but sustained downtrend changes the calculus)
 export const BREAKER_DAILY_DD_PCT = 7;         // 7% daily drawdown → pause (auditor Apr-2026: tightened 8→7; industry practice 5-6%, bear-market defensive posture warrants earlier pause)
 export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
