@@ -6979,7 +6979,7 @@ async function produceSignals(): Promise<void> {
         if (totalFlow > 0) {
           buyRatio = (ind.orderFlow.buyVolumeUSD / totalFlow) * 100;
           if (buyRatio > 60) { confluence += 15; reasons.push(`Strong buying (${buyRatio.toFixed(0)}%)`); }
-          else if (buyRatio < 40) { confluence -= 15; reasons.push(`Strong selling (${buyRatio.toFixed(0)}%)`); }
+          else if (buyRatio < FLOW_REVERSAL_EXIT_BUY_RATIO) { confluence -= 15; reasons.push(`Strong selling (${buyRatio.toFixed(0)}%)`); }
         }
       }
 

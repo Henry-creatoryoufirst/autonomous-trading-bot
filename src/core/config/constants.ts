@@ -995,7 +995,7 @@ export const POSITION_SOFT_STOP_PCT = -12;
 
 /** Flow-reversal exit: buy ratio below this AND decelerating for 2+ readings = exit regardless of P&L
  *  v19.0: Flow physics — when capital leaves, we leave with it. */
-export const FLOW_REVERSAL_EXIT_BUY_RATIO = 40;
+export const FLOW_REVERSAL_EXIT_BUY_RATIO = 42; // Bear-adjusted Apr-2026: 40→42 — 46-day bear; 40-42% buy ratio indicates deteriorating flow; tighten "strong selling" confluence trigger to generate sell signals earlier
 export const FLOW_REVERSAL_EXIT_MIN_DECEL_READINGS = 2;
 
 /** Stop for concentrated positions (> 10% of portfolio) */
