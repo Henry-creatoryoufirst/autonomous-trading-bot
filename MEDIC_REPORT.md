@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-25T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
 - Run timestamp: 2026-04-24T00:00 UTC
@@ -48,7 +48,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-25T00:00 UTC | This report; scout skipped (<48h); auditor tightened MOMENTUM_HARD_BLOCK_THRESHOLD -5→-3 |
 
 ## Bot Health Evidence (from git history)
 
@@ -76,12 +77,12 @@ Because the API is unreachable, the medic cannot determine:
 ## Jobs Status This Run (Run #18)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: SKIPPED — last run was 2026-04-24 09:07 (~24h ago, within 48h window).
+- **Auditor**: Bear market 46+ days inferred from prior runs (all /api/* return 403, cannot verify live). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). MOMENTUM_HARD_BLOCK_THRESHOLD -5→-3 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0). Prevents forced cash deployment into mild macro declines; preserves 25% dry-powder discipline in sustained bear.
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 18th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`

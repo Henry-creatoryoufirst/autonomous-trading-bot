@@ -724,8 +724,9 @@ export const CASH_DEPLOYMENT_MAX_ENTRIES = 5;
 export const CASH_DEPLOY_REQUIRES_MOMENTUM = true;
 
 /** v20.2: BTC+ETH avg 24h change must be worse than this to hard-block forced deployment.
- *  Between this and 0%, deployment scales down proportionally. */
-export const MOMENTUM_HARD_BLOCK_THRESHOLD = -5;
+ *  Between this and 0%, deployment scales down proportionally.
+ *  Bear-adjusted Apr-2026: -5 → -3 — 46-day bear; -3% macro decline is sufficient signal to pause forced deployment. */
+export const MOMENTUM_HARD_BLOCK_THRESHOLD = -3;
 
 // v11.2: CRASH-BUYING OVERRIDE — v17.0: Now flow-based, not F&G-based
 /** Minimum cash % to qualify for breaker override (must be heavily overweight cash)
