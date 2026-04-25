@@ -507,7 +507,7 @@ export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
  *  with no dry powder for days. First harvest now triggers at ~4x ATR (~8-12% gain).
  *  The let-winners-run filter still prevents harvesting during strong momentum. */
 export const ATR_PROFIT_TIERS = [
-  { atrMultiple: 4,  sellPercent: 15, label: "ATR_EARLY" },
+  { atrMultiple: 3,  sellPercent: 15, label: "ATR_EARLY" },  // Bear-adjusted Apr-2026: 4→3 — aligns with v21.6 flat-tier intent; at 5% ATR triggers at 15% gain vs 20% prior
   { atrMultiple: 7,  sellPercent: 20, label: "ATR_MID" },
   { atrMultiple: 12, sellPercent: 25, label: "ATR_STRONG" },
   { atrMultiple: 18, sellPercent: 35, label: "ATR_MAJOR" },
