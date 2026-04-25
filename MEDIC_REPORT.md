@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-25T09:08 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-25T09:08 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-AdFXH
 
 ## Problem
 
@@ -48,22 +48,21 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-25T09:08 UTC | This report; scout skipped (<48h since Run #18); auditor skipped (API unreachable) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, the branch is active. Since Run #18:
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
-- `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
-- `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
-- `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
-- `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
-- `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
-- `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
+- `2026-04-24` — feat(critic): v21.24 — inject CRITIC memory into heavy-cycle Sonnet prompts (merged to staging)
+- `2026-04-24` — feat(critic): v3 — round-trip BUY→SELL audit with alpha-capture counterfactual
+- `2026-04-24` — feat(critic): v2 — real decision-outcome audit, not signal-edge stub
+- `2026-04-24` — fix(dry-powder): v21.23 cost-basis gate — stop rebalancing at a loss (merged to staging)
+- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality
 
-**Staging is substantially ahead of main** — v21.20.1+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
+**Staging is substantially ahead of main** — v21.24 queued with NVR-CRITIC full round-trip audit and cost-basis dry-powder gate.
 
 ## What Is NOT Known
 
@@ -73,15 +72,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Medic**: PATTERN D — API unreachable (same persistent constraint, 19th consecutive run). MEDIC_REPORT updated.
+- **Scout**: SKIPPED — last scout ran 2026-04-24T13:07 UTC (~20h ago), which is less than the 48-hour threshold. Additionally, api.geckoterminal.com remains unreachable from this sandbox (403).
+- **Auditor**: SKIPPED — cannot verify trigger conditions (all /api/* endpoints return 403). Without win_rate, drawdown, losing_streak, and marketRegime data, the trigger check cannot be computed safely.
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 19th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
