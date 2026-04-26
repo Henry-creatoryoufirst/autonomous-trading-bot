@@ -532,6 +532,7 @@ import {
   apiTrades as _apiTrades, apiDailyPnL as _apiDailyPnL,
   apiIndicators as _apiIndicators, apiIntelligence as _apiIntelligence,
   apiPatterns as _apiPatterns, apiReviews as _apiReviews, apiThresholds as _apiThresholds,
+  apiCriticSummary as _apiCriticSummary,
   getActiveDirectives as _getActiveDirectives, addUserDirective as _addUserDirective,
   removeUserDirective as _removeUserDirective, applyConfigChanges as _applyConfigChanges,
   getActiveConfigDirectives as _getActiveConfigDirectives, removeConfigDirective as _removeConfigDirective,
@@ -10058,6 +10059,7 @@ const calculateRiskRewardMetrics = _calculateRiskRewardMetrics;
 const apiPortfolio = _apiPortfolio;
 const apiBalances = _apiBalances;
 const apiSectors = _apiSectors;
+const apiCriticSummary = _apiCriticSummary;
 const apiTrades = _apiTrades;
 const apiDailyPnL = _apiDailyPnL;
 const apiIndicators = _apiIndicators;
@@ -10409,6 +10411,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/outcomes-summary':
         sendJSON(res, 200, apiOutcomesSummary());
+        break;
+      case '/api/critic-summary':
+        sendJSON(res, 200, apiCriticSummary());
         break;
       case '/api/capital-flows':
         await handleCapitalFlows(res, serverCtx);
