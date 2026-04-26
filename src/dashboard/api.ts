@@ -8,6 +8,7 @@
 
 import http from 'http';
 import fs from 'fs';
+import path from 'path';
 import type { UserDirective, HarvestRecipient } from '../core/types/state.js';
 import type { StrategyPattern, TokenCostBasis, SectorDefinition, MarketRegime, TradePerformanceStats } from '../core/types/index.js';
 import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyData } from '../core/types/market-data.js';
@@ -1009,7 +1010,6 @@ export function apiThresholds() {
  * throwing — the cockpit shows a "no recent audit" state.
  */
 export function apiCriticSummary() {
-  const path = require('path');
   const reportsDir = path.join(process.cwd(), 'data', 'critic-reports');
   const proposalPath = path.join(process.cwd(), 'data', 'rules-proposal.yaml');
 
