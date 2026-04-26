@@ -814,7 +814,7 @@ export const SCALE_UP_BUY_RATIO_MIN = 55;
 export const SCALE_UP_SIZE_PCT = 4;
 
 /** Exit when buy ratio drops below this % on a profitable position */
-export const MOMENTUM_EXIT_BUY_RATIO = 45;
+export const MOMENTUM_EXIT_BUY_RATIO = 47; // Bear-adjusted Apr-2026: 45→47 — tighter exit trigger; in 46-day bear, waves fail faster; exit when barely net-selling (53% sellers) not deeply net-selling (55%)
 
 /** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
