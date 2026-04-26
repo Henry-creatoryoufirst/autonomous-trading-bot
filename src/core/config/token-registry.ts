@@ -292,6 +292,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "BNKR", name: "BankrCoin", coingeckoId: "bankercoin-2",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  KAITO: {
+    address: "0x98d0baa52b2d063e780de12f615f963fe8537553",
+    symbol: "KAITO", name: "Kaito AI", coingeckoId: "kaito",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === DEFI (expanded) ===
   WELL: {
     address: "0xA88594D404727625A9437C3f886C7643872296AE",
