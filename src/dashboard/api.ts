@@ -998,6 +998,131 @@ export function apiThresholds() {
   };
 }
 
+/**
+ * v21.25: CRITIC summary for the cockpit Spirit vs Letter panel.
+ *
+ * Reads the most-recent CRITIC report (data/critic-reports/YYYY-MM-DD.md) and
+ * the rules-proposal.yaml. Returns structured findings the website can render
+ * as live cockpit alerts — the bot's brain checking the bot's brain.
+ *
+ * If files are missing (CRITIC hasn't run), returns null fields rather than
+ * throwing — the cockpit shows a "no recent audit" state.
+ */
+export function apiCriticSummary() {
+  const path = require('path');
+  const reportsDir = path.join(process.cwd(), 'data', 'critic-reports');
+  const proposalPath = path.join(process.cwd(), 'data', 'rules-proposal.yaml');
+
+  let latestReportPath: string | null = null;
+  let latestReportDate: string | null = null;
+  try {
+    if (fs.existsSync(reportsDir)) {
+      const files = fs.readdirSync(reportsDir)
+        .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+        .sort();
+      if (files.length > 0) {
+        latestReportDate = files[files.length - 1].replace('.md', '');
+        latestReportPath = path.join(reportsDir, files[files.length - 1]);
+      }
+    }
+  } catch { /* no reports */ }
+
+  let headline: {
+    windowHours: number | null;
+    tradesAnalyzed: number | null;
+    portfolioUSD: number | null;
+    truePnL: number | null;
+    drawdownPct: number | null;
+    captureRatio: number | null;
+    sinceExitMovePct: number | null;
+  } = {
+    windowHours: null, tradesAnalyzed: null, portfolioUSD: null,
+    truePnL: null, drawdownPct: null, captureRatio: null, sinceExitMovePct: null,
+  };
+
+  let reportLastModified: string | null = null;
+
+  if (latestReportPath) {
+    try {
+      const stat = fs.statSync(latestReportPath);
+      reportLastModified = stat.mtime.toISOString();
+      const md = fs.readFileSync(latestReportPath, 'utf-8');
+
+      const winMatch = md.match(/\*\*Window:\*\*\s+last\s+(\d+)h\s+\((\d+)\s+trades/);
+      if (winMatch) {
+        headline.windowHours = parseInt(winMatch[1], 10);
+        headline.tradesAnalyzed = parseInt(winMatch[2], 10);
+      }
+      const portMatch = md.match(/\*\*Portfolio:\*\*\s+\$([\d.]+)\s+\|\s+truePnL\s+([+-]?)\$([\d.]+)\s+\|\s+drawdown\s+([\d.]+)%/);
+      if (portMatch) {
+        headline.portfolioUSD = parseFloat(portMatch[1]);
+        headline.truePnL = parseFloat(portMatch[3]) * (portMatch[2] === '-' ? -1 : 1);
+        headline.drawdownPct = parseFloat(portMatch[4]);
+      }
+      const captureMatch = md.match(/Avg capture ratio:\s+(-?\d+)%/i);
+      if (captureMatch) headline.captureRatio = parseInt(captureMatch[1], 10);
+      const sinceMatch = md.match(/Avg since-exit move:\s*(-?[\d.]+)%/);
+      if (sinceMatch) headline.sinceExitMovePct = parseFloat(sinceMatch[1]);
+    } catch { /* parse-best-effort */ }
+  }
+
+  // Parse rules-proposal.yaml — predictable structure, no dep needed
+  type Proposal = {
+    target: string;
+    direction: 'strengthen' | 'weaken' | 'hold' | 'investigate';
+    reason: string;
+    samples: number | null;
+    avgPnL: number | null;
+    winRate: number | null;
+  };
+  const proposals: Proposal[] = [];
+  let proposalLastModified: string | null = null;
+
+  if (fs.existsSync(proposalPath)) {
+    try {
+      const stat = fs.statSync(proposalPath);
+      proposalLastModified = stat.mtime.toISOString();
+      const yaml = fs.readFileSync(proposalPath, 'utf-8');
+      const blocks = yaml.split(/\n\s*-\s+target:\s+/).slice(1);
+      for (const block of blocks) {
+        const targetLine = block.split('\n')[0].trim();
+        const dirMatch = block.match(/direction:\s+(\w+)/);
+        const reasonMatch = block.match(/reason:\s+>-?\s*\n\s+([\s\S]*?)(?=\n\s+evidence:|\n\s+-\s+target:|$)/);
+        const samplesMatch = block.match(/samples:\s+(\d+)/);
+        const avgMatch = block.match(/avgPnL:\s+(-?[\d.]+)/);
+        const wrMatch = block.match(/winRate:\s+(-?[\d.]+)/);
+        if (targetLine && dirMatch) {
+          proposals.push({
+            target: targetLine,
+            direction: dirMatch[1] as Proposal['direction'],
+            reason: reasonMatch ? reasonMatch[1].trim().replace(/\s+/g, ' ') : '',
+            samples: samplesMatch ? parseInt(samplesMatch[1], 10) : null,
+            avgPnL: avgMatch ? parseFloat(avgMatch[1]) : null,
+            winRate: wrMatch ? parseFloat(wrMatch[1]) : null,
+          });
+        }
+      }
+    } catch { /* parse-best-effort */ }
+  }
+
+  // Spirit alerts: high-impact findings for the cockpit
+  const alerts = proposals
+    .filter(p => (p.direction === 'weaken' || p.direction === 'investigate') && (p.samples ?? 0) >= 20)
+    .sort((a, b) => Math.abs(b.avgPnL ?? 0) * (b.samples ?? 0) - Math.abs(a.avgPnL ?? 0) * (a.samples ?? 0))
+    .slice(0, 4);
+
+  return {
+    available: latestReportPath !== null,
+    lastReportDate: latestReportDate,
+    reportLastModified,
+    proposalLastModified,
+    headline,
+    proposalCount: proposals.length,
+    proposals,
+    alerts,
+  };
+}
+
 export function getDashboardHTML(): string {
     // Try multiple paths to find dashboard/index.html on disk
     const path = require('path');
