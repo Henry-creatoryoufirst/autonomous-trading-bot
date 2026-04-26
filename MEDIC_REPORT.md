@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-26T23:07 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-26T23:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -49,13 +49,15 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
 | #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-26T23:07 UTC | Scout added ICNT (Impossible Cloud Network, 8/10, $7.5M vol, Coinbase-listed); auditor skipped (API unreachable) |
 
 ## Bot Health Evidence (from git history)
 
 Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
+- `2026-04-26` — Scout: ICNT (Impossible Cloud Network Token) added to TOKEN_REGISTRY — $7.5M vol, $112M+ mkt cap (this run)
+- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality
 - `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
 - `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
 - `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
@@ -73,11 +75,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: COMPLETED — added ICNT (Impossible Cloud Network Token, score 8/10, $7.5M 24h vol, $112M+ market cap, 8+ months on Base, Coinbase-listed March 25 2026). Evaluated 5 candidates; 4 rejected (CLAWSTR: 838% pool fee/honeypot; CLAWNCH: -95.5% from ATH, momentum 3/10; EAT/375ai: Solana not Base; STG: merged into ZRO already in registry).
+- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Skipped this run.
 
 ## Recommended Action for Henry
 
