@@ -25,3 +25,11 @@ build/
 data/*.json
 data/*.yaml
 data/critic-reports/
+
+# Exception: ship the latest CRITIC artifacts as a cockpit seed. Railway
+# containers are ephemeral, so without these committed the Spirit-vs-Letter
+# panel would be blank on first deploy. Refresh by running `npm run critic`
+# locally and committing the new files.
+!data/rules-proposal.yaml
+!data/critic-reports/
+!data/critic-reports/*.md

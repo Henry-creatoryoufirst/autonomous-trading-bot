@@ -1,0 +1,54 @@
+# NVR-CRITIC — Rules Proposal (trade-outcome pass)
+# Generated: 2026-04-24T20:07:16.603Z
+# 
+# CRITIC never auto-applies. Henry reviews, picks 1-2 changes, merges by hand.
+
+proposals:
+  - target: ai_discretionary
+    direction: investigate
+    reason: >-
+      Pattern "ai_discretionary" fired 56 times with near-zero average P&L ($0.06). Either low-stakes noise or a split between winning/losing subcases — worth a deeper look.
+    evidence:
+      samples: 56
+      avgPnL: 0.056
+      winRate: 0.018
+  - target: emergency_exit
+    direction: investigate
+    reason: >-
+      Pattern "emergency_exit" fired 11 times with near-zero average P&L ($0.00). Either low-stakes noise or a split between winning/losing subcases — worth a deeper look.
+    evidence:
+      samples: 11
+      avgPnL: 0.000
+      winRate: 0.000
+  - target: momentum_chase
+    direction: weaken
+    reason: >-
+      Pattern "momentum_chase" averaged -1.53 per trade across 9 fires (win rate 0%). Tighten the trigger threshold or add a confluence gate.
+    evidence:
+      samples: 9
+      avgPnL: -1.532
+      winRate: 0.000
+  - target: dry_powder_rebalance
+    direction: weaken
+    reason: >-
+      Pattern "dry_powder_rebalance" averaged -3.06 per trade across 64 fires (win rate 27%). Tighten the trigger threshold or add a confluence gate.
+    evidence:
+      samples: 64
+      avgPnL: -3.056
+      winRate: 0.266
+  - target: confluence_strong
+    direction: weaken
+    reason: >-
+      Pattern "confluence_strong" averaged -3.08 per trade across 23 fires (win rate 0%). Tighten the trigger threshold or add a confluence gate.
+    evidence:
+      samples: 23
+      avgPnL: -3.079
+      winRate: 0.000
+  - target: exit_timing/systemic_early_exits
+    direction: weaken
+    reason: >-
+      Across 89 round-trips with counterfactual data, the bot captured only -24% of the available entry-to-current move on average. Exit rules (trailing-stop, stale-exit, dry-powder) are firing too eagerly. Widen the trailing-stop threshold and/or raise the stale-exit minimum-gain bar.
+    evidence:
+      samples: 89
+      avgPnL: -2.561
+      winRate: 0.154
