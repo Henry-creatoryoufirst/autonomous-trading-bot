@@ -335,6 +335,11 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === AUTO-DISCOVERED (scout) ===
+  KAITO: {
+    address: "0x98d0baa52b2d063e780de12f615f963fe8537553",
+    symbol: "KAITO", name: "Kaito", coingeckoId: "kaito",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   TIG: {
     address: "0x0C03Ce270B4826Ec62e7DD007f0B716068639F7B",
     symbol: "TIG", name: "The Innovation Game", coingeckoId: "the-innovation-game",
