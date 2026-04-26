@@ -400,6 +400,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "B3", name: "B3 Gaming Chain", coingeckoId: "b3",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-04-26) ===
+  RNBW: {
+    address: "0xa53887f7e7c1bf5010b8627f1c1ba94fe7a5d6e0",
+    symbol: "RNBW", name: "Rainbow Wallet Token", coingeckoId: "rainbow-3",
+    sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
