@@ -47,6 +47,7 @@ export function createInitialAgentState(): AgentState {
       totalPortfolioValue: 0,
       initialValue:        0,
       peakValue:           0,
+      allTimePeakNominal:  0, // v21.28: honest all-time-high, never payout-adjusted
       sectorAllocations:   [],
       marketRegime:        'UNKNOWN',
     },
