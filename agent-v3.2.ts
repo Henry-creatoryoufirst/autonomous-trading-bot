@@ -482,19 +482,8 @@ import {
   STALE_POSITION_DRAWDOWN_OVERRIDE_PCT,
   STALE_POSITION_MAX_EXITS_PER_CYCLE,
   STALE_POSITION_CHECK_INTERVAL_CYCLES,
-  // v21.11: Dry powder reserve — proactive capital availability
-  MIN_DRY_POWDER_PCT,
-  RESERVE_CHECK_INTERVAL_CYCLES,
-  RESERVE_MAX_SELLS,
-  // v21.23: Cost-basis gate (this constant was used at line 1482 since
-  // v21.23 ship but never imported — silent ReferenceError on every cycle's
-  // dry-powder check, swallowed by cycle-level try/catch. Fixed in v21.25.)
-  DRY_POWDER_MIN_UNREALIZED_PCT,
-  // v21.25: Forced-liquidation protections (winner + freshness gates)
-  DRY_POWDER_MIN_AGE_HOURS,
-  DRY_POWDER_WINNER_PROTECTION_PCT,
-  LIBERATION_MIN_AGE_HOURS,
-  LIBERATION_WINNER_PROTECTION_PCT,
+  // v21.27: dry-powder + liberation imports DELETED with their functions.
+  // (MIN_DRY_POWDER_PCT, RESERVE_*, DRY_POWDER_*, LIBERATION_* — all gone)
   // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
   MAX_CONSECUTIVE_FAILURES,
   FAILURE_COOLDOWN_HOURS,
@@ -815,9 +804,9 @@ const ALPHA_MAX_SINGLE_POSITION = 0.05; // Max 5% per alpha position (1/3 of bud
 const ALPHA_KELLY_MULTIPLIER = 0.5;     // Half-Kelly for alpha trades (more conservative)
 
 // Capital Liberation — sell weakest positions to fund high-conviction entries
-const MIN_USDC_RESERVE_FOR_LIBERATION = 50;  // Below this, liberation triggers
-const CRITICAL_USDC_FLOOR = 20;              // v21.12: Below this, liberation fires WITHOUT conviction gate (prevents $3 micro-buy loop)
-const MAX_LIBERATION_SELLS = 3;              // Never sell more than 3 positions per event
+// v21.27: liberation logic deleted. Threshold preserved only as the level below
+// which we log a "BUY DEFERRED" notice (telemetry / cockpit awareness).
+const MIN_USDC_RESERVE_FOR_LIBERATION = 50;
 
 // CONFIGURATION V3.2
 // ============================================================================
@@ -1161,122 +1150,12 @@ let equityEnabled = false;
 // === v6.1: TOKEN DISCOVERY STATE ===
 let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
 
-/**
- * Capital Liberation — sell weakest positions to fund a high-conviction trade.
- *
- * Called when USDC is too low to fund a strong signal. Ranks all held positions
- * by a "dead weight" score and queues sells for the weakest ones.
- *
- * Returns an array of TradeDecision objects (SELL actions) to execute before the buy.
- * Callers must execute these sells and wait for them before the buy.
- *
- * @param balances         Current portfolio balances
- * @param state            Agent state (for costBasis, ICU status)
- * @param targetAmountUSD  How much USDC we want to free up
- * @param excludeSymbols   Symbols to never touch (the token we want to buy + any with active buy signal this cycle)
- */
-function liberateCapital(
-  balances: any[],
-  state: any,
-  targetAmountUSD: number,
-  excludeSymbols: string[],
-): TradeDecision[] {
-  const now = Date.now();
-  const excludeSet = new Set(excludeSymbols.map(s => s.toUpperCase()));
-
-  // Hard exclusions that never participate in liberation
-  const NEVER_LIBERATE = new Set(['USDC', 'ETH', 'WETH']);
-
-  // Score each candidate position by dead-weight — higher = more expendable
-  const candidates: Array<{
-    symbol: string;
-    usdValue: number;
-    score: number;
-  }> = [];
-
-  for (const b of balances) {
-    const symbol = (b.symbol || '').toUpperCase();
-
-    // Hard exclusions
-    if (NEVER_LIBERATE.has(symbol)) continue;
-    if (excludeSet.has(symbol)) continue;
-
-    // Skip ICU positions (actively monitored, hands-off)
-    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
-
-    // Skip dust — dust cleanup handles those separately
-    if (!b.usdValue || b.usdValue < 5) continue;
-
-    const cb = state.costBasis[b.symbol];
-
-    // Need cost basis data to score meaningfully
-    if (!cb) continue;
-
-    // v21.25: Freshness gate — fresh entries are mid-thesis. Don't sacrifice them
-    // to fund the next idea. Replaces the inline 4h guard. Kill switch:
-    // env LIBERATION_MIN_AGE_HOURS=0 reverts to no age gate.
-    const liberationMinAgeHours = Number.isFinite(Number(process.env.LIBERATION_MIN_AGE_HOURS))
-      ? Number(process.env.LIBERATION_MIN_AGE_HOURS)
-      : LIBERATION_MIN_AGE_HOURS;
-    const firstBuyDate = cb.firstBuyDate ? new Date(cb.firstBuyDate).getTime() : now;
-    const ageHours = (now - firstBuyDate) / (1000 * 60 * 60);
-    if (ageHours < liberationMinAgeHours) continue;
-
-    // --- Dead weight scoring ---
-
-    // Age penalty: 40 pts max for positions held 7+ days without graduating
-    const agePenalty = Math.min(ageHours / 168, 1.0) * 40;
-
-    // P&L penalty: up to 50 pts for losing positions (-20% → 10 pts, -100% → 50 pts)
-    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
-    const unrealizedPnlPct = cb.averageCostBasis > 0
-      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
-      : 0;
-    const pnlPenalty = Math.max(0, -unrealizedPnlPct) * 0.5;
-
-    // v21.25: Winner-protection gate — don't sell strong-running winners to fund
-    // a different "high-conviction" entry. CRITIC labeled this pattern
-    // confluence_strong (n=23, 0% win rate) — selling proven-out positions to
-    // chase next-idea conviction. Kill switch: env LIBERATION_WINNER_PROTECTION_PCT=999
-    // effectively disables.
-    const liberationWinnerPct = Number.isFinite(Number(process.env.LIBERATION_WINNER_PROTECTION_PCT))
-      ? Number(process.env.LIBERATION_WINNER_PROTECTION_PCT)
-      : LIBERATION_WINNER_PROTECTION_PCT;
-    if (unrealizedPnlPct >= liberationWinnerPct) continue;
-
-    // Size penalty: up to 10 pts for small positions (under $100 → partial, $0 → 10 pts)
-    const sizePenalty = Math.max(0, 1 - (b.usdValue / 100)) * 10;
-
-    const score = agePenalty + pnlPenalty + sizePenalty;
-
-    candidates.push({ symbol: b.symbol, usdValue: b.usdValue, score });
-  }
-
-  // Sort highest dead-weight first
-  candidates.sort((a, b) => b.score - a.score);
-
-  // Take positions until we cover targetAmountUSD, cap at MAX_LIBERATION_SELLS
-  const selected: typeof candidates = [];
-  let coveredUSD = 0;
-
-  for (const candidate of candidates) {
-    if (selected.length >= MAX_LIBERATION_SELLS) break;
-    if (coveredUSD >= targetAmountUSD) break;
-    selected.push(candidate);
-    coveredUSD += candidate.usdValue;
-  }
-
-  // Build SELL decisions — 90% of position to avoid rounding/dust errors
-  return selected.map(pos => ({
-    action: 'SELL' as const,
-    fromToken: pos.symbol,
-    toToken: 'USDC',
-    amountUSD: pos.usdValue * 0.9,
-    percent: 90,
-    reasoning: `Capital liberation: freeing $${pos.usdValue.toFixed(0)} to fund high-conviction entry`,
-    sector: TOKEN_REGISTRY[pos.symbol]?.sector,
-  }));
-}
+// v21.27: liberateCapital DELETED.
+// CRITIC 14-day data 2026-04-27: -$76 over 20 trades, 0% win rate.
+// First-principles: forced sells to fund "next conviction" require new signal
+// be strictly better than every held conviction — judgment that should fall
+// out of natural exit logic, not a separate scramble mode. USDC refills via
+// harvest, stale-exit, drawdown override, circuit breaker, and natural sells.
 
 /**
  * v21.10: Position Graduation / Auto-Culling
@@ -1444,153 +1323,11 @@ function checkStalePositions(
   return decisions;
 }
 
-/**
- * v21.11: Dry Powder Reserve — Proactive Capital Availability
- *
- * Ensures the portfolio always has MIN_DRY_POWDER_PCT of total value as deployable
- * USDC. Runs every RESERVE_CHECK_INTERVAL_CYCLES regardless of BUY signals.
- *
- * This is fundamentally different from liberateCapital() which is reactive:
- *   - liberateCapital: fires when a BUY signal arrives and USDC is already gone
- *   - maintainDryPowder: fires proactively to prevent ever running out in the first place
- *
- * Result: bots are always capital-ready. When the alpha signal fires, the USDC
- * is already waiting — not scrambled for at the last moment.
- */
-function maintainDryPowder(
-  balances: any[],
-  state: any,
-): TradeDecision[] {
-  const NEVER_SELL = new Set(['USDC', 'ETH', 'WETH']);
-
-  const totalPortfolioValue = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
-  if (totalPortfolioValue < 50) return []; // Too small to be meaningful
-
-  const usdcBalance = balances.find(b => b.symbol === 'USDC')?.usdValue ?? 0;
-  const targetReserve = totalPortfolioValue * MIN_DRY_POWDER_PCT;
-
-  // Plenty of dry powder — nothing to do
-  if (usdcBalance >= targetReserve) return [];
-
-  const deficit = targetReserve - usdcBalance;
-
-  // v21.23: Cost-basis gate. CRITIC found dry_powder_rebalance fired 64× in 7d
-  // at 27% win rate, aggregate –$196 realized — the bot was systematically
-  // locking in losses to top up USDC. Now we refuse to sell a position that's
-  // underwater beyond a configurable gate; if nothing is eligible, the USDC
-  // target stays aspirational until prices recover or a BUY-path exit fires.
-  // Kill switch: DRY_POWDER_COST_BASIS_GATE=disabled reverts.
-  const gateEnabled = process.env.DRY_POWDER_COST_BASIS_GATE !== 'disabled';
-  const gatePct = Number.isFinite(Number(process.env.DRY_POWDER_MIN_UNREALIZED_PCT))
-    ? Number(process.env.DRY_POWDER_MIN_UNREALIZED_PCT)
-    : DRY_POWDER_MIN_UNREALIZED_PCT;
-
-  // v21.25: Freshness + winner protection — the reserve must flex around
-  // conviction, not against it. Don't liquidate fresh entries (mid-thesis) or
-  // running winners just to hit the 25% number. CRITIC 2026-04-24 cited DRB
-  // exited at +82 confluence solely to rebalance.
-  const minAgeHours = Number.isFinite(Number(process.env.DRY_POWDER_MIN_AGE_HOURS))
-    ? Number(process.env.DRY_POWDER_MIN_AGE_HOURS)
-    : DRY_POWDER_MIN_AGE_HOURS;
-  const winnerProtectionPct = Number.isFinite(Number(process.env.DRY_POWDER_WINNER_PROTECTION_PCT))
-    ? Number(process.env.DRY_POWDER_WINNER_PROTECTION_PCT)
-    : DRY_POWDER_WINNER_PROTECTION_PCT;
-
-  // Score all held positions by opportunity cost — we want to sell the one
-  // with the LEAST reason to hold: oldest + smallest size. Losers are excluded
-  // by the cost-basis gate; winners are excluded by the protection gate;
-  // fresh entries are excluded by the age gate. What remains is flat-ish,
-  // proven-out positions — those are the right candidates for rebalance.
-  const now = Date.now();
-  const candidates: Array<{ symbol: string; usdValue: number; unrealizedPnlPct: number; score: number }> = [];
-  let gatedOutCount = 0;
-  let freshSkipCount = 0;
-  let winnerSkipCount = 0;
-
-  for (const b of balances) {
-    const symbol = (b.symbol || '').toUpperCase();
-    if (NEVER_SELL.has(symbol)) continue;
-    if (!b.usdValue || b.usdValue < 5) continue;
-
-    // Skip ICU — those are being actively managed
-    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
-
-    // Skip circuit-breaker-blocked tokens
-    if (isTokenBlocked(symbol)) continue;
-
-    const cb = state.costBasis[b.symbol];
-    const ageHours = cb?.firstBuyDate
-      ? (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
-      : 0;
-
-    // v21.25: Freshness gate — give recent entries time to play out.
-    if (ageHours < minAgeHours) {
-      freshSkipCount++;
-      continue;
-    }
-
-    const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
-    const unrealizedPnlPct = cb?.averageCostBasis > 0
-      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
-      : 0;
-
-    // v21.23: Cost-basis gate — skip anything underwater below threshold.
-    // With gatePct=0 (default), this is "no realized losses for rebalancing."
-    if (gateEnabled && unrealizedPnlPct < gatePct) {
-      gatedOutCount++;
-      continue;
-    }
-
-    // v21.25: Winner-protection gate — running winners are not the reserve's
-    // ATM. Let them run; the reserve waits for a better refill path.
-    if (unrealizedPnlPct >= winnerProtectionPct) {
-      winnerSkipCount++;
-      continue;
-    }
-
-    // Opportunity cost score: higher = more expendable.
-    // Age penalty: longest-held (stalest, coldest profit) first
-    const agePenalty = Math.min(ageHours / 168, 1.0) * 40;
-    // Size bonus: prefer selling smaller positions (less portfolio disruption)
-    const sizePenalty = Math.max(0, 1 - (b.usdValue / 200)) * 10;
-
-    candidates.push({ symbol: b.symbol, usdValue: b.usdValue, unrealizedPnlPct, score: agePenalty + sizePenalty });
-  }
-
-  if (candidates.length === 0) {
-    const usdcPct = ((usdcBalance / totalPortfolioValue) * 100).toFixed(1);
-    const target = (MIN_DRY_POWDER_PCT * 100).toFixed(0);
-    const skipReasons: string[] = [];
-    if (gatedOutCount > 0) skipReasons.push(`${gatedOutCount} underwater`);
-    if (freshSkipCount > 0) skipReasons.push(`${freshSkipCount} fresh entry`);
-    if (winnerSkipCount > 0) skipReasons.push(`${winnerSkipCount} running winner`);
-    if (skipReasons.length > 0) {
-      console.log(`   💧 DRY_POWDER: USDC at ${usdcPct}% vs ${target}% target — gates holding (${skipReasons.join(', ')}). Reserve flexes around conviction.`);
-    }
-    return [];
-  }
-  candidates.sort((a, b) => b.score - a.score);
-
-  // Sell just enough to restore the reserve, cap at RESERVE_MAX_SELLS
-  const toSell: typeof candidates = [];
-  let freed = 0;
-  for (const c of candidates) {
-    if (toSell.length >= RESERVE_MAX_SELLS) break;
-    if (freed >= deficit) break;
-    toSell.push(c);
-    freed += c.usdValue;
-  }
-
-  return toSell.map(pos => ({
-    action: 'SELL' as const,
-    fromToken: pos.symbol,
-    toToken: 'USDC',
-    amountUSD: pos.usdValue,
-    percent: 90,
-    reasoning: `DRY_POWDER (v21.23 gated): Portfolio has ${((usdcBalance / totalPortfolioValue) * 100).toFixed(1)}% USDC (target: ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}%). ${pos.symbol} is up ${pos.unrealizedPnlPct >= 0 ? '+' : ''}${pos.unrealizedPnlPct.toFixed(1)}% vs cost basis — harvesting into the reserve.`,
-    sector: TOKEN_REGISTRY[pos.symbol]?.sector,
-  }));
-}
+// v21.27: maintainDryPowder DELETED.
+// CRITIC 14-day data 2026-04-27: -$87 over 97 trades. Structurally unenforceable
+// because WETH/ETH are NEVER_SELL — the function couldn't touch the dominant
+// holding (~76% WETH today), so it was selling proven alts for cents to chase
+// a target it could never hit. USDC % now floats with natural turnover.
 
 /**
  * Calculate total capital currently deployed in alpha (discovery) positions.
@@ -7637,46 +7374,14 @@ async function runTradingCycle() {
       }
     }
 
-    // === DRY POWDER RESERVE — Proactive capital availability (25% floor) ===
-    // Every RESERVE_CHECK_INTERVAL_CYCLES, ensure USDC >= MIN_DRY_POWDER_PCT (25%)
-    // of portfolio. If below target, sell the lowest-opportunity-cost position to
-    // restore it. Fires BEFORE Claude's decision so capital is always ready when
-    // alpha arrives. The ONE hardcoded capital rule — see strategy_shape memory.
-    if (state.totalCycles % RESERVE_CHECK_INTERVAL_CYCLES === 0) {
-      const reserveSells = maintainDryPowder(balances, state);
-      if (reserveSells.length > 0) {
-        const totalPortfolioValue = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
-        const usdcPct = ((balances.find(b => b.symbol === 'USDC')?.usdValue ?? 0) / totalPortfolioValue * 100).toFixed(1);
-        console.log(`\n💧 DRY_POWDER: USDC at ${usdcPct}% of portfolio (target: ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}%) — restoring reserve`);
-
-        const freedSymbols: string[] = [];
-        for (const rs of reserveSells) {
-          console.log(`   💧 Selling ${rs.fromToken} $${rs.amountUSD?.toFixed(2)} to restore dry powder`);
-          const result = await executeTrade(rs, marketData);
-          if (result.success) {
-            clearTradeFailures(rs.fromToken!);
-            freedSymbols.push(rs.fromToken!);
-            console.log(`   ✅ Reserve restored: +$${rs.amountUSD?.toFixed(2)} USDC from ${rs.fromToken}`);
-          } else {
-            console.log(`   ❌ Reserve sell failed: ${rs.fromToken}`);
-          }
-        }
-
-        if (freedSymbols.length > 0) {
-          const refreshed = await getBalances();
-          if (refreshed && refreshed.length > 0) balances = refreshed;
-          markStateDirty(true);
-
-          const newUsdc = balances.find(b => b.symbol === 'USDC')?.usdValue ?? 0;
-          const newTotal = balances.reduce((s, b) => s + (b.usdValue || 0), 0);
-          await telegramService.sendAlert({
-            severity: "INFO",
-            title: `💧 Dry Powder Restored`,
-            message: `Capital availability restored from ${usdcPct}% → ${(newUsdc / newTotal * 100).toFixed(1)}% USDC.\n\nSold: ${freedSymbols.join(', ')}\nNow ready to deploy into the next alpha signal.`,
-          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
-        }
-      }
-    }
+    // === v21.27 Step 2 (Delete) — Dry Powder Reserve maintenance removed ===
+    // CRITIC 14-day data showed dry_powder_rebalance lost -$87 on 97 trades.
+    // Structural reason: WETH/ETH are on the NEVER_SELL list, so the 25% USDC
+    // floor was structurally unenforceable when WETH dominates the portfolio
+    // (currently ~76%). The function fired every RESERVE_CHECK_INTERVAL_CYCLES
+    // and sold proven alt holds for cents, fighting the bot's own organic
+    // ETH-heavy allocation. USDC % now floats with natural turnover — exits,
+    // stops, harvests, drawdown overrides — not forced rebalance.
 
     // === v21.8: HARD CIRCUIT BREAKER — Emergency exit for severe losses or persistent failures ===
     // Safety net that fires EVERY cycle regardless of normal algo decisions.
@@ -7884,71 +7589,20 @@ async function runTradingCycle() {
     let anyTradeExecuted = false;
     let crashBuyEntriesThisCycle = 0; // v11.2: Track crash-buy entries to enforce max cap
 
-    // === Capital Liberation — free dead-weight positions to fund high-conviction entries ===
-    // Normal path: USDC < $50 AND a strong signal exists this cycle.
-    // Emergency path (v21.12): USDC < $20 fires liberation unconditionally to break the
-    // micro-buy loop where the bot deploys $3 of USDC into WETH every cycle indefinitely.
+    // === v21.27 Step 2 (Delete) — Capital Liberation removed ===
+    // CRITIC 14-day data showed forced liberation lost -$76 on 20 trades, 0% win rate.
+    // First-principles: existing positions ARE conviction holds picked by the same
+    // scoring system. Selling them to chase new conviction required the new signal
+    // be strictly better than every held one — a judgment that should fall out of
+    // existing exit logic (stale-exit, trailing stop, drawdown override, circuit
+    // breaker), not a separate scramble mode. USDC refills organically via natural
+    // exits and harvests; high-conviction BUYs lacking capital simply defer.
     if (remainingUSDC < MIN_USDC_RESERVE_FOR_LIBERATION) {
-      const discoveredTokenSymbols = tokenDiscoveryEngine
-        ? tokenDiscoveryEngine.getDiscoveredTokens().map((t: DiscoveredToken) => t.symbol.toUpperCase())
-        : [];
-
-      const hasHighConvictionBuy = decisions.some(d => {
-        if (d.action !== 'BUY') return false;
-        // STRONG_BUY signals from the central signal service (confluence >= 40)
-        if (d.reasoning?.includes('STRONG_BUY')) return true;
-        // Discovered alpha tokens — the discovery engine already vets these
-        if (d.toToken && discoveredTokenSymbols.includes(d.toToken.toUpperCase())) return true;
-        return false;
-      });
-
-      // v21.12: Emergency cash floor — bypass conviction gate when USDC is critically depleted.
-      // Targets $100 rebuild so the bot can resume meaningful position sizing.
-      const isEmergencyLow = remainingUSDC < CRITICAL_USDC_FLOOR;
-
-      if (hasHighConvictionBuy || isEmergencyLow) {
-        const buyTargets = hasHighConvictionBuy
-          ? decisions.filter(d => d.action === 'BUY' && d.toToken).map(d => d.toToken)
-          : [];
-        const excludeFromLib = [...buyTargets];
-        const targetUSD = isEmergencyLow ? 100 : 80;
-        const liberationReason = isEmergencyLow
-          ? `emergency cash floor rebuild (USDC: $${remainingUSDC.toFixed(2)})`
-          : (buyTargets[0] || 'high-conviction entry');
-
-        const liberationSells = liberateCapital(balances, state, targetUSD, excludeFromLib);
-
-        if (liberationSells.length > 0) {
-          console.log(`\n💸 [CAPITAL LIBERATION] Freeing capital from ${liberationSells.length} weak position(s) — ${liberationReason}`);
-
-          const soldLines: string[] = [];
-          for (const sellDecision of liberationSells) {
-            console.log(`   💸 Liberating ${sellDecision.fromToken}: $${sellDecision.amountUSD.toFixed(2)} → USDC`);
-            const libResult = await executeTrade(sellDecision, marketData);
-            if (libResult.success) {
-              soldLines.push(`• ${sellDecision.fromToken}: $${sellDecision.amountUSD.toFixed(2)} freed`);
-              clearTradeFailures(sellDecision.fromToken);
-              remainingUSDC += sellDecision.amountUSD;
-              console.log(`   ✅ Liberated ${sellDecision.fromToken} — +$${sellDecision.amountUSD.toFixed(2)} USDC`);
-            } else {
-              console.log(`   ❌ Liberation failed for ${sellDecision.fromToken}: ${libResult.error}`);
-            }
-          }
-
-          if (soldLines.length > 0) {
-            const title = isEmergencyLow ? `[Emergency Capital Liberation]` : `[Capital Liberation]`;
-            const body = isEmergencyLow
-              ? `Cash critically low ($${(remainingUSDC - soldLines.reduce((s, l) => s + parseFloat(l.match(/\$([\d.]+)/)?.[1] || '0'), 0)).toFixed(2)} USDC). Freed ${soldLines.length} position(s) to rebuild trading capacity.\n\n${soldLines.join('\n')}`
-              : `Sold ${soldLines.length} weak position${soldLines.length > 1 ? 's' : ''} to fund ${buyTargets[0] || 'high-conviction entry'}.\n\n${soldLines.join('\n')}\n\nCapital freed and redeployed into high-conviction signal.`;
-            telegramService.sendAlert({
-              severity: isEmergencyLow ? 'CRITICAL' : 'INFO',
-              title,
-              message: body,
-            }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
-          }
-        } else if (isEmergencyLow) {
-          console.log(`\n⚠️ [CAPITAL LIBERATION] Emergency low USDC ($${remainingUSDC.toFixed(2)}) but no eligible liberation candidates found`);
-        }
+      const hasHighConvictionBuy = decisions.some(d =>
+        d.action === 'BUY' && d.reasoning?.includes('STRONG_BUY')
+      );
+      if (hasHighConvictionBuy) {
+        console.log(`\n⏸️  [BUY DEFERRED] USDC=$${remainingUSDC.toFixed(2)} insufficient for high-conviction BUY this cycle. Will re-evaluate on next cycle after natural USDC refill (harvest, stop-loss, stale-exit).`);
       }
     }
 
