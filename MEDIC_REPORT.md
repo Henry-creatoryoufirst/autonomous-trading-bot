@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-27T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-27T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -48,22 +48,24 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-27T00:00 UTC | This report; scout added A0X; auditor lowered BREAKER_WEEKLY_DD_PCT 15→12 |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, the branch is extremely active. Since Run #18:
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
+- `2026-04-27` — Scout: A0X (A0x AI agent platform) added to TOKEN_REGISTRY — $463K liq, $132K 24h vol (this run)
+- `2026-04-27` — Auditor: BREAKER_WEEKLY_DD_PCT 15→12 — bear-market recovery asymmetry (this run)
+- `2026-04-24` — CRITIC v21.24 memory injection merged (heavy-cycle Sonnet prompts now get CRITIC feedback)
+- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol
+- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality
 - `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
 - `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
 - `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
 - `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
-- `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
-- `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
 
-**Staging is substantially ahead of main** — v21.20.1+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
+**Branch is substantially ahead of main** — v21.24 queued with NVR-CRITIC memory injection, OSS trader model, dry-powder cost-basis gate.
 
 ## What Is NOT Known
 
@@ -73,15 +75,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: COMPLETED — added A0X (A0x AI agent platform, $463K liq, $132K 24h vol, 9-month pool, score 7/10). Evaluated 7 candidates; 6 rejected (PONKE: Solana not Base; MOCHI: $0 vol; EXTRA: $16K vol; BASED: minimal vol; W: $21K vol Base-specific; RIZ: $3K liquidity).
+- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from git history (46-day bear confirmed Run #17, extended further). Research ran 4 searches; BREAKER_WEEKLY_DD_PCT 15→12 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0). NVR-HQ not in checkout — no report file written.
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 18th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
