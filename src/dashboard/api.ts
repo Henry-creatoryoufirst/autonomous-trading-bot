@@ -226,6 +226,17 @@ export function apiPortfolio() {
     totalValue: state.trading.totalPortfolioValue,
     initialValue: effectiveInitialValue,
     peakValue: state.trading.peakValue,
+    /**
+     * v21.28: Honest all-time-high portfolio value. Unlike peakValue (which
+     * is adjusted DOWN on each payout so drawdown% reflects market drawdown
+     * rather than intentional capital outflows), this never goes down. Use
+     * this for "what's the highest the bot ever showed?" — answers Henry's
+     * "I saw $4,500 but the bot says peak is $3,978" question.
+     *
+     * Will equal peakValue until the next payout fires; after that, the
+     * two diverge by the cumulative payout amount.
+     */
+    allTimePeakNominal: state.trading.allTimePeakNominal ?? state.trading.peakValue,
     chain: activeChain.name.toLowerCase() as 'base' | 'ethereum' | 'arbitrum',
     pnl: truePnL,
     pnlPercent: truePnLPercent,

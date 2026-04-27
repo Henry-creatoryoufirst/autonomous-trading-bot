@@ -35,7 +35,15 @@ export interface AgentState {
     balances: { symbol: string; balance: number; usdValue: number; price?: number; sector?: string }[];
     totalPortfolioValue: number;
     initialValue: number;
+    /** Drawdown-aware peak. Adjusted DOWN by daily payouts so drawdown%
+     *  reflects market drawdown, not the intentional capital outflow.
+     *  Use this for drawdown calculations. */
     peakValue: number;
+    /** v21.28: Honest all-time-high portfolio value, never adjusted for
+     *  payouts. Use this for "what was the highest dollar amount the bot
+     *  ever showed?" — answers Henry's question. May be undefined on
+     *  states that pre-date this field; bot fills it in lazily. */
+    allTimePeakNominal?: number;
     sectorAllocations: SectorAllocation[];
     marketRegime?: string;
   };
