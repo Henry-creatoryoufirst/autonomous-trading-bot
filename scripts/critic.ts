@@ -947,7 +947,16 @@ interface BalancesResponse {
   balances?: Balance[];
 }
 
-async function main(): Promise<void> {
+/**
+ * v21.26: Exported so agent-v3.2.ts can register a nightly cron that runs
+ * CRITIC unattended when CRITIC_ENABLED=true. CLI invocation
+ * (`npm run critic`) still works — the conditional at the bottom of this
+ * file only auto-invokes when run as the entry point, not when imported.
+ *
+ * Step 5 of the algorithm: automate — but only after question/delete/simplify.
+ * CRITIC's been stable for a week, used in three real ships. Time to lift.
+ */
+export async function runCriticAudit(): Promise<void> {
   ensureDir(DATA_DIR);
   ensureDir(REPORTS_DIR);
 
@@ -1010,7 +1019,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('[CRITIC] Failed:', err);
-  process.exit(1);
-});
+// Auto-invoke only when run as the CLI entry point (e.g. `npm run critic`),
+// not when imported by the bot for the nightly cron.
+const isCli = import.meta.url === `file://${process.argv[1]}`;
+if (isCli) {
+  runCriticAudit().catch((err) => {
+    console.error('[CRITIC] Failed:', err);
+    process.exit(1);
+  });
+}
