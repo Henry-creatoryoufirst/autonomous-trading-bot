@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-27T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-27T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-FJtya (staging branch deleted/merged; using designated dev branch)
 
 ## Problem
 
@@ -48,7 +48,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-27T00:00 UTC | This report; scout no new tokens (APIs blocked); auditor raised HOT_MOVER_MIN_BUY_RATIO 0.55→0.62 |
 
 ## Bot Health Evidence (from git history)
 
@@ -73,11 +74,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
-- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated. Note: no staging branch exists (was merged to main at v21.24); operating on `claude/cool-sagan-FJtya`.
+- **Scout**: No qualifying tokens — GeckoTerminal + DexScreener both 403. WebSearch results too generic (no verifiable addresses/liquidity data). Tokens mentioned in searches (BRETT, TOSHI, DEGEN, DOGINME, MIGGLES, VIRTUAL, AIXBT, AERO) all already in TOKEN_REGISTRY. Standards maintained.
+- **Auditor**: Bear market inferred (50+ days, prior confirmation 46-day bear at Run #17). Research ran 4 searches. HOT_MOVER_MIN_BUY_RATIO 0.55→0.62 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0). Rationale: in bear markets, 55-62% buy-ratio pumps are predominantly noise/short-squeezes; 62% threshold requires clear buyer dominance as signal.
 
 ## Recommended Action for Henry
 
