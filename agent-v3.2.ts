@@ -486,6 +486,10 @@ import {
   MIN_DRY_POWDER_PCT,
   RESERVE_CHECK_INTERVAL_CYCLES,
   RESERVE_MAX_SELLS,
+  // v21.23: Cost-basis gate (this constant was used at line 1482 since
+  // v21.23 ship but never imported — silent ReferenceError on every cycle's
+  // dry-powder check, swallowed by cycle-level try/catch. Fixed in v21.25.)
+  DRY_POWDER_MIN_UNREALIZED_PCT,
   // v21.25: Forced-liquidation protections (winner + freshness gates)
   DRY_POWDER_MIN_AGE_HOURS,
   DRY_POWDER_WINNER_PROTECTION_PCT,
