@@ -140,14 +140,14 @@ export const stablecoinDepegPattern: Pattern = {
         continue; // not yet sustained — wait
       }
 
-      // STUB GUARD: don't actually fire triggers until the runtime is
-      // ready and we have backtested entry logic. detect() shape is
-      // correct; live behavior is null until we explicitly enable.
-      // Removing this guard is the gate to first paper-mode trades.
-      const STUB_DISABLE_TRIGGERS = true;
-      if (STUB_DISABLE_TRIGGERS) continue;
+      // STUB GUARD: env-controlled. Default ON (safe). Set
+      // DEPEG_PATTERN_ENABLED=true to allow the pattern to fire triggers
+      // — required for paper-mode runs and backtests. Live trading still
+      // requires status='live' on the registry + a confidence-gate ≥ 60
+      // against historical data.
+      if (process.env.DEPEG_PATTERN_ENABLED !== "true") continue;
 
-      // Real fire path (commented out until backtest harness validates)
+      // Live fire path
       return {
         patternName: "stablecoin_depeg",
         symbol,
