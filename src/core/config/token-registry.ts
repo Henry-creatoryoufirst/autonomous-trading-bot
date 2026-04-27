@@ -400,6 +400,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "B3", name: "B3 Gaming Chain", coingeckoId: "b3",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  PING: {
+    address: "0xd85c31854c2B0Fb40aaA9E2Fc4Da23C21f829d46",
+    symbol: "PING", name: "Ping", coingeckoId: "ping",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
