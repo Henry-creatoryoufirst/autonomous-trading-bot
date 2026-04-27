@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-04-24T00:00 UTC
+# MEDIC REPORT — 2026-04-27T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #18)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
 - Run timestamp: 2026-04-24T00:00 UTC
@@ -48,7 +48,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #15 | 2026-04-21T00:00 UTC | PATTERN D update |
 | #16 | 2026-04-21T09:00 UTC | PATTERN D update |
 | #17 | 2026-04-23T00:00 UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
-| #18 | 2026-04-24T00:00 UTC | This report; scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #19 | 2026-04-27T00:00 UTC | This report; scout added ICNT; auditor raised NORMAL_CONFLUENCE_BUY 25→27 |
 
 ## Bot Health Evidence (from git history)
 
@@ -73,15 +74,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #18)
+## Jobs Status This Run (Run #19)
 
 - **Medic**: PATTERN D — API unreachable (same persistent constraint). MEDIC_REPORT updated.
-- **Scout**: COMPLETED — added B3 (B3 Gaming Chain, $810K liq, $1.66M 24h vol, 14-month-old pool, score 8/10). Evaluated 6 candidates; 5 rejected (LMTS team-dump risk + low vol, WYDE/EAT low vol, ROOST low liquidity, NORMIE hacked + low vol, ODOS Base pools negligible).
-- **Auditor**: Cannot verify live trigger conditions (all /api/* return 403). Bear market inferred from previous run (#17: 46-day bear confirmed). Research ran 4 searches; HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: COMPLETED — added ICNT (Impossible Cloud Network Token). $112M market cap, $7.58M 24h vol, Coinbase-listed March 25 2026, Base-native since July 2025 (9+ month pool age), score 8/10. Evaluated 5 candidates: EAT ($28k vol, fails threshold), Chainbase C (mostly CEX vol), STG (uncertain Base DEX liquidity), ODOS ($1.65M market cap, low liquidity), ICNT ADDED.
+- **Auditor**: API unreachable, bear market trigger inferred from 50-day bear (confirmed in Run #17, ongoing). Research ran 4 searches. Implemented: NORMAL_CONFLUENCE_BUY 25→27 (Impact 3, Complexity 1, Risk low, Priority 3.0). Requires 3 aligned signals instead of 2 before a buy — bear market discipline.
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 18th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -89,7 +90,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Merge staging to main:** `./scripts/deploy/promote.sh` (accumulated changes from v21.21–v21.24)
+5. **Verify ICNT pool:** Check https://basescan.org/token/0xe0cd4cacddcbf4f36e845407ce53e87717b6601d for pool liquidity confirmation
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
