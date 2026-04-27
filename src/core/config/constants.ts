@@ -946,96 +946,26 @@ export const STALE_POSITION_MAX_EXITS_PER_CYCLE = 2;
 export const STALE_POSITION_CHECK_INTERVAL_CYCLES = 4;
 
 // ============================================================================
-// DRY POWDER RESERVE — The alpha-strike readiness discipline
+// FORCED-LIQUIDATION CONSTANTS — DELETED v21.27
 //
-// The ONE hardcoded capital rule: ~25% of portfolio stays in USDC as rolling
-// dry powder for alpha strikes (meme/alt swings with fast exits). The other
-// 75% is free for conviction-driven deployment across any sector — sector
-// composition stays bot-governed, cash readiness does not.
+// MIN_DRY_POWDER_PCT, RESERVE_CHECK_INTERVAL_CYCLES, RESERVE_MAX_SELLS,
+// DRY_POWDER_MIN_UNREALIZED_PCT, DRY_POWDER_MIN_AGE_HOURS,
+// DRY_POWDER_WINNER_PROTECTION_PCT, LIBERATION_MIN_AGE_HOURS,
+// LIBERATION_WINNER_PROTECTION_PCT — all deleted with the maintainDryPowder()
+// and liberateCapital() functions they configured.
 //
-// Reserve is NOT idle — it cycles: USDC → alpha entry → fast exit → USDC.
-// When reserve drops below target, maintainDryPowder() sells the weakest
-// positions (oldest + most negative P&L + smallest) to refill. Fires every
-// RESERVE_CHECK_INTERVAL_CYCLES regardless of BUY signals.
+// Why: CRITIC 14-day data 2026-04-27 — dry_powder_rebalance lost -$87 on 97
+// trades; liberation lost -$76 on 20 trades, 0% win rate. Combined: -$163,
+// nearly cancelling the +$486 made by harvest + ai_discretionary trades.
 //
-// Distinct from liberateCapital() which is reactive (triggered by BUY signal).
-// Strategic rationale: see project_nvr_strategy_shape memory.
+// First-principles: WETH/ETH are NEVER_SELL, so the 25% USDC floor was
+// structurally unenforceable while WETH dominated (~76%). The function fired
+// every cycle and sold proven alts for cents. USDC % now floats with natural
+// turnover (harvest, stale-exit, drawdown override, circuit breaker).
+//
+// See project_nvr_session_2026_04_27 + Step 2 of Elon's algorithm:
+// "if you don't add back at least 10% of what you deleted, you didn't delete enough."
 // ============================================================================
-
-/** Minimum USDC as % of total portfolio — the alpha-strike reserve */
-export const MIN_DRY_POWDER_PCT = 0.25; // 25% — 2026-04-20 raised from 10%
-
-/** How often (in cycles) to check dry powder levels (~75min at 15min intervals) */
-export const RESERVE_CHECK_INTERVAL_CYCLES = 5;
-
-/** Max positions to sell per reserve restore pass */
-export const RESERVE_MAX_SELLS = 2;
-
-/**
- * v21.23: Dry-powder cost-basis gate.
- *
- * CRITIC Audit 2026-04-24 revealed dry_powder_rebalance fired 64× in 7 days,
- * win rate 27%, aggregate –$196 realized. The scoring actively preferred selling
- * losers ("winners are protected" — correctly ranked, but the pool was
- * dominated by losers). The bot was systematically realizing losses to top up
- * a USDC target that could have waited.
- *
- * New rule: only sell a position for dry-powder restoration if its unrealized
- * P&L is ≥ this threshold (as a % of cost basis). Default 0 — break-even or
- * better. Operationalizes the "pulling profits is the edge, not picking
- * winners" principle for the USDC-reserve rule.
- *
- * Kill switch: set env `DRY_POWDER_COST_BASIS_GATE=disabled` to revert to the
- * old behavior (no gate — any position eligible) without redeploy.
- */
-export const DRY_POWDER_MIN_UNREALIZED_PCT = 0;
-
-/**
- * v21.25: Dry-powder freshness gate.
- *
- * CRITIC Audit 2026-04-24 cited DRB exited at +82 confluence solely to maintain
- * the 25% USDC reserve. The fix: don't rebalance freshly-entered positions —
- * give a thesis time to play out before the reserve rule eats it. Positions
- * younger than this skip the dry-powder candidate pool.
- *
- * Kill switch: env DRY_POWDER_MIN_AGE_HOURS=0 disables the gate.
- */
-export const DRY_POWDER_MIN_AGE_HOURS = 24;
-
-/**
- * v21.25: Dry-powder winner-protection gate.
- *
- * The 25% reserve must flex around conviction, not against it. If a position is
- * up beyond this threshold, treat it as a running winner and skip it from the
- * forced-liquidation pool — the rule "pulling profits is the edge" applies to
- * the bot's own exits, not to forced rebalances. Use DRY_POWDER_MIN_UNREALIZED_PCT
- * to gate losers; this gates winners.
- *
- * Kill switch: env DRY_POWDER_WINNER_PROTECTION_PCT=999 effectively disables.
- */
-export const DRY_POWDER_WINNER_PROTECTION_PCT = 5;
-
-/**
- * v21.25: Capital-liberation freshness gate.
- *
- * CRITIC labels these calls `confluence_strong` — selling weak positions to fund
- * a high-conviction entry. n=23 · 0% win rate · -$3.08/trade. The pattern was
- * killing positions still mid-thesis (often within hours of entry) to chase a
- * different signal. Raise the floor: positions younger than this don't get
- * sacrificed for the next idea. Replaces the inline 4h guard.
- */
-export const LIBERATION_MIN_AGE_HOURS = 24;
-
-/**
- * v21.25: Capital-liberation winner-protection gate.
- *
- * Don't sell a strong-running winner to fund a different "high-conviction" entry.
- * If the alternative thesis is that good, it should beat an existing position
- * already proving itself, not piggy-back on a forced exit. Wider than dry-powder
- * because liberation is rarer and more aggressive — only positions clearly
- * outperforming get the exemption.
- */
-export const LIBERATION_WINNER_PROTECTION_PCT = 10;
 
 // ============================================================================
 // v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely
