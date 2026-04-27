@@ -162,6 +162,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "AXR", name: "Axelrod by Virtuals", coingeckoId: "axelrod-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  A0X: {
+    address: "0x820c5f0fb255a1d18fd0ebb0f1ccefbc4d546da7",
+    symbol: "A0X", name: "A0x", coingeckoId: "a0x",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === MEME COINS (15%) ===
   BRETT: {
     address: "0x532f27101965dd16442E59d40670FaF5eBB142E4",
