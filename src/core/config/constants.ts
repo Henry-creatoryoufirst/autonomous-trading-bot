@@ -480,8 +480,13 @@ export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTr
 /** Base stop-loss distance in ATR units (e.g. 2.5 × ATR% = stop distance) */
 export const ATR_STOP_LOSS_MULTIPLIER = 2.5;
 
-/** Trailing stop distance in ATR units */
-export const ATR_TRAILING_STOP_MULTIPLIER = 2.0;
+/** Trailing stop distance in ATR units
+ *  v21.25: widened from 2.0 → 2.5. CRITIC Audit 2026-04-24 (n=274 trades, 168h)
+ *  found the bot captured -24% of available entry-to-current move on round-trips,
+ *  bailing on +115%, +104%, +33% movers. Wider trail gives running winners more
+ *  room before profit-taking pulls the rip cord. Pulling profits is still the
+ *  edge — but the trail was over-tightening on noise. */
+export const ATR_TRAILING_STOP_MULTIPLIER = 2.5;
 
 /** ATR stop-loss floor — never wider than -25% regardless of ATR */
 export const ATR_STOP_FLOOR_PERCENT = -25;
@@ -527,7 +532,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  */
 export const KELLY_FRACTION = 0.35;           // Bear-adjusted Apr-2026: Quarter-Kelly range (was 0.5 half-Kelly); 46-day bear + auditor ceiling already at 14% → 0.35×14%=4.9% effective max vs 7% prior
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
-export const KELLY_ROLLING_WINDOW = 50;       // Calculate from last 50 trades
+export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
 export const KELLY_POSITION_CEILING_PCT = 14;  // 14% of portfolio per trade — bear-adjusted (was 18%); with TRENDING_DOWN ×0.75 → 10.5% effective max; auditor Apr-2026: 46-day bear warrants Quarter-Kelly-range caps
 export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
@@ -820,7 +825,7 @@ export const MOMENTUM_EXIT_BUY_RATIO = 45;
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
 
 /** Token must be up this %+ in 4h to qualify as a wave ride */
-export const RIDE_THE_WAVE_MIN_MOVE = 5;
+export const RIDE_THE_WAVE_MIN_MOVE = 7; // Bear-adjusted Apr-2026: 5→7 — F&G 31 (Fear); 5% 4h bounces reverse ~65% in fear markets; require stronger wave confirmation before chasing
 
 /** Deploy this % of portfolio on a wave ride entry */
 export const RIDE_THE_WAVE_SIZE_PCT = 4;
@@ -916,8 +921,12 @@ export const STALE_POSITION_MIN_AGE_HOURS = 48;
 /** Only consider positions above this USD value — smaller tier is cullStalePositions' job */
 export const STALE_POSITION_MIN_USD = 100;
 
-/** Max unrealized gain %; above this, the position is a quiet winner — let it run */
-export const STALE_POSITION_MAX_GAIN_PCT = 3;
+/** Max unrealized gain %; above this, the position is a quiet winner — let it run.
+ *  v21.25: lowered from 3 → 1. CRITIC flagged systemic early exits — even modest
+ *  winners (+1% to +3%) deserve the exemption. Stale-exit now only catches truly
+ *  flat or losing meaningful positions. Kill switch: STALE_POSITION_MAX_GAIN_PCT
+ *  is a constant (no env), so revert by recompile if behavior regresses. */
+export const STALE_POSITION_MAX_GAIN_PCT = 1;
 
 /** v21.14 SPEC-015: UP-momentum threshold for exemption. Only *positive* moves above
  * this exempt a position from stale-exit. A bleeding micro-cap always has noise;
@@ -980,6 +989,53 @@ export const RESERVE_MAX_SELLS = 2;
  * old behavior (no gate — any position eligible) without redeploy.
  */
 export const DRY_POWDER_MIN_UNREALIZED_PCT = 0;
+
+/**
+ * v21.25: Dry-powder freshness gate.
+ *
+ * CRITIC Audit 2026-04-24 cited DRB exited at +82 confluence solely to maintain
+ * the 25% USDC reserve. The fix: don't rebalance freshly-entered positions —
+ * give a thesis time to play out before the reserve rule eats it. Positions
+ * younger than this skip the dry-powder candidate pool.
+ *
+ * Kill switch: env DRY_POWDER_MIN_AGE_HOURS=0 disables the gate.
+ */
+export const DRY_POWDER_MIN_AGE_HOURS = 24;
+
+/**
+ * v21.25: Dry-powder winner-protection gate.
+ *
+ * The 25% reserve must flex around conviction, not against it. If a position is
+ * up beyond this threshold, treat it as a running winner and skip it from the
+ * forced-liquidation pool — the rule "pulling profits is the edge" applies to
+ * the bot's own exits, not to forced rebalances. Use DRY_POWDER_MIN_UNREALIZED_PCT
+ * to gate losers; this gates winners.
+ *
+ * Kill switch: env DRY_POWDER_WINNER_PROTECTION_PCT=999 effectively disables.
+ */
+export const DRY_POWDER_WINNER_PROTECTION_PCT = 5;
+
+/**
+ * v21.25: Capital-liberation freshness gate.
+ *
+ * CRITIC labels these calls `confluence_strong` — selling weak positions to fund
+ * a high-conviction entry. n=23 · 0% win rate · -$3.08/trade. The pattern was
+ * killing positions still mid-thesis (often within hours of entry) to chase a
+ * different signal. Raise the floor: positions younger than this don't get
+ * sacrificed for the next idea. Replaces the inline 4h guard.
+ */
+export const LIBERATION_MIN_AGE_HOURS = 24;
+
+/**
+ * v21.25: Capital-liberation winner-protection gate.
+ *
+ * Don't sell a strong-running winner to fund a different "high-conviction" entry.
+ * If the alternative thesis is that good, it should beat an existing position
+ * already proving itself, not piggy-back on a forced exit. Wider than dry-powder
+ * because liberation is rarer and more aggressive — only positions clearly
+ * outperforming get the exemption.
+ */
+export const LIBERATION_WINNER_PROTECTION_PCT = 10;
 
 // ============================================================================
 // v16.0: PER-POSITION STOP-LOSS — Prevent individual positions from bleeding indefinitely

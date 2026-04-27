@@ -486,6 +486,15 @@ import {
   MIN_DRY_POWDER_PCT,
   RESERVE_CHECK_INTERVAL_CYCLES,
   RESERVE_MAX_SELLS,
+  // v21.23: Cost-basis gate (this constant was used at line 1482 since
+  // v21.23 ship but never imported — silent ReferenceError on every cycle's
+  // dry-powder check, swallowed by cycle-level try/catch. Fixed in v21.25.)
+  DRY_POWDER_MIN_UNREALIZED_PCT,
+  // v21.25: Forced-liquidation protections (winner + freshness gates)
+  DRY_POWDER_MIN_AGE_HOURS,
+  DRY_POWDER_WINNER_PROTECTION_PCT,
+  LIBERATION_MIN_AGE_HOURS,
+  LIBERATION_WINNER_PROTECTION_PCT,
   // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
   MAX_CONSECUTIVE_FAILURES,
   FAILURE_COOLDOWN_HOURS,
@@ -527,6 +536,7 @@ import {
   apiTrades as _apiTrades, apiDailyPnL as _apiDailyPnL,
   apiIndicators as _apiIndicators, apiIntelligence as _apiIntelligence,
   apiPatterns as _apiPatterns, apiReviews as _apiReviews, apiThresholds as _apiThresholds,
+  apiCriticSummary as _apiCriticSummary,
   getActiveDirectives as _getActiveDirectives, addUserDirective as _addUserDirective,
   removeUserDirective as _removeUserDirective, applyConfigChanges as _applyConfigChanges,
   getActiveConfigDirectives as _getActiveConfigDirectives, removeConfigDirective as _removeConfigDirective,
@@ -1202,10 +1212,15 @@ function liberateCapital(
     // Need cost basis data to score meaningfully
     if (!cb) continue;
 
-    // Age guard: skip positions younger than 4 hours — they may still be finding footing
+    // v21.25: Freshness gate — fresh entries are mid-thesis. Don't sacrifice them
+    // to fund the next idea. Replaces the inline 4h guard. Kill switch:
+    // env LIBERATION_MIN_AGE_HOURS=0 reverts to no age gate.
+    const liberationMinAgeHours = Number.isFinite(Number(process.env.LIBERATION_MIN_AGE_HOURS))
+      ? Number(process.env.LIBERATION_MIN_AGE_HOURS)
+      : LIBERATION_MIN_AGE_HOURS;
     const firstBuyDate = cb.firstBuyDate ? new Date(cb.firstBuyDate).getTime() : now;
     const ageHours = (now - firstBuyDate) / (1000 * 60 * 60);
-    if (ageHours < 4) continue;
+    if (ageHours < liberationMinAgeHours) continue;
 
     // --- Dead weight scoring ---
 
@@ -1218,6 +1233,16 @@ function liberateCapital(
       ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
       : 0;
     const pnlPenalty = Math.max(0, -unrealizedPnlPct) * 0.5;
+
+    // v21.25: Winner-protection gate — don't sell strong-running winners to fund
+    // a different "high-conviction" entry. CRITIC labeled this pattern
+    // confluence_strong (n=23, 0% win rate) — selling proven-out positions to
+    // chase next-idea conviction. Kill switch: env LIBERATION_WINNER_PROTECTION_PCT=999
+    // effectively disables.
+    const liberationWinnerPct = Number.isFinite(Number(process.env.LIBERATION_WINNER_PROTECTION_PCT))
+      ? Number(process.env.LIBERATION_WINNER_PROTECTION_PCT)
+      : LIBERATION_WINNER_PROTECTION_PCT;
+    if (unrealizedPnlPct >= liberationWinnerPct) continue;
 
     // Size penalty: up to 10 pts for small positions (under $100 → partial, $0 → 10 pts)
     const sizePenalty = Math.max(0, 1 - (b.usdValue / 100)) * 10;
@@ -1460,12 +1485,27 @@ function maintainDryPowder(
     ? Number(process.env.DRY_POWDER_MIN_UNREALIZED_PCT)
     : DRY_POWDER_MIN_UNREALIZED_PCT;
 
+  // v21.25: Freshness + winner protection — the reserve must flex around
+  // conviction, not against it. Don't liquidate fresh entries (mid-thesis) or
+  // running winners just to hit the 25% number. CRITIC 2026-04-24 cited DRB
+  // exited at +82 confluence solely to rebalance.
+  const minAgeHours = Number.isFinite(Number(process.env.DRY_POWDER_MIN_AGE_HOURS))
+    ? Number(process.env.DRY_POWDER_MIN_AGE_HOURS)
+    : DRY_POWDER_MIN_AGE_HOURS;
+  const winnerProtectionPct = Number.isFinite(Number(process.env.DRY_POWDER_WINNER_PROTECTION_PCT))
+    ? Number(process.env.DRY_POWDER_WINNER_PROTECTION_PCT)
+    : DRY_POWDER_WINNER_PROTECTION_PCT;
+
   // Score all held positions by opportunity cost — we want to sell the one
   // with the LEAST reason to hold: oldest + smallest size. Losers are excluded
-  // entirely by the gate above; winners are ranked by age/size.
+  // by the cost-basis gate; winners are excluded by the protection gate;
+  // fresh entries are excluded by the age gate. What remains is flat-ish,
+  // proven-out positions — those are the right candidates for rebalance.
   const now = Date.now();
   const candidates: Array<{ symbol: string; usdValue: number; unrealizedPnlPct: number; score: number }> = [];
   let gatedOutCount = 0;
+  let freshSkipCount = 0;
+  let winnerSkipCount = 0;
 
   for (const b of balances) {
     const symbol = (b.symbol || '').toUpperCase();
@@ -1483,6 +1523,12 @@ function maintainDryPowder(
       ? (now - new Date(cb.firstBuyDate).getTime()) / (1000 * 60 * 60)
       : 0;
 
+    // v21.25: Freshness gate — give recent entries time to play out.
+    if (ageHours < minAgeHours) {
+      freshSkipCount++;
+      continue;
+    }
+
     const currentPrice = b.price || (b.balance > 0 ? b.usdValue / b.balance : 0);
     const unrealizedPnlPct = cb?.averageCostBasis > 0
       ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
@@ -1492,6 +1538,13 @@ function maintainDryPowder(
     // With gatePct=0 (default), this is "no realized losses for rebalancing."
     if (gateEnabled && unrealizedPnlPct < gatePct) {
       gatedOutCount++;
+      continue;
+    }
+
+    // v21.25: Winner-protection gate — running winners are not the reserve's
+    // ATM. Let them run; the reserve waits for a better refill path.
+    if (unrealizedPnlPct >= winnerProtectionPct) {
+      winnerSkipCount++;
       continue;
     }
 
@@ -1505,8 +1558,14 @@ function maintainDryPowder(
   }
 
   if (candidates.length === 0) {
-    if (gatedOutCount > 0) {
-      console.log(`   💧 DRY_POWDER: ${gatedOutCount} position(s) underwater, gate holding. USDC at ${((usdcBalance / totalPortfolioValue) * 100).toFixed(1)}% vs ${(MIN_DRY_POWDER_PCT * 100).toFixed(0)}% target — waiting for recovery or harvest path.`);
+    const usdcPct = ((usdcBalance / totalPortfolioValue) * 100).toFixed(1);
+    const target = (MIN_DRY_POWDER_PCT * 100).toFixed(0);
+    const skipReasons: string[] = [];
+    if (gatedOutCount > 0) skipReasons.push(`${gatedOutCount} underwater`);
+    if (freshSkipCount > 0) skipReasons.push(`${freshSkipCount} fresh entry`);
+    if (winnerSkipCount > 0) skipReasons.push(`${winnerSkipCount} running winner`);
+    if (skipReasons.length > 0) {
+      console.log(`   💧 DRY_POWDER: USDC at ${usdcPct}% vs ${target}% target — gates holding (${skipReasons.join(', ')}). Reserve flexes around conviction.`);
     }
     return [];
   }
@@ -10004,6 +10063,7 @@ const calculateRiskRewardMetrics = _calculateRiskRewardMetrics;
 const apiPortfolio = _apiPortfolio;
 const apiBalances = _apiBalances;
 const apiSectors = _apiSectors;
+const apiCriticSummary = _apiCriticSummary;
 const apiTrades = _apiTrades;
 const apiDailyPnL = _apiDailyPnL;
 const apiIndicators = _apiIndicators;
@@ -10355,6 +10415,9 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/outcomes-summary':
         sendJSON(res, 200, apiOutcomesSummary());
+        break;
+      case '/api/critic-summary':
+        sendJSON(res, 200, apiCriticSummary());
         break;
       case '/api/capital-flows':
         await handleCapitalFlows(res, serverCtx);
