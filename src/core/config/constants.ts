@@ -825,7 +825,7 @@ export const MOMENTUM_EXIT_BUY_RATIO = 45;
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
 
 /** Token must be up this %+ in 4h to qualify as a wave ride */
-export const RIDE_THE_WAVE_MIN_MOVE = 5;
+export const RIDE_THE_WAVE_MIN_MOVE = 7; // Bear-adjusted Apr-2026: 5→7 — F&G 31 (Fear); 5% 4h bounces reverse ~65% in fear markets; require stronger wave confirmation before chasing
 
 /** Deploy this % of portfolio on a wave ride entry */
 export const RIDE_THE_WAVE_SIZE_PCT = 4;
