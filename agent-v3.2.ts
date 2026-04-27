@@ -9968,6 +9968,33 @@ async function main() {
     console.log(`  ⏰ Hourly status report: Telegram every hour on the hour`);
   }
 
+  // v21.26 — Step 5 (Automate): nightly CRITIC audit.
+  //
+  // Runs at 02:00 UTC (≈ 22:00 EDT) when CRITIC_ENABLED=true on Railway.
+  // Writes `data/critic-reports/YYYY-MM-DD.md` + updates rules-proposal.yaml +
+  // refreshes critic-memory.md (read at heavy-cycle start). Set
+  // CRITIC_WINDOW_HOURS=24 alongside for daily-delta reads; default 168h is
+  // for trend analysis.
+  //
+  // The brain checking the brain runs on schedule, not on whim.
+  // Constitution non-negotiable: cockpit doesn't lie. CRITIC keeps it honest.
+  if (process.env.CRITIC_ENABLED === 'true') {
+    const { runCriticAudit } = await import('./scripts/critic.js');
+    cron.schedule('0 2 * * *', async () => {
+      try {
+        console.log('[CRITIC cron] Starting nightly audit…');
+        await runCriticAudit();
+        console.log('[CRITIC cron] ✅ Nightly audit complete');
+      } catch (err: any) {
+        console.error(`[CRITIC cron] ❌ Failed: ${err?.message?.slice(0, 300) || err}`);
+      }
+    }, { timezone: 'UTC' });
+    const window = process.env.CRITIC_WINDOW_HOURS ?? '168';
+    console.log(`  🧠 CRITIC nightly audit: 02:00 UTC, ${window}h window`);
+  } else {
+    console.log(`  🧠 CRITIC nightly audit: disarmed (set CRITIC_ENABLED=true to arm)`);
+  }
+
   // Heartbeat every 5 minutes to confirm process is alive
   setInterval(() => {
     const lastTrade = state.tradeHistory.length > 0 ? state.tradeHistory[state.tradeHistory.length - 1] : null;
