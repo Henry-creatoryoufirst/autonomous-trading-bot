@@ -7115,6 +7115,23 @@ async function runTradingCycle() {
       state.trading.peakValue = state.trading.totalPortfolioValue;
     }
 
+    // v21.28: Honest all-time-high. Unlike peakValue, this is NEVER adjusted
+    // down for payouts — it answers "what was the highest dollar amount the
+    // bot ever displayed?" The Cockpit Mirror requires this be visible
+    // alongside peakValue (which is adjusted-for-payouts) so operators don't
+    // experience the "I saw $4,500 but the bot says peak is $3,978" mismatch.
+    if (!isPhantomMove) {
+      const currentAllTime = state.trading.allTimePeakNominal ?? state.trading.peakValue;
+      if (state.trading.totalPortfolioValue > currentAllTime) {
+        state.trading.allTimePeakNominal = state.trading.totalPortfolioValue;
+      } else if (state.trading.allTimePeakNominal === undefined) {
+        // Lazy initialization on first cycle after upgrade — adopt current
+        // peakValue as the floor. Real all-time high will catch up as
+        // portfolio rises.
+        state.trading.allTimePeakNominal = state.trading.peakValue;
+      }
+    }
+
     const sectorAllocations = calculateSectorAllocations(balances, state.trading.totalPortfolioValue);
     state.trading.sectorAllocations = sectorAllocations;
 
