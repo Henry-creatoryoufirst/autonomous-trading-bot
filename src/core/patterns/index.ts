@@ -21,3 +21,4 @@ export type {
 
 export { PatternRegistry } from "./registry.js";
 export { stablecoinDepegPattern } from "./stablecoin-depeg.js";
+export { liquidationCounterTradePattern } from "./liquidation-counter-trade.js";
