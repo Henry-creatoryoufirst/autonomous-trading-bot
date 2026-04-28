@@ -138,7 +138,11 @@ export const liquidationCounterTradePattern: Pattern = {
     if (process.env.LIQUIDATION_PATTERN_ENABLED !== "true") return null;
 
     const ev = (market.extras as { event?: { kind?: string; payload?: Record<string, unknown> } } | undefined)?.event;
-    if (!ev || ev.kind !== "aave_liquidation") return null;
+    if (!ev) return null;
+    // Accept any pool-liquidation venue. The mechanism (post-liquidation
+    // reversion) is venue-agnostic; the FINDING_2026-04-27 explicitly named
+    // multi-venue aggregation as the path to make this pattern viable on Base.
+    if (ev.kind !== "aave_liquidation" && ev.kind !== "morpho_liquidation") return null;
     const p = ev.payload;
     if (!p) return null;
 
