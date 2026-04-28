@@ -442,4 +442,33 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
       failed: this.failedSymbols.size,
     };
   }
+
+  /**
+   * Return cached OHLCV candles for `symbol` whose timestamps fall within
+   * [fromISO, toISO] inclusive. Used by candle-driven pattern backtests
+   * (e.g. breakout detection) that need full OHLCV access, not just close.
+   * Returns an empty array if the symbol failed preload or has no candles
+   * in the window.
+   */
+  getCandlesInWindow(
+    symbol: string,
+    fromISO: string,
+    toISO: string,
+  ): ReadonlyArray<Readonly<OhlcvCandle>> {
+    const candles = this.candlesBySymbol.get(symbol);
+    if (!candles || candles.length === 0) return [];
+    const fromTs = Math.floor(Date.parse(fromISO) / 1000);
+    const toTs = Math.floor(Date.parse(toISO) / 1000);
+    if (!Number.isFinite(fromTs) || !Number.isFinite(toTs)) return [];
+    return candles.filter((c) => c.ts >= fromTs && c.ts <= toTs);
+  }
+
+  /** The timeframe + aggregate this feed was constructed with. */
+  get config(): { timeframe: GTTimeframe; aggregate: number } {
+    return { timeframe: this.timeframe, aggregate: this.aggregate };
+  }
 }
+
+// Re-export the candle shape so downstream modules don't need a
+// duplicate definition.
+export type { OhlcvCandle };
