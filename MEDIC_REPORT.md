@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-28T~current UTC | Scout no qualifying tokens (GeckoTerminal blocked, no verified Base candidates); auditor raised VOL_LOW_THRESHOLD 1→2 (VIX-rank Adaptive Kelly — recovery-aware low-vol sizing) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,11 +76,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-04-28)
 
-- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 "Host not in allowlist" on all endpoints). MEDIC_REPORT updated.
+- **Scout**: ELIGIBLE (last scout 2026-04-26T02:11 UTC, 48h elapsed). GeckoTerminal API blocked (403). WebSearch yielded no new Base tokens with verifiable contract addresses, >$100k liquidity, >$50k 24h vol, >3 day pool age. No qualifying tokens — standards maintained.
+- **Auditor**: TRIGGERED by 50+ day inferred BEAR market. Research ran 4 searches. Key finding: VIX-rank Adaptive Kelly research confirms raising VOL_LOW_THRESHOLD 1→2 activates the 1.5× low-vol boost in recovering/calm markets (1–2% daily vol) instead of only <1% vol. Market signals suggest early recovery (F&G extreme low Feb 2026, AERO +24% mid-April 2026). VOL_LOW_THRESHOLD 1→2 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
 ## Auditor Research Summary (Run #20)
 - **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
@@ -87,9 +88,15 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Auditor Research Summary (Run #21)
+- **Signal Quality**: Virtuals Protocol AI agent ecosystem growing (15,800+ agents on Base). Multi-signal filtering already implemented. No new signal combination implementable in <10 lines.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) — 34x capital efficiency improvement, bot auto-benefits. Permit2 batch approvals already used. No code change needed.
+- **Position Sizing**: KEY FINDING — VIX-rank Adaptive Kelly research: the low-vol boost (1.5×) should activate in 1-2% daily vol (recovering/ranging markets), not just <1% (which almost never occurs in crypto). Evidence of early recovery: F&G hit all-time low of 5 in Feb 2026 (every extreme fear period >30 days historically precedes rally), AERO +24% Apr-17, 2026, Aerodrome $679K quarterly earnings Apr-19. IMPLEMENTED: VOL_LOW_THRESHOLD 1→2.
+- **Competitive Intelligence**: AI agents now multi-step autonomous. Intent-based MEV solver routing emerging. NVR CRITIC system addresses recursive learning. No implementable change found.
+
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 21st consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
