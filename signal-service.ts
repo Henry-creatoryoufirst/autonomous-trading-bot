@@ -63,7 +63,7 @@ const GAS_CHECK_INTERVAL_MS = 30 * 60 * 1000;    // 30 minutes
 const GAS_ALERT_THRESHOLD_ETH = 0.002;            // below bot's self-preservation floor (0.003)
 const GAS_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // re-alert after 6h max
 const GAS_ACTIVE_WINDOW_MS = 2 * 60 * 60 * 1000; // only alert bots seen in last 2h
-const BASE_RPC_URL = 'https://mainnet.base.org';
+const BASE_RPC_URL = process.env.BASE_RPC_URL ?? 'https://mainnet.base.org';
 
 // Telegram config (optional — alerts fire only when configured)
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -74,6 +74,143 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const NVR_DECISIONS_MAX = 1000;                   // ~7 days at 4 trades/hr
 const NVR_PUBLISH_KEY = process.env.NVR_PUBLISH_KEY || ''; // shared secret for POST auth
 const NVR_DECISION_STALE_MS = 5 * 60 * 1000;     // decisions older than 5min are not auto-served as "latest"
+
+// ============================================================================
+// SMART-WALLET UNIVERSE SCAN
+// ============================================================================
+//
+// Why this exists: the existing alpha-discovery flow surfaces random new
+// low-cap tokens (VVV, UP, NOCK, etc.) and runs the smart-wallet check on
+// THOSE. Our 20 seed wallets were bootstrapped from BRETT/DEGEN/VIRTUAL/
+// AERO/TOSHI/MOCHI activity — a different universe. Result: nearly every
+// outcome on prod has smartWalletIds: [] (verified 2026-04-28 — 478
+// outcomes tracked, 0 wallets crossing MIN_SIGNALS_FOR_WEIGHT=5,
+// topProposerSignals: 0).
+//
+// Fix: ALSO check smart-wallet activity on a curated TRADING UNIVERSE
+// (mid-cap Base tokens we actually trade), record those as outcomes with
+// smartWalletIds populated. This gives the outcome tracker real per-wallet
+// attribution data to compute hit rates from. Once hit rates populate,
+// the bot's ALPHA LEDGER prompt block + v22 cluster pattern both unlock.
+//
+// Specialist universe per `feedback_specialist_depth_beats_breadth`:
+// 9 tokens spanning DeFi / AI / Meme — mid-cap range where smart-wallet
+// volume actually moves the price needle. Tunable via SMART_WALLET_UNIVERSE
+// constant; not env-exposed for now to avoid drift.
+
+interface UniverseToken {
+  symbol: string;
+  address: string;
+}
+
+const SMART_WALLET_UNIVERSE: UniverseToken[] = [
+  { symbol: 'AERO',    address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631' },
+  { symbol: 'VIRTUAL', address: '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b' },
+  { symbol: 'AIXBT',   address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825' },
+  { symbol: 'HIGHER',  address: '0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe' },
+  { symbol: 'BRETT',   address: '0x532f27101965dd16442E59d40670FaF5eBB142E4' },
+  { symbol: 'DEGEN',   address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed' },
+  { symbol: 'TOSHI',   address: '0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4' },
+  { symbol: 'MORPHO',  address: '0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842' },
+  { symbol: 'AAVE',    address: '0x63706e401c06ac8513145b7687a14804d17f814b' },
+];
+
+/** Cadence for the universe scan. Outcome tracker dedupes by 1h, so 15min
+ *  effectively means each token gets recorded at most ~once per hour. */
+const UNIVERSE_SCAN_INTERVAL_MS = 15 * 60 * 1000;
+/** Throttle between per-token universe checks to spread RPC load. */
+const UNIVERSE_TOKEN_DELAY_MS = 500;
+
+/**
+ * Fetch the current USD price for a Base token via DexScreener.
+ * Returns null on any failure — caller skips the token.
+ */
+async function fetchUniversePrice(tokenAddress: string): Promise<number | null> {
+  try {
+    const url = `https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`;
+    const res = await axios.get(url, { timeout: 8000 });
+    const pairs: any[] = res.data?.pairs ?? [];
+    if (pairs.length === 0) return null;
+    const basePairs = pairs.filter((p: any) => p.chainId === 'base');
+    const pool = basePairs.length > 0 ? basePairs : pairs;
+    const best = pool.sort(
+      (a: any, b: any) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0),
+    )[0];
+    const price = parseFloat(best?.priceUsd ?? '0');
+    return price > 0 ? price : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Periodic scan: for each token in the trading universe, check if any of
+ * the 20 seed smart wallets have recently bought it, and record an outcome
+ * with smartWalletIds populated. Even when zero wallets are active, the
+ * outcome (with empty smartWalletIds) still feeds the haikuEntryEdgePct
+ * baseline calculation — though we skip the record in that case to keep
+ * data clean.
+ */
+async function runUniverseSmartWalletScan(): Promise<void> {
+  const startedAt = Date.now();
+  console.log(
+    `[Universe Scan] Checking smart-wallet activity on ${SMART_WALLET_UNIVERSE.length} universe tokens...`,
+  );
+  let recorded = 0;
+  let activeCount = 0;
+  let skipped = 0;
+  let rpcFailed = 0;
+
+  for (const token of SMART_WALLET_UNIVERSE) {
+    const price = await fetchUniversePrice(token.address);
+    if (!price || price <= 0) {
+      console.log(`  [Universe] ${token.symbol}: skipped — no price from DexScreener`);
+      skipped++;
+      continue;
+    }
+
+    let ws;
+    try {
+      ws = await checkSmartWalletActivity(token.address, price, 24);
+    } catch (e: any) {
+      console.log(
+        `  [Universe] ${token.symbol}: smart-wallet check threw: ${e?.message?.slice(0, 80)}`,
+      );
+      rpcFailed++;
+      continue;
+    }
+
+    if (ws.activeWallets.length > 0) activeCount++;
+
+    // Only record when we actually have wallet attribution. Empty-array
+    // outcomes from the universe scan would dilute hit-rate data with
+    // false negatives (we'd be recording "no smart wallet bought WETH"
+    // every 15min, swamping any actual cluster signal).
+    if (ws.activeWallets.length > 0) {
+      outcomeTracker.record({
+        address: token.address,
+        symbol: token.symbol,
+        priceUSD: price,
+        compositeScore: 50, // neutral baseline — this isn't an alpha-discovery surface
+        smartWalletIds: ws.activeWallets.map((w) => w.walletId),
+        // Universe scan doesn't have lpLocked / holderConcentration /
+        // priceChange24h context. Leaving those undefined is fine; the
+        // signal-accuracy aggregator already requires N≥5 samples per
+        // bucket and gracefully handles missing fields.
+        priceChange24h: 0,
+      });
+      recorded++;
+    }
+
+    await new Promise<void>((r) => setTimeout(r, UNIVERSE_TOKEN_DELAY_MS));
+  }
+
+  const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+  console.log(
+    `[Universe Scan] Done in ${elapsedSec}s: recorded=${recorded}, ` +
+      `activeWalletTokens=${activeCount}, skipped=${skipped}, rpcFailed=${rpcFailed}`,
+  );
+}
 
 // ============================================================================
 // STATE
@@ -862,6 +999,9 @@ server.listen(PORT, () => {
   console.log('    GET /nvr-decisions[?since=<ms>&limit=<n>] — subscriber feed');
   console.log('    GET /nvr-decisions/latest — most recent decision');
   console.log('');
+  console.log(`[Signal] BASE_RPC_URL = ${process.env.BASE_RPC_URL ? '<private — env-set>' : 'mainnet.base.org (PUBLIC fallback)'}`);
+  console.log(`[Signal] Universe-scan: ${SMART_WALLET_UNIVERSE.length} tokens every ${UNIVERSE_SCAN_INTERVAL_MS / 60_000}min`);
+  console.log('');
 });
 
 // Immediate first refresh, then schedule every 5 minutes
@@ -880,6 +1020,20 @@ alphaDiscovery.start();
 outcomeTracker.load();
 setTimeout(() => outcomeTracker.checkPendingOutcomes(), 5 * 60 * 1000);       // first check after 5 min
 setInterval(() => outcomeTracker.checkPendingOutcomes(), 30 * 60 * 1000);     // then every 30 min
+
+// Smart-wallet universe scan — populates per-wallet attribution data on
+// the trading universe (not just discovery candidates). First run after
+// 2 min so the service is fully warm; then every 15 min.
+setTimeout(() => {
+  runUniverseSmartWalletScan().catch((err) =>
+    console.error('[Universe Scan] error:', err?.message ?? err),
+  );
+  setInterval(() => {
+    runUniverseSmartWalletScan().catch((err) =>
+      console.error('[Universe Scan] error:', err?.message ?? err),
+    );
+  }, UNIVERSE_SCAN_INTERVAL_MS);
+}, 2 * 60 * 1000);
 
 // Gas monitor — first check after 5 min (let bots check in first), then every 30 min
 setTimeout(() => {

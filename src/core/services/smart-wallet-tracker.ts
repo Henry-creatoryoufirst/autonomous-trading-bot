@@ -86,9 +86,56 @@ export interface SmartWalletSignal {
 // CONSTANTS
 // ============================================================================
 
-const BASE_RPC_URL = 'https://mainnet.base.org';
+/**
+ * Ordered list of Base RPC endpoints used for log queries. Tries each
+ * in sequence on failure (next endpoint on any RPC error). Aligns with
+ * the bot's existing chain-config.ts fallback chain — when BASE_RPC_URL
+ * is set in env (private Alchemy/QuickNode), it's first and gets all
+ * the traffic; otherwise we cycle through 4 reliable public endpoints.
+ *
+ * Why this matters: previous behavior hardcoded a single
+ * 'https://mainnet.base.org' which rate-limits / 503s silently under
+ * load. checkSingleWallet's catch swallowed errors → returned null →
+ * smartWalletIds: [] on every outcome → topProposerSignals stuck at 0
+ * for 14+ days on prod. With multi-endpoint fallback (matching the
+ * approach aave-liquidations.ts already uses successfully), the
+ * tracker survives transient public RPC failures.
+ *
+ * The two excluded hosts (flashbots, sequencer.base.org) are
+ * tx-submission-only on Base — they reject eth_getLogs. Excluded
+ * defensively here as in aave-liquidations.ts.
+ */
+const TX_ONLY_HOSTS = ['flashbots.net', 'sequencer.base.org'];
+const BASE_RPC_ENDPOINTS: string[] = (() => {
+  const fromEnv = process.env.BASE_RPC_URL ? [process.env.BASE_RPC_URL] : [];
+  const publicChain = [
+    'https://1rpc.io/base',
+    'https://mainnet.base.org',
+    'https://base.meowrpc.com',
+    'https://base.drpc.org',
+  ].filter((u) => !TX_ONLY_HOSTS.some((h) => u.includes(h)));
+  return [...fromEnv, ...publicChain];
+})();
 const BATCH_SIZE = 3;           // concurrent wallet checks
 const BATCH_DELAY_MS = 250;     // 250 ms between batches
+
+/**
+ * Try `fn` against each RPC endpoint in order. Returns the first
+ * successful result, or null if all fail. Used for both eth_blockNumber
+ * and eth_getLogs calls in checkSingleWallet/checkSingleWalletExit.
+ */
+async function tryRpcEndpoints<T>(
+  fn: (rpcUrl: string) => Promise<T>,
+): Promise<T | null> {
+  for (const url of BASE_RPC_ENDPOINTS) {
+    try {
+      return await fn(url);
+    } catch {
+      // try next endpoint
+    }
+  }
+  return null;
+}
 
 // Minimum number of signals a wallet must have before its weight is used
 const MIN_SIGNALS_FOR_WEIGHT = 5;
@@ -176,7 +223,10 @@ function mapSignalStrength(
 /**
  * Check a single wallet for token buy activity within the lookback window.
  * Returns null on any failure — callers filter nulls.
- * Uses Base RPC — no API key required.
+ *
+ * Cycles through BASE_RPC_ENDPOINTS for both the head-block lookup AND
+ * the getLogs query. Either call surviving on at least one endpoint
+ * means we get a result; only when ALL endpoints fail do we return null.
  */
 async function checkSingleWallet(
   walletId: string,
@@ -185,67 +235,78 @@ async function checkSingleWallet(
   tokenPriceUSD: number,
   lookbackHours: number,
 ): Promise<SmartWalletActivity | null> {
-  try {
-    // Get current block
-    const blockNumRes = await axios.post(BASE_RPC_URL, {
-      jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: []
-    }, { timeout: 8000 });
-    const currentBlock = parseInt(blockNumRes.data.result, 16);
-
-    const blocksBack = Math.floor(lookbackHours * 1800); // ~2s/block → 1800 blocks/hour
-    const fromBlock = currentBlock - blocksBack;
-
-    // Query Transfer events TO this wallet for this token
-    // topic[1] = from (null = any), topic[2] = to (wallet address padded)
-    const paddedWallet = '0x' + walletAddress.toLowerCase().replace('0x', '').padStart(64, '0');
-
-    const logsRes = await axios.post(BASE_RPC_URL, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_getLogs',
-      params: [{
-        fromBlock: `0x${fromBlock.toString(16)}`,
-        toBlock: `0x${currentBlock.toString(16)}`,
-        address: tokenAddress,
-        topics: [
-          '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
-          null,        // from: any
-          paddedWallet // to: this wallet
-        ],
-      }],
-    }, { timeout: 12000 });
-
-    const logs = logsRes.data?.result || [];
-    if (logs.length === 0) return null;
-
-    // Parse timestamps from block numbers
-    const timestamps = logs.map((log: any) => {
-      const blockNum = parseInt(log.blockNumber, 16);
-      // Approximate timestamp: currentBlock is now, each block ~2s
-      return Date.now() - (currentBlock - blockNum) * 2000;
-    });
-
-    // Estimate volume: each log's data field contains the token amount
-    let totalTokens = BigInt(0);
-    for (const log of logs) {
-      try { totalTokens += BigInt(log.data); } catch { /* skip */ }
+  // Get current block — try each endpoint until one succeeds
+  const currentBlock = await tryRpcEndpoints(async (rpcUrl) => {
+    const res = await axios.post(
+      rpcUrl,
+      { jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] },
+      { timeout: 8000 },
+    );
+    const block = parseInt(res.data?.result ?? '0x0', 16);
+    if (!Number.isFinite(block) || block <= 0) {
+      throw new Error('invalid block number response');
     }
-    // Rough USD estimate (tokenPriceUSD is per whole token, decimals unknown → use 1e18)
-    const estimatedVolumeUSD = Number(totalTokens) / 1e18 * tokenPriceUSD;
+    return block;
+  });
+  if (currentBlock === null) return null;
 
-    return {
-      walletId,
-      walletAddress,
-      tokenAddress: tokenAddress.toLowerCase(),
-      buyCount: logs.length,
-      estimatedVolumeUSD,
-      firstBuyTimestamp: Math.min(...timestamps),
-      lastBuyTimestamp: Math.max(...timestamps),
-    };
-  } catch {
-    // Swallow per-wallet errors — don't spam logs
-    return null;
+  const blocksBack = Math.floor(lookbackHours * 1800); // ~2s/block → 1800 blocks/hour
+  const fromBlock = currentBlock - blocksBack;
+  const paddedWallet =
+    '0x' + walletAddress.toLowerCase().replace('0x', '').padStart(64, '0');
+
+  // Query Transfer events TO this wallet for this token — fallback chain
+  const logs = await tryRpcEndpoints(async (rpcUrl) => {
+    const res = await axios.post(
+      rpcUrl,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getLogs',
+        params: [
+          {
+            fromBlock: `0x${fromBlock.toString(16)}`,
+            toBlock: `0x${currentBlock.toString(16)}`,
+            address: tokenAddress,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              null,
+              paddedWallet,
+            ],
+          },
+        ],
+      },
+      { timeout: 12000 },
+    );
+    if (res.data?.error) throw new Error(res.data.error.message ?? 'rpc error');
+    return (res.data?.result ?? []) as any[];
+  });
+  if (logs === null || logs.length === 0) return null;
+
+  const timestamps = logs.map((log: any) => {
+    const blockNum = parseInt(log.blockNumber, 16);
+    return Date.now() - (currentBlock - blockNum) * 2000;
+  });
+
+  let totalTokens = BigInt(0);
+  for (const log of logs) {
+    try {
+      totalTokens += BigInt(log.data);
+    } catch {
+      /* skip */
+    }
   }
+  const estimatedVolumeUSD = (Number(totalTokens) / 1e18) * tokenPriceUSD;
+
+  return {
+    walletId,
+    walletAddress,
+    tokenAddress: tokenAddress.toLowerCase(),
+    buyCount: logs.length,
+    estimatedVolumeUSD,
+    firstBuyTimestamp: Math.min(...timestamps),
+    lastBuyTimestamp: Math.max(...timestamps),
+  };
 }
 
 /**
@@ -261,57 +322,67 @@ async function checkSingleWalletExit(
   tokenAddress: string,
   lookbackHours: number,
 ): Promise<WalletExitActivity | null> {
-  try {
-    // Get current block
-    const blockNumRes = await axios.post(BASE_RPC_URL, {
-      jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: []
-    }, { timeout: 8000 });
-    const currentBlock = parseInt(blockNumRes.data.result, 16);
+  // Get current block — try each endpoint
+  const currentBlock = await tryRpcEndpoints(async (rpcUrl) => {
+    const res = await axios.post(
+      rpcUrl,
+      { jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] },
+      { timeout: 8000 },
+    );
+    const block = parseInt(res.data?.result ?? '0x0', 16);
+    if (!Number.isFinite(block) || block <= 0) {
+      throw new Error('invalid block number response');
+    }
+    return block;
+  });
+  if (currentBlock === null) return null;
 
-    const blocksBack = Math.floor(lookbackHours * 1800); // ~2s/block → 1800 blocks/hour
-    const fromBlock = currentBlock - blocksBack;
+  const blocksBack = Math.floor(lookbackHours * 1800);
+  const fromBlock = currentBlock - blocksBack;
+  const paddedWallet =
+    '0x' + walletAddress.toLowerCase().replace('0x', '').padStart(64, '0');
 
-    // Query Transfer events FROM this wallet for this token
-    // topic[1] = from (wallet address padded), topic[2] = to (null = any)
-    const paddedWallet = '0x' + walletAddress.toLowerCase().replace('0x', '').padStart(64, '0');
-
-    const logsRes = await axios.post(BASE_RPC_URL, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_getLogs',
-      params: [{
-        fromBlock: `0x${fromBlock.toString(16)}`,
-        toBlock: `0x${currentBlock.toString(16)}`,
-        address: tokenAddress,
-        topics: [
-          '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
-          paddedWallet, // from: this wallet
-          null,         // to: any
+  // Query Transfer events FROM this wallet — fallback chain
+  const logs = await tryRpcEndpoints(async (rpcUrl) => {
+    const res = await axios.post(
+      rpcUrl,
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getLogs',
+        params: [
+          {
+            fromBlock: `0x${fromBlock.toString(16)}`,
+            toBlock: `0x${currentBlock.toString(16)}`,
+            address: tokenAddress,
+            topics: [
+              '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+              paddedWallet,
+              null,
+            ],
+          },
         ],
-      }],
-    }, { timeout: 12000 });
+      },
+      { timeout: 12000 },
+    );
+    if (res.data?.error) throw new Error(res.data.error.message ?? 'rpc error');
+    return (res.data?.result ?? []) as any[];
+  });
+  if (logs === null || logs.length === 0) return null;
 
-    const logs = logsRes.data?.result || [];
-    if (logs.length === 0) return null;
+  const timestamps = logs.map((log: any) => {
+    const blockNum = parseInt(log.blockNumber, 16);
+    return Date.now() - (currentBlock - blockNum) * 2000;
+  });
 
-    // Parse timestamps from block numbers
-    const timestamps = logs.map((log: any) => {
-      const blockNum = parseInt(log.blockNumber, 16);
-      return Date.now() - (currentBlock - blockNum) * 2000;
-    });
-
-    return {
-      walletId,
-      walletAddress,
-      tokenAddress: tokenAddress.toLowerCase(),
-      sellCount: logs.length,
-      firstSellTimestamp: Math.min(...timestamps),
-      lastSellTimestamp: Math.max(...timestamps),
-    };
-  } catch {
-    // Swallow per-wallet errors — fail open
-    return null;
-  }
+  return {
+    walletId,
+    walletAddress,
+    tokenAddress: tokenAddress.toLowerCase(),
+    sellCount: logs.length,
+    firstSellTimestamp: Math.min(...timestamps),
+    lastSellTimestamp: Math.max(...timestamps),
+  };
 }
 
 // ============================================================================
