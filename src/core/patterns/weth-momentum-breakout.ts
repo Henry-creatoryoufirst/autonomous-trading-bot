@@ -97,152 +97,192 @@ interface BreakoutState extends PatternState {
 }
 
 // ----------------------------------------------------------------------------
-// Pattern implementation
+// Pattern factory — same mechanism, parametrized by symbol + sector
 // ----------------------------------------------------------------------------
 
-export const wethMomentumBreakoutPattern: Pattern = {
-  name: "weth_momentum_breakout",
-  version: "0.1.0-stub",
-  description:
-    "Single-asset (WETH) 4h breakout: closes above prior 20-period high with volume > 1.5× average. " +
-    "Specialist depth on a single high-volume Base asset — first v22 candle-cadence pattern.",
+export interface MomentumBreakoutOptions {
+  /** Token symbol the pattern watches + trades (e.g., 'WETH', 'cbBTC', 'AERO'). */
+  symbol: string;
+  /** Sector tag for downstream telemetry. Defaults to BLUE_CHIP. */
+  sector?: string;
+  /** Override the default pattern name. Defaults to `${lowerSymbol}_momentum_breakout`. */
+  name?: string;
+}
 
-  maxAllocationPct: MAX_ALLOCATION_PCT,
-  maxConcurrentPositions: MAX_CONCURRENT,
-  tickIntervalMs: TICK_INTERVAL_MS,
+/**
+ * Factory: build a momentum-breakout pattern for any single Base asset.
+ * Same mechanism (Moskowitz-Ooi-Pedersen + Liu-Tsyvinski) on each asset;
+ * the only difference is which symbol it watches and trades.
+ *
+ * Per `feedback_specialist_depth_beats_breadth`: keep the universe small
+ * (1-5 high-volume Base assets), don't generalize this to "all tokens".
+ */
+export function createMomentumBreakoutPattern(
+  opts: MomentumBreakoutOptions,
+): Pattern {
+  const symbol = opts.symbol;
+  const name = opts.name ?? `${symbol.toLowerCase()}_momentum_breakout`;
+  const sector = opts.sector ?? "BLUE_CHIP";
+  const version = "0.1.0-stub";
 
-  detect(market: MarketSnapshot, state: PatternState): Trigger | null {
-    if (process.env.WETH_BREAKOUT_PATTERN_ENABLED !== "true") return null;
+  return {
+    name,
+    version,
+    description:
+      `Single-asset (${symbol}) 4h breakout: closes above prior ${LOOKBACK_PERIODS}-period ` +
+      `high with volume > ${VOLUME_MULT}× average. Specialist-depth pattern.`,
 
-    const ev = (market.extras as { event?: { kind?: string; symbol?: string; payload?: Record<string, unknown> } } | undefined)?.event;
-    if (!ev || ev.kind !== "candle_close") return null;
-    if (ev.symbol !== "WETH") return null;
+    maxAllocationPct: MAX_ALLOCATION_PCT,
+    maxConcurrentPositions: MAX_CONCURRENT,
+    tickIntervalMs: TICK_INTERVAL_MS,
 
-    const p = ev.payload;
-    if (!p) return null;
-
-    const close = Number(p.close);
-    const high = Number(p.high);
-    const volumeUsd = Number(p.volumeUsd);
-    if (!Number.isFinite(close) || close <= 0) return null;
-    if (!Number.isFinite(high) || high <= 0) return null;
-    if (!Number.isFinite(volumeUsd) || volumeUsd < 0) return null;
-
-    const s = state as BreakoutState;
-    s.recent ??= [];
-
-    // We need at least LOOKBACK_PERIODS prior candles to evaluate.
-    // The current candle does NOT participate in the lookback — it's the
-    // candle being EVALUATED against the prior window.
-    let trigger: Trigger | null = null;
-    if (s.recent.length >= LOOKBACK_PERIODS) {
-      const prior = s.recent.slice(-LOOKBACK_PERIODS);
-      const priorHigh = Math.max(...prior.map((c) => c.high));
-      const priorVolMean =
-        prior.reduce((sum, c) => sum + c.volumeUsd, 0) / prior.length;
-
-      const breakout = close > priorHigh;
-      const volumeConfirm = volumeUsd > VOLUME_MULT * priorVolMean;
-
-      if (breakout && volumeConfirm) {
-        const breakoutMagnitudePct = ((close - priorHigh) / priorHigh) * 100;
-        const volumeRatio = priorVolMean > 0 ? volumeUsd / priorVolMean : 0;
-        trigger = {
-          patternName: "weth_momentum_breakout",
-          symbol: "WETH",
-          detectedAt: market.timestamp,
-          context: {
-            close,
-            priorHigh,
-            breakoutMagnitudePct: Number(breakoutMagnitudePct.toFixed(3)),
-            volumeUsd,
-            priorVolMean,
-            volumeRatio: Number(volumeRatio.toFixed(2)),
-            lookbackPeriods: LOOKBACK_PERIODS,
-          },
-          summary: `WETH 4h close ${close.toFixed(2)} > prior-${LOOKBACK_PERIODS} high ${priorHigh.toFixed(2)} (+${breakoutMagnitudePct.toFixed(2)}%) with vol ${volumeRatio.toFixed(2)}× avg`,
-        };
+    detect(market: MarketSnapshot, state: PatternState): Trigger | null {
+      if (process.env.MOMENTUM_BREAKOUT_PATTERN_ENABLED !== "true" &&
+          process.env.WETH_BREAKOUT_PATTERN_ENABLED !== "true") {
+        return null;
       }
-    }
 
-    // Append current candle to the window AFTER evaluating, so the next
-    // tick has this candle in its prior-window.
-    s.recent.push({
-      ts: market.timestamp,
-      close,
-      high,
-      volumeUsd,
-    });
-    // Cap window to avoid unbounded memory; we only need the last LOOKBACK.
-    if (s.recent.length > LOOKBACK_PERIODS + 5) {
-      s.recent.splice(0, s.recent.length - (LOOKBACK_PERIODS + 5));
-    }
+      const ev = (
+        market.extras as
+          | { event?: { kind?: string; symbol?: string; payload?: Record<string, unknown> } }
+          | undefined
+      )?.event;
+      if (!ev || ev.kind !== "candle_close") return null;
+      if (ev.symbol !== symbol) return null;
 
-    return trigger;
-  },
+      const p = ev.payload;
+      if (!p) return null;
 
-  enter(trigger: Trigger, conviction: number, allocationUsd: number): TradeDecision {
-    const sizeUsd = Math.max(0, allocationUsd * (conviction / 100));
-    return {
-      action: "BUY",
-      fromToken: "USDC",
-      toToken: "WETH",
-      amountUSD: sizeUsd,
-      reasoning:
-        `${trigger.summary} · conviction=${conviction} · ` +
-        `pattern=weth_momentum_breakout@${wethMomentumBreakoutPattern.version}`,
-      sector: "BLUE_CHIP",
-    };
-  },
+      const close = Number(p.close);
+      const high = Number(p.high);
+      const volumeUsd = Number(p.volumeUsd);
+      if (!Number.isFinite(close) || close <= 0) return null;
+      if (!Number.isFinite(high) || high <= 0) return null;
+      if (!Number.isFinite(volumeUsd) || volumeUsd < 0) return null;
 
-  monitor(position: Position, market: MarketSnapshot, state: PatternState): ExitDecision {
-    const px = market.prices.get(position.symbol);
-    if (px === undefined || px <= 0) return "hold";
+      const s = state as BreakoutState;
+      s.recent ??= [];
 
-    const s = state as BreakoutState;
-    s.peakSinceEntry ??= {};
+      let trigger: Trigger | null = null;
+      if (s.recent.length >= LOOKBACK_PERIODS) {
+        const prior = s.recent.slice(-LOOKBACK_PERIODS);
+        const priorHigh = Math.max(...prior.map((c) => c.high));
+        const priorVolMean =
+          prior.reduce((sum, c) => sum + c.volumeUsd, 0) / prior.length;
 
-    // Track peak-since-entry for trailing-stop math
-    const prevPeak = s.peakSinceEntry[position.entryAt] ?? position.entryPrice;
-    if (px > prevPeak) {
-      s.peakSinceEntry[position.entryAt] = px;
-    }
-    const peak = s.peakSinceEntry[position.entryAt] ?? position.entryPrice;
+        const breakout = close > priorHigh;
+        const volumeConfirm = volumeUsd > VOLUME_MULT * priorVolMean;
 
-    const pnlPct = ((px - position.entryPrice) / position.entryPrice) * 100;
-    const drawdownFromPeakPct = peak > 0 ? ((peak - px) / peak) * 100 : 0;
+        if (breakout && volumeConfirm) {
+          const breakoutMagnitudePct = ((close - priorHigh) / priorHigh) * 100;
+          const volumeRatio = priorVolMean > 0 ? volumeUsd / priorVolMean : 0;
+          trigger = {
+            patternName: name,
+            symbol,
+            detectedAt: market.timestamp,
+            context: {
+              close,
+              priorHigh,
+              breakoutMagnitudePct: Number(breakoutMagnitudePct.toFixed(3)),
+              volumeUsd,
+              priorVolMean,
+              volumeRatio: Number(volumeRatio.toFixed(2)),
+              lookbackPeriods: LOOKBACK_PERIODS,
+            },
+            summary:
+              `${symbol} 4h close ${close.toFixed(2)} > prior-${LOOKBACK_PERIODS} ` +
+              `high ${priorHigh.toFixed(2)} (+${breakoutMagnitudePct.toFixed(2)}%) ` +
+              `with vol ${volumeRatio.toFixed(2)}× avg`,
+          };
+        }
+      }
 
-    // 1) Take-profit
-    if (pnlPct >= TAKE_PROFIT_PCT) {
-      delete s.peakSinceEntry[position.entryAt];
-      return { action: "exit", reason: "take_profit", pctClose: 100 };
-    }
+      s.recent.push({
+        ts: market.timestamp,
+        close,
+        high,
+        volumeUsd,
+      });
+      if (s.recent.length > LOOKBACK_PERIODS + 5) {
+        s.recent.splice(0, s.recent.length - (LOOKBACK_PERIODS + 5));
+      }
 
-    // 2) Trailing stop — only after the position has actually been in profit
-    // at some point (peak > entry). Otherwise "trail_stop" is just a noisy
-    // re-label of stop_loss, which is handled separately below.
-    if (peak > position.entryPrice && drawdownFromPeakPct >= TRAIL_STOP_PCT) {
-      delete s.peakSinceEntry[position.entryAt];
-      return { action: "exit", reason: "trail_stop", pctClose: 100 };
-    }
+      return trigger;
+    },
 
-    // 3) Hard stop-loss (catastrophic protection — separate from trail)
-    if (pnlPct <= -10) {
-      delete s.peakSinceEntry[position.entryAt];
-      return { action: "exit", reason: "stop_loss", pctClose: 100 };
-    }
+    enter(
+      trigger: Trigger,
+      conviction: number,
+      allocationUsd: number,
+    ): TradeDecision {
+      const sizeUsd = Math.max(0, allocationUsd * (conviction / 100));
+      return {
+        action: "BUY",
+        fromToken: "USDC",
+        toToken: symbol,
+        amountUSD: sizeUsd,
+        reasoning:
+          `${trigger.summary} · conviction=${conviction} · pattern=${name}@${version}`,
+        sector,
+      };
+    },
 
-    // 4) Time-stop
-    const heldMs = Date.parse(market.timestamp) - Date.parse(position.entryAt);
-    const heldPeriods = heldMs / (4 * 60 * 60 * 1000); // 4h periods
-    if (heldPeriods >= MAX_HOLD_PERIODS) {
-      delete s.peakSinceEntry[position.entryAt];
-      return { action: "exit", reason: "time_stop", pctClose: 100 };
-    }
+    monitor(
+      position: Position,
+      market: MarketSnapshot,
+      state: PatternState,
+    ): ExitDecision {
+      const px = market.prices.get(position.symbol);
+      if (px === undefined || px <= 0) return "hold";
 
-    return "hold";
-  },
-};
+      const s = state as BreakoutState;
+      s.peakSinceEntry ??= {};
+
+      const prevPeak = s.peakSinceEntry[position.entryAt] ?? position.entryPrice;
+      if (px > prevPeak) {
+        s.peakSinceEntry[position.entryAt] = px;
+      }
+      const peak = s.peakSinceEntry[position.entryAt] ?? position.entryPrice;
+
+      const pnlPct = ((px - position.entryPrice) / position.entryPrice) * 100;
+      const drawdownFromPeakPct = peak > 0 ? ((peak - px) / peak) * 100 : 0;
+
+      if (pnlPct >= TAKE_PROFIT_PCT) {
+        delete s.peakSinceEntry[position.entryAt];
+        return { action: "exit", reason: "take_profit", pctClose: 100 };
+      }
+
+      if (peak > position.entryPrice && drawdownFromPeakPct >= TRAIL_STOP_PCT) {
+        delete s.peakSinceEntry[position.entryAt];
+        return { action: "exit", reason: "trail_stop", pctClose: 100 };
+      }
+
+      if (pnlPct <= -10) {
+        delete s.peakSinceEntry[position.entryAt];
+        return { action: "exit", reason: "stop_loss", pctClose: 100 };
+      }
+
+      const heldMs = Date.parse(market.timestamp) - Date.parse(position.entryAt);
+      const heldPeriods = heldMs / (4 * 60 * 60 * 1000);
+      if (heldPeriods >= MAX_HOLD_PERIODS) {
+        delete s.peakSinceEntry[position.entryAt];
+        return { action: "exit", reason: "time_stop", pctClose: 100 };
+      }
+
+      return "hold";
+    },
+  };
+}
+
+// ----------------------------------------------------------------------------
+// WETH instance — preserved for backward compat with existing tests + script
+// ----------------------------------------------------------------------------
+
+export const wethMomentumBreakoutPattern: Pattern = createMomentumBreakoutPattern({
+  symbol: "WETH",
+  name: "weth_momentum_breakout",
+  sector: "BLUE_CHIP",
+});
 
 // ----------------------------------------------------------------------------
 // Internals exposed for tests (parameters can be probed without re-import)
