@@ -819,7 +819,7 @@ export const SCALE_UP_BUY_RATIO_MIN = 55;
 export const SCALE_UP_SIZE_PCT = 4;
 
 /** Exit when buy ratio drops below this % on a profitable position */
-export const MOMENTUM_EXIT_BUY_RATIO = 45;
+export const MOMENTUM_EXIT_BUY_RATIO = 47; // Bear-adjusted Apr-2026: 45→47 — 50d bear; buy ratio stalls 44-46% before collapsing in bear markets; 2pt earlier exit reduces ride-through on reversing positions
 
 /** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
