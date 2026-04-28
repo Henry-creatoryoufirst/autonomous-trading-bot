@@ -2,6 +2,11 @@ import { describe, it, expect } from "vitest";
 import { PatternRegistry } from "../../core/patterns/registry.js";
 import { PatternRuntime } from "../../core/patterns/runtime.js";
 import { EventReplayer, syntheticDepegScenario } from "../event-replayer.js";
+import {
+  makeBacktestExecutor,
+  makeSnapshotRef,
+} from "../backtest-executor.js";
+import { FixturePriceFeed } from "../data/price-feed.js";
 import type {
   Pattern,
   MarketSnapshot,
@@ -210,5 +215,169 @@ describe("EventReplayer", () => {
     expect(minPrice).toBeCloseTo(0.85, 2);
     // Recovery completes
     expect(prices[prices.length - 1]).toBeCloseTo(1.0, 2);
+  });
+
+  // --------------------------------------------------------------------------
+  // Price-feed + snapshot-ref + watched-symbols integration
+  // (the wiring that turns trigger-fidelity backtests into P&L-fidelity)
+  // --------------------------------------------------------------------------
+
+  it("preloads the price feed once at the start when supported", async () => {
+    let preloadCalls = 0;
+    const feed = new FixturePriceFeed();
+    const wrapped = {
+      getPriceAt: feed.getPriceAt.bind(feed),
+      preload: async (
+        symbols: readonly string[],
+        from: string,
+        to: string,
+      ): Promise<{ loaded: number; failed: readonly string[] }> => {
+        preloadCalls++;
+        // Validate the replayer passed us the full event window
+        expect(from).toBe("2026-01-01T00:00:00Z");
+        expect(to).toBe("2026-01-01T00:01:00Z");
+        expect(symbols).toEqual(["WETH"]);
+        return { loaded: 1, failed: [] };
+      },
+    };
+    const reg = new PatternRegistry();
+    const exec = makeExecutor(() => 1.0);
+    const runtime = new PatternRuntime(reg, {
+      alphaSleeveUsd: () => 1000,
+      executeFn: exec.fn,
+      loadPatternState: () => ({}),
+    });
+    const replayer = new EventReplayer(runtime);
+    await replayer.replay(
+      [
+        { timestamp: "2026-01-01T00:00:00Z", symbol: "USDC", price: 1, kind: "x" },
+        { timestamp: "2026-01-01T00:01:00Z", symbol: "USDC", price: 1, kind: "x" },
+      ],
+      {
+        priceFeed: wrapped,
+        watchedSymbols: ["WETH"],
+      },
+    );
+    expect(preloadCalls).toBe(1);
+  });
+
+  it("enriches each snapshot with feed prices for watched symbols", async () => {
+    const feed = new FixturePriceFeed();
+    feed.set("WETH", [
+      ["2026-01-01T00:00:00Z", 3000],
+      ["2026-01-01T00:00:30Z", 3100],
+    ]);
+
+    const reg = new PatternRegistry();
+    const exec = makeExecutor(() => 1.0);
+    const runtime = new PatternRuntime(reg, {
+      alphaSleeveUsd: () => 1000,
+      executeFn: exec.fn,
+      loadPatternState: () => ({}),
+    });
+
+    const observed: number[] = [];
+    const ref = makeSnapshotRef();
+    const replayer = new EventReplayer(runtime);
+    await replayer.replay(
+      [
+        { timestamp: "2026-01-01T00:00:00Z", symbol: "USDC", price: 1, kind: "x" },
+        { timestamp: "2026-01-01T00:00:30Z", symbol: "USDC", price: 1, kind: "x" },
+      ],
+      {
+        priceFeed: feed,
+        watchedSymbols: ["WETH"],
+        snapshotRef: ref,
+        onTick: () => {
+          // ref.current is the snapshot the runtime just saw
+          const px = ref.current?.prices.get("WETH");
+          if (typeof px === "number") observed.push(px);
+        },
+      },
+    );
+    expect(observed).toEqual([3000, 3100]);
+  });
+
+  it("updates snapshotRef before each tick so executor sees the right snapshot", async () => {
+    const reg = new PatternRegistry();
+
+    // A pattern that BUYs USDC→WETH on every USDC event (synthetic, but
+    // good enough to drive the executor through entry → monitor exit).
+    const pattern: Pattern = {
+      name: "ref_watcher",
+      version: "0.0.1",
+      description: "buys WETH on every event",
+      maxAllocationPct: 50,
+      maxConcurrentPositions: 1,
+      tickIntervalMs: 1000,
+      detect(market) {
+        if (this.entered) return null;
+        return {
+          patternName: "ref_watcher",
+          symbol: "WETH",
+          detectedAt: market.timestamp,
+          context: {},
+          summary: "test",
+        };
+      },
+      enter(_t, conviction, allocationUsd) {
+        this.entered = true;
+        return {
+          action: "BUY",
+          fromToken: "USDC",
+          toToken: "WETH",
+          amountUSD: (allocationUsd * conviction) / 100,
+          reasoning: "test",
+        };
+      },
+      monitor(_pos, market) {
+        const px = market.prices.get("WETH");
+        if (px && px >= 3500) return { action: "exit", reason: "tp", pctClose: 100 };
+        return "hold";
+      },
+      // sentinel to fire only once
+      entered: false,
+    } as unknown as Pattern & { entered: boolean };
+
+    reg.register(pattern, "live");
+
+    const feed = new FixturePriceFeed();
+    feed.set("WETH", [
+      ["2026-01-01T00:00:00Z", 3000],
+      ["2026-01-01T00:01:00Z", 3500],
+    ]);
+
+    const ref = makeSnapshotRef();
+    const { executeFn, fills } = makeBacktestExecutor({ snapshotRef: ref });
+    const runtime = new PatternRuntime(reg, {
+      alphaSleeveUsd: () => 1000,
+      executeFn,
+      loadPatternState: () => ({}),
+    });
+    const replayer = new EventReplayer(runtime);
+
+    await replayer.replay(
+      [
+        { timestamp: "2026-01-01T00:00:00Z", symbol: "USDC", price: 1, kind: "x" },
+        { timestamp: "2026-01-01T00:01:00Z", symbol: "USDC", price: 1, kind: "x" },
+      ],
+      {
+        priceFeed: feed,
+        watchedSymbols: ["WETH"],
+        snapshotRef: ref,
+      },
+    );
+
+    // Two fills: one BUY at 3000, one SELL at 3500 (monitor exit @ tp)
+    expect(fills.length).toBe(2);
+    expect(fills[0]!.decision.action).toBe("BUY");
+    expect(fills[0]!.midPrice).toBe(3000);
+    expect(fills[1]!.decision.action).toBe("SELL");
+    expect(fills[1]!.midPrice).toBe(3500);
+
+    // P&L should be a clean +16.67% on the position
+    const closed = runtime.tracker.closedPositions("ref_watcher");
+    expect(closed.length).toBe(1);
+    expect(closed[0]!.realizedPnL).toBeGreaterThan(0);
   });
 });

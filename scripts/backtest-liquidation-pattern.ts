@@ -1,57 +1,59 @@
 /**
  * NVR-SPEC-022 — Pattern P1 (Liquidation Counter-Trade) historical backtest
  *
- * The first real backtest of a v22 pattern against live on-chain history.
+ * The first real backtest of a v22 pattern against live on-chain history,
+ * NOW WITH REAL HISTORICAL PRICING via GeckoTerminal OHLCV.
  *
  * Procedure:
  *   1. Fetch last 7 days of Aave V3 LiquidationCall events on Base
  *      (via the bot's existing RPC fallback chain)
  *   2. Convert events to HistoricalEvents
- *   3. Replay them through the PatternRuntime with Pattern P1 in
- *      'paper' mode and a stub executor that fills at the event's
- *      stated dislocation price (a synthetic but consistent assumption)
- *   4. Report: trigger count, entries, exits, paper P&L by reason
+ *   3. Preload GeckoTerminal OHLCV for the tradeable collateral set
+ *   4. Replay events through the PatternRuntime with Pattern P1 in
+ *      'paper' mode and a price-aware backtest executor
+ *   5. Report: trigger count, entries, exits, REAL paper P&L by reason
  *
  * Run:
  *   LIQUIDATION_PATTERN_ENABLED=true npx tsx scripts/backtest-liquidation-pattern.ts
  *
+ * Environment:
+ *   LIQUIDATION_PATTERN_ENABLED  required ('true' to fire)
+ *   BACKTEST_LOOKBACK_HOURS      default 168 (7 days)
+ *   BACKTEST_SLEEVE_USD          default 1000 (paper alpha sleeve)
+ *   BACKTEST_SLIPPAGE_BPS        default 25 (0.25% per side)
+ *   BACKTEST_VERBOSE             '1' to log every fill
+ *
  * Output:
  *   - Per-event log: which liquidations triggered the pattern (and why
  *     the others didn't — collateral not in universe, size below floor)
- *   - Final summary: # triggers, # entries, # exits, paper realized P&L
- *     attributed to liquidation_counter_trade
+ *   - Final summary: # triggers, # entries, # exits, REAL paper realized
+ *     P&L attributed to liquidation_counter_trade
  *
- * Caveats — be honest about what this proves:
- *   - The "fill price" for both entry and exit is a synthetic constant
- *     pulled from the rough hardcoded approxUsdPerToken. We are NOT yet
- *     pulling historical DEX prices at the event timestamp; doing so
- *     correctly requires either a price-oracle backfill or a dedicated
- *     historical price API. So this run measures TRIGGER FIDELITY
- *     (does the pattern fire on the right events?) but not REALIZED
- *     P&L. A real $-figure requires the price feed integration.
- *   - The pattern's monitor() returns 'profit_target' / 'stop_loss' /
- *     'max_hold_time' decisions based on synthetic prices that don't
- *     change between entry and exit in this script — so the backtest
- *     here will mostly hit max_hold_time. That's expected.
- *
- * What this DOES prove:
+ * What this proves:
  *   - Trigger logic works correctly against real liquidation events
  *   - Filter heuristics (collateral whitelist, size threshold) catch
  *     the right events vs reject the right events
  *   - The end-to-end pipeline (subgraph fetch → EventReplayer →
- *     PatternRuntime → tracker) functions on real data
+ *     PatternRuntime → tracker → P&L) functions on real data
  *   - Sample size of patterns we'd actually trade per week
+ *   - Realized P&L if Pattern P1 had been live during this window
  */
 
 import { PatternRegistry } from "../src/core/patterns/registry.js";
 import { PatternRuntime } from "../src/core/patterns/runtime.js";
 import { liquidationCounterTradePattern } from "../src/core/patterns/liquidation-counter-trade.js";
-import {
-  EventReplayer,
-} from "../src/simulation/event-replayer.js";
+import { EventReplayer } from "../src/simulation/event-replayer.js";
 import { fetchAaveLiquidations } from "../src/simulation/data/aave-liquidations.js";
-import type { TradeDecision } from "../src/core/patterns/trade-decision-shim.js";
+import { GeckoTerminalHistoricalFeed } from "../src/simulation/data/price-feed.js";
+import {
+  makeBacktestExecutor,
+  makeSnapshotRef,
+} from "../src/simulation/backtest-executor.js";
 import type { PatternState } from "../src/core/patterns/types.js";
+
+// Pattern P1 trades these collateral symbols (per liquidation-counter-trade.ts).
+// Watched symbols are queried on every tick so monitor() exits price correctly.
+const WATCHED_SYMBOLS = ["WETH", "cbBTC", "cbETH", "wstETH", "AERO"] as const;
 
 const LOOKBACK_HOURS = parseInt(
   process.env.BACKTEST_LOOKBACK_HOURS ?? "168",
@@ -61,19 +63,24 @@ const PAPER_SLEEVE_USD = parseInt(
   process.env.BACKTEST_SLEEVE_USD ?? "1000",
   10,
 );
+const SLIPPAGE_BPS = parseInt(process.env.BACKTEST_SLIPPAGE_BPS ?? "25", 10);
+const VERBOSE = process.env.BACKTEST_VERBOSE === "1";
 
 async function main() {
-  console.log(`\n=== NVR Pattern P1 Backtest ===`);
-  console.log(`Pattern: ${liquidationCounterTradePattern.name}@${liquidationCounterTradePattern.version}`);
+  console.log(`\n=== NVR Pattern P1 Backtest (real prices) ===`);
+  console.log(
+    `Pattern: ${liquidationCounterTradePattern.name}@${liquidationCounterTradePattern.version}`,
+  );
   console.log(`Lookback: ${LOOKBACK_HOURS}h on Aave V3 Base`);
   console.log(`Paper sleeve: $${PAPER_SLEEVE_USD}`);
+  console.log(`Slippage model: ${SLIPPAGE_BPS}bps per side`);
   console.log(
     `Trigger gate: ${process.env.LIQUIDATION_PATTERN_ENABLED === "true" ? "OPEN" : "CLOSED"} (${process.env.LIQUIDATION_PATTERN_ENABLED === "true" ? "will fire" : "set LIQUIDATION_PATTERN_ENABLED=true to enable"})`,
   );
   console.log("");
 
   // 1. Fetch events
-  console.log(`[1/4] Fetching liquidation events...`);
+  console.log(`[1/5] Fetching liquidation events...`);
   const fetched = await fetchAaveLiquidations({
     lookbackHours: LOOKBACK_HOURS,
     verbose: false,
@@ -88,29 +95,25 @@ async function main() {
   }
 
   // 2. Set up runtime
-  console.log(`[2/4] Setting up runtime + registering pattern...`);
+  console.log(`[2/5] Setting up runtime + registering pattern...`);
   const registry = new PatternRegistry();
   registry.register(liquidationCounterTradePattern, "paper");
   const states: Record<string, PatternState> = {
     [liquidationCounterTradePattern.name]: {},
   };
 
-  // Stub executor — fills at the event's "approximate price." Marks
-  // every trade so the tracker has something to attribute. The price
-  // model is synthetic: entry and exit at the same approxUsdPerToken,
-  // so realized P&L is mostly noise (rounding); this run validates
-  // trigger fidelity, not P&L.
-  const fills: TradeDecision[] = [];
-  const executeFn = async (decision: TradeDecision) => {
-    fills.push(decision);
-    // Approximate fill price: read from the trigger context if present,
-    // else default to 1.0 USD-equivalent per token. The tracker will
-    // compute a near-zero P&L either way, which is honest given we
-    // don't have real historical pricing.
-    const sym = decision.action === "BUY" ? decision.toToken : decision.fromToken;
-    const px = sym === "USDC" ? 1.0 : 1.0; // pure stub
-    return { filledUsd: decision.amountUSD, filledPrice: px };
-  };
+  // 3. Build the price-aware executor (fills from GT OHLCV via the snapshot)
+  const snapshotRef = makeSnapshotRef();
+  const priceFeed = new GeckoTerminalHistoricalFeed({
+    log: VERBOSE ? (m) => console.log(`    ${m}`) : undefined,
+    preferredDex: "aerodrome",
+  });
+  const { executeFn, fills } = makeBacktestExecutor({
+    snapshotRef,
+    priceFeed,
+    slippage: { bps: SLIPPAGE_BPS },
+    log: VERBOSE ? (m) => console.log(`    ${m}`) : undefined,
+  });
 
   const runtime = new PatternRuntime(
     registry,
@@ -122,13 +125,24 @@ async function main() {
     "paper",
   );
 
-  // 3. Replay
-  console.log(`[3/4] Replaying ${fetched.events.length} events through runtime...`);
+  // 4. Replay (preload happens automatically via priceFeed.preload)
+  console.log(
+    `[3/5] Preloading historical prices for ${WATCHED_SYMBOLS.length} symbols + replaying...`,
+  );
   const replayer = new EventReplayer(runtime);
   let triggersDetected = 0;
   let entered = 0;
-  const triggeredEvents: { ts: string; symbol: string; size: number; txHash: string }[] = [];
-  await replayer.replay(fetched.events, {
+  const triggeredEvents: {
+    ts: string;
+    symbol: string;
+    size: number;
+    txHash: string;
+  }[] = [];
+  const replayResult = await replayer.replay(fetched.events, {
+    priceFeed,
+    watchedSymbols: WATCHED_SYMBOLS,
+    snapshotRef,
+    log: (m) => console.log(`  ${m}`),
     onTick: (event, report) => {
       triggersDetected += report.triggersDetected;
       entered += report.entered;
@@ -145,20 +159,35 @@ async function main() {
     },
   });
 
-  // 4. Report
-  console.log(`[4/4] Reporting...\n`);
+  console.log(
+    `[4/5] Replay complete in ${(replayResult.elapsedMs / 1000).toFixed(1)}s`,
+  );
+  const cache = priceFeed.cacheStats();
+  console.log(
+    `  price feed cache: ${cache.symbols} symbols, ${cache.candles} candles, ${cache.failed} failed`,
+  );
+
+  // 5. Report
+  console.log(`[5/5] Reporting...\n`);
   console.log(`=== Backtest Results ===`);
   console.log(`Events scanned:       ${fetched.events.length}`);
   console.log(`Triggers fired:       ${triggersDetected}`);
   console.log(`Pattern entries:      ${entered}`);
-  console.log(`Open positions:       ${runtime.tracker.openPositions(liquidationCounterTradePattern.name).length}`);
-  console.log(`Closed positions:     ${runtime.tracker.closedPositions(liquidationCounterTradePattern.name).length}`);
+  console.log(`Total fills:          ${fills.length}`);
+  console.log(
+    `Open positions:       ${runtime.tracker.openPositions(liquidationCounterTradePattern.name).length}`,
+  );
+  console.log(
+    `Closed positions:     ${runtime.tracker.closedPositions(liquidationCounterTradePattern.name).length}`,
+  );
 
   // Show which events triggered
   if (triggeredEvents.length > 0) {
     console.log(`\n=== Triggered Events ===`);
     for (const t of triggeredEvents) {
-      console.log(`  ${t.ts}  collateral=${t.symbol.slice(0, 10)}... tx=${t.txHash.slice(0, 12)}`);
+      console.log(
+        `  ${t.ts}  collateral=${t.symbol.slice(0, 10)}... tx=${t.txHash.slice(0, 12)}`,
+      );
     }
   }
 
@@ -176,34 +205,60 @@ async function main() {
     );
   }
 
-  // Per-pattern stats
+  // Per-pattern stats — now meaningful because fills used real prices
   const stats = runtime.tracker.stats(new Map());
   if (stats.length > 0) {
-    console.log(`\n=== Per-pattern stats ===`);
+    console.log(`\n=== Per-pattern stats (real-price P&L) ===`);
     for (const s of stats) {
       console.log(
         `  ${s.patternName}: open=${s.openCount} closed=${s.closedCount} ` +
-          `realized=$${s.realizedPnL.toFixed(2)} unrealized=$${s.unrealizedPnL.toFixed(2)}`,
+          `realized=$${s.realizedPnL.toFixed(2)} unrealized=$${s.unrealizedPnL.toFixed(2)} ` +
+          `winRate=${(s.winRate * 100).toFixed(0)}%`,
+      );
+    }
+  }
+
+  // Per-fill detail when entries actually happened — useful for proving the
+  // real-price wiring. With 0 triggers (the empirical finding), this section
+  // stays empty.
+  if (fills.length > 0) {
+    console.log(`\n=== Fill detail ===`);
+    for (const f of fills) {
+      const sym =
+        f.decision.action === "BUY" ? f.decision.toToken : f.decision.fromToken;
+      console.log(
+        `  ${f.filledAt}  ${f.decision.action.padEnd(4)} ${sym.padEnd(7)} ` +
+          `usd=${f.filledUsd.toFixed(2)}  mid=${f.midPrice.toFixed(6)}  fill=${f.filledPrice.toFixed(6)}`,
       );
     }
   }
 
   console.log(`\n=== Honest read ===`);
-  console.log(
-    `  This run validates TRIGGER FIDELITY. P&L numbers are noise because`,
-  );
-  console.log(
-    `  the executor uses a synthetic constant price (no historical DEX feed`,
-  );
-  console.log(
-    `  integration yet). Next step is wiring real historical token prices`,
-  );
-  console.log(
-    `  into the executor so we can answer the actual question: "if Pattern`,
-  );
-  console.log(
-    `  P1 had been live during this window, would it have made money?"`,
-  );
+  if (triggersDetected === 0) {
+    console.log(
+      `  0 triggers fired — confirming the FINDING_2026-04-27 result that`,
+    );
+    console.log(
+      `  Aave V3 Base does not have the liquidation flow to support Pattern P1.`,
+    );
+    console.log(
+      `  Real-price wiring is now in place; when this pattern fires (e.g.,`,
+    );
+    console.log(
+      `  after lowering the threshold or running on a different venue), the`,
+    );
+    console.log(`  P&L numbers will be measured against real DEX history.`);
+  } else {
+    console.log(
+      `  Triggers fired with real-price fills. Realized P&L above reflects`,
+    );
+    console.log(
+      `  what Pattern P1 would have made on Aave V3 Base for this window.`,
+    );
+    console.log(
+      `  This is now a P&L-fidelity backtest, not just a trigger-fidelity one.`,
+    );
+  }
 }
 
 main().catch((err) => {

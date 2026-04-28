@@ -31,6 +31,8 @@
 
 import type { MarketSnapshot } from "../core/patterns/types.js";
 import type { PatternRuntime, TickReport } from "../core/patterns/runtime.js";
+import type { HistoricalPriceFeed } from "./data/price-feed.js";
+import type { SnapshotRef } from "./backtest-executor.js";
 
 // ----------------------------------------------------------------------------
 // Event shape — minimal but enough for the patterns we care about
@@ -78,6 +80,39 @@ export interface ReplayOptions {
    * a pattern tracking SymbolB still wants a current quote. Default true.
    */
   carryForwardPrices?: boolean;
+  /**
+   * Optional historical price feed. When set together with
+   * `watchedSymbols`, the replayer enriches each snapshot's `prices`
+   * with feed-derived USD prices for those symbols at the event's
+   * timestamp. This is what turns a trigger-fidelity backtest into a
+   * P&L-fidelity backtest — without it, monitor() exits at synthetic
+   * prices and realized P&L is meaningless.
+   *
+   * If the feed implements `preload()`, the replayer calls it once
+   * with the full event window before iterating, so the per-tick
+   * `getPriceAt` calls hit a warm cache.
+   */
+  priceFeed?: HistoricalPriceFeed;
+  /**
+   * Symbols whose prices should be present on every snapshot. Required
+   * when using `priceFeed` for it to do anything. Typically the union
+   * of symbols any enabled pattern might trade, or the symbols any
+   * open position holds.
+   */
+  watchedSymbols?: readonly string[];
+  /**
+   * If set, the replayer writes the current snapshot to this ref before
+   * each `runtime.tick()` call. The backtest executor reads from the
+   * same ref to resolve fill prices. Without this, the executor has no
+   * way to know what timestamp/prices apply to the decision being
+   * filled.
+   */
+  snapshotRef?: SnapshotRef;
+  /**
+   * Logger. Default no-op. Used for preload status and per-tick price
+   * miss diagnostics.
+   */
+  log?: (msg: string) => void;
 }
 
 // ----------------------------------------------------------------------------
@@ -135,10 +170,35 @@ export class EventReplayer {
     const reports: TickReport[] = [];
     const wallStart = Date.now();
     const startedAt = new Date().toISOString();
+    const log = opts.log ?? (() => {});
+    const watched = opts.watchedSymbols ?? [];
+
+    // Preload the price feed once for the full event window, if supported.
+    // Doing this here means the per-tick getPriceAt is a cache read.
+    if (opts.priceFeed?.preload && watched.length > 0) {
+      const fromIso = events[0]!.timestamp;
+      const toIso = events[events.length - 1]!.timestamp;
+      const summary = await opts.priceFeed.preload([...watched], fromIso, toIso);
+      log(
+        `event-replayer: priceFeed preloaded ${summary.loaded}/${watched.length}` +
+          (summary.failed.length > 0 ? ` (failed: ${summary.failed.join(",")})` : ""),
+      );
+    }
 
     for (const ev of events) {
-      // Update price book for carry-forward
+      // Update price book for carry-forward from the event itself
       if (ev.price > 0) lastPrices.set(ev.symbol, ev.price);
+
+      // Enrich with price-feed values for watched symbols at this timestamp.
+      // We always re-read so the snapshot reflects the current moment, not
+      // the most recent event for that symbol. If the feed has nothing,
+      // we fall back to the carry-forward value already in lastPrices.
+      if (opts.priceFeed && watched.length > 0) {
+        for (const sym of watched) {
+          const fed = await opts.priceFeed.getPriceAt(sym, ev.timestamp);
+          if (fed !== null && fed > 0) lastPrices.set(sym, fed);
+        }
+      }
 
       // Build snapshot. If carry-forward is on, every snapshot carries
       // the most-recent price for every symbol seen so far. Otherwise
@@ -152,6 +212,11 @@ export class EventReplayer {
         prices,
         extras: { event: { kind: ev.kind, symbol: ev.symbol, payload: ev.payload } },
       };
+
+      // Update snapshotRef BEFORE the tick so the executor can read it
+      // when runtime.tick calls executeFn for an entry. Monitor() reads
+      // market.prices directly from the snapshot itself.
+      if (opts.snapshotRef) opts.snapshotRef.current = snapshot;
 
       const report = await this.runtime.tick(snapshot);
       reports.push(report);
