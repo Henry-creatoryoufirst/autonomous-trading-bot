@@ -400,6 +400,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "B3", name: "B3 Gaming Chain", coingeckoId: "b3",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-04-28) ===
+  FAI: {
+    address: "0xb33ff54b9f7242ef1593d2c9bcd8f9df46c77935",
+    symbol: "FAI", name: "Freysa AI", coingeckoId: "freysa-ai",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === AUTO-DISCOVERED (scout 2026-04-26) ===
   RNBW: {
     address: "0xa53887f7e7c1bf5010b8627f1c1ba94fe7a5d6e0",
