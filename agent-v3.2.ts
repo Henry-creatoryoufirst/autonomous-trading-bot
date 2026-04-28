@@ -4609,13 +4609,13 @@ async function makeTradeDecision(
 
   // Find tokens with strongest buy/sell signals
   const strongBuySignals = Object.entries(marketData.indicators)
-    .filter(([_, ind]) => ind.confluenceScore >= 30)
+    .filter(([_, ind]) => ind.confluenceScore >= 40)
     .sort(([_, a], [__, b]) => b.confluenceScore - a.confluenceScore)
     .slice(0, 3)
     .map(([sym, ind]) => `${sym}(+${ind.confluenceScore})`);
 
   const strongSellSignals = Object.entries(marketData.indicators)
-    .filter(([_, ind]) => ind.confluenceScore <= -30)
+    .filter(([_, ind]) => ind.confluenceScore <= -40)
     .sort(([_, a], [__, b]) => a.confluenceScore - b.confluenceScore)
     .slice(0, 3)
     .map(([sym, ind]) => `${sym}(${ind.confluenceScore})`);
