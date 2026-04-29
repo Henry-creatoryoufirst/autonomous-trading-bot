@@ -530,7 +530,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  * Kelly % = (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
  * Position = Kelly% × KELLY_FRACTION × Portfolio
  */
-export const KELLY_FRACTION = 0.35;           // Bear-adjusted Apr-2026: Quarter-Kelly range (was 0.5 half-Kelly); 46-day bear + auditor ceiling already at 14% → 0.35×14%=4.9% effective max vs 7% prior
+export const KELLY_FRACTION = 0.25;           // Bear-adjusted Apr-2026: True quarter-Kelly (was 0.35); 47-day bear — adaptive Kelly research confirms 0.25x optimal in sustained high-volatility bear; 0.25×14%=3.5% effective max
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
