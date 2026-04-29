@@ -30,18 +30,24 @@
  *   data/observation-pass/forward/2026-04-29-outcomes.jsonl  — outcome at +60min for each trigger
  */
 
-import { mkdirSync, appendFileSync } from "fs";
+import { mkdirSync, appendFileSync, readFileSync, existsSync, readdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { createServer } from "http";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { activeChain } from "../src/core/config/chain-config.js";
 import { GeckoTerminalHistoricalFeed } from "../src/simulation/data/price-feed.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// Persistence path order: FORWARD_OUTPUT_DIR > PERSIST_DIR (Railway volume) > local
 const OUT_DIR =
   process.env.FORWARD_OUTPUT_DIR ??
-  join(__dirname, "..", "data", "observation-pass", "forward");
+  (process.env.PERSIST_DIR
+    ? join(process.env.PERSIST_DIR, "observation-forward")
+    : join(__dirname, "..", "data", "observation-pass", "forward"));
 mkdirSync(OUT_DIR, { recursive: true });
+
+const HTTP_PORT = parseInt(process.env.PORT ?? "3000", 10);
 
 const POLL_SEC = parseInt(process.env.FORWARD_POLL_SEC ?? "30", 10);
 const CLUSTER_WINDOW_SEC = parseInt(
@@ -396,6 +402,162 @@ async function checkOutcomes(priceFeed: GeckoTerminalHistoricalFeed) {
 }
 
 // ----------------------------------------------------------------------------
+// HTTP server (health + JSONL streaming + live verdict)
+// ----------------------------------------------------------------------------
+
+let bootedAt = Date.now();
+let lastPollAt = 0;
+let pollErrorCount = 0;
+let lastPollError: string | null = null;
+
+function readJsonl(path: string): any[] {
+  if (!existsSync(path)) return [];
+  const content = readFileSync(path, "utf-8");
+  const out: any[] = [];
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      out.push(JSON.parse(trimmed));
+    } catch {
+      // skip
+    }
+  }
+  return out;
+}
+
+function sendJson(res: any, code: number, body: any) {
+  res.writeHead(code, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(JSON.stringify(body, null, 2));
+}
+
+function loadAllJsonl(suffix: string): any[] {
+  if (!existsSync(OUT_DIR)) return [];
+  const files = readdirSync(OUT_DIR).filter((f) => f.endsWith(suffix));
+  const out: any[] = [];
+  for (const f of files.sort()) {
+    out.push(...readJsonl(join(OUT_DIR, f)));
+  }
+  return out;
+}
+
+function computeSummary() {
+  const events = loadAllJsonl("-events.jsonl");
+  const triggers = loadAllJsonl("-triggers.jsonl");
+  const outcomes = loadAllJsonl("-outcomes.jsonl");
+
+  const measured = outcomes.filter((o: any) => o.pctChange !== null);
+  const hits = measured.filter((o: any) => o.hit === true).length;
+  const fps = measured.filter((o: any) => o.fp === true).length;
+
+  const hitRate = measured.length > 0 ? hits / measured.length : 0;
+  const fpRate = measured.length > 0 ? fps / measured.length : 0;
+
+  let verdict: string;
+  if (measured.length < 15) {
+    verdict = "KEEP_WATCHING";
+  } else if (hitRate >= 0.4 && fpRate <= 0.3) {
+    verdict = "SHIP";
+  } else if (hitRate < 0.4) {
+    verdict = "KILL";
+  } else {
+    verdict = "MIXED";
+  }
+
+  const eventsByToken: Record<string, number> = {};
+  for (const e of events) {
+    eventsByToken[e.tokenSymbol] = (eventsByToken[e.tokenSymbol] ?? 0) + 1;
+  }
+
+  return {
+    rawEvents: events.length,
+    triggers: triggers.length,
+    outcomesMeasured: measured.length,
+    outcomesPending: outcomes.length - measured.length,
+    hits,
+    fps,
+    hitRate,
+    fpRate,
+    verdict,
+    targets: { hitRate: 0.4, fpRate: 0.3, sampleSize: 15 },
+    eventsByToken,
+    firstEventAt: events.length > 0 ? events[0].ts : null,
+    lastEventAt: events.length > 0 ? events[events.length - 1].ts : null,
+  };
+}
+
+const httpServer = createServer((req, res) => {
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+    });
+    res.end();
+    return;
+  }
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "method not allowed" });
+    return;
+  }
+
+  const path = url.pathname;
+
+  if (path === "/health" || path === "/") {
+    const uptimeSec = Math.floor((Date.now() - bootedAt) / 1000);
+    const lastPollAgeSec = lastPollAt > 0 ? Math.floor((Date.now() - lastPollAt) / 1000) : null;
+    const status = lastPollAgeSec !== null && lastPollAgeSec < POLL_SEC * 4 ? "ok" : "stale";
+    sendJson(res, status === "ok" ? 200 : 503, {
+      status,
+      uptimeSec,
+      lastPollAgeSec,
+      lastPollError,
+      pollErrorCount,
+      lastProcessedBlock: lastProcessedBlock?.toString() ?? null,
+      pendingOutcomes: pendingOutcomes.length,
+      intermediariesWatched: INTERMEDIARIES.length,
+      tokensWatched: TOKEN_WATCHES.map((w) => w.symbol),
+      outDir: OUT_DIR,
+    });
+    return;
+  }
+
+  if (path === "/api/summary") {
+    try {
+      sendJson(res, 200, computeSummary());
+    } catch (e) {
+      sendJson(res, 500, { error: (e as Error).message });
+    }
+    return;
+  }
+
+  if (path === "/api/events") {
+    sendJson(res, 200, { events: loadAllJsonl("-events.jsonl") });
+    return;
+  }
+
+  if (path === "/api/triggers") {
+    sendJson(res, 200, { triggers: loadAllJsonl("-triggers.jsonl") });
+    return;
+  }
+
+  if (path === "/api/outcomes") {
+    sendJson(res, 200, { outcomes: loadAllJsonl("-outcomes.jsonl") });
+    return;
+  }
+
+  if (path === "/api/intermediaries") {
+    sendJson(res, 200, { intermediaries: INTERMEDIARIES });
+    return;
+  }
+
+  sendJson(res, 404, { error: "not found", validPaths: ["/health", "/api/summary", "/api/events", "/api/triggers", "/api/outcomes", "/api/intermediaries"] });
+});
+
+// ----------------------------------------------------------------------------
 // Main loop
 // ----------------------------------------------------------------------------
 
@@ -409,7 +571,20 @@ async function main() {
       `Min N: ${MIN_INTERMEDIARIES}, Poll: ${POLL_SEC}s`,
   );
   console.log(`Output dir: ${OUT_DIR}`);
+  console.log(`HTTP port: ${HTTP_PORT}`);
   console.log("");
+
+  httpServer.listen(HTTP_PORT, () => {
+    console.log(`HTTP server listening on :${HTTP_PORT}`);
+    console.log(`  GET /health             — service status`);
+    console.log(`  GET /api/summary        — live verdict`);
+    console.log(`  GET /api/events         — all logged intermediary buys`);
+    console.log(`  GET /api/triggers       — all cluster triggers`);
+    console.log(`  GET /api/outcomes       — all measured outcomes`);
+    console.log(`  GET /api/intermediaries — the watched address set`);
+    console.log("");
+  });
+  bootedAt = Date.now();
 
   // Preload price feed for the watched tokens (recent window)
   const priceFeed = new GeckoTerminalHistoricalFeed({
@@ -436,8 +611,13 @@ async function main() {
     try {
       await pollOnce(priceFeed);
       await checkOutcomes(priceFeed);
+      lastPollAt = Date.now();
+      lastPollError = null;
     } catch (e) {
-      console.warn(`  poll error: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      console.warn(`  poll error: ${msg}`);
+      pollErrorCount++;
+      lastPollError = msg.slice(0, 200);
     }
 
     if (Date.now() - lastPriceRefresh > PRICE_REFRESH_MS) {
