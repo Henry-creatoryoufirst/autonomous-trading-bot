@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-04-29T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #21)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-29T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-8OE9l
 
 ## Problem
 
@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-29T00:00 UTC | Scout skipped (SPECTRA added Apr-28, <48h ago); auditor lowered VOL_LOOKBACK_DAYS 7→5 (bear vol responsiveness) |
 
 ## Bot Health Evidence (from git history)
 
@@ -74,6 +75,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #21 — 2026-04-29)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
+- **Scout**: SKIPPED — last scout ran 2026-04-28T13:13 UTC (SPECTRA added), less than 48h ago.
+- **Auditor**: TRIGGERED by inferred 51-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Base L2 natural sequencer MEV protection (arXiv:2601.19570) + bear-market responsiveness pattern — VOL_LOOKBACK_DAYS 7→5 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0). Parallel to KELLY_ROLLING_WINDOW 50→30 from Run #20.
+
+## Auditor Research Summary (Run #21)
+- **Signal Quality**: Whale wallet flow + Aerodrome LP positioning cited as highest-alpha signal stack in 2025-2026. Complex (4/3). Watch list for future implementation.
+- **Execution Efficiency**: Aerodrome merged into MetaDEX 03 / Slipstream V3 (Nov 2025) — embedded MEV auction + Flashblocks. Bot should verify routing through post-merger contract address on BaseScan. Not a code change — ops task for Henry.
+- **Position Sizing**: Half-Kelly consensus (10-25% of full Kelly) with ATR dynamic adjustment. Bot's KELLY_FRACTION=0.35 already in this range. No action needed.
+- **Competitive Intelligence**: KEY FINDING — arXiv:2601.19570 confirms Base's centralized sequencer provides natural sandwich protection (median victim $1.2k). Slippage tightening desired but blocked by retry-ceiling dependency on CONFIG.trading.slippageBps. Secondary finding: VOL_LOOKBACK_DAYS 7→5 (same "responsive window" logic as KELLY_ROLLING_WINDOW) IMPLEMENTED.
 
 ## Jobs Status This Run (Run #20 — 2026-04-27)
 
