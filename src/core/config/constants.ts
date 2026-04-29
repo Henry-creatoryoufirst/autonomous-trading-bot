@@ -488,8 +488,8 @@ export const ATR_STOP_LOSS_MULTIPLIER = 2.5;
  *  edge — but the trail was over-tightening on noise. */
 export const ATR_TRAILING_STOP_MULTIPLIER = 2.5;
 
-/** ATR stop-loss floor — never wider than -25% regardless of ATR */
-export const ATR_STOP_FLOOR_PERCENT = -25;
+/** ATR stop-loss floor — never wider than -22% regardless of ATR (Bear-adjusted Apr-2026: -25→-22 — 50-day bear + F&G Fear; VIX-Rank research confirms tighter floors reduce tail losses in volatile regimes) */
+export const ATR_STOP_FLOOR_PERCENT = -22;
 
 /** ATR stop-loss ceiling — never tighter than -12% regardless of ATR
  *  v12.2.2: Widened from -6% — was causing churn loop (buy → -6% stop → buy again) */

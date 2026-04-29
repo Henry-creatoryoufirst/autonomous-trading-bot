@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-04-29T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #21)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-29T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-QCZYU
 
 ## Problem
 
@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-29T00:00 UTC | Scout skipped (SPECTRA added Apr-28, <48h ago); auditor tightened ATR_STOP_FLOOR_PERCENT -25→-22 (VIX-Rank bear-market research, F&G Fear, 50-day bear) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,11 +76,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-04-29)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: SKIPPED — last scout ran 2026-04-28T13:13 UTC (SPECTRA added), less than 48h ago.
+- **Auditor**: TRIGGERED by inferred 52-day BEAR market (marketRegime BEAR 48h+ threshold met; F&G was 31 "Fear" on Apr-27, regime persisting). Research ran 4 searches. Top finding: VIX-Rank volatility-adjusted risk management research (arxiv.org/pdf/2508.16598) confirms tighter ATR stop floors reduce tail losses in prolonged bear/volatile regimes. ATR_STOP_FLOOR_PERCENT -25→-22 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+
+## Auditor Research Summary (Run #21)
+- **Signal Quality**: Multi-timeframe confluence and on-chain whale flow still primary signals. No actionable new finding beyond existing LARGE_TRADE_THRESHOLD_USD=2500 and HOT_MOVER_MIN_CHANGE_H1_PCT=7.
+- **Execution Efficiency**: Aerodrome Slipstream V3 (MetaDEX03, Nov 2025) adds MEV auction internalization — bot auto-benefits from LP-side improvements. Flashblocks on Base (July 2025) creates 200ms preconfirmation windows; complex to integrate — watchlist.
+- **Position Sizing**: KEY FINDING — VIX-Rank dynamic Kelly research (arxiv 2508.16598) confirms: during elevated volatility, tighter stop floors AND smaller position fractions reduce path-dependent losses. IMPLEMENTED: ATR_STOP_FLOOR_PERCENT -25→-22 (tighter maximum stop-loss distance; effective range now -12% to -22% vs -12% to -25%).
+- **Competitive Intelligence**: MEV protection via private relay submission (Quicknode MEV-protection mode) gaining adoption on Base. Complex infrastructure change — watchlist for future implementation.
 
 ## Auditor Research Summary (Run #20)
 - **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
