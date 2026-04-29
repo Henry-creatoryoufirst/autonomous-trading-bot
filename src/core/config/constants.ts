@@ -547,7 +547,7 @@ export const VOL_HIGH_THRESHOLD = 6;           // >6% daily vol → reduce size 
 export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
 export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%
 export const VOL_LOW_BOOST = 1.5;              // Multiplier when vol < threshold
-export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calculation
+export const VOL_LOOKBACK_DAYS = 5;            // Bear-adjusted Apr-2026: 7→5 — tighter window responds faster to bear-market vol spikes; parallel to KELLY_ROLLING_WINDOW 50→30
 
 /**
  * Portfolio-Wide Drawdown Circuit Breaker
