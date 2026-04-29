@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-04-29T04:07 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-29T04:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-29T04:07 UTC | Scout skipped (SPECTRA added Apr-28, <48h ago); auditor raised FLOW_REVERSAL_EXIT_BUY_RATIO 40→43 (bear flow exit speed) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,17 +76,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-04-29)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: SKIPPED — last scout ran 2026-04-28T13:13 UTC (SPECTRA added), only 14.9h ago.
+- **Auditor**: TRIGGERED by persistent BEAR market (marketRegime BEAR 48h+ threshold, 51+ day bear inferred). Research ran 6 searches. Top finding: Flow signals research confirms bear-market flow reversals are decisive and rarely recover — earlier exit trigger (43% vs 40% buy ratio) exits before decline accelerates. FLOW_REVERSAL_EXIT_BUY_RATIO 40→43 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
-## Auditor Research Summary (Run #20)
-- **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
-- **Execution Efficiency**: Aerodrome Slipstream V2 routing update confirmed (March 2026) — bot auto-benefits from DEX-level improvements without code change needed.
-- **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
-- **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
+## Auditor Research Summary (Run #21)
+- **Signal Quality**: "Trading Meme Coins in April 2026: Flow Signals and Liquidity Shifts" (ainvest.com) — on-chain flow signals remain the strongest alpha signal on Base. No new indicator combo needed; existing flow detection solid.
+- **Execution Efficiency**: Slipstream V2 (March 2026, 34x capital efficiency, Flashblocks 10x faster) — bot auto-benefits. No code change needed.
+- **Position Sizing**: Kelly-VAPS Engine research (mql5.com, 2026-04-02) — professional traders use 10-25% Kelly fraction in bear markets; bot already at 35% post-Run#20 (0.35 × Kelly). Marginal further reduction warranted but already well within safe range. No action.
+- **Competitive Intelligence**: KEY FINDING — In TRENDING_DOWN/BEAR regimes, flow reversals are faster and recoveries rare. Current FLOW_REVERSAL_EXIT_BUY_RATIO=40 means we hold through the full initial reversal. Raising to 43 exits when flow first tips below neutral-minus-7pp, catching exits before acceleration. IMPLEMENTED: FLOW_REVERSAL_EXIT_BUY_RATIO 40→43.
 
 ## Recommended Action for Henry
 

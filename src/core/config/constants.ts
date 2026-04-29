@@ -980,8 +980,10 @@ export const POSITION_HARD_STOP_PCT = -15;
 export const POSITION_SOFT_STOP_PCT = -12;
 
 /** Flow-reversal exit: buy ratio below this AND decelerating for 2+ readings = exit regardless of P&L
- *  v19.0: Flow physics — when capital leaves, we leave with it. */
-export const FLOW_REVERSAL_EXIT_BUY_RATIO = 40;
+ *  v19.0: Flow physics — when capital leaves, we leave with it.
+ *  Bear-adjusted Apr-2026: 40→43 — in TRENDING_DOWN regime, reversals are decisive; catching outflow
+ *  at 43% (vs 40%) exits before the decline accelerates. 2-reading decel guard prevents noise exits. */
+export const FLOW_REVERSAL_EXIT_BUY_RATIO = 43;
 export const FLOW_REVERSAL_EXIT_MIN_DECEL_READINGS = 2;
 
 /** Stop for concentrated positions (> 10% of portfolio) */
