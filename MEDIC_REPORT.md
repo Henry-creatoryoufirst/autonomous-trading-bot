@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-04-29T00:00 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
 
@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-29T00:00 UTC | Scout skipped (SPECTRA+FUN added Apr-28, <48h ago); auditor lowered DECEL_MIN_PROFIT_PCT 3→1 (bear momentum exit gap) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,17 +76,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-04-29)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: SKIPPED — last scout ran 2026-04-28T13:13 UTC (SPECTRA+FUN added), less than 48h ago.
+- **Auditor**: TRIGGERED by inferred 51-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 6 searches. Top finding: In 51-day bear, positions frequently peak at +1-2% before momentum decelerates — DECEL_MIN_PROFIT_PCT=3 gate causes decel exits to miss the optimal window, positions bleed to -5%+. DECEL_MIN_PROFIT_PCT 3→1 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
-## Auditor Research Summary (Run #20)
-- **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
-- **Execution Efficiency**: Aerodrome Slipstream V2 routing update confirmed (March 2026) — bot auto-benefits from DEX-level improvements without code change needed.
-- **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
-- **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
+## Auditor Research Summary (Run #21)
+- **Signal Quality**: No new actionable signal. Multi-signal confluence + whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). RSI+MACD+KDJ combo confirmed but KDJ requires new indicator computation — Complexity 4/5, Priority 0.5 — watchlist.
+- **Execution Efficiency**: Aerodrome Slipstream V2 routing (March 2026) confirmed — 34x capital efficiency, auto-multi-pool routing. Bot already auto-benefits without code change. Permit2 batch already in use. No action.
+- **Position Sizing**: KEY FINDING — VIX-rank dynamic Kelly research (arxiv 2508.16598) confirms vol-scaled fractions outperform static Kelly in high-vol regimes. In 51-day bear, positions peak at +1-2% before momentum decelerates but DECEL_MIN_PROFIT_PCT=3 gate blocks exit — positions bleed to -5%+ unnecessarily. IMPLEMENTED: DECEL_MIN_PROFIT_PCT 3→1.
+- **Competitive Intelligence**: MEV mempool + Discord pre-price-move execution emerging competitive edge. Complexity high — watchlist for future implementation.
 
 ## Recommended Action for Henry
 

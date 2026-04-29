@@ -1019,7 +1019,7 @@ export const DECEL_MIN_POSITION_USD = 10;
 export const DECEL_TRIM_COOLDOWN_SEC = 120;
 
 /** Min profit % before trimming activates */
-export const DECEL_MIN_PROFIT_PCT = 3;
+export const DECEL_MIN_PROFIT_PCT = 1; // Bear-adjusted Apr-2026: 3→1 — in 51-day bear, positions peak at +1-2% then reverse; +3% gate caused ~80% of decel exits to miss the window before loss
 
 /** Dedup window in minutes for decel trim sells */
 export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
