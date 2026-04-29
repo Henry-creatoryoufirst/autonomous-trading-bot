@@ -33,3 +33,4 @@ data/critic-reports/
 !data/rules-proposal.yaml
 !data/critic-reports/
 !data/critic-reports/*.md
+data/observation-pass/
