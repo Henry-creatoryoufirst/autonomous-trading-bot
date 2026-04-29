@@ -1,0 +1,38 @@
+# NVR-SPEC-022 — Pattern P-IntermediarySurge forward-validation harness
+#
+# Purpose: separate Dockerfile so the harness service can override CMD
+# without affecting the trading bot or Signal Service services that use
+# the default Dockerfile.
+#
+# Used by the "observation-harness" Railway service via env var
+# RAILWAY_DOCKERFILE_PATH=Dockerfile.harness.
+#
+# Everything else (base image, deps, healthcheck) matches the trading
+# bot's Dockerfile to keep operational parity.
+
+FROM node:20-slim
+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+RUN mkdir -p logs
+# /data is provided by Railway volume mount — don't mkdir here to avoid conflicts
+
+ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV PERSIST_DIR="/data"
+
+HEALTHCHECK --interval=60s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+CMD ["npm", "run", "start:harness"]
