@@ -838,7 +838,7 @@ export const SCALE_UP_DEDUP_WINDOW_MINUTES = 15;
 export const SURGE_DEDUP_WINDOW_MINUTES = 3;
 
 /** v19.0: Max portfolio % to deploy into a single token via surge (prevents over-concentration) */
-export const SURGE_MAX_CAPITAL_PER_TOKEN_PCT = 25;
+export const SURGE_MAX_CAPITAL_PER_TOKEN_PCT = 20; // Bear-adjusted Apr-2026: 25→20 — 52-day bear; surge events in sustained bear markets are high-probability dead-cat bounces; tighter per-token cap limits catastrophic concentration risk on false surge signals
 
 /** v19.0: Max surge buys per token per hour (prevents runaway buying on noisy flow) */
 export const SURGE_MAX_BUYS_PER_HOUR = 5;
