@@ -27,7 +27,7 @@ export const BASE_USDC_ADDRESS = activeChain.usdc.address;
 // ============================================================================
 
 /** Sonnet for complex decisions: trade execution, portfolio rebalancing, emergencies */
-export const AI_MODEL_HEAVY = 'claude-sonnet-4-20250514';
+export const AI_MODEL_HEAVY = 'claude-sonnet-4-6';
 
 /** Haiku for routine monitoring: forced-interval checks, status updates, chat */
 export const AI_MODEL_ROUTINE = 'claude-haiku-4-5-20251001';
