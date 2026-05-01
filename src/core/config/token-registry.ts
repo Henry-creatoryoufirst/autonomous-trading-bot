@@ -428,6 +428,11 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "cbDOGE", name: "Coinbase Wrapped DOGE", coingeckoId: "coinbase-wrapped-doge",
     sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
   },
+  NOICE: {
+    address: "0x9cb41fd9dc6891bae8187029461bfaadf6cc0c69",
+    symbol: "NOICE", name: "noice", coingeckoId: "noice",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
