@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-05-01T~current UTC | Scout no qualifying tokens (data sources restricted + searched tokens failed thresholds); auditor lowered VOL_LOW_BOOST 1.5→1.2 (hybrid Kelly+VIX research, quiet bear periods warrant tighter sizing) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,17 +76,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-05-01)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: RAN — last scout 2026-04-28T13:13 UTC (60+ hours ago, >48h threshold). Fetched 3 trending/new pool sources + 2 web searches. Tokens evaluated: Based Fartcoin ($686K liq, $15K vol — FAIL volume), NORMIE ($1.2K liq — FAIL both), CHOMP ($330K liq, $19K vol — FAIL volume), BSHIB (~$21 vol — FAIL). No qualifying tokens found. Standards maintained.
+- **Auditor**: TRIGGERED by inferred 53-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Hybrid Kelly+VIX volatility regime scaling research (arxiv 2508.16598, 2025) shows low-vol quiet periods in bear markets precede drawdowns — sizing boost should be conservative. VOL_LOW_BOOST 1.5→1.2 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
-## Auditor Research Summary (Run #20)
-- **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
-- **Execution Efficiency**: Aerodrome Slipstream V2 routing update confirmed (March 2026) — bot auto-benefits from DEX-level improvements without code change needed.
-- **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
-- **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
+## Auditor Research Summary (Run #21 — 2026-05-01)
+- **Signal Quality**: Multi-signal integration (flow 0.35, risk 0.25, momentum 0.20, trend 0.15) already best-practice. Nansen/Glassnode intelligence style already implemented via SWARM architecture. No new action.
+- **Execution Efficiency**: Slipstream V2 (March 2026) improved routing — bot auto-benefits without code change. Intent-based architecture emerging but complex (impact 4, complexity 5, risk high) → Watch List.
+- **Position Sizing**: KEY FINDING — Hybrid Kelly+VIX volatility regime research (arxiv 2508.16598) confirms low-vol quiet periods in bear markets should NOT trigger size boosts. Current VOL_LOW_BOOST=1.5 (50% boost when vol <1%) over-commits during quiet bear traps. IMPLEMENTED: VOL_LOW_BOOST 1.5→1.2 (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Competitive Intelligence**: Intent-based solver routing (solvers compete to fill orders) emerging across Base DeFi. Complex to implement. MEV-protection private RPC relays going mainstream — already on bot via sequencer-direct endpoint. No new action needed.
 
 ## Recommended Action for Henry
 
