@@ -433,6 +433,16 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "NOICE", name: "noice", coingeckoId: "noice",
     sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
+  FAI: {
+    address: "0xb33ff54b9f7242ef1593d2c9bcd8f9df46c77935",
+    symbol: "FAI", name: "Freysa AI", coingeckoId: "freysa-ai",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  GIZA: {
+    address: "0x590830dfdf9a3f68afcdde2694773debdf267774",
+    symbol: "GIZA", name: "Giza", coingeckoId: "giza",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
