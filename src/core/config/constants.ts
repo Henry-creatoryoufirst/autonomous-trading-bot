@@ -415,7 +415,7 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  */
 export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
 export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
-export const NORMAL_CONFLUENCE_BUY = 25;
+export const NORMAL_CONFLUENCE_BUY = 27;    // Bear-adjusted May-2026: 25→27 — 46-day bear market; false-positive entry rate elevated; unify with re-entry threshold for equal caution on all buys.
 export const NORMAL_CONFLUENCE_SELL = -20;
 
 // ========================================================================
