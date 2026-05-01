@@ -644,7 +644,7 @@ export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
 export const HOT_MOVER_MIN_POOL_AGE_HOURS = 24;
 
 /** Hot mover quality gate: minimum buy ratio in h1 (55%+ buys = genuine demand, not sell-off) */
-export const HOT_MOVER_MIN_BUY_RATIO = 0.55;
+export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0.60 — 47-day bear; pumps with 55-60% buy ratio are predominantly MEV-front-run distribution; require genuine conviction
 
 // ============================================================================
 // v21.13: ICU WATCH MODE — Intensive monitoring for new/small-cap positions
