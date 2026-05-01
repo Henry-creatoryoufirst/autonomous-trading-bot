@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-05-01T00:00 UTC | Scout added NOICE ($1.67M liq, $748K 24h vol, Farcaster SocialFi, score 7/10); auditor tightened BREAKER_DAILY_DD_PCT 7→6 (53-day bear, industry practice 5-6%) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,11 +76,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-05-01)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: RAN — last scout was 2026-04-28T13:13 UTC (SPECTRA), 60h ago > 48h threshold. GeckoTerminal blocked; used WebSearch. Evaluated: NOICE ✅ (7/10, $1.67M liq, $748K vol, 1yr pool), MOCHI ❌ (vol $9.79K < $50K), BLEND ❌ (Ethereum L2 not Base). Added NOICE to TOKEN_REGISTRY.
+- **Auditor**: TRIGGERED by inferred 53+ day BEAR market. Research ran 4 searches. Top finding: Adaptive Kelly criterion research + existing code comment confirm industry practice for daily circuit breaker is 5-6% (currently 7% since Apr-2026 audit). BREAKER_DAILY_DD_PCT 7→6 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
 ## Auditor Research Summary (Run #20)
 - **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
