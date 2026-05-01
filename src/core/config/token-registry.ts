@@ -417,6 +417,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "FUN", name: "Sport.Fun", coingeckoId: "sport-fun",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-01) ===
+  cbADA: {
+    address: "0xcbADA732173e39521CDBE8bf59a6Dc85A9fc7b8c",
+    symbol: "cbADA", name: "Coinbase Wrapped ADA", coingeckoId: "coinbase-wrapped-ada",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
+  },
+  cbDOGE: {
+    address: "0xcbD06E5A2B0C65597161de254AA074E489dEb510",
+    symbol: "cbDOGE", name: "Coinbase Wrapped DOGE", coingeckoId: "coinbase-wrapped-doge",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
