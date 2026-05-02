@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-30T06:08 UTC
+# MEDIC REPORT — 2026-05-02T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #21)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #22)
 
 ## Environment
-- Run timestamp: 2026-04-30T06:08 UTC
+- Run timestamp: 2026-05-02T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-O6XYp
 
 ## Problem
 
@@ -52,6 +52,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
 | #21 | 2026-04-30T06:08 UTC | Scout skipped (SPECTRA added Apr-28 13:13, <48h ago); auditor lowered SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20 (52-day bear surge-trap defense) |
+| #22 | 2026-05-02T00:00 UTC | Scout skipped (KAITO added 2026-05-02 by sibling agent, <48h); auditor raised SCALE_UP_BUY_RATIO_MIN 55→58 (54-day bear; aligns scale-up conviction with HOT_MOVER_MIN_BUY_RATIO=60) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,6 +76,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #22 — 2026-05-02)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #22).
+- **Scout**: SKIPPED — sibling agent on staging already ran today (2026-05-02) adding KAITO to TOKEN_REGISTRY. Merged staging changes (KAITO, FAI, GIZA, HOT_MOVER_MIN_BUY_RATIO 0.60, NORMAL_CONFLUENCE_SELL -18, KELLY_FRACTION 0.30) into this branch before proceeding.
+- **Auditor**: TRIGGERED by inferred 54-day BEAR market (marketRegime BEAR 48h+ threshold, same persistent condition). Research ran 4 searches. Top finding: SCALE_UP_BUY_RATIO_MIN inconsistency (HOT_MOVER_MIN_BUY_RATIO was just raised to 60 but scale-ups still required only 55% buy ratio). SCALE_UP_BUY_RATIO_MIN 55→58 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+
+## Auditor Research Summary (Run #22 — 2026-05-02)
+- **Signal Quality**: AI agent herding risk identified (simultaneous agents triggering market-wide moves) — already mitigated by NVR's adversarial risk-reviewer + independent cycle timing. No new action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (April 18 2026 upgrade, dynamic fee pools, gas-aware routing) — bot auto-benefits without code change. Note: Slipstream V2 uses volatility-adjusted fees which may improve fill quality on volatile meme coins.
+- **Position Sizing**: KEY FINDING — Kelly criterion bear-market research confirms adding capital to positions should require ≥ as much signal strength as entering new positions. HOT_MOVER_MIN_BUY_RATIO was raised to 60, but SCALE_UP_BUY_RATIO_MIN was still 55 — asymmetry backwards. IMPLEMENTED: SCALE_UP_BUY_RATIO_MIN 55→58. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV protection modes going mainstream (private relays, direct block builder submission). NVR's mev-protection.ts already covers this. Slippage study confirms 10-20% for meme coins is appropriate (NVR current settings are within this range). No new action.
 
 ## Jobs Status This Run (Run #21 — 2026-04-30)
 
