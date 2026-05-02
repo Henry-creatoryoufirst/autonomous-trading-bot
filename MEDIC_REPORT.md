@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-05-02T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #23)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-05-02T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-f9xBz
 
 ## Problem
 
@@ -51,6 +51,9 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-30T06:14 UTC | Scout skipped (<48h); auditor SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20 (staging) |
+| #22 | 2026-05-01T09:17 UTC | Scout cbADA, cbDOGE, NOICE, FAI, GIZA added; auditor HOT_MOVER_MIN_BUY_RATIO, CONFLUENCE thresholds tightened (staging) |
+| #23 | 2026-05-02T00:00 UTC | Scout no new qualifying tokens (APIs blocked); auditor VOL_LOW_BOOST 1.5→1.2 — bear-trap low-vol sizing discipline |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,17 +78,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #23 — 2026-05-02)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: NO QUALIFYING TOKENS — GeckoTerminal/DexScreener/CoinGecko APIs all 403 blocked. Web searches did not surface new verifiable candidates not already in registry (staging already added cbADA, cbDOGE, NOICE, FAI, GIZA, KAITO in runs #21-22).
+- **Auditor**: TRIGGERED by inferred 54-day BEAR market (marketRegime BEAR 48h+ threshold met, running since ~Mar 9). Top finding: Kelly-VAPS research shows VOL_LOW_BOOST is dangerously high in bear markets — low-vol periods are bear traps/distribution windows, not buy-side consolidation. VOL_LOW_BOOST 1.5→1.2 implemented (Impact 4, Complexity 1, Risk low, Priority 4.0).
 
-## Auditor Research Summary (Run #20)
-- **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
-- **Execution Efficiency**: Aerodrome Slipstream V2 routing update confirmed (March 2026) — bot auto-benefits from DEX-level improvements without code change needed.
-- **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
-- **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
+## Auditor Research Summary (Run #23)
+- **Signal Quality**: On-chain whale analytics (Nansen, smart money flow) complement existing LARGE_TRADE_THRESHOLD_USD=2500 system. No new <10 line implementation identified.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) already active. Bot benefits automatically. Permit2 already implemented with 20s wait. No new change needed.
+- **Position Sizing**: KEY FINDING — Kelly-VAPS research (Kelly-VAPS Engine, MQL5 2026): ATR-normalized sizing should reduce position boosts during low-vol bear consolidations. VOL_LOW_BOOST 1.5 in a 54-day bear market over-sizes into distribution periods. Reducing to 1.2 cuts low-vol boost by 20% — still allows tactical sizing but stops "free money" over-commitment when bear market appears "calm." IMPLEMENTED: VOL_LOW_BOOST 1.5→1.2.
+- **Competitive Intelligence**: ~70% of Uniswap trades are bot-executed in 2026; MEV/sandwich via private mempools is high-complexity watchlist. Cross-DEX aggregation already implemented via Aerodrome + CDP fallback.
 
 ## Recommended Action for Henry
 
