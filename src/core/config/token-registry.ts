@@ -443,6 +443,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "GIZA", name: "Giza", coingeckoId: "giza",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-02) ===
+  KAITO: {
+    address: "0x98d0baa52b2d063e780de12f615f963fe8537553",
+    symbol: "KAITO", name: "Kaito", coingeckoId: "kaito",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
