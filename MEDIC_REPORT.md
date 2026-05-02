@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-04-30T06:08 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #21)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-04-30T06:08 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-04-30T06:08 UTC | Scout skipped (SPECTRA added Apr-28 13:13, <48h ago); auditor lowered SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20 (52-day bear surge-trap defense) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,11 +76,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-04-30)
 
-- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #21).
+- **Scout**: SKIPPED — last scout ran 2026-04-28T13:13 UTC (SPECTRA added), ~41h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 52-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion + competitive intel research confirms tighter surge concentration limits in sustained bear markets (dead-cat bounce risk). SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+
+## Auditor Research Summary (Run #21 — 2026-04-30)
+- **Signal Quality**: Whale tracking + volume confirmation already implemented (LARGE_TRADE_THRESHOLD_USD=2500, HOT_MOVER_MIN_BUY_RATIO=0.55). No new action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026, 34× cap efficiency) — bot auto-benefits from DEX-level improvements without code change needed.
+- **Position Sizing**: KEY FINDING — Kelly/volatility research confirms reducing max per-token allocation in sustained bear markets. SURGE events in 52-day bear are statistically likely dead-cat bounces. IMPLEMENTED: SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: CoW Swap intent-based execution ($9B/mo, 34.3% DEX aggregator share). Intent routing requires touching executeDirectDexSwap (off-limits for auto-implementation). Watch list for Henry.
 
 ## Auditor Research Summary (Run #20)
 - **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
