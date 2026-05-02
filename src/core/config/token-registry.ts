@@ -417,6 +417,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "FUN", name: "Sport.Fun", coingeckoId: "sport-fun",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-02) ===
+  BIO: {
+    address: "0x226A2FA2556C48245E57cd1cbA4C6c9e67077DD2",
+    symbol: "BIO", name: "Bio Protocol", coingeckoId: "bio-protocol",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
