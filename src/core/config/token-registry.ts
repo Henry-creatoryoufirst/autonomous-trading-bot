@@ -417,6 +417,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "FUN", name: "Sport.Fun", coingeckoId: "sport-fun",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-02) ===
+  MOLT: {
+    address: "0xb695559b26bb2c9703ef1935c37aeae9526bab07",
+    symbol: "MOLT", name: "Moltbook", coingeckoId: "moltbook",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  CHIP: {
+    address: "0x0c1c1c109fe34733fca54b82d7b46b75cfb71f6e",
+    symbol: "CHIP", name: "USD.AI", coingeckoId: "usd-ai",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
