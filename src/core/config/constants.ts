@@ -813,7 +813,7 @@ export const TWAP_OBSERVATION_SECONDS = 900;
 export const SCALE_UP_MIN_GAIN_PCT = 5; // Bear-adjusted Apr-2026: 3→5 — 3% gains reverse easily in 46-day bear; require stronger confirmation before adding capital
 
 /** Buy ratio must exceed this % to confirm momentum for scale-up */
-export const SCALE_UP_BUY_RATIO_MIN = 55;
+export const SCALE_UP_BUY_RATIO_MIN = 60; // Bear-adjusted May-2026: 55→60 — aligns with HOT_MOVER_MIN_BUY_RATIO (60); 55-60% buy ratio is predominantly MEV-front-run distribution in bear markets; adding capital on weak buy-ratio bounces increases losses
 
 /** Deploy this % of portfolio on each scale-up buy */
 export const SCALE_UP_SIZE_PCT = 4;

@@ -54,6 +54,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #21 | 2026-04-30T06:08 UTC | Scout skipped (SPECTRA added Apr-28 13:13, <48h ago); auditor lowered SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20 (52-day bear surge-trap defense) |
 | #22 | 2026-05-02T04:18 UTC | Scout added KAITO; auditor lowered KELLY_FRACTION 0.35→0.30 (first step toward Quarter-Kelly, 52-day bear) |
 | #23 | 2026-05-02T14:xx UTC | Scout skipped (<48h, KAITO added at 00:17); auditor lowered KELLY_FRACTION 0.30→0.25 — true Quarter-Kelly completion (54-day bear, crypto fat-tail research) |
+| #24 | 2026-05-02T17:05 UTC | Scout skipped (<48h, last BIO scout at 14:14); auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 — aligns scale-up signal bar with HOT_MOVER (both 60%); eliminates bear-market inconsistency |
 
 ## Bot Health Evidence (from git history)
 
