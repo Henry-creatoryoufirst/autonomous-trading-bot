@@ -79,8 +79,8 @@ Because the API is unreachable, the medic cannot determine:
 ## Jobs Status This Run (Run #21 — 2026-05-03)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: RUNNING — last scout ran 2026-04-28T13:13 UTC (SPECTRA added), >48h ago.
-- **Auditor**: Pending Scout results.
+- **Scout**: COMPLETE — CLAWBANK added to TOKEN_REGISTRY. AI agent fintech token (bank accounts for AI agents), Uniswap V4 Base. $281K liq, $267K 24h vol (+65.9%), ~1 month pool age. Score: 7/10.
+- **Auditor**: TRIGGERED (55-day inferred BEAR regime). Research: 4 searches run. Top finding: VOLATILE regime multiplier 0.7→0.6 — bear-market volatile spikes are whipsaws, not opportunity. Priority 3.0, Impact 3, Complexity 1, Risk low. IMPLEMENTED.
 
 ## Recommended Action for Henry
 
