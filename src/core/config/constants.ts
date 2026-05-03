@@ -643,8 +643,8 @@ export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
 /** Hot mover quality gate: pool must be at least this old in hours (reject brand-new pools = rug risk) */
 export const HOT_MOVER_MIN_POOL_AGE_HOURS = 24;
 
-/** Hot mover quality gate: minimum buy ratio in h1 (55%+ buys = genuine demand, not sell-off) */
-export const HOT_MOVER_MIN_BUY_RATIO = 0.55;
+/** Hot mover quality gate: minimum buy ratio in h1 (60%+ buys = genuine demand; auditor May-2026: 0.55→0.60 — 55-day bear; 55-59% buy ratios reverse ~70% in extended bear markets; require stronger confirmation) */
+export const HOT_MOVER_MIN_BUY_RATIO = 0.60;
 
 // ============================================================================
 // v21.13: ICU WATCH MODE — Intensive monitoring for new/small-cap positions
