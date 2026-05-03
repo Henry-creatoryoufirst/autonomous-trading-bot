@@ -51,6 +51,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21–23 | 2026-04-30 to 2026-05-02 | Staging runs — see staging branch history |
+| #24 | 2026-05-03T~current UTC | Scout added UP (Superform), DBR (deBridge); auditor KELLY_FRACTION 0.35→0.25 — 55-day bear true Quarter-Kelly |
 
 ## Bot Health Evidence (from git history)
 
