@@ -417,6 +417,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "FUN", name: "Sport.Fun", coingeckoId: "sport-fun",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-03) ===
+  PONKE: {
+    address: "0xbacde4a897d2429a831c0b67f693fc68b49633d0",
+    symbol: "PONKE", name: "Ponke", coingeckoId: "ponke",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  KAITO: {
+    address: "0x98d0baa52b2d063e780de12f615f963fe8537553",
+    symbol: "KAITO", name: "Kaito", coingeckoId: "kaito",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
