@@ -532,7 +532,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  */
 export const KELLY_FRACTION = 0.35;           // Bear-adjusted Apr-2026: Quarter-Kelly range (was 0.5 half-Kelly); 46-day bear + auditor ceiling already at 14% → 0.35×14%=4.9% effective max vs 7% prior
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
-export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
+export const KELLY_ROLLING_WINDOW = 20;       // Bear-adjusted May-2026: 30→20 — 54-day bear; aligns window with KELLY_MIN_TRADES so all 20 samples are recent; eliminates pre-bear bull-era wins that inflate Kelly estimate in sustained downtrends
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
 export const KELLY_POSITION_CEILING_PCT = 14;  // 14% of portfolio per trade — bear-adjusted (was 18%); with TRENDING_DOWN ×0.75 → 10.5% effective max; auditor Apr-2026: 46-day bear warrants Quarter-Kelly-range caps
 export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
