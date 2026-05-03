@@ -55,6 +55,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #22 | 2026-05-02T04:18 UTC | Scout added KAITO; auditor lowered KELLY_FRACTION 0.35→0.30 (first step toward Quarter-Kelly, 52-day bear) |
 | #23 | 2026-05-02T14:xx UTC | Scout skipped (<48h, KAITO added at 00:17); auditor lowered KELLY_FRACTION 0.30→0.25 — true Quarter-Kelly completion (54-day bear, crypto fat-tail research) |
 | #24 | 2026-05-02T17:05 UTC | Scout skipped (<48h, last BIO scout at 14:14); auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 — aligns scale-up signal bar with HOT_MOVER (both 60%); eliminates bear-market inconsistency |
+| #25 | 2026-05-03T00:00 UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_DROP_FROM_PEAK 8→6 — faster Smart Trim activation in 55-day bear; buy ratio peaks are lower so smaller drops signal distribution |
 
 ## Bot Health Evidence (from git history)
 
@@ -78,6 +79,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #25 — 2026-05-03T00:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #25).
+- **Scout**: SKIPPED — last scout ran 2026-05-02 (KAITO added), less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 55-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding: DECEL_MIN_DROP_FROM_PEAK 8→6 — faster Smart Trim activation. In sustained bear, buy ratio peaks are lower and smaller drops signal distribution; activating trim at 6pp (vs 8pp) exits profitable positions before they fade. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #25 — 2026-05-03)
+- **Signal Quality**: On-chain exchange outflow/TVL monitoring established as accumulation signal. Already captured via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. No new action. (Impact 2, Complexity 4, Priority 0.5)
+- **Execution Efficiency**: Slipstream V2 (March 2026) auto-benefits routing efficiency. Permit2 already batched. No code change needed. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear markets. Already at KELLY_FRACTION=0.25. GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 was secondary candidate (Impact 3, Priority 3.0) — deferred to DECEL_MIN_DROP_FROM_PEAK which has more direct bear-market exit impact.
+- **Competitive Intelligence**: Intent-based routing (CoW Swap, ~34% DEX share) requires executeDirectDexSwap changes (off-limits). MEV private relay already in RPC endpoints. KEY FINDING: "Dynamic Capital Protection scales down during erratic regimes" → DECEL_MIN_DROP_FROM_PEAK 8→6 IMPLEMENTED.
 
 ## Jobs Status This Run (Run #23 — 2026-05-02T14:xx UTC)
 
