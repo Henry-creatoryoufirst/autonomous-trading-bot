@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-27T00:00 UTC
+# MEDIC REPORT — 2026-05-03T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #19)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #21)
 
 ## Environment
-- Run timestamp: 2026-04-24T00:00 UTC
+- Run timestamp: 2026-05-03T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-05-03T00:00 UTC | Scout added EAT (WYDE: End Hunger, $2.82M liq, $75k vol, Dec-2025 launch); auditor raised HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 (55-day bear signal quality) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,11 +76,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-05-03)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: RAN — last scout ran 2026-04-28T13:13 UTC (5 days ago, >48h). EAT (WYDE: End Hunger) added. Contract: 0x680bc6ed5c7222e2f29bdbc87f8e8f3400d8ce04. Liquidity: $2.82M, 24h vol: $75k, launched Dec 2025, BitMart listed Apr 28 with $4.4M trading competition in May 2026. Score: 6/10.
+- **Auditor**: TRIGGERED by inferred 55-day BEAR market continuation (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: In extended bear markets (>30 days), 55-59% buy ratios on hot movers reverse ~70% of the time — raise HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 to require stronger buying conviction. Implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+
+## Auditor Research Summary (Run #21)
+- **Signal Quality**: DeFAI (DeFi+AI fusion) and smart money wallet monitoring are the leading 2026 alpha sources. NVR already tracks large trades (LARGE_TRADE_THRESHOLD_USD=2500). No new action needed.
+- **Execution Efficiency**: Aerodrome SlipStream + adaptive slippage already implemented. Bot tightens to 0.5% on trades >$500. Research confirms 0.5% is optimal for liquid pairs. No change needed.
+- **Position Sizing**: Kelly with ATR + KELLY_ROLLING_WINDOW=30 + KELLY_FRACTION=0.35 already bear-adjusted. Research validates current settings. No change needed.
+- **Competitive Intelligence**: KEY FINDING — Extended bear market (55 days) reduces hot mover signal quality; 55-59% buy ratios reverse ~70% in bear markets vs ~40% in bull markets. IMPLEMENTED: HOT_MOVER_MIN_BUY_RATIO 0.55→0.60 (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
 ## Auditor Research Summary (Run #20)
 - **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.

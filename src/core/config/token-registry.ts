@@ -417,6 +417,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "FUN", name: "Sport.Fun", coingeckoId: "sport-fun",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-03) ===
+  EAT: {
+    address: "0x680bc6ed5c7222e2f29bdbc87f8e8f3400d8ce04",
+    symbol: "EAT", name: "WYDE: End Hunger", coingeckoId: "wyde-end-hunger",
+    sector: "MEME_COINS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
