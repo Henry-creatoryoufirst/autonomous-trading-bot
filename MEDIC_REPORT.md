@@ -56,6 +56,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #23 | 2026-05-02T14:xx UTC | Scout skipped (<48h, KAITO added at 00:17); auditor lowered KELLY_FRACTION 0.30→0.25 — true Quarter-Kelly completion (54-day bear, crypto fat-tail research) |
 | #24 | 2026-05-02T17:05 UTC | Scout skipped (<48h, last BIO scout at 14:14); auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 — aligns scale-up signal bar with HOT_MOVER (both 60%); eliminates bear-market inconsistency |
 | #25 | 2026-05-03T00:00 UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_DROP_FROM_PEAK 8→6 — faster Smart Trim activation in 55-day bear; buy ratio peaks are lower so smaller drops signal distribution |
+| #26 | 2026-05-03T~current UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_PROFIT_PCT 3→2 — lowers Smart Trim profit floor; completes DECEL tightening started in Run#25 (drop 8→6); 55-day bear gains peak earlier at 2-3%, lower floor captures more exits before reversal |
 
 ## Bot Health Evidence (from git history)
 

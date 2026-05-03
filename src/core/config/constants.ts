@@ -1019,7 +1019,7 @@ export const DECEL_MIN_POSITION_USD = 10;
 export const DECEL_TRIM_COOLDOWN_SEC = 120;
 
 /** Min profit % before trimming activates */
-export const DECEL_MIN_PROFIT_PCT = 3;
+export const DECEL_MIN_PROFIT_PCT = 2; // Bear-adjusted May-2026: 3→2 — 55-day bear; gains peak earlier/lower; lower floor lets sensitised DECEL (drop 8→6, Run#25) act on smaller winners before reversal
 
 /** Dedup window in minutes for decel trim sells */
 export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
