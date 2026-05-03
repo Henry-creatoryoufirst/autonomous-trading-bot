@@ -406,6 +406,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "RNBW", name: "Rainbow Wallet Token", coingeckoId: "rainbow-3",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-03) ===
+  cbADA: {
+    address: "0xcbADA732173e39521CDBE8bf59a6Dc85A9fc7b8c",
+    symbol: "cbADA", name: "Coinbase Wrapped ADA", coingeckoId: "coinbase-wrapped-ada",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 6,
+  },
   // === AUTO-DISCOVERED (scout 2026-04-28) ===
   SPECTRA: {
     address: "0x64fcc3a02eeeba05ef701b7eed066c6ebd5d4e51",
