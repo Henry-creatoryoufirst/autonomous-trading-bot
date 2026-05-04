@@ -34,8 +34,9 @@
  *                                  v22TickIntervalSec seconds.
  */
 
-import { mkdirSync, writeFileSync, appendFileSync } from "fs";
-import { join } from "path";
+import { mkdirSync, writeFileSync, appendFileSync, existsSync, readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { PatternRuntime } from "./runtime.js";
@@ -103,6 +104,45 @@ export interface V22Status {
   closedPositions: number;
   lastError: string | null;
   patternStatuses: Record<string, "disabled" | "paper" | "live">;
+  /** Per-pattern rolling-edge metrics. Powers the Pattern Aging Watchdog
+   *  routine (Loop B). Null fields = insufficient samples in window. */
+  patterns: Record<string, PatternMetrics>;
+}
+
+export interface PatternMetrics {
+  status: "disabled" | "paper" | "live";
+  openPositions: number;
+  closedPositions: number;
+  /** Rolling hit rate over closed positions in the last 7 days (0–1).
+   *  Null if <5 closed positions in window. */
+  rollingHitRate7d: number | null;
+  /** Rolling hit rate over closed positions in the last 30 days (0–1).
+   *  Null if <5 closed positions in window. */
+  rollingHitRate30d: number | null;
+  /** Realized edge over null: (hitRate30d − validatedNullHitRate). Null
+   *  if either side is missing. */
+  realizedEdge30d: number | null;
+  /** Validated edge baseline from config/pattern-baselines.json (0–1).
+   *  Null if no baseline configured for this pattern. */
+  validatedEdgeBaseline: number | null;
+  /** Decay ratio = realizedEdge30d / validatedEdgeBaseline. The Pattern
+   *  Aging Watchdog demotes when this drops below 0.5. Null if either
+   *  numerator or denominator is missing. */
+  decayRatio: number | null;
+}
+
+interface PatternBaseline {
+  validatedEdgePp: number;       // 17.7
+  validatedHitRate: number;      // 0.364
+  validatedNullHitRate: number;  // 0.187
+  validatedAt: string;
+  source: string;
+  nMin: number;
+  notes?: string;
+}
+
+interface PatternBaselinesConfig {
+  patterns: Record<string, PatternBaseline>;
 }
 
 // ----------------------------------------------------------------------------
@@ -121,6 +161,12 @@ export function initV22Integration(
 
   // Make sure detect() can fire (the pattern's env-var gate).
   process.env["POST_VOL_LONG_PATTERN_ENABLED"] = "true";
+
+  // Load pattern baselines from the bundled config. Used by status() to
+  // compute decay-ratio per pattern. Resolves relative to this module so
+  // it works in both `tsx scripts/...` and Railway-deployed contexts.
+  // The Aging Watchdog routine (Loop B) reads these computed fields.
+  const baselines = loadPatternBaselines(log);
 
   const cache = new CacheManager();
   const anthropic = process.env["ANTHROPIC_API_KEY"]
@@ -322,6 +368,52 @@ export function initV22Integration(
     for (const r of registry.byStatus("live")) patternStatuses[r.pattern.name] = "live";
     for (const r of registry.byStatus("disabled")) patternStatuses[r.pattern.name] = "disabled";
 
+    // Per-pattern rolling-edge metrics. Powers the Pattern Aging Watchdog
+    // routine (Loop B). For each pattern, compute hit rates over 7d/30d
+    // windows from runtime.tracker.closedPositions(name), apply baseline
+    // from config/pattern-baselines.json, and surface decay ratio.
+    const patterns: Record<string, PatternMetrics> = {};
+    const cutoff7d = now - 7 * 24 * 60 * 60 * 1000;
+    const cutoff30d = now - 30 * 24 * 60 * 60 * 1000;
+    const allPatternNames = new Set<string>(Object.keys(patternStatuses));
+    for (const name of allPatternNames) {
+      const opens = runtime.tracker.openPositions(name);
+      const allClosed = runtime.tracker.closedPositions(name);
+      const closed7d = allClosed.filter(
+        (c) => Date.parse(c.closedAt) >= cutoff7d,
+      );
+      const closed30d = allClosed.filter(
+        (c) => Date.parse(c.closedAt) >= cutoff30d,
+      );
+
+      const rollingHitRate7d = hitRateFromClosed(closed7d);
+      const rollingHitRate30d = hitRateFromClosed(closed30d);
+
+      const baseline = baselines[name];
+      const validatedEdgeBaseline = baseline
+        ? baseline.validatedEdgePp / 100
+        : null;
+      const realizedEdge30d =
+        rollingHitRate30d !== null && baseline
+          ? rollingHitRate30d - baseline.validatedNullHitRate
+          : null;
+      const decayRatio =
+        realizedEdge30d !== null && validatedEdgeBaseline !== null && validatedEdgeBaseline !== 0
+          ? realizedEdge30d / validatedEdgeBaseline
+          : null;
+
+      patterns[name] = {
+        status: patternStatuses[name] ?? "disabled",
+        openPositions: opens.length,
+        closedPositions: allClosed.length,
+        rollingHitRate7d,
+        rollingHitRate30d,
+        realizedEdge30d,
+        validatedEdgeBaseline,
+        decayRatio,
+      };
+    }
+
     return {
       enabled: true,
       lastTickAt: lastTickAt > 0 ? lastTickAt : null,
@@ -334,6 +426,7 @@ export function initV22Integration(
       closedPositions: runtime.tracker.closedPositions().length,
       lastError,
       patternStatuses,
+      patterns,
     };
   }
 
@@ -343,6 +436,49 @@ export function initV22Integration(
 // ----------------------------------------------------------------------------
 // Helpers
 // ----------------------------------------------------------------------------
+
+/**
+ * Load pattern baselines from `config/pattern-baselines.json`. Returns an
+ * empty record on missing file or parse error — the runtime continues, just
+ * without decay-ratio computation for patterns lacking a baseline. Logged.
+ */
+function loadPatternBaselines(
+  log: (msg: string) => void,
+): Record<string, PatternBaseline> {
+  try {
+    // Resolve relative to this module — works whether we're invoked via
+    // tsx scripts/observation-forward-harness.ts (Railway) or via tests.
+    const __dirnameLocal = dirname(fileURLToPath(import.meta.url));
+    // module is at src/core/patterns/forward-harness-adapter.ts
+    // → up 3 to repo root → config/pattern-baselines.json
+    const path = join(__dirnameLocal, "..", "..", "..", "config", "pattern-baselines.json");
+    if (!existsSync(path)) {
+      log(`pattern-baselines.json not found at ${path}; decay-ratio fields will be null`);
+      return {};
+    }
+    const raw = readFileSync(path, "utf-8");
+    const parsed = JSON.parse(raw) as PatternBaselinesConfig;
+    return parsed.patterns ?? {};
+  } catch (e) {
+    log(`pattern-baselines load failed: ${(e as Error).message}; decay-ratio fields will be null`);
+    return {};
+  }
+}
+
+/**
+ * Compute hit rate from a list of closed positions. "Hit" = closeReason
+ * is "profit_target". Anything else (stop_loss, time_stop) is a miss.
+ * Returns null if fewer than `minSamples` positions in the input — a
+ * smaller sample is too noisy to publish a rolling number.
+ */
+function hitRateFromClosed(
+  closed: readonly { closeReason: string }[],
+  minSamples: number = 5,
+): number | null {
+  if (closed.length < minSamples) return null;
+  const hits = closed.filter((c) => c.closeReason === "profit_target").length;
+  return hits / closed.length;
+}
 
 function estimateRealizedVol(candles: readonly number[]): number {
   if (candles.length < 4) return 0;
