@@ -51,6 +51,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #18 | 2026-04-24T00:00 UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
 | #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 (F&G 31, Fear) |
 | #20 | 2026-04-27T~current UTC | Scout skipped (RNBW added Apr-26, <48h ago); auditor lowered KELLY_ROLLING_WINDOW 50→30 (bear win-rate responsiveness) |
+| #21 | 2026-05-04T~current UTC | Scout added TRX (TRON on Base via LayerZero OFT, Aerodrome TRX/USDC pool, top-15 crypto, 46-day-old pool); auditor lowered KELLY_FRACTION 0.35→0.25 (true Quarter Kelly, 56-day bear) |
 
 ## Bot Health Evidence (from git history)
 
@@ -75,11 +76,11 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #20 — 2026-04-27)
+## Jobs Status This Run (Run #21 — 2026-05-04)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
-- **Scout**: SKIPPED — last scout ran 2026-04-26T02:11 UTC (RNBW added), less than 48h ago.
-- **Auditor**: TRIGGERED by inferred 49-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Kelly criterion research confirms tighter recent-window data (30 trades) better captures bear-market win-rate reality than 50-trade window. KELLY_ROLLING_WINDOW 50→30 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
+- **Scout**: RAN — last scout was 2026-04-28 (6 days ago, >48h). TRX (TRON on Base via LayerZero OFT) added to TOKEN_REGISTRY. Pool age 46 days on Aerodrome, top-15 crypto by market cap. CHZ evaluated but rejected (no verified Base contract address). Score: TRX 7.5/10 ✅.
+- **Auditor**: TRIGGERED by inferred 56-day BEAR market (marketRegime BEAR 48h+ threshold met). Research ran 4 searches. Top finding: Quarter Kelly research confirms KELLY_FRACTION should be true 0.25 (not 0.35 range) for prolonged bear markets — achieves 50% of full Kelly growth with manageable drawdowns. KELLY_FRACTION 0.35→0.25 implemented (Impact 3, Complexity 1, Risk low, Priority 3.0).
 
 ## Auditor Research Summary (Run #20)
 - **Signal Quality**: Large-tx whale tracking already implemented (LARGE_TRADE_THRESHOLD_USD=2500). No new action.
