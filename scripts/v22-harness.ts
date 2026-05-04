@@ -36,7 +36,7 @@
  * session deliverables.
  */
 
-import { existsSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import Anthropic from "@anthropic-ai/sdk";
@@ -69,14 +69,21 @@ const RING_SIZE = 65;
 interface HarnessArgs {
   stimulate: boolean;
   iterations: number;
+  daemon: boolean;
+  /** Daemon-mode tick cadence in seconds. Default 60 (matches the
+   *  pattern's tickIntervalMs). */
+  tickSec: number;
 }
 
 function parseArgs(argv: readonly string[]): HarnessArgs {
   let stimulate = false;
   let iterations = 1;
+  let daemon = false;
+  let tickSec = 60;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--stimulate") stimulate = true;
+    else if (a === "--daemon") daemon = true;
     else if (a === "--iterations") {
       const next = argv[i + 1];
       if (next) {
@@ -84,9 +91,89 @@ function parseArgs(argv: readonly string[]): HarnessArgs {
         if (Number.isFinite(n) && n > 0) iterations = n;
       }
       i++;
+    } else if (a === "--tick-sec") {
+      const next = argv[i + 1];
+      if (next) {
+        const n = parseInt(next, 10);
+        if (Number.isFinite(n) && n > 0) tickSec = n;
+      }
+      i++;
     }
   }
-  return { stimulate, iterations };
+  // Daemon mode runs indefinitely; iterations only used in non-daemon.
+  return { stimulate, iterations, daemon, tickSec };
+}
+
+// ----------------------------------------------------------------------------
+// Telemetry — append-only JSONL log + periodic state snapshot
+//
+// JSONL log: one JSON object per tick at data/v22-harness/ticks.jsonl.
+// Every line is self-describing: timestamp, triggers, judged, entered,
+// exited, openCount, closedCount, errors. Designed to be tail-able by
+// the cockpit's /admin Discovery tab and by any "Pattern Pulse"
+// follow-up routine.
+//
+// State snapshot: every SNAPSHOT_INTERVAL_SEC, the harness writes the
+// in-memory pattern state map + open-position list to data/v22-harness/
+// state.json. This is the durability boundary — if the harness crashes
+// and restarts within the snapshot interval, recent state survives.
+// ----------------------------------------------------------------------------
+
+const TELEMETRY_DIR = "data/v22-harness";
+const TICKS_LOG = "ticks.jsonl";
+const STATE_SNAPSHOT = "state.json";
+const SNAPSHOT_INTERVAL_SEC = 5 * 60;
+
+interface TickRecord {
+  timestamp: string;
+  triggersDetected: number;
+  convictionsAccepted: number;
+  entered: number;
+  exited: number;
+  openCount: number;
+  closedCount: number;
+  detectErrors: { patternName: string; error: string }[];
+  perTokenLatest: Record<string, number>;
+  macroRegime: { regime: string; score: number } | null;
+}
+
+class HarnessTelemetry {
+  private readonly logPath: string;
+  private readonly statePath: string;
+  private lastSnapshotTs = 0;
+
+  constructor(repoRoot: string) {
+    const dir = join(repoRoot, TELEMETRY_DIR);
+    mkdirSync(dir, { recursive: true });
+    this.logPath = join(dir, TICKS_LOG);
+    this.statePath = join(dir, STATE_SNAPSHOT);
+  }
+
+  appendTick(record: TickRecord): void {
+    appendFileSync(this.logPath, JSON.stringify(record) + "\n");
+  }
+
+  /** Periodic state snapshot. Caller passes the patternStates map +
+   *  open-position list. Atomic-write via temp file is overkill here —
+   *  worst case a crash mid-write loses the latest snapshot, and the
+   *  ticks.jsonl is the source of truth for outcome tracking. */
+  maybeSnapshotState(opts: {
+    patternStates: ReadonlyMap<string, unknown>;
+    openPositions: readonly unknown[];
+    now: number;
+  }): boolean {
+    if (opts.now - this.lastSnapshotTs < SNAPSHOT_INTERVAL_SEC * 1000) {
+      return false;
+    }
+    const payload = {
+      snapshotAt: new Date(opts.now).toISOString(),
+      patternStates: Object.fromEntries(opts.patternStates.entries()),
+      openPositions: opts.openPositions,
+    };
+    writeFileSync(this.statePath, JSON.stringify(payload, null, 2));
+    this.lastSnapshotTs = opts.now;
+    return true;
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -254,10 +341,17 @@ async function main(): Promise<void> {
   process.env["POST_VOL_LONG_PATTERN_ENABLED"] = "true";
 
   console.log("=== NVR v22 Harness ===");
-  console.log(
-    `Mode: ${args.stimulate ? "STIMULATE (forced trigger)" : "passive (no stimulus)"}, ` +
-      `iterations: ${args.iterations}`,
-  );
+  if (args.daemon) {
+    console.log(
+      `Mode: DAEMON (continuous, ${args.tickSec}s tick), ` +
+        `${args.stimulate ? "STIMULATE forced triggers" : "passive"}`,
+    );
+  } else {
+    console.log(
+      `Mode: ${args.stimulate ? "STIMULATE (forced trigger)" : "passive (no stimulus)"}, ` +
+        `iterations: ${args.iterations}`,
+    );
+  }
 
   // Wire deps + registry
   const anthropic = process.env["ANTHROPIC_API_KEY"]
@@ -285,78 +379,172 @@ async function main(): Promise<void> {
   console.log(`Registered ${registry.byStatus("paper").length} patterns at status=paper`);
   console.log(`Sleeve USD: $${bundle.deps.alphaSleeveUsd()}`);
 
+  const telemetry = new HarnessTelemetry(repoRoot);
+  console.log(`Telemetry: ${join(repoRoot, TELEMETRY_DIR)}/{${TICKS_LOG},${STATE_SNAPSHOT}}`);
+
+  // Graceful shutdown for daemon mode
+  let stopped = false;
+  if (args.daemon) {
+    const shutdown = (signal: string) => {
+      if (stopped) return;
+      stopped = true;
+      console.log(`\n[${signal}] daemon stopping; flushing final state snapshot…`);
+      try {
+        telemetry.maybeSnapshotState({
+          patternStates: bundle.patternStates(),
+          openPositions: runtime.tracker.openPositions(),
+          now: Date.now() + SNAPSHOT_INTERVAL_SEC * 1000 + 1, // force write
+        });
+      } catch (e) {
+        console.error("Final snapshot failed:", (e as Error).message);
+      }
+      process.exit(0);
+    };
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+  }
+
   // Tick loop
-  for (let i = 1; i <= args.iterations; i++) {
-    const { snapshot, perTokenLatest, notes } = await buildSnapshot(
-      bundle,
+  const totalIters = args.daemon ? Number.POSITIVE_INFINITY : args.iterations;
+  for (let i = 1; i <= totalIters; i++) {
+    if (stopped) break;
+    await runOneTick({
+      i,
+      totalIters,
       args,
+      bundle,
+      runtime,
       repoRoot,
-    );
+      telemetry,
+    });
 
-    console.log("");
-    console.log(`--- Tick ${i}/${args.iterations} (${snapshot.timestamp}) ---`);
-    for (const n of notes) console.log(`  ${n}`);
-    console.log(
-      `  Tokens with prices: ${Array.from(snapshot.prices.keys()).join(", ")}`,
-    );
-
-    const cas = (snapshot.extras as { crossAsset?: { macroRegime: { regime: string; score: number } } } | undefined)?.crossAsset;
-    if (cas) {
-      console.log(
-        `  Macro regime: ${cas.macroRegime.regime} (score ${cas.macroRegime.score})`,
-      );
-    }
-
-    let report;
-    try {
-      report = await runtime.tick(snapshot);
-    } catch (e) {
-      console.error("  TICK FAILED:", (e as Error).message);
-      process.exitCode = 1;
-      return;
-    }
-
-    console.log(
-      `  → triggers=${report.triggersDetected} ` +
-        `judged=${report.convictionsAccepted} ` +
-        `entered=${report.entered} ` +
-        `exited=${report.exited}`,
-    );
-    if (report.detectErrors.length > 0) {
-      for (const err of report.detectErrors) {
-        console.log(`  ⚠ detect() error in ${err.patternName}: ${(err.error as Error).message}`);
-      }
-    }
-
-    // Tracker snapshot
-    const opens = runtime.tracker.openPositions();
-    const closes = runtime.tracker.closedPositions();
-    if (opens.length > 0 || closes.length > 0) {
-      console.log(
-        `  positions: ${opens.length} open, ${closes.length} closed`,
-      );
-      for (const p of opens) {
-        const cur = perTokenLatest[p.symbol] ?? p.entryPrice;
-        const pct = p.entryPrice > 0 ? ((cur - p.entryPrice) / p.entryPrice) * 100 : 0;
-        console.log(
-          `    OPEN ${p.symbol} @ ${p.entryPrice.toFixed(6)} ` +
-            `entryUsd $${p.entryUsd.toFixed(2)} pnl ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
-        );
-      }
-      for (const c of closes) {
-        console.log(
-          `    CLOSED ${c.symbol} pnl $${c.realizedPnL.toFixed(2)} (${c.exitReason})`,
-        );
-      }
-    }
-
-    if (args.iterations > 1 && i < args.iterations) {
+    if (args.daemon) {
+      // Sleep until next tick. Don't block the process exit handler.
+      await new Promise((r) => setTimeout(r, args.tickSec * 1000));
+    } else if (args.iterations > 1 && i < args.iterations) {
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
 
   console.log("");
   console.log("=== End ===");
+}
+
+interface RunOneTickOpts {
+  i: number;
+  totalIters: number;
+  args: HarnessArgs;
+  bundle: ReturnType<typeof createDefaultRuntimeDeps>;
+  runtime: PatternRuntime;
+  repoRoot: string;
+  telemetry: HarnessTelemetry;
+}
+
+async function runOneTick(opts: RunOneTickOpts): Promise<void> {
+  const { i, totalIters, args, bundle, runtime, repoRoot, telemetry } = opts;
+  const { snapshot, perTokenLatest, notes } = await buildSnapshot(
+    bundle,
+    args,
+    repoRoot,
+  );
+
+  console.log("");
+  const itrLabel = totalIters === Number.POSITIVE_INFINITY ? `${i}` : `${i}/${totalIters}`;
+  console.log(`--- Tick ${itrLabel} (${snapshot.timestamp}) ---`);
+  for (const n of notes) console.log(`  ${n}`);
+  console.log(
+    `  Tokens with prices: ${Array.from(snapshot.prices.keys()).join(", ")}`,
+  );
+
+  const cas = (snapshot.extras as { crossAsset?: { macroRegime: { regime: string; score: number } } } | undefined)?.crossAsset;
+  if (cas) {
+    console.log(
+      `  Macro regime: ${cas.macroRegime.regime} (score ${cas.macroRegime.score})`,
+    );
+  }
+
+  let report;
+  try {
+    report = await runtime.tick(snapshot);
+  } catch (e) {
+    console.error("  TICK FAILED:", (e as Error).message);
+    // In daemon mode, log + continue. In one-shot mode, exit non-zero.
+    if (!args.daemon) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  console.log(
+    `  → triggers=${report.triggersDetected} ` +
+      `judged=${report.convictionsAccepted} ` +
+      `entered=${report.entered} ` +
+      `exited=${report.exited}`,
+  );
+  if (report.detectErrors.length > 0) {
+    for (const err of report.detectErrors) {
+      console.log(`  ⚠ detect() error in ${err.patternName}: ${(err.error as Error).message}`);
+    }
+  }
+
+  // Tracker snapshot to console
+  const opens = runtime.tracker.openPositions();
+  const closes = runtime.tracker.closedPositions();
+  if (opens.length > 0 || closes.length > 0) {
+    console.log(
+      `  positions: ${opens.length} open, ${closes.length} closed`,
+    );
+    for (const p of opens) {
+      const cur = perTokenLatest[p.symbol] ?? p.entryPrice;
+      const pct = p.entryPrice > 0 ? ((cur - p.entryPrice) / p.entryPrice) * 100 : 0;
+      console.log(
+        `    OPEN ${p.symbol} @ ${p.entryPrice.toFixed(6)} ` +
+          `entryUsd $${p.entryUsd.toFixed(2)} pnl ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`,
+      );
+    }
+    for (const c of closes) {
+      console.log(
+        `    CLOSED ${c.symbol} pnl $${c.realizedPnL.toFixed(2)} (${c.exitReason})`,
+      );
+    }
+  }
+
+  // Append to JSONL log
+  try {
+    const tickRecord: TickRecord = {
+      timestamp: snapshot.timestamp,
+      triggersDetected: report.triggersDetected,
+      convictionsAccepted: report.convictionsAccepted,
+      entered: report.entered,
+      exited: report.exited,
+      openCount: opens.length,
+      closedCount: closes.length,
+      detectErrors: report.detectErrors.map((e) => ({
+        patternName: e.patternName,
+        error: (e.error as Error).message ?? String(e.error),
+      })),
+      perTokenLatest,
+      macroRegime: cas
+        ? { regime: cas.macroRegime.regime, score: cas.macroRegime.score }
+        : null,
+    };
+    telemetry.appendTick(tickRecord);
+  } catch (e) {
+    // Don't let telemetry failure crash the daemon.
+    console.error("  ⚠ telemetry append failed:", (e as Error).message);
+  }
+
+  // Periodic state snapshot
+  try {
+    const wrote = telemetry.maybeSnapshotState({
+      patternStates: bundle.patternStates(),
+      openPositions: opens,
+      now: Date.now(),
+    });
+    if (wrote) console.log(`  ✓ state snapshot written`);
+  } catch (e) {
+    console.error("  ⚠ state snapshot failed:", (e as Error).message);
+  }
 }
 
 main().catch((e) => {
