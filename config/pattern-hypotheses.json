@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "purpose": "Hypothesis library for the Speculative Retro Sweep loop. Each entry is one pattern variation to test daily against cached price data via the existing observation-event-reaction.ts harness. The sweep runner spawns the harness with each entry's `params` set as env vars, captures verdicts, and proposes survivors via auto-PR (per the 'NVR · Pattern Hypothesis Sweep' routine).",
+    "promotion-criteria": "Same as SPEC-024 — n>=30, hit-rate>=40%, edge>=15pp over volume-null, distribution non-Gaussian. The sweep computes these from the harness output's `verdicts` array.",
+    "adding-hypotheses": "Append to `hypotheses` array. The next sweep run picks them up automatically. Each hypothesis costs ~10s of CPU (no new API calls — cache reuse) so the library can grow to 20-30 entries without timing concerns.",
+    "removing-hypotheses": "If a hypothesis has KILLed >3 times in a row, archive it to `_archived` so the daily sweep stops re-testing dead ideas. Keep the structure for audit trail.",
+    "field-reference": "params keys map 1:1 to the env vars accepted by scripts/observation-event-reaction.ts: EVENT_TOKENS, EVENT_LOOKBACK_HOURS, EVENT_MOVE_THRESHOLD, EVENT_FORWARD_HOURS, EVENT_TARGET_PCT, EVENT_STOP_PCT, EVENT_NULL_SAMPLES."
+  },
+  "hypotheses": [
+    {
+      "name": "baseline-post-vol-long-5pct-3h",
+      "rationale": "The validated baseline — 5%/1h trigger, 3% target, 3h horizon. Sanity check: this should always pass gates if the cache is healthy. If it fails, something is wrong with the data not the hypothesis.",
+      "params": {
+        "EVENT_TOKENS": "AERO,BRETT,DEGEN",
+        "EVENT_LOOKBACK_HOURS": "720",
+        "EVENT_MOVE_THRESHOLD": "0.05",
+        "EVENT_FORWARD_HOURS": "3",
+        "EVENT_TARGET_PCT": "0.03",
+        "EVENT_STOP_PCT": "0.03"
+      }
+    },
+    {
+      "name": "post-vol-long-7pct-6h",
+      "rationale": "Larger event, longer horizon — does the volatility-cluster signal scale? The 5% threshold sweet-spot may be specific or the underlying mechanism may persist at larger magnitudes with proportionally larger forward windows.",
+      "params": {
+        "EVENT_TOKENS": "AERO,BRETT,DEGEN",
+        "EVENT_LOOKBACK_HOURS": "720",
+        "EVENT_MOVE_THRESHOLD": "0.07",
+        "EVENT_FORWARD_HOURS": "6",
+        "EVENT_TARGET_PCT": "0.05",
+        "EVENT_STOP_PCT": "0.05"
+      }
+    },
+    {
+      "name": "post-vol-long-10pct-12h",
+      "rationale": "Rare-but-clean events. 10%+ moves in 1h on these tokens are infrequent — n may be too small to clear the gate even if the underlying signal is strong. Worth knowing the failure mode.",
+      "params": {
+        "EVENT_TOKENS": "AERO,BRETT,DEGEN",
+        "EVENT_LOOKBACK_HOURS": "720",
+        "EVENT_MOVE_THRESHOLD": "0.10",
+        "EVENT_FORWARD_HOURS": "12",
+        "EVENT_TARGET_PCT": "0.08",
+        "EVENT_STOP_PCT": "0.08"
+      }
+    },
+    {
+      "name": "post-vol-long-asymmetric-stop",
+      "rationale": "Same trigger as baseline but tighter stop (2%) vs same target (4%). 2:1 risk-reward ratio. Tests whether the volatility-cluster signal has a directional asymmetry we can exploit with an asymmetric exit.",
+      "params": {
+        "EVENT_TOKENS": "AERO,BRETT,DEGEN",
+        "EVENT_LOOKBACK_HOURS": "720",
+        "EVENT_MOVE_THRESHOLD": "0.05",
+        "EVENT_FORWARD_HOURS": "3",
+        "EVENT_TARGET_PCT": "0.04",
+        "EVENT_STOP_PCT": "0.02"
+      }
+    },
+    {
+      "name": "aero-only-deep-specialism",
+      "rationale": "Per `feedback_specialist_depth_beats_breadth`: track few tokens DEEPLY. AERO has the cleanest USDC quote (no WETH-relative noise). Test whether single-token AERO has higher per-token edge than the 3-token average — depth may dominate breadth.",
+      "params": {
+        "EVENT_TOKENS": "AERO",
+        "EVENT_LOOKBACK_HOURS": "720",
+        "EVENT_MOVE_THRESHOLD": "0.05",
+        "EVENT_FORWARD_HOURS": "3",
+        "EVENT_TARGET_PCT": "0.03",
+        "EVENT_STOP_PCT": "0.03"
+      }
+    }
+  ],
+  "_archived": []
+}
