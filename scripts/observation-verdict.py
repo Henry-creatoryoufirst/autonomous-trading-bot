@@ -124,6 +124,11 @@ def main():
     med = statistics.median(pcts)
     min_p = min(pcts) if pcts else 0
     max_p = max(pcts) if pcts else 0
+    sd = statistics.stdev(pcts) if len(pcts) >= 2 else 0
+    # Skewness via simple Pearson (mean − median) / sd
+    skew = (avg - med) / sd if sd > 0 else 0
+    p25 = sorted(pcts)[len(pcts)//4] if pcts else 0
+    p75 = sorted(pcts)[3*len(pcts)//4] if pcts else 0
 
     hit_rate = hits / measured
     fp_rate = fps / measured
@@ -131,7 +136,22 @@ def main():
     print("Outcome distribution:")
     print(f"  HIT (>= +3% in 60min):     {hits:>3} / {measured:>3} = {hit_rate*100:.1f}%   [target >= 40%]")
     print(f"  FP  (|move| < 3% in 60min): {fps:>3} / {measured:>3} = {fp_rate*100:.1f}%   [target <= 30%]")
-    print(f"  Avg move: {avg*100:+.2f}%   Median: {med*100:+.2f}%   Range: [{min_p*100:+.2f}%, {max_p*100:+.2f}%]")
+    print()
+    # Lesson 2 from FINDING_2026-05-04: shape matters more than counts.
+    # A tight Gaussian centered near zero (low σ, low |skew|) signals NO predictive
+    # information; the pattern fires randomly with respect to direction. A wide
+    # distribution with fat tails could still be useful if the side is consistent.
+    print("Distribution shape (Lesson 2 — shape matters more than counts):")
+    print(f"  μ (mean):     {avg*100:+.2f}%")
+    print(f"  median:       {med*100:+.2f}%")
+    print(f"  σ (stdev):    {sd*100:.2f}%")
+    print(f"  IQR:          [{p25*100:+.2f}%, {p75*100:+.2f}%]")
+    print(f"  range:        [{min_p*100:+.2f}%, {max_p*100:+.2f}%]")
+    print(f"  skew (Pearson): {skew:+.2f}  ({'right-skewed (avg > median, fat right tail)' if skew > 0.3 else 'left-skewed (fat left tail)' if skew < -0.3 else 'symmetric'})")
+    if abs(avg) < sd * 0.2 and sd < 0.015:
+        print(f"  ⚠ Tight Gaussian centered near zero → signature of NO predictive information.")
+    elif abs(avg) > sd * 0.5:
+        print(f"  ✓ Distribution drifts (μ={avg*100:+.2f}%, σ={sd*100:.2f}%) — consider directionality.")
     print()
 
     # Per-tier breakdown
