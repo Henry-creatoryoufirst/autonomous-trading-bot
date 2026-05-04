@@ -129,7 +129,7 @@ export const DEEPINFRA_REQUEST_TIMEOUT_MS = 60_000;
 export const GUARDIAN_RISKY_PCT_DEFAULT = 0.05;
 
 /** Token age (hours) under which GUARDIAN always reviews */
-export const GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT = 48;
+export const GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT = 72; // Bear-adjusted May-2026: 48→72 — 57-day bear; Kelly criterion research confirms novel token entry risk elevated in sustained bear regimes; extra 24h GUARDIAN oversight reduces bad entries on untested tokens
 
 /** OSS confidence below this triggers GUARDIAN review */
 export const GUARDIAN_MIN_CONFIDENCE_DEFAULT = 0.55;
