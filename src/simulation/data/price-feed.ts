@@ -133,6 +133,41 @@ const GT_API_BASE = "https://api.geckoterminal.com/api/v2";
 const GT_RATE_LIMIT_MS = 2100;
 
 /**
+ * Stablecoin quote-token addresses on Base, lowercased. When a pool quotes
+ * a token in one of these, OHLCV `close` is in true USD. Pools quoted in
+ * volatile tokens (WETH, cbBTC) return prices in *quote-token units*, which
+ * is fine for relative-move pattern detection but is NOT raw USD — callers
+ * doing P&L math should multiply by the quote token's USD price.
+ *
+ * Pre-fix bug: resolvePoolByAddress took the top-by-reserve pool blindly,
+ * which for WETH-on-Base picked TTPA/WETH (WETH as QUOTE) — meaning OHLCV
+ * gave us TTPA's USD price labeled as "WETH". See FINDING_2026-05-04 for
+ * the full incident write-up.
+ */
+const STABLE_QUOTE_ADDRS = new Set<string>([
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", // USDC (Base)
+  "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2", // USDT (Base)
+  "0x50c5725949a6f0c72e6c4a641f24049a917db0cb", // DAI  (Base)
+]);
+
+/** GeckoTerminal pool relationships shape — typed minimally for what we read. */
+type GtPool = {
+  id?: string;
+  attributes?: { dex_id?: string };
+  relationships?: {
+    base_token?: { data?: { id?: string } };
+    quote_token?: { data?: { id?: string } };
+  };
+};
+
+/** Extract a lowercase token address from a GT id like "base_0xabc...". */
+function gtIdToAddr(id: string | undefined): string {
+  if (!id) return "";
+  const sep = id.indexOf("_");
+  return (sep > 0 ? id.slice(sep + 1) : id).toLowerCase();
+}
+
+/**
  * GeckoTerminal OHLCV timeframes. We default to "minute"/aggregate=15
  * which strikes a reasonable balance: 15-minute candles back ~6 months
  * (1000 candles * 15min ≈ 250 hours per page, with up to 1000 candles per
@@ -397,21 +432,57 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
       return null;
     }
 
-    // GeckoTerminal returns pools sorted by reserve_in_usd desc by default.
-    // If a preferredDex is set, use the top pool from that DEX; otherwise
-    // take the top overall.
-    let pick = pools[0] as { id?: string; attributes?: { dex_id?: string } };
-    if (this.preferredDex) {
-      const match = (pools as { id?: string; attributes?: { dex_id?: string } }[]).find(
-        (p) => p.attributes?.dex_id?.toLowerCase() === this.preferredDex,
+    // GeckoTerminal returns pools sorted by reserve_in_usd desc. We can NOT
+    // simply take the top — the top pool may have our token as the QUOTE side
+    // (e.g. for WETH on Base, the top pool by reserve was TTPA/WETH where
+    // WETH is the quote). OHLCV from such a pool gives the BASE token's
+    // USD price, NOT ours. The pre-fix code blindly picked pools[0] and
+    // produced contaminated "WETH" data; see FINDING_2026-05-04.
+    //
+    // Correct behavior: filter to pools where the requested address is the
+    // BASE (priced) token, then prefer stablecoin-quoted for true USD.
+    const targetAddr = address.toLowerCase();
+    const typedPools = pools as GtPool[];
+    const baseMatched = typedPools.filter(
+      (p) => gtIdToAddr(p.relationships?.base_token?.data?.id) === targetAddr,
+    );
+
+    if (baseMatched.length === 0) {
+      this.log(
+        `price-feed: ${symbol} (${targetAddr}) is not the BASE token of any of the top ${typedPools.length} pools on ${this.network} — only quote-side matches exist, which would yield wrong-direction OHLCV. Failing resolution.`,
       );
-      if (match) pick = match;
+      this.failedSymbols.add(symbol);
+      return null;
     }
 
-    // GeckoTerminal IDs look like "base_0xabc...". Strip the network prefix.
-    const id = String(pick.id ?? "");
-    const sep = id.indexOf("_");
-    const poolAddr = sep > 0 ? id.slice(sep + 1).toLowerCase() : id.toLowerCase();
+    // Among base-matched pools, prefer one quoted in a stablecoin (true USD
+    // price). The list returned by GT is already reserve-sorted, so the first
+    // stablecoin match is the deepest-liquidity USD pool.
+    const stableMatched = baseMatched.filter((p) =>
+      STABLE_QUOTE_ADDRS.has(gtIdToAddr(p.relationships?.quote_token?.data?.id)),
+    );
+
+    // Selection precedence (most-preferred first):
+    //   1. preferredDex inside stable-quoted base-matched
+    //   2. first stable-quoted base-matched (true USD)
+    //   3. preferredDex inside base-matched (any quote)
+    //   4. first base-matched (top by reserve)
+    const dexMatch = (set: GtPool[]) =>
+      this.preferredDex
+        ? set.find((p) => p.attributes?.dex_id?.toLowerCase() === this.preferredDex)
+        : undefined;
+
+    let pick: GtPool;
+    if (stableMatched.length > 0) {
+      pick = dexMatch(stableMatched) ?? stableMatched[0]!;
+    } else {
+      pick = dexMatch(baseMatched) ?? baseMatched[0]!;
+      this.log(
+        `price-feed: ${symbol} no stablecoin-quoted pool found; using top base-matched pool. OHLCV will be in quote-token units, not raw USD — callers doing P&L math should multiply by the quote token's USD price.`,
+      );
+    }
+
+    const poolAddr = gtIdToAddr(pick.id);
     if (!poolAddr) {
       this.failedSymbols.add(symbol);
       return null;

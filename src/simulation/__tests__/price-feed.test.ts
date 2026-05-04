@@ -77,22 +77,43 @@ describe("GeckoTerminalHistoricalFeed", () => {
    * and /pools/.../ohlcv/minute to a small descending OHLCV list. The
    * feed must reverse to ASC and binary-search correctly.
    */
+  // USDC on Base — the canonical stablecoin quote for the post-fix happy path.
+  const USDC_BASE = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+
   function makeFakeHttp(opts?: {
     poolsForAddress?: Record<string, string>; // tokenAddrLower → poolId (e.g. "base_0xpool")
     ohlcvByPool?: Record<string, number[][]>; // poolAddrLower → DESC rows [ts, o, h, l, c, v]
+    // poolAddrLower → {baseAddr, quoteAddr}. Default: requested token as base
+    // + USDC as quote, which exercises the post-fix happy path (true USD).
+    poolRelationships?: Record<string, { baseAddr: string; quoteAddr: string }>;
     onCall?: (url: string) => void;
   }) {
     const pools = opts?.poolsForAddress ?? {};
     const ohlcv = opts?.ohlcvByPool ?? {};
+    const rels = opts?.poolRelationships ?? {};
     return async (url: string) => {
       opts?.onCall?.(url);
       const tokensMatch = url.match(/\/tokens\/([0-9a-fx]+)\/pools/i);
       if (tokensMatch) {
-        const id = pools[tokensMatch[1]!.toLowerCase()];
+        const requestedAddr = tokensMatch[1]!.toLowerCase();
+        const id = pools[requestedAddr];
         if (!id) return { data: [] };
+        const sep = id.indexOf("_");
+        const poolAddr = (sep > 0 ? id.slice(sep + 1) : id).toLowerCase();
+        const r = rels[poolAddr] ?? {
+          baseAddr: requestedAddr,
+          quoteAddr: USDC_BASE,
+        };
         return {
           data: [
-            { id, attributes: { dex_id: "aerodrome" } },
+            {
+              id,
+              attributes: { dex_id: "aerodrome" },
+              relationships: {
+                base_token: { data: { id: `base_${r.baseAddr}` } },
+                quote_token: { data: { id: `base_${r.quoteAddr}` } },
+              },
+            },
           ],
         };
       }
@@ -188,10 +209,28 @@ describe("GeckoTerminalHistoricalFeed", () => {
     const t1 = Math.floor(Date.parse("2026-04-27T12:00:00Z") / 1000);
     const httpGet = async (url: string) => {
       if (url.includes(`/tokens/${wethAddr}/pools`)) {
+        // Both pools quoted in USDC so the stablecoin-quote preference kicks
+        // in equally for both — preferredDex should still distinguish them.
+        // Without relationships, the post-fix filter would reject everything.
+        const usdc = USDC_BASE;
         return {
           data: [
-            { id: `base_${uniPool}`, attributes: { dex_id: "uniswap-v3" } },
-            { id: `base_${aerodromePool}`, attributes: { dex_id: "aerodrome" } },
+            {
+              id: `base_${uniPool}`,
+              attributes: { dex_id: "uniswap-v3" },
+              relationships: {
+                base_token: { data: { id: `base_${wethAddr}` } },
+                quote_token: { data: { id: `base_${usdc}` } },
+              },
+            },
+            {
+              id: `base_${aerodromePool}`,
+              attributes: { dex_id: "aerodrome" },
+              relationships: {
+                base_token: { data: { id: `base_${wethAddr}` } },
+                quote_token: { data: { id: `base_${usdc}` } },
+              },
+            },
           ],
         };
       }
@@ -213,6 +252,160 @@ describe("GeckoTerminalHistoricalFeed", () => {
     });
     await feed.preload(["WETH"], "2026-04-27T12:00:00Z", "2026-04-27T12:01:00Z");
     expect(await feed.getPriceAt("WETH", "2026-04-27T12:00:00Z")).toBe(99);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regression: 2026-05-04 contamination incident
+  //
+  // Before the fix, resolvePoolByAddress took pools[0] (top by reserve) blindly.
+  // For WETH on Base, the top pool was TTPA/WETH where WETH is QUOTE — so OHLCV
+  // returned TTPA's USD price labeled as "WETH". The fix filters to pools where
+  // the requested token is the BASE side, then prefers stablecoin-quoted.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  it("skips pools where the requested token is the QUOTE side (contamination guard)", async () => {
+    const wethAddr = "0x4200000000000000000000000000000000000006";
+    const ttpaAddr = "0x9d3695161c606ef124e6a468c48be7a102ba6ce2"; // some meme paired against WETH
+    const ttpaWethPool = "0xbadbadbadbadbadbadbadbadbadbadbadbadbadb"; // WETH is quote — wrong
+    const wethUsdcPool = "0xgoodgoodgoodgoodgoodgoodgoodgoodgoodgoodg"; // WETH is base — right
+    const t1 = Math.floor(Date.parse("2026-04-27T12:00:00Z") / 1000);
+
+    const httpGet = async (url: string) => {
+      if (url.includes(`/tokens/${wethAddr}/pools`)) {
+        // GT returns the quote-side TTPA/WETH pool FIRST (highest reserve).
+        // The fix must skip past it to find the WETH/USDC pool.
+        return {
+          data: [
+            {
+              id: `base_${ttpaWethPool}`,
+              attributes: { dex_id: "uniswap-v3" },
+              relationships: {
+                base_token: { data: { id: `base_${ttpaAddr}` } },
+                quote_token: { data: { id: `base_${wethAddr}` } }, // WETH = QUOTE → wrong
+              },
+            },
+            {
+              id: `base_${wethUsdcPool}`,
+              attributes: { dex_id: "aerodrome" },
+              relationships: {
+                base_token: { data: { id: `base_${wethAddr}` } }, // WETH = BASE → right
+                quote_token: { data: { id: `base_${USDC_BASE}` } },
+              },
+            },
+          ],
+        };
+      }
+      if (url.includes(`/pools/${ttpaWethPool}/ohlcv`)) {
+        // Pre-fix code would have returned this — TTPA's pumped USD price
+        return { data: { attributes: { ohlcv_list: [[t1, 0.1, 0.1, 0.1, 0.21, 1]] } } };
+      }
+      if (url.includes(`/pools/${wethUsdcPool}/ohlcv`)) {
+        // Real WETH/USDC ≈ $3000
+        return { data: { attributes: { ohlcv_list: [[t1, 3000, 3010, 2995, 3005, 1]] } } };
+      }
+      return {};
+    };
+
+    const feed = new GeckoTerminalHistoricalFeed({ httpGet });
+    const summary = await feed.preload(
+      ["WETH"],
+      "2026-04-27T12:00:00Z",
+      "2026-04-27T12:30:00Z",
+    );
+    expect(summary.loaded).toBe(1);
+    // Must resolve to the WETH/USDC pool, not the TTPA/WETH one
+    expect(await feed.getPriceAt("WETH", "2026-04-27T12:00:00Z")).toBe(3005);
+  });
+
+  it("fails resolution when the requested token is only ever the QUOTE side", async () => {
+    // Pathological case: every pool returned has WETH only as quote. The
+    // resolver should fail rather than silently return wrong-direction data.
+    const wethAddr = "0x4200000000000000000000000000000000000006";
+    const ttpaAddr = "0x9d3695161c606ef124e6a468c48be7a102ba6ce2";
+    const ttpaWethPool = "0xbadbadbadbadbadbadbadbadbadbadbadbadbadb";
+
+    const httpGet = async (url: string) => {
+      if (url.includes(`/tokens/${wethAddr}/pools`)) {
+        return {
+          data: [
+            {
+              id: `base_${ttpaWethPool}`,
+              attributes: { dex_id: "uniswap-v3" },
+              relationships: {
+                base_token: { data: { id: `base_${ttpaAddr}` } },
+                quote_token: { data: { id: `base_${wethAddr}` } },
+              },
+            },
+          ],
+        };
+      }
+      return {};
+    };
+
+    const feed = new GeckoTerminalHistoricalFeed({ httpGet });
+    const summary = await feed.preload(
+      ["WETH"],
+      "2026-04-27T12:00:00Z",
+      "2026-04-27T13:00:00Z",
+    );
+    expect(summary.loaded).toBe(0);
+    expect(summary.failed).toEqual(["WETH"]);
+  });
+
+  it("prefers a stablecoin-quoted pool over a non-stable-quoted pool when both have the requested token as base", async () => {
+    // Scenario: WETH has both a WETH/cbBTC pool (volatile-quoted, top reserve)
+    // and a WETH/USDC pool (stable-quoted, lower reserve). The fix must pick
+    // the USDC pool so OHLCV is in true USD, not cbBTC-units.
+    const wethAddr = "0x4200000000000000000000000000000000000006";
+    const cbbtcAddr = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf";
+    const wethCbbtcPool = "0xcbbtcpoolcbbtcpoolcbbtcpoolcbbtcpoolcbbt";
+    const wethUsdcPool = "0xusdcpoolusdcpoolusdcpoolusdcpoolusdcpool";
+    const t1 = Math.floor(Date.parse("2026-04-27T12:00:00Z") / 1000);
+
+    const httpGet = async (url: string) => {
+      if (url.includes(`/tokens/${wethAddr}/pools`)) {
+        // GT returns the cbBTC-quoted pool first (higher reserve in this scenario)
+        return {
+          data: [
+            {
+              id: `base_${wethCbbtcPool}`,
+              attributes: { dex_id: "aerodrome-slipstream" },
+              relationships: {
+                base_token: { data: { id: `base_${wethAddr}` } },
+                quote_token: { data: { id: `base_${cbbtcAddr}` } }, // cbBTC = volatile quote
+              },
+            },
+            {
+              id: `base_${wethUsdcPool}`,
+              attributes: { dex_id: "uniswap-v3" },
+              relationships: {
+                base_token: { data: { id: `base_${wethAddr}` } },
+                quote_token: { data: { id: `base_${USDC_BASE}` } }, // USDC = stable quote ← prefer
+              },
+            },
+          ],
+        };
+      }
+      if (url.includes(`/pools/${wethCbbtcPool}/ohlcv`)) {
+        // Pre-fix would have returned this — WETH price in cbBTC terms (~0.05)
+        return { data: { attributes: { ohlcv_list: [[t1, 1, 1, 1, 0.05, 1]] } } };
+      }
+      if (url.includes(`/pools/${wethUsdcPool}/ohlcv`)) {
+        // Real WETH/USDC ≈ $3000
+        return { data: { attributes: { ohlcv_list: [[t1, 1, 1, 1, 3000, 1]] } } };
+      }
+      return {};
+    };
+
+    const feed = new GeckoTerminalHistoricalFeed({ httpGet });
+    const summary = await feed.preload(
+      ["WETH"],
+      "2026-04-27T12:00:00Z",
+      "2026-04-27T12:30:00Z",
+    );
+    expect(summary.loaded).toBe(1);
+    // Must be the USDC-quoted price, not the cbBTC-quoted one
+    expect(await feed.getPriceAt("WETH", "2026-04-27T12:00:00Z")).toBe(3000);
   });
 
   it("cacheStats reports loaded symbols + total candles", async () => {
