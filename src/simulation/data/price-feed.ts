@@ -32,6 +32,8 @@
  */
 
 import axios from "axios";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { join } from "path";
 import { TOKEN_REGISTRY } from "../../core/config/token-registry.js";
 
 // ----------------------------------------------------------------------------
@@ -155,6 +157,22 @@ interface GeckoFeedOptions {
   log?: (msg: string) => void;
   /** Inject a custom HTTP getter (for tests). */
   httpGet?: (url: string) => Promise<unknown>;
+  /**
+   * On-disk cache directory for OHLCV + pool resolutions. When set, preload()
+   * reads from disk first and only fetches the gap (if any) between cache
+   * and requested window. Pool resolutions are also persisted, surviving
+   * GeckoTerminal rate-limit hiccups across script runs.
+   *
+   * Default: undefined (no disk cache — original behavior). Pass a path
+   * to enable; standard usage is `data/observation-pass/.price-cache`.
+   */
+  cacheDir?: string;
+  /**
+   * Max age (seconds) for a cached entry before we treat it as stale and
+   * re-fetch. Default 24h. Set to Infinity to use cache permanently for
+   * historical analysis where the past doesn't change.
+   */
+  cacheMaxAgeSec?: number;
 }
 
 interface OhlcvCandle {
@@ -186,6 +204,8 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
   private readonly preferredDex?: string;
   private readonly log: (msg: string) => void;
   private readonly httpGet: (url: string) => Promise<unknown>;
+  private readonly cacheDir?: string;
+  private readonly cacheMaxAgeSec: number;
 
   /** symbol → resolved pool address (lowercased) on the network. */
   private readonly poolBySymbol = new Map<string, string>();
@@ -215,6 +235,112 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
         });
         return res.data;
       });
+    this.cacheDir = opts.cacheDir;
+    this.cacheMaxAgeSec = opts.cacheMaxAgeSec ?? 24 * 3600;
+    if (this.cacheDir) {
+      mkdirSync(this.cacheDir, { recursive: true });
+      // Eagerly hydrate pool resolutions from disk so we don't re-fetch
+      // them across script runs (the pools/{address}/pools endpoint is the
+      // most frequent rate-limit casualty).
+      this.hydratePoolResolutions();
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // On-disk cache
+  // ────────────────────────────────────────────────────────────────────────
+
+  private cacheKeyForSymbol(symbol: string): string {
+    return `${this.network}-${this.timeframe}-${this.aggregate}-${symbol.toUpperCase()}`;
+  }
+
+  private cachePathForCandles(symbol: string): string | null {
+    if (!this.cacheDir) return null;
+    return join(this.cacheDir, `candles-${this.cacheKeyForSymbol(symbol)}.json`);
+  }
+
+  private cachePathForPools(): string | null {
+    if (!this.cacheDir) return null;
+    return join(this.cacheDir, `pools-${this.network}.json`);
+  }
+
+  private hydratePoolResolutions(): void {
+    const path = this.cachePathForPools();
+    if (!path || !existsSync(path)) return;
+    try {
+      const data = JSON.parse(readFileSync(path, "utf-8")) as Record<string, string>;
+      for (const [sym, pool] of Object.entries(data)) {
+        if (pool && typeof pool === "string") this.poolBySymbol.set(sym, pool);
+      }
+      this.log(`price-feed: hydrated ${this.poolBySymbol.size} pool resolutions from cache`);
+    } catch (e) {
+      this.log(`price-feed: pool cache read failed: ${(e as Error).message}`);
+    }
+  }
+
+  private persistPoolResolutions(): void {
+    const path = this.cachePathForPools();
+    if (!path) return;
+    try {
+      const obj: Record<string, string> = {};
+      for (const [sym, pool] of this.poolBySymbol) obj[sym] = pool;
+      writeFileSync(path, JSON.stringify(obj, null, 2));
+    } catch (e) {
+      this.log(`price-feed: pool cache write failed: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Returns cached candles for a symbol if the on-disk file exists, is
+   * fresh enough, and covers (or extends past) the requested window.
+   * Returns null if cache is missing/stale/insufficient.
+   */
+  private readCandleCache(
+    symbol: string,
+    fromTs: number,
+    toTs: number,
+  ): OhlcvCandle[] | null {
+    const path = this.cachePathForCandles(symbol);
+    if (!path || !existsSync(path)) return null;
+    try {
+      const stored = JSON.parse(readFileSync(path, "utf-8")) as {
+        cachedAt: number;
+        candles: OhlcvCandle[];
+      };
+      if (!Array.isArray(stored.candles) || stored.candles.length === 0) return null;
+      const ageSec = Date.now() / 1000 - stored.cachedAt;
+      if (ageSec > this.cacheMaxAgeSec) {
+        this.log(`price-feed: ${symbol} cache stale (${(ageSec / 3600).toFixed(1)}h > ${(this.cacheMaxAgeSec / 3600).toFixed(0)}h)`);
+        return null;
+      }
+      const oldestCached = stored.candles[0]!.ts;
+      const newestCached = stored.candles[stored.candles.length - 1]!.ts;
+      // Only use cache if it covers the whole requested window. Partial
+      // coverage forces a re-fetch — simpler than gap-filling logic.
+      if (oldestCached > fromTs || newestCached < toTs - 3600) {
+        this.log(
+          `price-feed: ${symbol} cache window [${new Date(oldestCached * 1000).toISOString().slice(0, 16)} → ${new Date(newestCached * 1000).toISOString().slice(0, 16)}] doesn't cover request [${new Date(fromTs * 1000).toISOString().slice(0, 16)} → ${new Date(toTs * 1000).toISOString().slice(0, 16)}]`,
+        );
+        return null;
+      }
+      return stored.candles;
+    } catch (e) {
+      this.log(`price-feed: ${symbol} cache read failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  private writeCandleCache(symbol: string, candles: OhlcvCandle[]): void {
+    const path = this.cachePathForCandles(symbol);
+    if (!path) return;
+    try {
+      writeFileSync(
+        path,
+        JSON.stringify({ cachedAt: Math.floor(Date.now() / 1000), candles }, null, 0),
+      );
+    } catch (e) {
+      this.log(`price-feed: ${symbol} cache write failed: ${(e as Error).message}`);
+    }
   }
 
   /** Throttle calls to respect GeckoTerminal's free-tier rate limit. */
@@ -291,6 +417,7 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
       return null;
     }
     this.poolBySymbol.set(symbol, poolAddr);
+    this.persistPoolResolutions();
     return poolAddr;
   }
 
@@ -348,6 +475,20 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
     let loaded = 0;
     for (const symbol of symbols) {
       try {
+        // Disk cache fast path — if we already have candles covering this
+        // window, skip the network entirely. Pool resolution still happens
+        // (it's also cached), but no OHLCV calls are made.
+        const cached = this.readCandleCache(symbol, fromTs, toTs);
+        if (cached) {
+          this.candlesBySymbol.set(symbol, cached);
+          loaded++;
+          this.log(
+            `price-feed: ${symbol} HIT cache: ${cached.length} candles ` +
+              `[${new Date(cached[0]!.ts * 1000).toISOString()} → ` +
+              `${new Date(cached[cached.length - 1]!.ts * 1000).toISOString()}]`,
+          );
+          continue;
+        }
         const pool = await this.resolvePool(symbol);
         if (!pool) {
           failed.push(symbol);
@@ -390,6 +531,8 @@ export class GeckoTerminalHistoricalFeed implements HistoricalPriceFeed {
             `[${new Date(dedup[0]!.ts * 1000).toISOString()} → ` +
             `${new Date(dedup[dedup.length - 1]!.ts * 1000).toISOString()}]`,
         );
+        // Persist to disk so subsequent runs hit cache instead of GeckoTerminal.
+        this.writeCandleCache(symbol, dedup);
       } catch (e: unknown) {
         this.log(
           `price-feed: preload failed for ${symbol}: ${(e as Error).message}`,
