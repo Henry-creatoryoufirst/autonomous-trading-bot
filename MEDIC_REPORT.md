@@ -57,6 +57,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #24 | 2026-05-02T17:05 UTC | Scout skipped (<48h, last BIO scout at 14:14); auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 — aligns scale-up signal bar with HOT_MOVER (both 60%); eliminates bear-market inconsistency |
 | #25 | 2026-05-03T00:00 UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_DROP_FROM_PEAK 8→6 — faster Smart Trim activation in 55-day bear; buy ratio peaks are lower so smaller drops signal distribution |
 | #26 | 2026-05-03T~current UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_PROFIT_PCT 3→2 — lowers Smart Trim profit floor; completes DECEL tightening started in Run#25 (drop 8→6); 55-day bear gains peak earlier at 2-3%, lower floor captures more exits before reversal |
+| #27 | 2026-05-04T~current UTC | Scout no qualifying tokens (GeckoTerminal/DexScreener blocked; WebSearch finds no new Base tokens with $100K+ liq/$50K+ vol not already in registry); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 56-day bear progressive ceiling reduction; effective max 3.5%→3.0% per trade |
 
 ## Bot Health Evidence (from git history)
 
@@ -80,6 +81,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #27 — 2026-05-04T~current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #27).
+- **Scout**: No qualifying tokens — GeckoTerminal/DexScreener blocked from sandbox. WebSearch evaluated BSX (shut down Nov 2025 ❌), PONKE (Solana-primary ❌), uSOL ($8.4K liq ❌), cbSOL (unclear metrics). No new Base tokens found with $100K+ liq, $50K+ 24h vol, >3 days old, not already in registry. Standards maintained.
+- **Auditor**: TRIGGERED by inferred 56-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding: KELLY_POSITION_CEILING_PCT 14→12 — progressive bear-market ceiling reduction. Effective max position 3.5%→3.0% (0.25×12%). With TRENDING_DOWN ×0.75 → 9% effective ceiling. (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #27 — 2026-05-04)
+- **Signal Quality**: LLM-powered on-chain analysis (Nansen, Glassnode, Chainalysis) established alpha. Bot already uses LLM + whale flow signals. No novel technique found. (Impact 1, Complexity 4, Priority 0.25)
+- **Execution Efficiency**: Slipstream V2 (March 2026) auto-benefits; 34x capital efficiency improvement already live at DEX level. No code change needed. (Impact 1, Complexity 1, Priority 1.0)
+- **Position Sizing**: KEY FINDING — Quarter-Kelly research confirms "reduce position sizes during high-volatility periods" and "if bankroll drops 20% from peak, cut positions in half." KELLY_FRACTION already at 0.25. KELLY_POSITION_CEILING_PCT 14→12 continues progressive bear-adjustment (was 18→14 in prior run). IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Intent-based solver routing complex (requires executeDirectDexSwap changes — off-limits). MEV protection via adaptive slippage already active. Watch list for Henry.
 
 ## Jobs Status This Run (Run #25 — 2026-05-03T00:00 UTC)
 
