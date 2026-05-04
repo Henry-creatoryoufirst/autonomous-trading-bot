@@ -57,7 +57,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #24 | 2026-05-02T17:05 UTC | Scout skipped (<48h, last BIO scout at 14:14); auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 — aligns scale-up signal bar with HOT_MOVER (both 60%); eliminates bear-market inconsistency |
 | #25 | 2026-05-03T00:00 UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_DROP_FROM_PEAK 8→6 — faster Smart Trim activation in 55-day bear; buy ratio peaks are lower so smaller drops signal distribution |
 | #26 | 2026-05-03T~current UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_PROFIT_PCT 3→2 — lowers Smart Trim profit floor; completes DECEL tightening started in Run#25 (drop 8→6); 55-day bear gains peak earlier at 2-3%, lower floor captures more exits before reversal |
-| #27 | 2026-05-04T~current UTC | Scout added cbSOL (Coinbase Wrapped Solana, Aerodrome-integrated, 5+ months old, Est >$100K liq); auditor lowered CULL_MIN_AGE_HOURS 168→120 — 56-day bear; stale research positions (<$100) unlikely to recover after 5 days in bear market; accelerates capital recycling by 2 days per culling cycle |
+| #27 | 2026-05-04T08:21 UTC | Scout added cbSOL (Coinbase Wrapped Solana, Aerodrome-integrated, 5+ months old, Est >$100K liq); auditor lowered CULL_MIN_AGE_HOURS 168→120 — 56-day bear; stale research positions (<$100) unlikely to recover after 5 days in bear market; accelerates capital recycling by 2 days per culling cycle |
+| #28 | 2026-05-04T16:15 UTC | Scout added UP (Superform, DeFi neobank, TGE Feb-10-2026, $8.8M 24h vol, Aerodrome Ignition launch, score 7/10); auditor raised GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 — 57-day bear; Kelly criterion research confirms novel token risk elevated in sustained bear; extra 24h GUARDIAN oversight reduces fat-tail losses on untested tokens |
 
 ## Bot Health Evidence (from git history)
 
@@ -82,7 +83,13 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #27 — 2026-05-04T~current UTC)
+## Jobs Status This Run (Run #28 — 2026-05-04T16:15 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #28).
+- **Scout**: RAN (addendum to today's earlier Run #27 cbSOL scout — staging fetch missed the earlier run initially). UP (Superform) added — Base address `0x5b2193fdc451c1f847be09ca9d13a4bf60f8c86b`, TGE Feb-10-2026, $8.8M 24h total volume, Aerodrome Ignition launch, $22.5M market cap, DEFI MEDIUM risk. Score 7/10.
+- **Auditor**: TRIGGERED by inferred 57-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding (deferred from Run #22): GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 — extend novel token GUARDIAN oversight window from 2 to 3 days. Kelly criterion bear market research confirms elevated novel token entry risk in sustained bear regimes. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Jobs Status This Run (Run #27 — 2026-05-04T08:21 UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #27).
 - **Scout**: RAN — last scout was 2026-05-02 (KAITO, 48h+ elapsed). cbSOL (Coinbase Wrapped Solana) added — confirmed Base address `0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c`, Aerodrome high-APY pool, 5+ months old, BLUE_CHIP LOW risk. cbMEGA ($2.19M vol, truncated address) flagged as watch list — cannot confirm full contract in API-blocked sandbox.
