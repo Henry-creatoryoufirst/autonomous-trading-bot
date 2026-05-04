@@ -37,6 +37,10 @@ import { createServer } from "http";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { activeChain } from "../src/core/config/chain-config.js";
 import { GeckoTerminalHistoricalFeed } from "../src/simulation/data/price-feed.js";
+import {
+  initV22Integration,
+  type V22Integration,
+} from "../src/core/patterns/forward-harness-adapter.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Persistence path order: FORWARD_OUTPUT_DIR > PERSIST_DIR (Railway volume) > local
@@ -48,6 +52,10 @@ const OUT_DIR =
 mkdirSync(OUT_DIR, { recursive: true });
 
 const HTTP_PORT = parseInt(process.env.PORT ?? "3000", 10);
+
+// v22 integration handle. Set in main() after price-feed preload, IF
+// V22_RUNTIME_ENABLED=true. Read from the polling loop and HTTP routes.
+let v22Integration: V22Integration | null = null;
 
 const POLL_SEC = parseInt(process.env.FORWARD_POLL_SEC ?? "30", 10);
 const CLUSTER_WINDOW_SEC = parseInt(
@@ -521,7 +529,22 @@ const httpServer = createServer((req, res) => {
       intermediariesWatched: INTERMEDIARIES.length,
       tokensWatched: TOKEN_WATCHES.map((w) => w.symbol),
       outDir: OUT_DIR,
+      // v22 status — enabled only when V22_RUNTIME_ENABLED=true
+      v22: v22Integration
+        ? v22Integration.status()
+        : { enabled: false },
     });
+    return;
+  }
+
+  if (path === "/api/v22-summary") {
+    sendJson(
+      res,
+      200,
+      v22Integration
+        ? v22Integration.status()
+        : { enabled: false, reason: "V22_RUNTIME_ENABLED is not 'true'" },
+    );
     return;
   }
 
@@ -554,7 +577,7 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
-  sendJson(res, 404, { error: "not found", validPaths: ["/health", "/api/summary", "/api/events", "/api/triggers", "/api/outcomes", "/api/intermediaries"] });
+  sendJson(res, 404, { error: "not found", validPaths: ["/health", "/api/summary", "/api/events", "/api/triggers", "/api/outcomes", "/api/intermediaries", "/api/v22-summary"] });
 });
 
 // ----------------------------------------------------------------------------
@@ -582,6 +605,7 @@ async function main() {
     console.log(`  GET /api/triggers       — all cluster triggers`);
     console.log(`  GET /api/outcomes       — all measured outcomes`);
     console.log(`  GET /api/intermediaries — the watched address set`);
+    console.log(`  GET /api/v22-summary    — v22 PatternRuntime status (NVR-SPEC-024)`);
     console.log("");
   });
   bootedAt = Date.now();
@@ -602,6 +626,22 @@ async function main() {
   );
   console.log("Ready. Polling every", POLL_SEC, "sec.\n");
 
+  // ── v22 Pattern Runtime integration (NVR-SPEC-024) ───────────────────
+  // Behind V22_RUNTIME_ENABLED=true. Adds the v22 PatternRuntime as an
+  // ADDITION to the existing IntermediarySurge logic — no modification
+  // of that path. v22 ticks at its own cadence (60s default) inside the
+  // same polling loop. v22 errors do NOT take down the existing harness.
+  v22Integration = initV22Integration({
+    priceFeed,
+    persistDir: OUT_DIR,
+    log: (m) => console.log(`  [v22] ${m}`),
+  });
+  if (v22Integration) {
+    console.log(`  v22 runtime: ENABLED. Tick cadence 60s. Telemetry → ${OUT_DIR}/v22/`);
+  } else {
+    console.log(`  v22 runtime: disabled (set V22_RUNTIME_ENABLED=true to opt in)`);
+  }
+
   // Periodic price-feed refresh (every hour)
   let lastPriceRefresh = Date.now();
   const PRICE_REFRESH_MS = 3600 * 1000;
@@ -618,6 +658,15 @@ async function main() {
       console.warn(`  poll error: ${msg}`);
       pollErrorCount++;
       lastPollError = msg.slice(0, 200);
+    }
+
+    // v22 tick — own try/catch so a failure doesn't take down the loop.
+    if (v22Integration) {
+      try {
+        await v22Integration.tick();
+      } catch (e) {
+        console.warn(`  [v22] tick crashed (NOT taking down the loop): ${(e as Error).message}`);
+      }
     }
 
     if (Date.now() - lastPriceRefresh > PRICE_REFRESH_MS) {
