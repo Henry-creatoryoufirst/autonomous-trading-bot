@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "purpose": "Validated-edge baselines used by the Pattern Aging Watchdog (Loop B) to detect decay. For each pattern, this records the edge-over-null measured during the original retro/paper-mode validation that justified its current registry status. The watchdog computes (rolling-30d-realized-edge / validatedEdgePp) and demotes if the ratio drops below 0.5.",
+    "field-reference": "Each entry keyed by pattern name (matches PatternRegistry name). Fields: validatedEdgePp (signed pp), validatedHitRate (0-1), validatedNullHitRate (0-1), validatedAt (ISO date), source (which retro/sweep produced the baseline), nMin (statistical floor used at validation time).",
+    "updating": "When a pattern is promoted (disabled→paper, paper→live), update its baseline here to reflect the most recent validated edge. The watchdog reads from this file to decide what 'decayed' means relative to the baseline that earned the current status."
+  },
+  "patterns": {
+    "aero_post_volatility_long": {
+      "validatedEdgePp": 17.7,
+      "validatedHitRate": 0.364,
+      "validatedNullHitRate": 0.187,
+      "validatedAt": "2026-05-04",
+      "source": "30d retro on real AERO+BRETT+DEGEN (FINDING_2026-05-04-EVE)",
+      "nMin": 11,
+      "notes": "FadeMove arm; 11 of 11 events on the 3-token combined. BRETT/DEGEN were rate-limited overnight; 90d retest queued via Quota-Reset routine."
+    },
+    "brett_post_volatility_long": {
+      "validatedEdgePp": 17.7,
+      "validatedHitRate": 0.364,
+      "validatedNullHitRate": 0.187,
+      "validatedAt": "2026-05-04",
+      "source": "30d retro on real AERO+BRETT+DEGEN (FINDING_2026-05-04-EVE) — combined-token measurement",
+      "nMin": 11,
+      "notes": "Per-token baseline same as combined since the retro tested the 3-token group together. Future: refine to per-token baseline if AERO-only sweep shows different edge."
+    },
+    "degen_post_volatility_long": {
+      "validatedEdgePp": 17.7,
+      "validatedHitRate": 0.364,
+      "validatedNullHitRate": 0.187,
+      "validatedAt": "2026-05-04",
+      "source": "30d retro on real AERO+BRETT+DEGEN (FINDING_2026-05-04-EVE) — combined-token measurement",
+      "nMin": 11,
+      "notes": "Same as brett; 3-token combined baseline."
+    }
+  }
+}
