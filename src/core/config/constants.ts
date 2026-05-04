@@ -410,13 +410,13 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  * After a recent trade, re-entry requires a HIGHER confluence score.
  * Normal BUY entry:  confluence >= +25
  * Re-entry BUY:      confluence >= +40 (within TRADE_EXECUTED window)
- * Normal SELL entry: confluence <= -20
+ * Normal SELL entry: confluence <= -18
  * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
  */
 export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
 export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
-export const NORMAL_CONFLUENCE_BUY = 25;
-export const NORMAL_CONFLUENCE_SELL = -20;
+export const NORMAL_CONFLUENCE_BUY = 27;    // Bear-adjusted May-2026: 25→27 — 46-day bear market; false-positive entry rate elevated; unify with re-entry threshold for equal caution on all buys.
+export const NORMAL_CONFLUENCE_SELL = -18;  // Bear-adjusted May-2026: -20→-18 — 51-day bear; sell-side was the last untouched threshold; lower magnitude allows exits on weaker sell signals, reducing position overhang in sustained downtrend.
 
 // ========================================================================
 // v7.0: PARALLEL EVALUATION ENGINE
@@ -530,7 +530,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  * Kelly % = (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
  * Position = Kelly% × KELLY_FRACTION × Portfolio
  */
-export const KELLY_FRACTION = 0.35;           // Bear-adjusted Apr-2026: Quarter-Kelly range (was 0.5 half-Kelly); 46-day bear + auditor ceiling already at 14% → 0.35×14%=4.9% effective max vs 7% prior
+export const KELLY_FRACTION = 0.25;           // Bear-adjusted May-2026: 0.30→0.25 — 54-day bear; true Quarter-Kelly (0.25×); effective max 4.2%→3.5% portfolio per trade; research: Quarter-Kelly optimal for sustained bear regimes (crypto fat tails + bear drawdown control)
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
@@ -644,7 +644,7 @@ export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
 export const HOT_MOVER_MIN_POOL_AGE_HOURS = 24;
 
 /** Hot mover quality gate: minimum buy ratio in h1 (55%+ buys = genuine demand, not sell-off) */
-export const HOT_MOVER_MIN_BUY_RATIO = 0.55;
+export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0.60 — 47-day bear; pumps with 55-60% buy ratio are predominantly MEV-front-run distribution; require genuine conviction
 
 // ============================================================================
 // v21.13: ICU WATCH MODE — Intensive monitoring for new/small-cap positions
@@ -813,7 +813,7 @@ export const TWAP_OBSERVATION_SECONDS = 900;
 export const SCALE_UP_MIN_GAIN_PCT = 5; // Bear-adjusted Apr-2026: 3→5 — 3% gains reverse easily in 46-day bear; require stronger confirmation before adding capital
 
 /** Buy ratio must exceed this % to confirm momentum for scale-up */
-export const SCALE_UP_BUY_RATIO_MIN = 55;
+export const SCALE_UP_BUY_RATIO_MIN = 60; // Bear-adjusted May-2026: 55→60 — aligns with HOT_MOVER_MIN_BUY_RATIO (60); 55-60% buy ratio is predominantly MEV-front-run distribution in bear markets; adding capital on weak buy-ratio bounces increases losses
 
 /** Deploy this % of portfolio on each scale-up buy */
 export const SCALE_UP_SIZE_PCT = 4;
@@ -838,7 +838,7 @@ export const SCALE_UP_DEDUP_WINDOW_MINUTES = 15;
 export const SURGE_DEDUP_WINDOW_MINUTES = 3;
 
 /** v19.0: Max portfolio % to deploy into a single token via surge (prevents over-concentration) */
-export const SURGE_MAX_CAPITAL_PER_TOKEN_PCT = 25;
+export const SURGE_MAX_CAPITAL_PER_TOKEN_PCT = 20; // Bear-adjusted Apr-2026: 25→20 — 52-day bear; surge events in sustained bear markets are high-probability dead-cat bounces; tighter per-token cap limits catastrophic concentration risk on false surge signals
 
 /** v19.0: Max surge buys per token per hour (prevents runaway buying on noisy flow) */
 export const SURGE_MAX_BUYS_PER_HOUR = 5;
@@ -995,7 +995,7 @@ export const POSITION_CONCENTRATED_STOP_PCT = -7;
 export const DECEL_HISTORY_LENGTH = 5;
 
 /** Min drop from peak buy ratio before trim activates (percentage points) */
-export const DECEL_MIN_DROP_FROM_PEAK = 8;
+export const DECEL_MIN_DROP_FROM_PEAK = 6; // Bear-adjusted May-2026: 8→6 — 55-day bear; buy ratio peaks are lower, smaller drops signal distribution earlier; activates Smart Trim faster to protect profitable positions before they fade
 
 /** Consecutive deceleration cycles before first trim */
 export const DECEL_MIN_CYCLES = 2;
@@ -1019,7 +1019,7 @@ export const DECEL_MIN_POSITION_USD = 10;
 export const DECEL_TRIM_COOLDOWN_SEC = 120;
 
 /** Min profit % before trimming activates */
-export const DECEL_MIN_PROFIT_PCT = 3;
+export const DECEL_MIN_PROFIT_PCT = 2; // Bear-adjusted May-2026: 3→2 — 55-day bear; gains peak earlier/lower; lower floor lets sensitised DECEL (drop 8→6, Run#25) act on smaller winners before reversal
 
 /** Dedup window in minutes for decel trim sells */
 export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
