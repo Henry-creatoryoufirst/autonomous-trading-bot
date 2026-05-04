@@ -449,6 +449,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "KAITO", name: "Kaito", coingeckoId: "kaito",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-04) ===
+  cbSOL: {
+    address: "0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c",
+    symbol: "cbSOL", name: "Coinbase Wrapped Solana", coingeckoId: "coinbase-wrapped-solana",
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
