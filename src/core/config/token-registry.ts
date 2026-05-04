@@ -417,6 +417,17 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "FUN", name: "Sport.Fun", coingeckoId: "sport-fun",
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-04) ===
+  BSX: {
+    address: "0xd5046b976188eb40f6de40fb527f89c05b323385",
+    symbol: "BSX", name: "BaseX", coingeckoId: "basex",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  UP: {
+    address: "0x5b2193fdc451c1f847be09ca9d13a4bf60f8c86b",
+    symbol: "UP", name: "Superform", coingeckoId: "superform",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
