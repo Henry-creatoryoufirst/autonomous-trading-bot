@@ -884,8 +884,8 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // This is the middle tier between dust cleanup (<$5) and meaningful holds (>$100).
 // ============================================================================
 
-/** Minimum position age in hours before culling is considered (7 days) */
-export const CULL_MIN_AGE_HOURS = 168;
+/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear) */
+export const CULL_MIN_AGE_HOURS = 120;
 
 /** Only cull positions under this USD value — don't touch meaningful holds */
 export const CULL_MAX_USD = 100;

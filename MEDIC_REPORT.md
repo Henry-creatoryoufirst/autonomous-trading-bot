@@ -57,6 +57,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #24 | 2026-05-02T17:05 UTC | Scout skipped (<48h, last BIO scout at 14:14); auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 — aligns scale-up signal bar with HOT_MOVER (both 60%); eliminates bear-market inconsistency |
 | #25 | 2026-05-03T00:00 UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_DROP_FROM_PEAK 8→6 — faster Smart Trim activation in 55-day bear; buy ratio peaks are lower so smaller drops signal distribution |
 | #26 | 2026-05-03T~current UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_PROFIT_PCT 3→2 — lowers Smart Trim profit floor; completes DECEL tightening started in Run#25 (drop 8→6); 55-day bear gains peak earlier at 2-3%, lower floor captures more exits before reversal |
+| #27 | 2026-05-04T~current UTC | Scout added cbSOL (Coinbase Wrapped Solana, Aerodrome-integrated, 5+ months old, Est >$100K liq); auditor lowered CULL_MIN_AGE_HOURS 168→120 — 56-day bear; stale research positions (<$100) unlikely to recover after 5 days in bear market; accelerates capital recycling by 2 days per culling cycle |
 
 ## Bot Health Evidence (from git history)
 
@@ -80,6 +81,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #27 — 2026-05-04T~current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #27).
+- **Scout**: RAN — last scout was 2026-05-02 (KAITO, 48h+ elapsed). cbSOL (Coinbase Wrapped Solana) added — confirmed Base address `0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c`, Aerodrome high-APY pool, 5+ months old, BLUE_CHIP LOW risk. cbMEGA ($2.19M vol, truncated address) flagged as watch list — cannot confirm full contract in API-blocked sandbox.
+- **Auditor**: TRIGGERED by inferred 56-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding: CULL_MIN_AGE_HOURS 168→120 — accelerate stale research position culling from 7 to 5 days in sustained bear market. Portfolio management research confirms stale positions should be culled faster in extended bear regimes. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Jobs Status This Run (Run #25 — 2026-05-03T00:00 UTC)
 
