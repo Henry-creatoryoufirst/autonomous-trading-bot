@@ -15,7 +15,7 @@ export const SECTORS = {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "AXL"],
+    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "ZRO", "AXL", "TRX"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
@@ -120,6 +120,11 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0xecAc9C5F704e954931349Da37F60E39f515c11c1",
     symbol: "LBTC", name: "Lombard Staked BTC", coingeckoId: "lombard-staked-btc",
     sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 50, decimals: 18,
+  },
+  TRX: {
+    address: "0x989cfdc3508500d0c91f22896a0d2ee1ef675870",
+    symbol: "TRX", name: "Tron", coingeckoId: "tron",
+    sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18,
   },
   // === AI & AGENT TOKENS (20%) ===
   VIRTUAL: {
