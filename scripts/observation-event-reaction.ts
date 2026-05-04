@@ -436,10 +436,16 @@ async function main() {
   );
   console.log("");
 
-  // Preload OHLCV (use 1-min so we get cleaner intra-window resolution)
+  // Preload OHLCV (use 15-min). Disk cache means subsequent runs are
+  // instant — historical candles don't change. Set cacheMaxAgeSec to a
+  // large value (days) since we're querying historical periods.
+  const __dirnameFeed = dirname(fileURLToPath(import.meta.url));
+  const cacheDir = join(__dirnameFeed, "..", "data", "observation-pass", ".price-cache");
   const feed = new GeckoTerminalHistoricalFeed({
     timeframe: "minute",
     aggregate: 15,
+    cacheDir,
+    cacheMaxAgeSec: 7 * 24 * 3600, // 7 days — old historical data is immutable
     log: (m) => console.log(`  ${m}`),
   });
   const nowMs = Date.now();
