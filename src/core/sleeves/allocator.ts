@@ -53,9 +53,20 @@ export class StaticAllocator implements CapitalAllocator {
 }
 
 /**
- * Convenience factory for the default pre-rollout allocator: 100% to 'core'.
- * This is what the bot uses until alpha sleeves are introduced.
+ * Default allocator. Reads `ALPHA_HUNTER_ALLOCATION_PCT` from env (e.g. 0.05
+ * for 5%) and gives the remainder to Core. When unset or 0, behavior matches
+ * the pre-rollout `{ core: 1.0 }` shape exactly — no change for existing
+ * deployments. Pair with `ALPHA_HUNTER_LIVE=true` (registry.ts) for live
+ * AlphaHunter execution; allocation alone with mode='paper' just inflates the
+ * paper budget.
+ *
+ * Bounds: ALPHA_HUNTER_ALLOCATION_PCT is clamped to [0, 0.20]. The 20% ceiling
+ * is a hard guardrail against accidental over-allocation; raise deliberately
+ * if a real edge is proven.
  */
 export function defaultStaticAllocator(): StaticAllocator {
-  return new StaticAllocator({ core: 1.0 });
+  const raw = parseFloat(process.env.ALPHA_HUNTER_ALLOCATION_PCT ?? '0');
+  const alphaPct = Number.isFinite(raw) ? Math.max(0, Math.min(0.20, raw)) : 0;
+  const corePct = Math.max(0, 1.0 - alphaPct);
+  return new StaticAllocator({ core: corePct, 'alpha-hunter': alphaPct });
 }

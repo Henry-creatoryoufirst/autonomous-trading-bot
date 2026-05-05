@@ -120,6 +120,12 @@ export function buildDefaultRegistry(opts: DefaultRegistryOptions = {}): SleeveR
         getOwnership: opts.getAlphaHunterOwnership,
         getPortfolioValue: opts.getPortfolioValue,
         getExitOverride: opts.getAlphaHunterExitOverride,
+        // Env-driven mode: ALPHA_HUNTER_LIVE=true promotes from paper to live.
+        // Default remains 'paper' so existing deployments are unchanged until
+        // explicit opt-in. Pair with ALPHA_HUNTER_ALLOCATION_PCT > 0 in the
+        // allocator for live decisions to actually fire (effectiveMode requires
+        // both: mode='live' AND allocation>0).
+        mode: process.env.ALPHA_HUNTER_LIVE === 'true' ? 'live' : 'paper',
       }),
       new AlphaRotationSleeve({
         getOwnership: opts.getAlphaRotationOwnership,
