@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-04-30T06:08 UTC
+# MEDIC REPORT — 2026-05-05T~current UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #21)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #30)
 
 ## Environment
-- Run timestamp: 2026-04-30T06:08 UTC
+- Run timestamp: 2026-05-05T~current UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -59,6 +59,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #26 | 2026-05-03T~current UTC | Scout skipped (<48h, KAITO added 2026-05-02); auditor lowered DECEL_MIN_PROFIT_PCT 3→2 — lowers Smart Trim profit floor; completes DECEL tightening started in Run#25 (drop 8→6); 55-day bear gains peak earlier at 2-3%, lower floor captures more exits before reversal |
 | #27 | 2026-05-04T08:21 UTC | Scout added cbSOL (Coinbase Wrapped Solana, Aerodrome-integrated, 5+ months old, Est >$100K liq); auditor lowered CULL_MIN_AGE_HOURS 168→120 — 56-day bear; stale research positions (<$100) unlikely to recover after 5 days in bear market; accelerates capital recycling by 2 days per culling cycle |
 | #28 | 2026-05-04T16:15 UTC | Scout added UP (Superform, DeFi neobank, TGE Feb-10-2026, $8.8M 24h vol, Aerodrome Ignition launch, score 7/10); auditor raised GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 — 57-day bear; Kelly criterion research confirms novel token risk elevated in sustained bear; extra 24h GUARDIAN oversight reduces fat-tail losses on untested tokens |
+| #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
+| #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 
 ## Bot Health Evidence (from git history)
 
@@ -82,6 +84,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #30 — 2026-05-05T~current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #30).
+- **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added, already-duplicate entry), less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 59-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: KELLY_POSITION_CEILING_PCT 14→12 — Institutional Kelly-VAPS and adaptive Kelly criterion research confirms sustained bear regimes require tighter per-trade ceiling beyond Quarter-Kelly fraction alone. With TRENDING_DOWN ×0.75, effective max drops from 10.5% → 9% per trade. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #30 — 2026-05-05)
+- **Signal Quality**: DeFi bots in 2026 increasingly use whale wallet tracking (already implemented: LARGE_TRADE_THRESHOLD_USD=2500) and Nansen/Dune-style smart money signals. Full on-chain signal integration complex (Impact 3/Complexity 4/Risk med) → Watch list. No new action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing efficiency. Slipstream cross-chain DEX launch April 2026 further optimizes routing — bot auto-benefits without code change. No new action.
+- **Position Sizing**: KEY FINDING — MQL5 Institutional Kelly-VAPS Engine (Apr-2026) and adaptive Kelly criterion research both confirm: in bear markets, position ceiling reduction is a primary lever beyond the Kelly fraction itself. KELLY_POSITION_CEILING_PCT 14→12 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Intent-based solver routing (CoW Protocol style) at scale in 2026 — complex architecture change (off-limits). MEV protection via sequencer-direct RPC already in place. Watch list for Henry.
 
 ## Jobs Status This Run (Run #28 — 2026-05-04T16:15 UTC)
 
@@ -138,7 +152,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 17th consecutive run with the same network restriction. Urgent:**
+**This is now the 30th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
