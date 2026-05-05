@@ -66,29 +66,47 @@ fi
 
 When closedPositions ≥ 30, the watchdog activates real decay detection.
 
-**TODO for the human reviewer (one-time):** the decay detection requires the forward-harness's /api/v22-summary endpoint to be EXTENDED with rolling-edge fields. Specifically, add to the V22Status type in `src/core/patterns/forward-harness-adapter.ts`:
-  - rollingHitRate7d: number | null   — hit rate over closed positions in the last 7 days
-  - rollingHitRate30d: number | null  — hit rate over closed positions in the last 30 days
-  - realizedEdge30d: number | null    — (rolling 30d hit rate) − (validated null hit rate, e.g. 18.7% for post-volatility-long)
+The /api/v22-summary endpoint exposes a `patterns` block with per-pattern
+rolling-edge metrics (shipped via `b261dcb`):
 
-The validated null-hit-rate and the validated edge baseline come from config/pattern-baselines.json (already shipped).
+```
+patterns: {
+  "<pattern_name>": {
+    status: "disabled" | "paper" | "live",
+    openPositions: number,
+    closedPositions: number,
+    rollingHitRate7d: number | null,    // null if <5 closed in window
+    rollingHitRate30d: number | null,   // null if <5 closed in window
+    realizedEdge30d: number | null,     // (hitRate30d) − validatedNullHitRate
+    validatedEdgeBaseline: number | null,  // from config/pattern-baselines.json
+    decayRatio: number | null              // realizedEdge30d / validatedEdgeBaseline
+  }
+}
+```
 
-Until the endpoint extension lands, this routine cannot compute decay accurately. Print:
+Iterate the patterns block. For each pattern:
 
-ROLLING_30D=$(echo "$V22_SUMMARY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('realizedEdge30d',None))" 2>/dev/null)
+```bash
+for pattern_name in $PATTERN_NAMES; do
+  decayRatio=$(echo "$V22_SUMMARY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('patterns',{}).get('$pattern_name',{}).get('decayRatio',None))")
+  rollingHitRate30d=$(echo "$V22_SUMMARY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('patterns',{}).get('$pattern_name',{}).get('rollingHitRate30d',None))")
 
-if [ "$ROLLING_30D" = "None" ] || [ -z "$ROLLING_30D" ]; then
-  echo "⚠  Telemetry threshold met (${CLOSED_POSITIONS} closed positions) BUT /api/v22-summary lacks rolling-edge fields."
-  echo "   Required next step: extend V22Status in forward-harness-adapter.ts with rollingHitRate7d, rollingHitRate30d, realizedEdge30d."
-  echo "   Once endpoint is extended, this routine activates automatically on next fire."
-  exit 0
-fi
+  if [ "$decayRatio" = "None" ] || [ -z "$decayRatio" ]; then
+    # Insufficient samples in 30d window (rolling fields are null until ≥5 closed). Skip.
+    echo "  ⏭  ${pattern_name}: insufficient rolling 30d samples (need ≥5 closed in window)"
+    continue
+  fi
 
-With the extended endpoint, compute decay per pattern:
+  # Use python to compare since bash arithmetic doesn't do floats
+  IS_DECAYED=$(python3 -c "print('yes' if $decayRatio < 0.5 else 'no')")
+  if [ "$IS_DECAYED" = "yes" ]; then
+    # Decay detected — propose demotion
+    ...
+  fi
+done
+```
 
-decay_ratio = realizedEdge30d / validatedEdgePp (from config/pattern-baselines.json)
-
-For each pattern with decay_ratio < 0.5:
+For each pattern with `decayRatio < 0.5`:
 
 ### 4a. Spam-prevention check
 
