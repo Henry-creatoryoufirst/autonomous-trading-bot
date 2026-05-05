@@ -1,0 +1,2022 @@
+{
+  "symbol": "BRETT",
+  "address": "0x532f27101965dd16442e59d40670faf5ebb142e4",
+  "pools": [
+    "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+    "0xba3f945812a83471d709bce9c3ca699a19fb46f7"
+  ],
+  "moves": [
+    {
+      "symbol": "BRETT",
+      "anchorCloseISO": "2026-04-16T16:00:00.000Z",
+      "anchorCloseTs": 1776355200,
+      "fromTs": 1776351600,
+      "pctChange": 0.053372026412410185,
+      "fromPrice": 0.00747000054207041,
+      "toPrice": 0.00786868960830251,
+      "windowVolumeUsd": 45886.91819730731,
+      "windowCandleCount": 5,
+      "preWindowAxes": {
+        "fromTs": 1776344400,
+        "toTs": 1776351600,
+        "buyBuckets": [
+          {
+            "bucketStartTs": 1776344400,
+            "userCount": 1,
+            "userTotalAmountUsd": 0.05346236563434864,
+            "routerCount": 7,
+            "routerTotalAmountUsd": 1646.1290541288524
+          },
+          {
+            "bucketStartTs": 1776344700,
+            "userCount": 4,
+            "userTotalAmountUsd": 574.1391359433467,
+            "routerCount": 23,
+            "routerTotalAmountUsd": 5545.503379975513
+          },
+          {
+            "bucketStartTs": 1776345000,
+            "userCount": 5,
+            "userTotalAmountUsd": 229.18932718738262,
+            "routerCount": 27,
+            "routerTotalAmountUsd": 13533.934992964654
+          },
+          {
+            "bucketStartTs": 1776345300,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 10216.298296738509
+          },
+          {
+            "bucketStartTs": 1776345600,
+            "userCount": 3,
+            "userTotalAmountUsd": 20.215589200909744,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 10216.298267089001
+          },
+          {
+            "bucketStartTs": 1776345900,
+            "userCount": 2,
+            "userTotalAmountUsd": 252.8493964489803,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 14168.608762351447
+          },
+          {
+            "bucketStartTs": 1776346200,
+            "userCount": 3,
+            "userTotalAmountUsd": 15.441497589563692,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 47764.99089900686
+          },
+          {
+            "bucketStartTs": 1776346500,
+            "userCount": 1,
+            "userTotalAmountUsd": 1.9331026884507372,
+            "routerCount": 7,
+            "routerTotalAmountUsd": 72829.94181257051
+          },
+          {
+            "bucketStartTs": 1776346800,
+            "userCount": 2,
+            "userTotalAmountUsd": 27.2217121485419,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 42382.85861229553
+          },
+          {
+            "bucketStartTs": 1776347100,
+            "userCount": 4,
+            "userTotalAmountUsd": 1751.7974631168581,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 10177.778824335262
+          },
+          {
+            "bucketStartTs": 1776347400,
+            "userCount": 15,
+            "userTotalAmountUsd": 69.43019883604873,
+            "routerCount": 8,
+            "routerTotalAmountUsd": 75468.18705650937
+          },
+          {
+            "bucketStartTs": 1776347700,
+            "userCount": 6,
+            "userTotalAmountUsd": 1319.138227336912,
+            "routerCount": 12,
+            "routerTotalAmountUsd": 35941.001691337005
+          },
+          {
+            "bucketStartTs": 1776348000,
+            "userCount": 1,
+            "userTotalAmountUsd": 21.418406853138826,
+            "routerCount": 17,
+            "routerTotalAmountUsd": 14939.831825150452
+          },
+          {
+            "bucketStartTs": 1776348300,
+            "userCount": 1,
+            "userTotalAmountUsd": 27.48554948036792,
+            "routerCount": 6,
+            "routerTotalAmountUsd": 34164.62745799427
+          },
+          {
+            "bucketStartTs": 1776348600,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 56915.6965271997
+          },
+          {
+            "bucketStartTs": 1776348900,
+            "userCount": 4,
+            "userTotalAmountUsd": 9.88326122327548,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 25199.244246906102
+          },
+          {
+            "bucketStartTs": 1776349200,
+            "userCount": 2,
+            "userTotalAmountUsd": 3.9773523899561356,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 9570.274485797128
+          },
+          {
+            "bucketStartTs": 1776349500,
+            "userCount": 2,
+            "userTotalAmountUsd": 3.540350455955792,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 3350.8913150054846
+          },
+          {
+            "bucketStartTs": 1776349800,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 9,
+            "routerTotalAmountUsd": 2426.2244228439013
+          },
+          {
+            "bucketStartTs": 1776350100,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 6,
+            "routerTotalAmountUsd": 1527.2331409581561
+          },
+          {
+            "bucketStartTs": 1776350400,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 22758.500746502767
+          },
+          {
+            "bucketStartTs": 1776350700,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 198.95971914751888
+          },
+          {
+            "bucketStartTs": 1776351000,
+            "userCount": 1,
+            "userTotalAmountUsd": 0.23636728835426135,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 1182.7218950213198
+          },
+          {
+            "bucketStartTs": 1776351300,
+            "userCount": 1,
+            "userTotalAmountUsd": 345.95512502363573,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 545.5849342173993
+          }
+        ],
+        "largestUserBuys": [
+          {
+            "timestamp": "2026-04-16T13:48:57.000Z",
+            "buyerWallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "182263688137784433204348",
+            "amountUsd": 1364.22775866768,
+            "txHash": "0xfdaa11cc10c72a605e17d9e4666416ef742e6b86b1a409fa84cc0c80ef2a6a5a"
+          },
+          {
+            "timestamp": "2026-04-16T13:57:13.000Z",
+            "buyerWallet": "0x12c6f6b67f254dadba13e89598abc7cd93538cee",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "66239000000000000000000",
+            "amountUsd": 495.79311946149073,
+            "txHash": "0x31ba8bc43d7811cf232f1ce68a3c35cdf5b4a366cfd8fb4bb84ffaf5379ba268"
+          },
+          {
+            "timestamp": "2026-04-16T13:08:33.000Z",
+            "buyerWallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "49780077054179161224139",
+            "amountUsd": 387.42137016811967,
+            "txHash": "0xf0f0bc9d2b111cc05d82cd335bab09fe173a7045e9d4783aaacced9f3f9907f4"
+          },
+          {
+            "timestamp": "2026-04-16T13:48:55.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "50355349148857828689602",
+            "amountUsd": 376.9053825704607,
+            "txHash": "0x797267b8771609c5ccbf62cf8e23e1e6c9aefd74cfdc1e8bee55fbacd4814b2b"
+          },
+          {
+            "timestamp": "2026-04-16T14:55:23.000Z",
+            "buyerWallet": "0x95cade1c02f760618f0d57152789f552b6845a27",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "46126333124142175457883",
+            "amountUsd": 345.95512502363573,
+            "txHash": "0x53f2ef28a51aa7cd5e16d3051f0db507579cd3d0e626d54956ab75aa4648e325"
+          },
+          {
+            "timestamp": "2026-04-16T13:55:55.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "45189111847989631538563",
+            "amountUsd": 338.23654839005707,
+            "txHash": "0xb3f522336690e89846015a2ea781a7fcdbf0d9552c93fbff62c7986a91f0168f"
+          },
+          {
+            "timestamp": "2026-04-16T13:55:53.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "43537159250470878053548",
+            "amountUsd": 325.8718277341544,
+            "txHash": "0x0efd97bf9f2423a45b9f76572e73f106e86a7be240ed569da38d61d111861d64"
+          },
+          {
+            "timestamp": "2026-04-16T13:29:25.000Z",
+            "buyerWallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "32820368447500589666038",
+            "amountUsd": 252.600703201664,
+            "txHash": "0x383eb58d2c58a4fcf6bc693f94b1b54c2857098f42dca1e29c3e9238b2adf2cc"
+          },
+          {
+            "timestamp": "2026-04-16T13:08:33.000Z",
+            "buyerWallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "14525341637124295765346",
+            "amountUsd": 113.04578241391647,
+            "txHash": "0xf0f0bc9d2b111cc05d82cd335bab09fe173a7045e9d4783aaacced9f3f9907f4"
+          },
+          {
+            "timestamp": "2026-04-16T13:55:23.000Z",
+            "buyerWallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "9270461860518479000000",
+            "amountUsd": 69.38859591290979,
+            "txHash": "0x739b75285161e5ba198c2cf50d43e68eb18b6550dc7b882517d26d60ce4f6cff"
+          },
+          {
+            "timestamp": "2026-04-16T13:13:03.000Z",
+            "buyerWallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "7260749687282964826059",
+            "amountUsd": 56.50793969710734,
+            "txHash": "0x2a01fbc150af98eff589cfc7df949c75a045cb42f34cd0d282da86ca16e3ec22"
+          },
+          {
+            "timestamp": "2026-04-16T13:55:11.000Z",
+            "buyerWallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "6009398332089828000000",
+            "amountUsd": 44.97982072726786,
+            "txHash": "0xb21e4c39be5b0c1dfc1e43fd0a1dd99013ff39542aab02fcae87e07622aefc0e"
+          },
+          {
+            "timestamp": "2026-04-16T13:58:55.000Z",
+            "buyerWallet": "0x9b4096290cc38616fe7bbb98e3301cd3f3e8cc76",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "5994500948032032494285",
+            "amountUsd": 44.868315111032246,
+            "txHash": "0xefc38d1b28b29e226be00d403fa7b4fe69ac89c77c41eae6dcfe70e23958f5a8"
+          },
+          {
+            "timestamp": "2026-04-16T13:13:45.000Z",
+            "buyerWallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "5613022578228643687109",
+            "amountUsd": 43.68424130149814,
+            "txHash": "0x21aeff4e3bdaace8f91d0b67bd4c8d76c74bd7b4c515a9784a5c818e9f22435f"
+          },
+          {
+            "timestamp": "2026-04-16T13:14:07.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5530213217083374058910",
+            "amountUsd": 43.03976427261106,
+            "txHash": "0x747a9140dbb3351a7a04d8a5cf066dd32f8eddb1da48a70e2c560f635218dbd8"
+          },
+          {
+            "timestamp": "2026-04-16T13:14:33.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5523975285329052189368",
+            "amountUsd": 42.9912165762175,
+            "txHash": "0x3533425621d02e77e256504468b5fffc18a989085fcb1e540da8eb4d99a639f0"
+          },
+          {
+            "timestamp": "2026-04-16T13:14:37.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5520756432246099062037",
+            "amountUsd": 42.9661653399486,
+            "txHash": "0xf5dc3e0079c0152db7db8c48870ddce9b0cf07155d756305f9ea6633263baf7c"
+          },
+          {
+            "timestamp": "2026-04-16T13:06:41.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5342114861984695135639",
+            "amountUsd": 41.575858895779554,
+            "txHash": "0x272dfea05b37fc59641d9f3b0393836ab650fca87bb03745090f41c30b38c6e2"
+          },
+          {
+            "timestamp": "2026-04-16T13:06:39.000Z",
+            "buyerWallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "4124056317134298640224",
+            "amountUsd": 32.09612446553103,
+            "txHash": "0x9cedb66d35ec6ee29fc8a5f5cb46c91fe52178437c9964293b5626f0b52ec27d"
+          },
+          {
+            "timestamp": "2026-04-16T14:09:05.000Z",
+            "buyerWallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "3671845740841183770003",
+            "amountUsd": 27.48554948036792,
+            "txHash": "0x50e3b2c19d589766c9975e2a754d0ca338dc7e6b890bd389fc5c6c07ab355b84"
+          }
+        ],
+        "totalBuys": 220,
+        "userBuys": 58,
+        "routerBuys": 1,
+        "botBuys": 161,
+        "uniqueUserBuyers": 25,
+        "topUserBuyers": [
+          {
+            "wallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+            "totalUsd": 1364.22775866768,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "totalUsd": 834.6813812087682,
+            "buyCount": 6
+          },
+          {
+            "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+            "totalUsd": 516.496323719844,
+            "buyCount": 4
+          },
+          {
+            "wallet": "0x12c6f6b67f254dadba13e89598abc7cd93538cee",
+            "totalUsd": 495.79311946149073,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "totalUsd": 398.4702681000465,
+            "buyCount": 5
+          },
+          {
+            "wallet": "0x95cade1c02f760618f0d57152789f552b6845a27",
+            "totalUsd": 345.95512502363573,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+            "totalUsd": 252.600703201664,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "totalUsd": 177.08719678847808,
+            "buyCount": 5
+          },
+          {
+            "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+            "totalUsd": 114.36841664017766,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x9b4096290cc38616fe7bbb98e3301cd3f3e8cc76",
+            "totalUsd": 44.868315111032246,
+            "buyCount": 1
+          }
+        ],
+        "userBuyVolumeUsd": 4673.905525577314,
+        "routerBuyVolumeUsd": 445.0067549437858,
+        "botBuyVolumeUsd": 512226.31561110326,
+        "distinctTxs": 217
+      }
+    },
+    {
+      "symbol": "BRETT",
+      "anchorCloseISO": "2026-04-16T19:15:00.000Z",
+      "anchorCloseTs": 1776366900,
+      "fromTs": 1776363300,
+      "pctChange": 0.05706276110252399,
+      "fromPrice": 0.00783923091398104,
+      "toPrice": 0.00828655907485306,
+      "windowVolumeUsd": 142820.11124289857,
+      "windowCandleCount": 5,
+      "preWindowAxes": {
+        "fromTs": 1776356100,
+        "toTs": 1776363300,
+        "buyBuckets": [
+          {
+            "bucketStartTs": 1776356100,
+            "userCount": 4,
+            "userTotalAmountUsd": 1107.8296048173868,
+            "routerCount": 14,
+            "routerTotalAmountUsd": 26694.04862239439
+          },
+          {
+            "bucketStartTs": 1776356400,
+            "userCount": 5,
+            "userTotalAmountUsd": 3904.9362974046417,
+            "routerCount": 17,
+            "routerTotalAmountUsd": 31616.617215808135
+          },
+          {
+            "bucketStartTs": 1776356700,
+            "userCount": 4,
+            "userTotalAmountUsd": 300.12519463105747,
+            "routerCount": 16,
+            "routerTotalAmountUsd": 20652.715803301704
+          },
+          {
+            "bucketStartTs": 1776357000,
+            "userCount": 5,
+            "userTotalAmountUsd": 802.418374021681,
+            "routerCount": 12,
+            "routerTotalAmountUsd": 16455.588008331997
+          },
+          {
+            "bucketStartTs": 1776357300,
+            "userCount": 6,
+            "userTotalAmountUsd": 914.933728578345,
+            "routerCount": 13,
+            "routerTotalAmountUsd": 11489.673659740767
+          },
+          {
+            "bucketStartTs": 1776357600,
+            "userCount": 6,
+            "userTotalAmountUsd": 2666.2613592252437,
+            "routerCount": 9,
+            "routerTotalAmountUsd": 52051.829765776616
+          },
+          {
+            "bucketStartTs": 1776357900,
+            "userCount": 3,
+            "userTotalAmountUsd": 5.07536421883513,
+            "routerCount": 7,
+            "routerTotalAmountUsd": 37629.68874999025
+          },
+          {
+            "bucketStartTs": 1776358200,
+            "userCount": 12,
+            "userTotalAmountUsd": 163.7975935789075,
+            "routerCount": 6,
+            "routerTotalAmountUsd": 60148.76767951144
+          },
+          {
+            "bucketStartTs": 1776358500,
+            "userCount": 2,
+            "userTotalAmountUsd": 1009.7651461422903,
+            "routerCount": 26,
+            "routerTotalAmountUsd": 11016.581217990733
+          },
+          {
+            "bucketStartTs": 1776358800,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 18149.831292130522
+          },
+          {
+            "bucketStartTs": 1776359100,
+            "userCount": 3,
+            "userTotalAmountUsd": 40.20331814950983,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 29239.437631874807
+          },
+          {
+            "bucketStartTs": 1776359400,
+            "userCount": 2,
+            "userTotalAmountUsd": 151.40957584083728,
+            "routerCount": 17,
+            "routerTotalAmountUsd": 23067.279231837747
+          },
+          {
+            "bucketStartTs": 1776359700,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 7986.721295730352
+          },
+          {
+            "bucketStartTs": 1776360000,
+            "userCount": 1,
+            "userTotalAmountUsd": 20.123529322174562,
+            "routerCount": 7,
+            "routerTotalAmountUsd": 28015.220910804284
+          },
+          {
+            "bucketStartTs": 1776360300,
+            "userCount": 3,
+            "userTotalAmountUsd": 117.31348639550467,
+            "routerCount": 11,
+            "routerTotalAmountUsd": 5339.731470264777
+          },
+          {
+            "bucketStartTs": 1776360600,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 11923.401283588957
+          },
+          {
+            "bucketStartTs": 1776360900,
+            "userCount": 1,
+            "userTotalAmountUsd": 0.04465476303749999,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 7285.170554623896
+          },
+          {
+            "bucketStartTs": 1776361200,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 19015.99419037956
+          },
+          {
+            "bucketStartTs": 1776361500,
+            "userCount": 6,
+            "userTotalAmountUsd": 3330.123864308859,
+            "routerCount": 9,
+            "routerTotalAmountUsd": 24111.936863755353
+          },
+          {
+            "bucketStartTs": 1776361800,
+            "userCount": 39,
+            "userTotalAmountUsd": 9869.3077991481,
+            "routerCount": 23,
+            "routerTotalAmountUsd": 6870.265890715665
+          },
+          {
+            "bucketStartTs": 1776362100,
+            "userCount": 10,
+            "userTotalAmountUsd": 349.9509162723511,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 11594.225513923742
+          },
+          {
+            "bucketStartTs": 1776362400,
+            "userCount": 7,
+            "userTotalAmountUsd": 221.9148122290325,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 9283.65042634864
+          },
+          {
+            "bucketStartTs": 1776362700,
+            "userCount": 4,
+            "userTotalAmountUsd": 2096.727899286283,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 11427.827322190384
+          },
+          {
+            "bucketStartTs": 1776363000,
+            "userCount": 7,
+            "userTotalAmountUsd": 2177.733613335384,
+            "routerCount": 17,
+            "routerTotalAmountUsd": 18356.04862204013
+          }
+        ],
+        "largestUserBuys": [
+          {
+            "timestamp": "2026-04-16T16:24:55.000Z",
+            "buyerWallet": "0xa836296820f89662f5487474000d4050265373e3",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "445557344861405698767702",
+            "amountUsd": 3511.482006622107,
+            "txHash": "0x88fb98a091dc948a62ddf1f86ab4ba9077dd67743e0685fbc070532d443fd671"
+          },
+          {
+            "timestamp": "2026-04-16T17:52:29.000Z",
+            "buyerWallet": "0x37260959215931502036f8bd5e88a5368737da07",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "282418748913364261126026",
+            "amountUsd": 2211.963302244494,
+            "txHash": "0x79ac1753b1f0728580fd5250f5e48e47c4093686f83d249b4a0d73a3b2335380"
+          },
+          {
+            "timestamp": "2026-04-16T18:06:21.000Z",
+            "buyerWallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "256135940577786213431468",
+            "amountUsd": 2014.6165389439855,
+            "txHash": "0x95cbede05db3f073b8a5d82853ae08277ed5fd4b174a3faf4f0ba526b47ba388"
+          },
+          {
+            "timestamp": "2026-04-16T16:43:01.000Z",
+            "buyerWallet": "0xa836296820f89662f5487474000d4050265373e3",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "237624947673147322291280",
+            "amountUsd": 1862.7180138936994,
+            "txHash": "0xc64047ce2a65ac700fb413abf75efc75baf90831471a9e4f9c2a70de8cd34b7b"
+          },
+          {
+            "timestamp": "2026-04-16T17:50:41.000Z",
+            "buyerWallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "234740487486951200000000",
+            "amountUsd": 1838.5370867548243,
+            "txHash": "0x94bde0589314dc73137fda08730ac54617c22c1145b9509efb8f05d9d0459788"
+          },
+          {
+            "timestamp": "2026-04-16T17:49:13.000Z",
+            "buyerWallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "182340252953562080850616",
+            "amountUsd": 1428.1273803779382,
+            "txHash": "0x0c53df0a7085202a4656bdd67f388d0cdbe282d60efdbdbb20eb17e5c4cdf453"
+          },
+          {
+            "timestamp": "2026-04-16T16:17:29.000Z",
+            "buyerWallet": "0xbf9da41c95559e39862aedf0844263c42c1c1044",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "128195687466763989422961",
+            "amountUsd": 1010.3230371078677,
+            "txHash": "0x5da4392bb2dfba161be9dc00d8f6f9d59edb172f136cee45bea78ea88df2fb88"
+          },
+          {
+            "timestamp": "2026-04-16T17:51:13.000Z",
+            "buyerWallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "126951158885278710127578",
+            "amountUsd": 994.30829472936,
+            "txHash": "0x0c6e60a5796b652c12e36406d392bf499e0accb59697a0e578b1ce1dba379395"
+          },
+          {
+            "timestamp": "2026-04-16T17:49:33.000Z",
+            "buyerWallet": "0xfe263102682933297cb65dc813e5193249769251",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "125426256654605750207328",
+            "amountUsd": 982.3649383242438,
+            "txHash": "0x6b2fecb9109595f9467bc4b064d9f29d1922017f15dfe1af1ee003fa67b0a9ee"
+          },
+          {
+            "timestamp": "2026-04-16T16:55:53.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "113437025367017452126839",
+            "amountUsd": 883.757331530529,
+            "txHash": "0xeb18296855db48c672a3009f1199c887c7c78e5cadf0794dbb701eb8d5f27a17"
+          },
+          {
+            "timestamp": "2026-04-16T18:11:37.000Z",
+            "buyerWallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "75015552639713110827370",
+            "amountUsd": 590.0287663069803,
+            "txHash": "0x22a47ef3d2e0da8a4e0fd1c78ec042edbe56ddf4fe93561bf9d9bc49899ce431"
+          },
+          {
+            "timestamp": "2026-04-16T17:50:59.000Z",
+            "buyerWallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "71755030024424284096237",
+            "amountUsd": 562.0005533491251,
+            "txHash": "0x2162fa54e2e966f4fdb480412ec6390e4f8b18327fbaa49b590b19faff18d3e7"
+          },
+          {
+            "timestamp": "2026-04-16T17:49:37.000Z",
+            "buyerWallet": "0xfe263102682933297cb65dc813e5193249769251",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "63961580870023704399583",
+            "amountUsd": 500.9606132114019,
+            "txHash": "0x0c3089dd08d58d1c7826fe54a610ae0be86fd3eb59ed8a6916905e5bf3a10bf5"
+          },
+          {
+            "timestamp": "2026-04-16T17:50:03.000Z",
+            "buyerWallet": "0xfe263102682933297cb65dc813e5193249769251",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "60698561635642295744928",
+            "amountUsd": 475.40395725728985,
+            "txHash": "0x87606538a01393b336476f34cff330c00349f3fe45928073ee68df5d22c11286"
+          },
+          {
+            "timestamp": "2026-04-16T18:12:03.000Z",
+            "buyerWallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "50068063417974331412470",
+            "amountUsd": 393.8063061638736,
+            "txHash": "0xfa89ba3aa7eae0fc1df5ff9601073ebe65128a63934c29b8fb3051111f3efd68"
+          },
+          {
+            "timestamp": "2026-04-16T18:11:37.000Z",
+            "buyerWallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "50048095059670346006714",
+            "amountUsd": 393.64924665553593,
+            "txHash": "0x45b74516561e3455690261a06af9b24a8ed8fb6c0c13235d95f41ea61274e761"
+          },
+          {
+            "timestamp": "2026-04-16T17:50:11.000Z",
+            "buyerWallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "50107997951594813173510",
+            "amountUsd": 392.4564252349647,
+            "txHash": "0x38573a1182d825b403200dd2e27b200708d994cd635702521fd54181260186d2"
+          },
+          {
+            "timestamp": "2026-04-16T17:49:09.000Z",
+            "buyerWallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "50042980770873419290250",
+            "amountUsd": 391.9471969407227,
+            "txHash": "0xc9360980fbb21d49c6f5a617bbcb6a48fc0e6669bd249531cdba4f328c8d6c28"
+          },
+          {
+            "timestamp": "2026-04-16T18:12:01.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "42936750284175966406299",
+            "amountUsd": 337.71553908397783,
+            "txHash": "0xed8f82a43a470c16b8f360e1daed9d6cee91804b06b8aa9070562f1c96769412"
+          },
+          {
+            "timestamp": "2026-04-16T18:12:05.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "42829164028750701332190",
+            "amountUsd": 336.8693280873724,
+            "txHash": "0x7f2c6db552b30598c0b2ed126dd6bbdf732dd5137919ee5443b6ef7d9823630f"
+          }
+        ],
+        "totalBuys": 362,
+        "userBuys": 130,
+        "routerBuys": 2,
+        "botBuys": 230,
+        "uniqueUserBuyers": 40,
+        "topUserBuyers": [
+          {
+            "wallet": "0xa836296820f89662f5487474000d4050265373e3",
+            "totalUsd": 5374.2000205158065,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+            "totalUsd": 4543.558278244119,
+            "buyCount": 18
+          },
+          {
+            "wallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+            "totalUsd": 2813.419660670942,
+            "buyCount": 4
+          },
+          {
+            "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "totalUsd": 2451.7845821718197,
+            "buyCount": 6
+          },
+          {
+            "wallet": "0x37260959215931502036f8bd5e88a5368737da07",
+            "totalUsd": 2211.963302244494,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+            "totalUsd": 2015.7772378915618,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0xfe263102682933297cb65dc813e5193249769251",
+            "totalUsd": 1958.7295087929356,
+            "buyCount": 3
+          },
+          {
+            "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "totalUsd": 1540.903612188461,
+            "buyCount": 9
+          },
+          {
+            "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "totalUsd": 1521.431221527099,
+            "buyCount": 20
+          },
+          {
+            "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "totalUsd": 1039.0973126954264,
+            "buyCount": 6
+          }
+        ],
+        "userBuyVolumeUsd": 29249.996131669468,
+        "routerBuyVolumeUsd": 78.98427271912746,
+        "botBuyVolumeUsd": 499343.26895033533,
+        "distinctTxs": 358
+      }
+    },
+    {
+      "symbol": "BRETT",
+      "anchorCloseISO": "2026-04-17T13:15:00.000Z",
+      "anchorCloseTs": 1776431700,
+      "fromTs": 1776429000,
+      "pctChange": 0.054761898738101146,
+      "fromPrice": 0.00787025498885221,
+      "toPrice": 0.00830124509559477,
+      "windowVolumeUsd": 65661.17344949764,
+      "windowCandleCount": 5,
+      "preWindowAxes": {
+        "fromTs": 1776421800,
+        "toTs": 1776429000,
+        "buyBuckets": [
+          {
+            "bucketStartTs": 1776421800,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 3442.2530340324734
+          },
+          {
+            "bucketStartTs": 1776422100,
+            "userCount": 1,
+            "userTotalAmountUsd": 98.26391965805308,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776422400,
+            "userCount": 5,
+            "userTotalAmountUsd": 23.62350953881561,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 15258.260217660103
+          },
+          {
+            "bucketStartTs": 1776422700,
+            "userCount": 2,
+            "userTotalAmountUsd": 10.796724503414906,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 34274.42570262837
+          },
+          {
+            "bucketStartTs": 1776423000,
+            "userCount": 1,
+            "userTotalAmountUsd": 153.15808625309813,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 22682.58405193689
+          },
+          {
+            "bucketStartTs": 1776423300,
+            "userCount": 4,
+            "userTotalAmountUsd": 9.513418892253146,
+            "routerCount": 9,
+            "routerTotalAmountUsd": 2377.317201378017
+          },
+          {
+            "bucketStartTs": 1776423600,
+            "userCount": 5,
+            "userTotalAmountUsd": 293.0900678919143,
+            "routerCount": 21,
+            "routerTotalAmountUsd": 8485.111225627872
+          },
+          {
+            "bucketStartTs": 1776423900,
+            "userCount": 1,
+            "userTotalAmountUsd": 11.762747274450822,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 11485.501918043943
+          },
+          {
+            "bucketStartTs": 1776424200,
+            "userCount": 1,
+            "userTotalAmountUsd": 73.327652283392,
+            "routerCount": 9,
+            "routerTotalAmountUsd": 13456.965847330743
+          },
+          {
+            "bucketStartTs": 1776424500,
+            "userCount": 1,
+            "userTotalAmountUsd": 42.961972508322226,
+            "routerCount": 19,
+            "routerTotalAmountUsd": 4945.769818209476
+          },
+          {
+            "bucketStartTs": 1776424800,
+            "userCount": 2,
+            "userTotalAmountUsd": 85.8570652943491,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 12017.050662230919
+          },
+          {
+            "bucketStartTs": 1776425100,
+            "userCount": 2,
+            "userTotalAmountUsd": 92.34736151394205,
+            "routerCount": 6,
+            "routerTotalAmountUsd": 12985.059610743216
+          },
+          {
+            "bucketStartTs": 1776425400,
+            "userCount": 7,
+            "userTotalAmountUsd": 560.3286702627952,
+            "routerCount": 9,
+            "routerTotalAmountUsd": 8160.399759601466
+          },
+          {
+            "bucketStartTs": 1776425700,
+            "userCount": 4,
+            "userTotalAmountUsd": 237.81862698854115,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 7473.767131992841
+          },
+          {
+            "bucketStartTs": 1776426000,
+            "userCount": 1,
+            "userTotalAmountUsd": 42.7937989918418,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 197.6643746256239
+          },
+          {
+            "bucketStartTs": 1776426300,
+            "userCount": 2,
+            "userTotalAmountUsd": 1.9795715198490855,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776426600,
+            "userCount": 2,
+            "userTotalAmountUsd": 58.816818014023575,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 4505.266744266173
+          },
+          {
+            "bucketStartTs": 1776426900,
+            "userCount": 1,
+            "userTotalAmountUsd": 8.580931911550042,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 42537.823623214106
+          },
+          {
+            "bucketStartTs": 1776427200,
+            "userCount": 2,
+            "userTotalAmountUsd": 21.40182198180904,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 44909.46798036701
+          },
+          {
+            "bucketStartTs": 1776427500,
+            "userCount": 4,
+            "userTotalAmountUsd": 14.521338852033436,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 22451.84552750239
+          },
+          {
+            "bucketStartTs": 1776427800,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 11870.325922242559
+          },
+          {
+            "bucketStartTs": 1776428100,
+            "userCount": 1,
+            "userTotalAmountUsd": 8.801601683834996,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 11241.181980716749
+          },
+          {
+            "bucketStartTs": 1776428400,
+            "userCount": 1,
+            "userTotalAmountUsd": 4.951489656085361,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 33723.54594215105
+          },
+          {
+            "bucketStartTs": 1776428700,
+            "userCount": 5,
+            "userTotalAmountUsd": 198.3640731662809,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 33705.008287906094
+          }
+        ],
+        "largestUserBuys": [
+          {
+            "timestamp": "2026-04-17T11:31:15.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "42769653569826052174255",
+            "amountUsd": 336.62715878503263,
+            "txHash": "0x8fd164ab474f98903dd06692d4590b5466445b4389fe5b9f05f465c9e79f7f9e"
+          },
+          {
+            "timestamp": "2026-04-17T11:02:45.000Z",
+            "buyerWallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "25568427303336889667684",
+            "amountUsd": 199.70894013670144,
+            "txHash": "0x36e2f5f0a76088331c150f0aacd9e76f9d5fe09f7e453db7aa5bbb2326fe2326"
+          },
+          {
+            "timestamp": "2026-04-17T12:29:31.000Z",
+            "buyerWallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "19860970597318784597878",
+            "amountUsd": 156.78731812109868,
+            "txHash": "0xc4a76a7d91c60e52e7b6eef1d246770485302e733c79dd9d8f93fb58a0185682"
+          },
+          {
+            "timestamp": "2026-04-17T10:54:27.000Z",
+            "buyerWallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "19866092770376133187253",
+            "amountUsd": 153.15808625309813,
+            "txHash": "0x9afd143a28d1e01d9465c60f81f5525cde28666d5a77310614a98d35f8825dea"
+          },
+          {
+            "timestamp": "2026-04-17T11:36:51.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "13045545427074527700564",
+            "amountUsd": 102.677588555811,
+            "txHash": "0xde958d111560a6115e31092add6d42424659d1f27cfccafb9ed9aca3d9e16397"
+          },
+          {
+            "timestamp": "2026-04-17T10:37:27.000Z",
+            "buyerWallet": "0xd0932d4bffbc97e0def94ed9f032aedb00a8b15b",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "12786809578536479643645",
+            "amountUsd": 98.26391965805308,
+            "txHash": "0x4cb4fcd6e91c03c724094e67bb5352f3777f82454b30f461c79c0a5452ac4fed"
+          },
+          {
+            "timestamp": "2026-04-17T11:36:51.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "9785651775026894969918",
+            "amountUsd": 77.01994004952637,
+            "txHash": "0xde958d111560a6115e31092add6d42424659d1f27cfccafb9ed9aca3d9e16397"
+          },
+          {
+            "timestamp": "2026-04-17T11:13:05.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "9388026121659438061625",
+            "amountUsd": 73.327652283392,
+            "txHash": "0x21521316299db881b6a32a01ffcae75404877f2e8fd06ecbe32529a6932ee28a"
+          },
+          {
+            "timestamp": "2026-04-17T11:51:37.000Z",
+            "buyerWallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "6311991754641561203221",
+            "amountUsd": 49.49138855475103,
+            "txHash": "0x84b9e8e3150e6be6ce116e2c263c793e9940207c7538ed68ce1313ca1dfee7b8"
+          },
+          {
+            "timestamp": "2026-04-17T11:28:03.000Z",
+            "buyerWallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "6301328163328264960024",
+            "amountUsd": 49.475685749837425,
+            "txHash": "0xc25743f9d6f4b9be6fe36d75af120e0fd224d809ec426e503e5817d2b0134894"
+          },
+          {
+            "timestamp": "2026-04-17T11:19:49.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5471727844009015074893",
+            "amountUsd": 42.961972508322226,
+            "txHash": "0x735dd8af84048b99348ff43181ce7ff873ec72b869158a81e23e56a9dd0a4f48"
+          },
+          {
+            "timestamp": "2026-04-17T11:20:51.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5468887460819028629948",
+            "amountUsd": 42.9396708756387,
+            "txHash": "0x85ae54175d4414834d1d2760e21f8753a6be5c66a5c8d9b7d1149f4383d7f110"
+          },
+          {
+            "timestamp": "2026-04-17T11:21:21.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5466050284066567840637",
+            "amountUsd": 42.9173944187104,
+            "txHash": "0xcc1b0ff07cd5b9537b3822f478bf9ffc3101ec71c1c510207dd0dfa4e8a066ea"
+          },
+          {
+            "timestamp": "2026-04-17T11:31:13.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5451309764209220186163",
+            "amountUsd": 42.90562967939231,
+            "txHash": "0xc7fe1cc1f11e257634ddfcdc0ae6c16ed317ca96cb209ad7830a39fd983b617a"
+          },
+          {
+            "timestamp": "2026-04-17T11:31:07.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5451148628737006925901",
+            "amountUsd": 42.90436143025622,
+            "txHash": "0x827a22b04897db825fce3dafe5c7dabf75c1dcc122f6fb464ac5821f6bb4e608"
+          },
+          {
+            "timestamp": "2026-04-17T11:28:03.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5460227459349928903863",
+            "amountUsd": 42.87167576410463,
+            "txHash": "0x178b9262485f6a072e8a8fca4ca1264535e0e40151b314208e76ba15ade69cf3"
+          },
+          {
+            "timestamp": "2026-04-17T11:32:03.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5445505592871651222802",
+            "amountUsd": 42.859946781744384,
+            "txHash": "0x0f7ad6365782a1bf8538a87568f2b7a43b2447ab44af15db58f40384daf012f4"
+          },
+          {
+            "timestamp": "2026-04-17T11:32:07.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5442688131500965666870",
+            "amountUsd": 42.83777138547535,
+            "txHash": "0xc4bec069152bc61646f22ac7e33e9e31d87a76dae038fb2a95c5d273c3351f66"
+          },
+          {
+            "timestamp": "2026-04-17T11:33:33.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5439872856162987007325",
+            "amountUsd": 42.8156131948163,
+            "txHash": "0xabb9321e8a4dfd41fa7a9f244394ae746fb97a30c65423747c9641fc055ee4be"
+          },
+          {
+            "timestamp": "2026-04-17T11:41:43.000Z",
+            "buyerWallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "poolAddress": "0xba3f945812a83471d709bce9c3ca699a19fb46f7",
+            "amountTokensRaw": "5437101285659024192867",
+            "amountUsd": 42.7937989918418,
+            "txHash": "0x842c81047ccf4b70272d7444e3d2a914ecd0657bdabe90a9e5186da2722032a1"
+          }
+        ],
+        "totalBuys": 175,
+        "userBuys": 55,
+        "routerBuys": 0,
+        "botBuys": 120,
+        "uniqueUserBuyers": 24,
+        "topUserBuyers": [
+          {
+            "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+            "totalUsd": 808.2275367033062,
+            "buyCount": 12
+          },
+          {
+            "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+            "totalUsd": 358.3679991859923,
+            "buyCount": 4
+          },
+          {
+            "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "totalUsd": 253.03039862303677,
+            "buyCount": 4
+          },
+          {
+            "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+            "totalUsd": 199.70894013670144,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0xd0932d4bffbc97e0def94ed9f032aedb00a8b15b",
+            "totalUsd": 98.26391965805308,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+            "totalUsd": 54.4428782108364,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+            "totalUsd": 49.475685749837425,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x9113ee1ca8c1395ac2b63d204a720e8336434330",
+            "totalUsd": 40.14721427077487,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x01a10c4f7f5784dfde6b6901257d50b880e6b8de",
+            "totalUsd": 29.65018968777877,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x7d27cdfbfcc878f7e7349e216d44204bfd2afd55",
+            "totalUsd": 25.92152102827415,
+            "buyCount": 3
+          }
+        ],
+        "userBuyVolumeUsd": 2053.0612686406503,
+        "routerBuyVolumeUsd": 0,
+        "botBuyVolumeUsd": 362186.5965644082,
+        "distinctTxs": 173
+      }
+    },
+    {
+      "symbol": "BRETT",
+      "anchorCloseISO": "2026-04-21T03:00:00.000Z",
+      "anchorCloseTs": 1776740400,
+      "fromTs": 1776740400,
+      "pctChange": 0.05596327881683936,
+      "fromPrice": 0.00702853411305994,
+      "toPrice": 0.00742187392730278,
+      "windowVolumeUsd": 170975.56948404614,
+      "windowCandleCount": 5,
+      "preWindowAxes": {
+        "fromTs": 1776733200,
+        "toTs": 1776740400,
+        "buyBuckets": [
+          {
+            "bucketStartTs": 1776733200,
+            "userCount": 1,
+            "userTotalAmountUsd": 879.1462618400283,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17299.350541139094
+          },
+          {
+            "bucketStartTs": 1776733500,
+            "userCount": 10,
+            "userTotalAmountUsd": 3123.3763406913304,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776733800,
+            "userCount": 2,
+            "userTotalAmountUsd": 1270.515015872128,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 6454.840236141717
+          },
+          {
+            "bucketStartTs": 1776734100,
+            "userCount": 7,
+            "userTotalAmountUsd": 2389.4553009305164,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 6461.687047244525
+          },
+          {
+            "bucketStartTs": 1776734400,
+            "userCount": 3,
+            "userTotalAmountUsd": 876.2652618130296,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776734700,
+            "userCount": 1,
+            "userTotalAmountUsd": 380.41131887828806,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 16269.789250732583
+          },
+          {
+            "bucketStartTs": 1776735000,
+            "userCount": 7,
+            "userTotalAmountUsd": 1626.9303390468208,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776735600,
+            "userCount": 1,
+            "userTotalAmountUsd": 5.692027930876212,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776735900,
+            "userCount": 5,
+            "userTotalAmountUsd": 430.97749333728683,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 1716.5335689632232
+          },
+          {
+            "bucketStartTs": 1776736200,
+            "userCount": 1,
+            "userTotalAmountUsd": 214.3061485684964,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 6687.52862457906
+          },
+          {
+            "bucketStartTs": 1776736500,
+            "userCount": 1,
+            "userTotalAmountUsd": 3.5291308683918587,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 6085.954717150804
+          },
+          {
+            "bucketStartTs": 1776736800,
+            "userCount": 2,
+            "userTotalAmountUsd": 1059.9061644809117,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 24136.364841617113
+          },
+          {
+            "bucketStartTs": 1776737100,
+            "userCount": 3,
+            "userTotalAmountUsd": 1084.7098496003252,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 26120.434523823158
+          },
+          {
+            "bucketStartTs": 1776737400,
+            "userCount": 7,
+            "userTotalAmountUsd": 1129.0697545859346,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17372.35593155125
+          },
+          {
+            "bucketStartTs": 1776737700,
+            "userCount": 1,
+            "userTotalAmountUsd": 99.92550408301317,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 34391.41069968186
+          },
+          {
+            "bucketStartTs": 1776738000,
+            "userCount": 1,
+            "userTotalAmountUsd": 2310.5995711501414,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 26300.981046443783
+          },
+          {
+            "bucketStartTs": 1776738300,
+            "userCount": 5,
+            "userTotalAmountUsd": 3043.624479566506,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 8729.446904487899
+          },
+          {
+            "bucketStartTs": 1776738600,
+            "userCount": 2,
+            "userTotalAmountUsd": 24.97102598578342,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17481.753183538134
+          },
+          {
+            "bucketStartTs": 1776738900,
+            "userCount": 2,
+            "userTotalAmountUsd": 26.555719947266113,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 8731.15125754286
+          },
+          {
+            "bucketStartTs": 1776739200,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17446.082846386624
+          },
+          {
+            "bucketStartTs": 1776739500,
+            "userCount": 2,
+            "userTotalAmountUsd": 6.3028245959094775,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 25976.07401889611
+          },
+          {
+            "bucketStartTs": 1776740100,
+            "userCount": 1,
+            "userTotalAmountUsd": 3072.5279739309285,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 8646.070815983252
+          }
+        ],
+        "largestUserBuys": [
+          {
+            "timestamp": "2026-04-21T02:59:49.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "433826549337521694529034",
+            "amountUsd": 3072.5279739309285,
+            "txHash": "0x3c79f024b4bd58269976d637737679cfcbfaee403ea0da5fd3abae8992d65b32"
+          },
+          {
+            "timestamp": "2026-04-21T02:27:15.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "329079093468684397691400",
+            "amountUsd": 2346.6373176279917,
+            "txHash": "0x8d246dd6550c2d552f014ff1c3f799e9d0a12235b9268cb0183b315602ed9dbb"
+          },
+          {
+            "timestamp": "2026-04-21T02:21:33.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "324025364521097088162975",
+            "amountUsd": 2310.5995711501414,
+            "txHash": "0xf8d6d37feb357404795d5a026e3fe00a4b07b4fe403f49d12f40d2a253b18fb9"
+          },
+          {
+            "timestamp": "2026-04-21T02:14:11.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "151910055608577558019812",
+            "amountUsd": 1083.9328625630428,
+            "txHash": "0x27210d7eee7b8423e17cd22b7f2def24fc4c08f5dd24b0a222c516d800271969"
+          },
+          {
+            "timestamp": "2026-04-21T02:05:11.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "151903243236670744157935",
+            "amountUsd": 1083.8842538402546,
+            "txHash": "0x3a65fc3358792fc742b3b16f215c01f3a08a767c4d1521e14f24b56988215cf5"
+          },
+          {
+            "timestamp": "2026-04-21T02:04:19.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "148440125174651616068560",
+            "amountUsd": 1059.1736613826333,
+            "txHash": "0x65bbdf4ebfbc2aa6ec94552fe37969f8334904a5856300cca494a8c27098397e"
+          },
+          {
+            "timestamp": "2026-04-21T01:02:59.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "121997149557311274819400",
+            "amountUsd": 879.1462618400283,
+            "txHash": "0x06d4ff2327298977843b42c51fa2a339152236831857fcdfc362b154aee8a3d3"
+          },
+          {
+            "timestamp": "2026-04-21T01:05:11.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "101326555644313304258582",
+            "amountUsd": 730.1880654020989,
+            "txHash": "0xa398de1161bc6500785955a258ac33f812ce20cec7c121a90b01aaac6f0f61b3"
+          },
+          {
+            "timestamp": "2026-04-21T01:15:57.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88185229985507218542724",
+            "amountUsd": 636.1620018747432,
+            "txHash": "0x299b6347a21fbeb71fab003e968183a687b650266a2cf9ef9a041aa2124b59c9"
+          },
+          {
+            "timestamp": "2026-04-21T01:13:43.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88188977543595976596499",
+            "amountUsd": 635.5149298510818,
+            "txHash": "0x9e7bedbf38a092dd02af2149fa4246a6f3dedc5d1fc2eb29a469c20fc9b037fb"
+          },
+          {
+            "timestamp": "2026-04-21T01:10:39.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88117533823184747836676",
+            "amountUsd": 635.0000860210464,
+            "txHash": "0xac69423b14a1caa3c3402e74b1fa79205e1753394257bbe46cc0a0d795c24c7b"
+          },
+          {
+            "timestamp": "2026-04-21T01:09:37.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88114429525332189027120",
+            "amountUsd": 634.9777155651577,
+            "txHash": "0x6c762e457ca765d0560a8236852e0c1f5210ae883e126bcf93d36568a5f21aa6"
+          },
+          {
+            "timestamp": "2026-04-21T02:27:55.000Z",
+            "buyerWallet": "0x3cc3e85700ad0a97ab08fa2f02eec5cd7e3634a3",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "81276535329356450277447",
+            "amountUsd": 579.5766265216344,
+            "txHash": "0x441f63698ed7177afa74fad518b9fb5ee416cb175fd851730e3ad2bc9a25780b"
+          },
+          {
+            "timestamp": "2026-04-21T01:18:15.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "69457334394234793865907",
+            "amountUsd": 501.06028980569215,
+            "txHash": "0x6bc619d1fa8909b1c457ff7c587a1a3172e36817d66261c9bcad75314d8955de"
+          },
+          {
+            "timestamp": "2026-04-21T01:07:03.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "69383883447770707420608",
+            "amountUsd": 500.0000572668806,
+            "txHash": "0xd23285a5af626d544fc41197133876feba808d6d674491d8cce96c645cec4c68"
+          },
+          {
+            "timestamp": "2026-04-21T01:07:03.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "60259194858600291682178",
+            "amountUsd": 434.2449482931662,
+            "txHash": "0x1295d6c47567a1686306baa47d395ce15aee2025b69e8f08f23b539fc7aac201"
+          },
+          {
+            "timestamp": "2026-04-21T01:21:17.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "56664457380536894882556",
+            "amountUsd": 408.77338130515363,
+            "txHash": "0x6506a4a5bdc4a761e05957e16edd5d4299451dcc2fba4a6d5f2ce89f90b25ccf"
+          },
+          {
+            "timestamp": "2026-04-21T01:29:17.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "52732888078054544317869",
+            "amountUsd": 380.41131887828806,
+            "txHash": "0xd48b90a122e6ee41c52b0fcd32e07ae170e90e71c296a0f467871d5feee05f00"
+          },
+          {
+            "timestamp": "2026-04-21T01:17:45.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "34750970585525941411084",
+            "amountUsd": 250.6910399668029,
+            "txHash": "0x19912182fd15b185d2ff5d2de4edc549f59f7b625059f9e06146622478600518"
+          },
+          {
+            "timestamp": "2026-04-21T01:17:55.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "34732903719597097541771",
+            "amountUsd": 250.56070687588976,
+            "txHash": "0x2311c7689115f0e3331fe2f21ee19adf5bd40870bf7b4ac8d5de1be9a091ec7f"
+          }
+        ],
+        "totalBuys": 105,
+        "userBuys": 65,
+        "routerBuys": 0,
+        "botBuys": 40,
+        "uniqueUserBuyers": 18,
+        "topUserBuyers": [
+          {
+            "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "totalUsd": 15192.147013151465,
+            "buyCount": 14
+          },
+          {
+            "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "totalUsd": 5955.76503025651,
+            "buyCount": 22
+          },
+          {
+            "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "totalUsd": 785.6390598310617,
+            "buyCount": 9
+          },
+          {
+            "wallet": "0x3cc3e85700ad0a97ab08fa2f02eec5cd7e3634a3",
+            "totalUsd": 678.6071521780711,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x01ee99368576d6cfad22d799a56718006eda1ea7",
+            "totalUsd": 147.27659710982707,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+            "totalUsd": 122.76239834983541,
+            "buyCount": 3
+          },
+          {
+            "wallet": "0x07923de28b1083a550ba080042c8355209adc60d",
+            "totalUsd": 99.92550408301317,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x22c2f03fa24f6246da85ff70ea60cbbe0963a47c",
+            "totalUsd": 43.161633311243,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x101e6dd6d2a89eacea428f5c5699e139affd2fd7",
+            "totalUsd": 11.559149999999997,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x43bbb129b56a998732767725a183b7a566843dba",
+            "totalUsd": 6.2745237783995735,
+            "buyCount": 1
+          }
+        ],
+        "userBuyVolumeUsd": 23058.797507703923,
+        "routerBuyVolumeUsd": 0,
+        "botBuyVolumeUsd": 276307.81005590304,
+        "distinctTxs": 105
+      }
+    },
+    {
+      "symbol": "BRETT",
+      "anchorCloseISO": "2026-04-21T04:00:00.000Z",
+      "anchorCloseTs": 1776744000,
+      "fromTs": 1776740400,
+      "pctChange": -0.08129339300199577,
+      "fromPrice": 0.00742187392730278,
+      "toPrice": 0.00681852461331929,
+      "windowVolumeUsd": 241106.7676497021,
+      "windowCandleCount": 5,
+      "preWindowAxes": {
+        "fromTs": 1776733200,
+        "toTs": 1776740400,
+        "buyBuckets": [
+          {
+            "bucketStartTs": 1776733200,
+            "userCount": 1,
+            "userTotalAmountUsd": 879.1462618400283,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17299.350541139094
+          },
+          {
+            "bucketStartTs": 1776733500,
+            "userCount": 10,
+            "userTotalAmountUsd": 3123.3763406913304,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776733800,
+            "userCount": 2,
+            "userTotalAmountUsd": 1270.515015872128,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 6454.840236141717
+          },
+          {
+            "bucketStartTs": 1776734100,
+            "userCount": 7,
+            "userTotalAmountUsd": 2389.4553009305164,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 6461.687047244525
+          },
+          {
+            "bucketStartTs": 1776734400,
+            "userCount": 3,
+            "userTotalAmountUsd": 876.2652618130296,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776734700,
+            "userCount": 1,
+            "userTotalAmountUsd": 380.41131887828806,
+            "routerCount": 5,
+            "routerTotalAmountUsd": 16269.789250732583
+          },
+          {
+            "bucketStartTs": 1776735000,
+            "userCount": 7,
+            "userTotalAmountUsd": 1626.9303390468208,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776735600,
+            "userCount": 1,
+            "userTotalAmountUsd": 5.692027930876212,
+            "routerCount": 0,
+            "routerTotalAmountUsd": 0
+          },
+          {
+            "bucketStartTs": 1776735900,
+            "userCount": 5,
+            "userTotalAmountUsd": 430.97749333728683,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 1716.5335689632232
+          },
+          {
+            "bucketStartTs": 1776736200,
+            "userCount": 1,
+            "userTotalAmountUsd": 214.3061485684964,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 6687.52862457906
+          },
+          {
+            "bucketStartTs": 1776736500,
+            "userCount": 1,
+            "userTotalAmountUsd": 3.5291308683918587,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 6085.954717150804
+          },
+          {
+            "bucketStartTs": 1776736800,
+            "userCount": 2,
+            "userTotalAmountUsd": 1059.9061644809117,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 24136.364841617113
+          },
+          {
+            "bucketStartTs": 1776737100,
+            "userCount": 3,
+            "userTotalAmountUsd": 1084.7098496003252,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 26120.434523823158
+          },
+          {
+            "bucketStartTs": 1776737400,
+            "userCount": 7,
+            "userTotalAmountUsd": 1129.0697545859346,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17372.35593155125
+          },
+          {
+            "bucketStartTs": 1776737700,
+            "userCount": 1,
+            "userTotalAmountUsd": 99.92550408301317,
+            "routerCount": 4,
+            "routerTotalAmountUsd": 34391.41069968186
+          },
+          {
+            "bucketStartTs": 1776738000,
+            "userCount": 1,
+            "userTotalAmountUsd": 2310.5995711501414,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 26300.981046443783
+          },
+          {
+            "bucketStartTs": 1776738300,
+            "userCount": 5,
+            "userTotalAmountUsd": 3043.624479566506,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 8729.446904487899
+          },
+          {
+            "bucketStartTs": 1776738600,
+            "userCount": 2,
+            "userTotalAmountUsd": 24.97102598578342,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17481.753183538134
+          },
+          {
+            "bucketStartTs": 1776738900,
+            "userCount": 2,
+            "userTotalAmountUsd": 26.555719947266113,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 8731.15125754286
+          },
+          {
+            "bucketStartTs": 1776739200,
+            "userCount": 0,
+            "userTotalAmountUsd": 0,
+            "routerCount": 2,
+            "routerTotalAmountUsd": 17446.082846386624
+          },
+          {
+            "bucketStartTs": 1776739500,
+            "userCount": 2,
+            "userTotalAmountUsd": 6.3028245959094775,
+            "routerCount": 3,
+            "routerTotalAmountUsd": 25976.07401889611
+          },
+          {
+            "bucketStartTs": 1776740100,
+            "userCount": 1,
+            "userTotalAmountUsd": 3072.5279739309285,
+            "routerCount": 1,
+            "routerTotalAmountUsd": 8646.070815983252
+          }
+        ],
+        "largestUserBuys": [
+          {
+            "timestamp": "2026-04-21T02:59:49.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "433826549337521694529034",
+            "amountUsd": 3072.5279739309285,
+            "txHash": "0x3c79f024b4bd58269976d637737679cfcbfaee403ea0da5fd3abae8992d65b32"
+          },
+          {
+            "timestamp": "2026-04-21T02:27:15.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "329079093468684397691400",
+            "amountUsd": 2346.6373176279917,
+            "txHash": "0x8d246dd6550c2d552f014ff1c3f799e9d0a12235b9268cb0183b315602ed9dbb"
+          },
+          {
+            "timestamp": "2026-04-21T02:21:33.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "324025364521097088162975",
+            "amountUsd": 2310.5995711501414,
+            "txHash": "0xf8d6d37feb357404795d5a026e3fe00a4b07b4fe403f49d12f40d2a253b18fb9"
+          },
+          {
+            "timestamp": "2026-04-21T02:14:11.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "151910055608577558019812",
+            "amountUsd": 1083.9328625630428,
+            "txHash": "0x27210d7eee7b8423e17cd22b7f2def24fc4c08f5dd24b0a222c516d800271969"
+          },
+          {
+            "timestamp": "2026-04-21T02:05:11.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "151903243236670744157935",
+            "amountUsd": 1083.8842538402546,
+            "txHash": "0x3a65fc3358792fc742b3b16f215c01f3a08a767c4d1521e14f24b56988215cf5"
+          },
+          {
+            "timestamp": "2026-04-21T02:04:19.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "148440125174651616068560",
+            "amountUsd": 1059.1736613826333,
+            "txHash": "0x65bbdf4ebfbc2aa6ec94552fe37969f8334904a5856300cca494a8c27098397e"
+          },
+          {
+            "timestamp": "2026-04-21T01:02:59.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "121997149557311274819400",
+            "amountUsd": 879.1462618400283,
+            "txHash": "0x06d4ff2327298977843b42c51fa2a339152236831857fcdfc362b154aee8a3d3"
+          },
+          {
+            "timestamp": "2026-04-21T01:05:11.000Z",
+            "buyerWallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "101326555644313304258582",
+            "amountUsd": 730.1880654020989,
+            "txHash": "0xa398de1161bc6500785955a258ac33f812ce20cec7c121a90b01aaac6f0f61b3"
+          },
+          {
+            "timestamp": "2026-04-21T01:15:57.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88185229985507218542724",
+            "amountUsd": 636.1620018747432,
+            "txHash": "0x299b6347a21fbeb71fab003e968183a687b650266a2cf9ef9a041aa2124b59c9"
+          },
+          {
+            "timestamp": "2026-04-21T01:13:43.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88188977543595976596499",
+            "amountUsd": 635.5149298510818,
+            "txHash": "0x9e7bedbf38a092dd02af2149fa4246a6f3dedc5d1fc2eb29a469c20fc9b037fb"
+          },
+          {
+            "timestamp": "2026-04-21T01:10:39.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88117533823184747836676",
+            "amountUsd": 635.0000860210464,
+            "txHash": "0xac69423b14a1caa3c3402e74b1fa79205e1753394257bbe46cc0a0d795c24c7b"
+          },
+          {
+            "timestamp": "2026-04-21T01:09:37.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "88114429525332189027120",
+            "amountUsd": 634.9777155651577,
+            "txHash": "0x6c762e457ca765d0560a8236852e0c1f5210ae883e126bcf93d36568a5f21aa6"
+          },
+          {
+            "timestamp": "2026-04-21T02:27:55.000Z",
+            "buyerWallet": "0x3cc3e85700ad0a97ab08fa2f02eec5cd7e3634a3",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "81276535329356450277447",
+            "amountUsd": 579.5766265216344,
+            "txHash": "0x441f63698ed7177afa74fad518b9fb5ee416cb175fd851730e3ad2bc9a25780b"
+          },
+          {
+            "timestamp": "2026-04-21T01:18:15.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "69457334394234793865907",
+            "amountUsd": 501.06028980569215,
+            "txHash": "0x6bc619d1fa8909b1c457ff7c587a1a3172e36817d66261c9bcad75314d8955de"
+          },
+          {
+            "timestamp": "2026-04-21T01:07:03.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "69383883447770707420608",
+            "amountUsd": 500.0000572668806,
+            "txHash": "0xd23285a5af626d544fc41197133876feba808d6d674491d8cce96c645cec4c68"
+          },
+          {
+            "timestamp": "2026-04-21T01:07:03.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "60259194858600291682178",
+            "amountUsd": 434.2449482931662,
+            "txHash": "0x1295d6c47567a1686306baa47d395ce15aee2025b69e8f08f23b539fc7aac201"
+          },
+          {
+            "timestamp": "2026-04-21T01:21:17.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "56664457380536894882556",
+            "amountUsd": 408.77338130515363,
+            "txHash": "0x6506a4a5bdc4a761e05957e16edd5d4299451dcc2fba4a6d5f2ce89f90b25ccf"
+          },
+          {
+            "timestamp": "2026-04-21T01:29:17.000Z",
+            "buyerWallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "52732888078054544317869",
+            "amountUsd": 380.41131887828806,
+            "txHash": "0xd48b90a122e6ee41c52b0fcd32e07ae170e90e71c296a0f467871d5feee05f00"
+          },
+          {
+            "timestamp": "2026-04-21T01:17:45.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "34750970585525941411084",
+            "amountUsd": 250.6910399668029,
+            "txHash": "0x19912182fd15b185d2ff5d2de4edc549f59f7b625059f9e06146622478600518"
+          },
+          {
+            "timestamp": "2026-04-21T01:17:55.000Z",
+            "buyerWallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "poolAddress": "0x4e829f8a5213c42535ab84aa40bd4adcce9cba02",
+            "amountTokensRaw": "34732903719597097541771",
+            "amountUsd": 250.56070687588976,
+            "txHash": "0x2311c7689115f0e3331fe2f21ee19adf5bd40870bf7b4ac8d5de1be9a091ec7f"
+          }
+        ],
+        "totalBuys": 105,
+        "userBuys": 65,
+        "routerBuys": 0,
+        "botBuys": 40,
+        "uniqueUserBuyers": 18,
+        "topUserBuyers": [
+          {
+            "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+            "totalUsd": 15192.147013151465,
+            "buyCount": 14
+          },
+          {
+            "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+            "totalUsd": 5955.76503025651,
+            "buyCount": 22
+          },
+          {
+            "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+            "totalUsd": 785.6390598310617,
+            "buyCount": 9
+          },
+          {
+            "wallet": "0x3cc3e85700ad0a97ab08fa2f02eec5cd7e3634a3",
+            "totalUsd": 678.6071521780711,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x01ee99368576d6cfad22d799a56718006eda1ea7",
+            "totalUsd": 147.27659710982707,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+            "totalUsd": 122.76239834983541,
+            "buyCount": 3
+          },
+          {
+            "wallet": "0x07923de28b1083a550ba080042c8355209adc60d",
+            "totalUsd": 99.92550408301317,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x22c2f03fa24f6246da85ff70ea60cbbe0963a47c",
+            "totalUsd": 43.161633311243,
+            "buyCount": 2
+          },
+          {
+            "wallet": "0x101e6dd6d2a89eacea428f5c5699e139affd2fd7",
+            "totalUsd": 11.559149999999997,
+            "buyCount": 1
+          },
+          {
+            "wallet": "0x43bbb129b56a998732767725a183b7a566843dba",
+            "totalUsd": 6.2745237783995735,
+            "buyCount": 1
+          }
+        ],
+        "userBuyVolumeUsd": 23058.797507703923,
+        "routerBuyVolumeUsd": 0,
+        "botBuyVolumeUsd": 276307.81005590304,
+        "distinctTxs": 105
+      }
+    }
+  ]
+}

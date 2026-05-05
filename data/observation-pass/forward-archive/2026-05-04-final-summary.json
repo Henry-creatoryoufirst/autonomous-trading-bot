@@ -1,0 +1,23 @@
+{
+  "rawEvents": 784,
+  "triggers": 54,
+  "outcomesMeasured": 54,
+  "outcomesPending": 0,
+  "hits": 0,
+  "fps": 54,
+  "hitRate": 0,
+  "fpRate": 1,
+  "verdict": "KILL",
+  "targets": {
+    "hitRate": 0.4,
+    "fpRate": 0.3,
+    "sampleSize": 15
+  },
+  "eventsByToken": {
+    "AERO": 470,
+    "BRETT": 174,
+    "DEGEN": 140
+  },
+  "firstEventAt": 1777483642,
+  "lastEventAt": 1777895986
+}

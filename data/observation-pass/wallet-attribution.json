@@ -1,0 +1,722 @@
+[
+  {
+    "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+    "candidate": {
+      "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+      "moveHits": 24,
+      "moveCount": 32,
+      "moveRate": 0.75,
+      "nullHits": 32,
+      "nullCount": 90,
+      "nullRate": 0.35555555555555557,
+      "edge": 0.39444444444444443,
+      "ups": 20,
+      "downs": 4,
+      "winRate": 0.8333333333333334,
+      "tokensInMoves": 3,
+      "tokensActive": 3,
+      "zScore": 3.845882589317163,
+      "sigTier": "***"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 20842,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "AERO",
+        "BRETT",
+        "DEGEN"
+      ],
+      "totalBuysAcrossWindows": 260,
+      "totalUsdAcrossWindows": 2191152.9278542767,
+      "avgBuyCountPerHit": 4.642857142857143,
+      "avgUsdPerHit": 39127.730854540656,
+      "poolDiversity": 5,
+      "hourOfDayHistogram": [
+        0,
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        3,
+        1,
+        3,
+        2,
+        4,
+        1,
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        2
+      ],
+      "dayOfWeekHistogram": [
+        2,
+        1,
+        10,
+        0,
+        7,
+        9,
+        0
+      ],
+      "largestSingleBuyUsd": 25518.887661439305
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (20842b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "1"
+  },
+  {
+    "wallet": "0xafb62448929664bfccb0aae22f232520e765ba88",
+    "candidate": {
+      "wallet": "0xafb62448929664bfccb0aae22f232520e765ba88",
+      "moveHits": 3,
+      "moveCount": 8,
+      "moveRate": 0.375,
+      "nullHits": 0,
+      "nullCount": 30,
+      "nullRate": 0,
+      "edge": 0.375,
+      "ups": 2,
+      "downs": 1,
+      "winRate": 0.6666666666666666,
+      "tokensInMoves": 1,
+      "tokensActive": 1,
+      "zScore": 3.4948942350643053,
+      "sigTier": "***"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 45,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "DEGEN"
+      ],
+      "totalBuysAcrossWindows": 5,
+      "totalUsdAcrossWindows": 196.13428920997958,
+      "avgBuyCountPerHit": 1.6666666666666667,
+      "avgUsdPerHit": 65.37809640332652,
+      "poolDiversity": 0,
+      "hourOfDayHistogram": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "largestSingleBuyUsd": 0
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (45b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "2"
+  },
+  {
+    "wallet": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+    "candidate": {
+      "wallet": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+      "moveHits": 3,
+      "moveCount": 32,
+      "moveRate": 0.09375,
+      "nullHits": 0,
+      "nullCount": 90,
+      "nullRate": 0,
+      "edge": 0.09375,
+      "ups": 3,
+      "downs": 0,
+      "winRate": 1,
+      "tokensInMoves": 1,
+      "tokensActive": 1,
+      "zScore": 2.941123949110886,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 171,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "AERO"
+      ],
+      "totalBuysAcrossWindows": 15,
+      "totalUsdAcrossWindows": 4289.612553497667,
+      "avgBuyCountPerHit": 5,
+      "avgUsdPerHit": 1429.870851165889,
+      "poolDiversity": 1,
+      "hourOfDayHistogram": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        0,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "largestSingleBuyUsd": 398.25597327727814
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (171b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "2"
+  },
+  {
+    "wallet": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+    "candidate": {
+      "wallet": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+      "moveHits": 5,
+      "moveCount": 8,
+      "moveRate": 0.625,
+      "nullHits": 4,
+      "nullCount": 30,
+      "nullRate": 0.13333333333333333,
+      "edge": 0.4916666666666667,
+      "ups": 3,
+      "downs": 2,
+      "winRate": 0.6,
+      "tokensInMoves": 1,
+      "tokensActive": 1,
+      "zScore": 2.9063501180931346,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 22962,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "DEGEN"
+      ],
+      "totalBuysAcrossWindows": 31,
+      "totalUsdAcrossWindows": 108883.11122414381,
+      "avgBuyCountPerHit": 3.4444444444444446,
+      "avgUsdPerHit": 12098.123469349312,
+      "poolDiversity": 1,
+      "hourOfDayHistogram": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "largestSingleBuyUsd": 49.04024367028038
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (22962b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "3"
+  },
+  {
+    "wallet": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+    "candidate": {
+      "wallet": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+      "moveHits": 3,
+      "moveCount": 8,
+      "moveRate": 0.375,
+      "nullHits": 4,
+      "nullCount": 60,
+      "nullRate": 0.06666666666666667,
+      "edge": 0.30833333333333335,
+      "ups": 2,
+      "downs": 1,
+      "winRate": 0.6666666666666666,
+      "tokensInMoves": 1,
+      "tokensActive": 2,
+      "zScore": 2.69576242475883,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 1990,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "BRETT",
+        "DEGEN"
+      ],
+      "totalBuysAcrossWindows": 7,
+      "totalUsdAcrossWindows": 105207.9757956132,
+      "avgBuyCountPerHit": 1,
+      "avgUsdPerHit": 15029.710827944742,
+      "poolDiversity": 1,
+      "hourOfDayHistogram": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "largestSingleBuyUsd": 7.617259098022563
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (1990b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "3"
+  },
+  {
+    "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+    "candidate": {
+      "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+      "moveHits": 5,
+      "moveCount": 32,
+      "moveRate": 0.15625,
+      "nullHits": 3,
+      "nullCount": 90,
+      "nullRate": 0.03333333333333333,
+      "edge": 0.12291666666666667,
+      "ups": 5,
+      "downs": 0,
+      "winRate": 1,
+      "tokensInMoves": 3,
+      "tokensActive": 3,
+      "zScore": 2.4126232810969945,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 22786,
+      "txCount": 1,
+      "ethBalanceWei": "1",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "AERO",
+        "BRETT",
+        "DEGEN"
+      ],
+      "totalBuysAcrossWindows": 24,
+      "totalUsdAcrossWindows": 172709.59291987936,
+      "avgBuyCountPerHit": 3,
+      "avgUsdPerHit": 21588.69911498492,
+      "poolDiversity": 5,
+      "hourOfDayHistogram": [
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        0,
+        0,
+        0,
+        5,
+        2,
+        0
+      ],
+      "largestSingleBuyUsd": 12132.363478360272
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (22786b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "1"
+  },
+  {
+    "wallet": "0x31868c48d33586754a1ae04688603221e6af8557",
+    "candidate": {
+      "wallet": "0x31868c48d33586754a1ae04688603221e6af8557",
+      "moveHits": 7,
+      "moveCount": 32,
+      "moveRate": 0.21875,
+      "nullHits": 7,
+      "nullCount": 90,
+      "nullRate": 0.07777777777777778,
+      "edge": 0.14097222222222222,
+      "ups": 4,
+      "downs": 3,
+      "winRate": 0.5714285714285714,
+      "tokensInMoves": 1,
+      "tokensActive": 1,
+      "zScore": 2.14898710469181,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 24395,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "AERO"
+      ],
+      "totalBuysAcrossWindows": 61,
+      "totalUsdAcrossWindows": 420737.46431150544,
+      "avgBuyCountPerHit": 4.357142857142857,
+      "avgUsdPerHit": 30052.676022250387,
+      "poolDiversity": 1,
+      "hourOfDayHistogram": [
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        2,
+        0,
+        0,
+        2,
+        2,
+        0
+      ],
+      "largestSingleBuyUsd": 7446.7961287615435
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (24395b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "3"
+  },
+  {
+    "wallet": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+    "candidate": {
+      "wallet": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+      "moveHits": 5,
+      "moveCount": 8,
+      "moveRate": 0.625,
+      "nullHits": 7,
+      "nullCount": 30,
+      "nullRate": 0.23333333333333334,
+      "edge": 0.39166666666666666,
+      "ups": 4,
+      "downs": 1,
+      "winRate": 0.8,
+      "tokensInMoves": 1,
+      "tokensActive": 1,
+      "zScore": 2.117564921456057,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": true,
+      "bytecodeSize": 16016,
+      "txCount": 1,
+      "ethBalanceWei": "0",
+      "ethBalanceFormatted": "0.0000 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "DEGEN"
+      ],
+      "totalBuysAcrossWindows": 52,
+      "totalUsdAcrossWindows": 264515.2651894971,
+      "avgBuyCountPerHit": 4.333333333333333,
+      "avgUsdPerHit": 22042.938765791423,
+      "poolDiversity": 1,
+      "hourOfDayHistogram": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "dayOfWeekHistogram": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "largestSingleBuyUsd": 17.684029564638816
+    },
+    "attributionGuess": "CONTRACT — purpose unclear (low tx count for a contract)",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "Address has bytecode (16016b) — this is a CONTRACT, not an EOA"
+    ],
+    "tier": "3"
+  },
+  {
+    "wallet": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+    "candidate": {
+      "wallet": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+      "moveHits": 16,
+      "moveCount": 32,
+      "moveRate": 0.5,
+      "nullHits": 27,
+      "nullCount": 90,
+      "nullRate": 0.3,
+      "edge": 0.2,
+      "ups": 13,
+      "downs": 3,
+      "winRate": 0.8125,
+      "tokensInMoves": 1,
+      "tokensActive": 1,
+      "zScore": 2.0340348117825138,
+      "sigTier": "**"
+    },
+    "onChain": {
+      "isContract": false,
+      "bytecodeSize": 0,
+      "txCount": 112331,
+      "ethBalanceWei": "32344048549663741",
+      "ethBalanceFormatted": "0.0323 ETH"
+    },
+    "behavior": {
+      "tokensWithActivity": [
+        "AERO"
+      ],
+      "totalBuysAcrossWindows": 456,
+      "totalUsdAcrossWindows": 1724016.4139361957,
+      "avgBuyCountPerHit": 10.604651162790697,
+      "avgUsdPerHit": 40093.40497526037,
+      "poolDiversity": 1,
+      "hourOfDayHistogram": [
+        3,
+        8,
+        0,
+        5,
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3
+      ],
+      "dayOfWeekHistogram": [
+        3,
+        13,
+        14,
+        0,
+        0,
+        0,
+        0
+      ],
+      "largestSingleBuyUsd": 2509.830114116836
+    },
+    "attributionGuess": "EOA — systematic / arb bot",
+    "attributionConfidence": "medium",
+    "reasoningPoints": [
+      "EOA (no bytecode)",
+      "Tx count (nonce): 112,331",
+      "ETH balance: 0.0323 ETH",
+      "Activity: US biz hours ratio=0%, weekday ratio=90%",
+      "Very high tx count (112,331) + high buys/hit avg (10.6) → likely systematic / arb bot"
+    ],
+    "tier": "3"
+  }
+]

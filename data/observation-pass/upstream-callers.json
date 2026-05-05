@@ -1,0 +1,323 @@
+{
+  "contractsTraced": 8,
+  "txsResolved": 27,
+  "perContract": [
+    {
+      "contract": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+      "callers": [
+        {
+          "eoa": "0x1aec9426b1d63fbe92e729156992dcddd081a108",
+          "count": 2,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.051157976988956085
+        },
+        {
+          "eoa": "0x6c3ed2461e4f90e8f22d975994173544af9b5bd3",
+          "count": 6,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.05375944470504324
+        }
+      ]
+    },
+    {
+      "contract": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+      "callers": [
+        {
+          "eoa": "0xde1795d1fe56f5fea4af2cc0b48150fec6203a0a",
+          "count": 1,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.05457244715732603
+        },
+        {
+          "eoa": "0x9a0e5d91d39ce288be031b159303c2948367e4e4",
+          "count": 1,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.05457244715732603
+        },
+        {
+          "eoa": "0x47500177e09ec25c37fd564629714935aa538237",
+          "count": 1,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.05457244715732603
+        }
+      ]
+    },
+    {
+      "contract": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+      "callers": [
+        {
+          "eoa": "0x000000c557fa9a96d66cd6371abde62d879d0e61",
+          "count": 1,
+          "tokens": [
+            "DEGEN"
+          ],
+          "avgMovePctChange": -0.05643796489383043
+        }
+      ]
+    },
+    {
+      "contract": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+      "callers": [
+        {
+          "eoa": "0xdeadb043eb4c89d81fb94bc56768f2533c81aef8",
+          "count": 1,
+          "tokens": [
+            "DEGEN"
+          ],
+          "avgMovePctChange": -0.20984710195699055
+        }
+      ]
+    },
+    {
+      "contract": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+      "callers": [
+        {
+          "eoa": "0x344daadde53a81f95bcc46a99d39107a509251a1",
+          "count": 1,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.051157976988956085
+        },
+        {
+          "eoa": "0xc592027927e00de5c8e86bbb3509e4503254efdf",
+          "count": 2,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.06274819082525517
+        },
+        {
+          "eoa": "0xa0a81bc056b59ae73860424485a08853c38f6171",
+          "count": 2,
+          "tokens": [
+            "BRETT"
+          ],
+          "avgMovePctChange": 0.053372026412410185
+        },
+        {
+          "eoa": "0x4b82847c82087ea19418bed079966810f64f39f4",
+          "count": 1,
+          "tokens": [
+            "BRETT"
+          ],
+          "avgMovePctChange": 0.05706276110252399
+        },
+        {
+          "eoa": "0x56c262027e0de4aea31d2489529cb25d23e58a8b",
+          "count": 1,
+          "tokens": [
+            "DEGEN"
+          ],
+          "avgMovePctChange": 0.05081249505516894
+        }
+      ]
+    },
+    {
+      "contract": "0x31868c48d33586754a1ae04688603221e6af8557",
+      "callers": [
+        {
+          "eoa": "0x89b97f7c0841144a027700e8744146c997e1e652",
+          "count": 6,
+          "tokens": [
+            "AERO"
+          ],
+          "avgMovePctChange": 0.020729554440365124
+        }
+      ]
+    },
+    {
+      "contract": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+      "callers": [
+        {
+          "eoa": "0xbb1a1a2773a799d83078ae4d59d9f4b2b6ac50ff",
+          "count": 1,
+          "tokens": [
+            "DEGEN"
+          ],
+          "avgMovePctChange": 0.05404683749965374
+        }
+      ]
+    }
+  ],
+  "upstreamRanked": [
+    {
+      "eoa": "0x6c3ed2461e4f90e8f22d975994173544af9b5bd3",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x7747f8d2a76bd6345cc29622a946a929647f2359"
+      ],
+      "callCount": 6,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.05375944470504324
+    },
+    {
+      "eoa": "0x89b97f7c0841144a027700e8744146c997e1e652",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x31868c48d33586754a1ae04688603221e6af8557"
+      ],
+      "callCount": 6,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.020729554440365124
+    },
+    {
+      "eoa": "0x1aec9426b1d63fbe92e729156992dcddd081a108",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x7747f8d2a76bd6345cc29622a946a929647f2359"
+      ],
+      "callCount": 2,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.051157976988956085
+    },
+    {
+      "eoa": "0xc592027927e00de5c8e86bbb3509e4503254efdf",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0"
+      ],
+      "callCount": 2,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.06274819082525517
+    },
+    {
+      "eoa": "0xa0a81bc056b59ae73860424485a08853c38f6171",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0"
+      ],
+      "callCount": 2,
+      "tokens": [
+        "BRETT"
+      ],
+      "avgMovePct": 0.053372026412410185
+    },
+    {
+      "eoa": "0xde1795d1fe56f5fea4af2cc0b48150fec6203a0a",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x4ae0ad0ba10dc97487cb1dd571aef20537280859"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.05457244715732603
+    },
+    {
+      "eoa": "0x9a0e5d91d39ce288be031b159303c2948367e4e4",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x4ae0ad0ba10dc97487cb1dd571aef20537280859"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.05457244715732603
+    },
+    {
+      "eoa": "0x47500177e09ec25c37fd564629714935aa538237",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x4ae0ad0ba10dc97487cb1dd571aef20537280859"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.05457244715732603
+    },
+    {
+      "eoa": "0x000000c557fa9a96d66cd6371abde62d879d0e61",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "DEGEN"
+      ],
+      "avgMovePct": -0.05643796489383043
+    },
+    {
+      "eoa": "0xdeadb043eb4c89d81fb94bc56768f2533c81aef8",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x9bd25e67bf390437c8faf480ac735a27bcf6168c"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "DEGEN"
+      ],
+      "avgMovePct": -0.20984710195699055
+    },
+    {
+      "eoa": "0x344daadde53a81f95bcc46a99d39107a509251a1",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "AERO"
+      ],
+      "avgMovePct": 0.051157976988956085
+    },
+    {
+      "eoa": "0x4b82847c82087ea19418bed079966810f64f39f4",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "BRETT"
+      ],
+      "avgMovePct": 0.05706276110252399
+    },
+    {
+      "eoa": "0x56c262027e0de4aea31d2489529cb25d23e58a8b",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "DEGEN"
+      ],
+      "avgMovePct": 0.05081249505516894
+    },
+    {
+      "eoa": "0xbb1a1a2773a799d83078ae4d59d9f4b2b6ac50ff",
+      "contractsCalledCount": 1,
+      "contractsCalled": [
+        "0xa8549424b20a514eb9e7a829ec013065bef9dc1d"
+      ],
+      "callCount": 1,
+      "tokens": [
+        "DEGEN"
+      ],
+      "avgMovePct": 0.05404683749965374
+    }
+  ]
+}
