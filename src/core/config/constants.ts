@@ -981,7 +981,7 @@ export const POSITION_SOFT_STOP_PCT = -12;
 
 /** Flow-reversal exit: buy ratio below this AND decelerating for 2+ readings = exit regardless of P&L
  *  v19.0: Flow physics — when capital leaves, we leave with it. */
-export const FLOW_REVERSAL_EXIT_BUY_RATIO = 40;
+export const FLOW_REVERSAL_EXIT_BUY_RATIO = 38; // Bear-adjusted May-2026: 40→38 — 57-day bear depresses buy-ratio baselines across all tokens; 40% exits were calibrated for bull-market flows where 55-60% is normal; in sustained bear, baseline sits at 45-50%, so exiting at 38% (vs 40%) catches distribution 2% earlier without over-triggering on noise
 export const FLOW_REVERSAL_EXIT_MIN_DECEL_READINGS = 2;
 
 /** Stop for concentrated positions (> 10% of portfolio) */
