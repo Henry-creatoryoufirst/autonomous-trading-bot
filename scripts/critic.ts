@@ -22,21 +22,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { TOKEN_REGISTRY } from '../src/core/config/token-registry.js';
+import {
+  getCriticWriteDir,
+  getCriticReportsWriteDir,
+  getRulesProposalWritePath,
+  getCriticMemoryWritePath,
+} from '../src/core/config/critic-paths.js';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
-const REPORTS_DIR = path.join(DATA_DIR, 'critic-reports');
-const RULES_PROPOSAL_PATH = path.join(DATA_DIR, 'rules-proposal.yaml');
+const DATA_DIR = getCriticWriteDir();
+const REPORTS_DIR = getCriticReportsWriteDir();
+const RULES_PROPOSAL_PATH = getRulesProposalWritePath();
 /**
  * Prompt-ready summary of the latest CRITIC audit. The bot reads this at
  * cycle start (when CRITIC_MEMORY_ENABLED is true) and injects it into
  * heavy-cycle Sonnet prompts so the decision-maker reasons with its own
  * recent pattern outcomes, not blind each cycle.
  */
-const MEMORY_PATH = path.join(DATA_DIR, 'critic-memory.md');
+const MEMORY_PATH = getCriticMemoryWritePath();
 
 const BOT_URL = process.env.BOT_URL ?? 'https://autonomous-trading-bot-production.up.railway.app';
 const WINDOW_HOURS = parseInt(process.env.CRITIC_WINDOW_HOURS ?? '168', 10);

@@ -18,9 +18,8 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 
-const MEMORY_PATH = path.resolve(process.cwd(), 'data', 'critic-memory.md');
+import { findFreshestCriticMemory } from '../config/critic-paths.js';
 
 /** Cache TTL — how long we hold a loaded memory in process memory before re-reading. */
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -66,20 +65,27 @@ export function loadCriticMemory(): string | null {
     return cache.content;
   }
 
-  // Re-read the file
+  // Re-read the file (resolved fresh each time so PERSIST_DIR vs bundled
+  // fallback always picks the freshest copy)
+  const memoryPath = findFreshestCriticMemory();
+  if (!memoryPath) {
+    cache = { loadedAt: now, content: null, fileMtime: 0 };
+    return null;
+  }
+
   try {
-    const stat = fs.statSync(MEMORY_PATH);
+    const stat = fs.statSync(memoryPath);
     const fileAgeHours = (now - stat.mtimeMs) / (60 * 60 * 1000);
 
     if (fileAgeHours > getMaxAgeHours()) {
       console.warn(
-        `[CriticMemory] File at ${MEMORY_PATH} is ${fileAgeHours.toFixed(1)}h old (max ${getMaxAgeHours()}h). Stale — not injecting.`,
+        `[CriticMemory] File at ${memoryPath} is ${fileAgeHours.toFixed(1)}h old (max ${getMaxAgeHours()}h). Stale — not injecting.`,
       );
       cache = { loadedAt: now, content: null, fileMtime: stat.mtimeMs };
       return null;
     }
 
-    const content = fs.readFileSync(MEMORY_PATH, 'utf8');
+    const content = fs.readFileSync(memoryPath, 'utf8');
     if (!content.trim()) {
       cache = { loadedAt: now, content: null, fileMtime: stat.mtimeMs };
       return null;

@@ -15,6 +15,7 @@ import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyDa
 import type { DefiLlamaData, DerivativesData, FundingRateMeanReversion, SmartRetailDivergence, TVLPriceDivergence } from '../algorithm/market-analysis.js';
 import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../core/services/strategy-config.js';
 import { activeChain } from '../core/config/chain-config.js';
+import { findLatestCriticReport, findFreshestRulesProposal } from '../core/config/critic-paths.js';
 import {
   BOT_VERSION,
   AI_MODEL_ROUTINE,
@@ -1021,22 +1022,11 @@ export function apiThresholds() {
  * throwing — the cockpit shows a "no recent audit" state.
  */
 export function apiCriticSummary() {
-  const reportsDir = path.join(process.cwd(), 'data', 'critic-reports');
-  const proposalPath = path.join(process.cwd(), 'data', 'rules-proposal.yaml');
+  const latest = findLatestCriticReport();
+  const proposalPath = findFreshestRulesProposal();
 
-  let latestReportPath: string | null = null;
-  let latestReportDate: string | null = null;
-  try {
-    if (fs.existsSync(reportsDir)) {
-      const files = fs.readdirSync(reportsDir)
-        .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
-        .sort();
-      if (files.length > 0) {
-        latestReportDate = files[files.length - 1].replace('.md', '');
-        latestReportPath = path.join(reportsDir, files[files.length - 1]);
-      }
-    }
-  } catch { /* no reports */ }
+  const latestReportPath: string | null = latest?.fullPath ?? null;
+  const latestReportDate: string | null = latest?.date ?? null;
 
   let headline: {
     windowHours: number | null;
@@ -1089,7 +1079,7 @@ export function apiCriticSummary() {
   const proposals: Proposal[] = [];
   let proposalLastModified: string | null = null;
 
-  if (fs.existsSync(proposalPath)) {
+  if (proposalPath && fs.existsSync(proposalPath)) {
     try {
       const stat = fs.statSync(proposalPath);
       proposalLastModified = stat.mtime.toISOString();
@@ -1161,36 +1151,22 @@ export function apiCriticReportMarkdown(): {
   lastModified: string | null;
   content: string | null;
 } {
-  const reportsDir = path.join(process.cwd(), 'data', 'critic-reports');
-  if (!fs.existsSync(reportsDir)) {
+  const latest = findLatestCriticReport();
+  if (!latest) {
     return { available: false, date: null, bytes: null, lastModified: null, content: null };
   }
-  let files: string[];
   try {
-    files = fs.readdirSync(reportsDir)
-      .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
-      .sort();
-  } catch {
-    return { available: false, date: null, bytes: null, lastModified: null, content: null };
-  }
-  if (files.length === 0) {
-    return { available: false, date: null, bytes: null, lastModified: null, content: null };
-  }
-  const latest = files[files.length - 1];
-  const date = latest.replace('.md', '');
-  const fullPath = path.join(reportsDir, latest);
-  try {
-    const stat = fs.statSync(fullPath);
-    const content = fs.readFileSync(fullPath, 'utf-8');
+    const stat = fs.statSync(latest.fullPath);
+    const content = fs.readFileSync(latest.fullPath, 'utf-8');
     return {
       available: true,
-      date,
+      date: latest.date,
       bytes: stat.size,
       lastModified: stat.mtime.toISOString(),
       content,
     };
   } catch {
-    return { available: false, date, bytes: null, lastModified: null, content: null };
+    return { available: false, date: latest.date, bytes: null, lastModified: null, content: null };
   }
 }
 
