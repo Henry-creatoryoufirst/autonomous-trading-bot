@@ -1331,6 +1331,81 @@ function checkStalePositions(
 // a target it could never hit. USDC % now floats with natural turnover.
 
 /**
+ * v21.29: WETH rebalance escape hatch — the smarter successor to
+ * maintainDryPowder.
+ *
+ * Detects the structural lockup state where WETH has compounded into
+ * dominance AND organic turnover has dried up the USDC reserve. Queues a
+ * one-time WETH→USDC rebalance trade per cooldown window — does NOT chase
+ * a target every cycle (that's what got the old function deleted).
+ *
+ * Disabled by default. Enable on production by setting:
+ *   WETH_REBALANCE_ESCAPE_HATCH=true
+ *
+ * Tunables (all env-driven, with sensible defaults):
+ *   WETH_REBALANCE_THRESHOLD_PCT      — fire when WETH/portfolio > this (default 0.80)
+ *   WETH_REBALANCE_USDC_FLOOR_PCT     — fire when USDC/portfolio < this (default 0.05)
+ *   WETH_REBALANCE_SIZE_PCT           — sell this fraction of WETH per fire (default 0.05, capped at 0.30)
+ *   WETH_REBALANCE_COOLDOWN_HOURS     — min hours between fires (default 24)
+ *   WETH_REBALANCE_MIN_TRADE_USD      — refuse fires below this size (default 50)
+ *
+ * Returns null when conditions aren't met or the hatch is disabled. When
+ * returning a TradeDecision, the caller is expected to route through
+ * executeTrade() and update state.lastWethRebalanceAt on success.
+ *
+ * Why a small per-fire fraction with cooldown: each fire is reversible if
+ * the bot starts trading and consumes USDC organically. We never want one
+ * cycle to dump 30% of WETH and tank the asset-base thesis. Successive
+ * fires can step toward target if the lockup persists, but only after
+ * the cooldown window confirms USDC is still dry.
+ */
+function maybeRebalanceWeth(
+  balances: { symbol: string; usdValue: number }[],
+  totalPortfolioValue: number,
+  state: AgentState,
+): TradeDecision | null {
+  if (process.env.WETH_REBALANCE_ESCAPE_HATCH !== 'true') return null;
+  if (totalPortfolioValue <= 0) return null;
+
+  const weth = balances.find(b => (b.symbol || '').toUpperCase() === 'WETH');
+  if (!weth || !weth.usdValue || weth.usdValue <= 0) return null;
+  const usdc = balances.find(b => (b.symbol || '').toUpperCase() === 'USDC');
+
+  const wethPct = weth.usdValue / totalPortfolioValue;
+  const usdcPct = (usdc?.usdValue ?? 0) / totalPortfolioValue;
+
+  const wethThreshold = parseFloat(process.env.WETH_REBALANCE_THRESHOLD_PCT ?? '0.80');
+  const usdcFloor = parseFloat(process.env.WETH_REBALANCE_USDC_FLOOR_PCT ?? '0.05');
+
+  if (wethPct < wethThreshold) return null;  // not over-allocated
+  if (usdcPct >= usdcFloor) return null;     // dry powder is fine
+
+  // Cooldown gate
+  const cooldownHours = parseFloat(process.env.WETH_REBALANCE_COOLDOWN_HOURS ?? '24');
+  const last = state.lastWethRebalanceAt;
+  if (last) {
+    const hoursAgo = (Date.now() - new Date(last).getTime()) / 3_600_000;
+    if (hoursAgo < cooldownHours) return null;
+  }
+
+  // Sizing
+  const rawSizePct = parseFloat(process.env.WETH_REBALANCE_SIZE_PCT ?? '0.05');
+  const sizePct = Number.isFinite(rawSizePct) ? Math.max(0, Math.min(0.30, rawSizePct)) : 0.05;
+  const sizeUSD = weth.usdValue * sizePct;
+  const minTrade = parseFloat(process.env.WETH_REBALANCE_MIN_TRADE_USD ?? '50');
+  if (sizeUSD < minTrade) return null;
+
+  return {
+    action: 'SELL',
+    fromToken: 'WETH',
+    toToken: 'USDC',
+    amountUSD: sizeUSD,
+    reasoning: `WETH_REBALANCE_ESCAPE_HATCH: WETH=${(wethPct * 100).toFixed(1)}% > threshold ${(wethThreshold * 100).toFixed(0)}% AND USDC=${(usdcPct * 100).toFixed(2)}% < floor ${(usdcFloor * 100).toFixed(0)}%. Selling $${sizeUSD.toFixed(0)} WETH→USDC to restore alpha-strike capacity. One-time per ${cooldownHours.toFixed(0)}h cooldown.`,
+    sector: TOKEN_REGISTRY['WETH']?.sector,
+  };
+}
+
+/**
  * Calculate total capital currently deployed in alpha (discovery) positions.
  * Used to enforce the alpha budget ceiling.
  */
@@ -7394,12 +7469,41 @@ async function runTradingCycle() {
 
     // === v21.27 Step 2 (Delete) — Dry Powder Reserve maintenance removed ===
     // CRITIC 14-day data showed dry_powder_rebalance lost -$87 on 97 trades.
-    // Structural reason: WETH/ETH are on the NEVER_SELL list, so the 25% USDC
-    // floor was structurally unenforceable when WETH dominates the portfolio
-    // (currently ~76%). The function fired every RESERVE_CHECK_INTERVAL_CYCLES
-    // and sold proven alt holds for cents, fighting the bot's own organic
-    // ETH-heavy allocation. USDC % now floats with natural turnover — exits,
-    // stops, harvests, drawdown overrides — not forced rebalance.
+    // Structural reason: WETH/ETH are on the NEVER_CULL/NEVER_EXIT lists, so
+    // the 25% USDC floor was structurally unenforceable when WETH dominates
+    // (~76% then, ~86% by 2026-05-05). The old function fired every cycle
+    // and sold proven alts for cents to chase a target it could never hit.
+
+    // === v21.29 — WETH Rebalance Escape Hatch (replaces v21.27 deletion) ===
+    // Smarter, sparser successor to dry_powder_rebalance: only fires when
+    // the portfolio is structurally locked (WETH dominance > threshold AND
+    // USDC < floor). Sells a small fraction of WETH per fire, cooldown-gated
+    // so a single cycle can't tank the asset base. Disabled by default —
+    // enable per-bot via WETH_REBALANCE_ESCAPE_HATCH=true.
+    {
+      const rebalanceDecision = maybeRebalanceWeth(balances, state.trading.totalPortfolioValue, state);
+      if (rebalanceDecision) {
+        console.log(`\n⚖️  WETH REBALANCE: ${rebalanceDecision.reasoning}`);
+        const result = await executeTrade(rebalanceDecision, marketData);
+        if (result.success) {
+          state.lastWethRebalanceAt = new Date().toISOString();
+          markStateDirty(true);
+          console.log(`   ✅ Rebalance success: $${rebalanceDecision.amountUSD.toFixed(0)} WETH→USDC, tx=${result.txHash?.slice(0, 10)}…`);
+          await telegramService.sendAlert({
+            severity: "INFO",
+            title: "⚖️ WETH Rebalance Fired",
+            message: `Sold $${rebalanceDecision.amountUSD.toFixed(0)} WETH→USDC to restore alpha-strike capacity.\n\n${rebalanceDecision.reasoning}`,
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
+          // Refresh balances after rebalance so downstream cycle steps see new USDC
+          const refreshedBalances = await getBalances();
+          if (refreshedBalances && refreshedBalances.length > 0) {
+            balances = refreshedBalances;
+          }
+        } else {
+          console.warn(`   ❌ Rebalance failed: ${result.error}`);
+        }
+      }
+    }
 
     // === v21.8: HARD CIRCUIT BREAKER — Emergency exit for severe losses or persistent failures ===
     // Safety net that fires EVERY cycle regardless of normal algo decisions.

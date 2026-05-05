@@ -57,6 +57,18 @@ export interface AgentState {
     harvestCount: number;
     harvests: { timestamp: string; symbol: string; tier: string; gainPercent: number; sellPercent: number; amountUSD: number; profitUSD: number }[];
   };
+  /**
+   * v21.29: WETH rebalance escape hatch — last fire timestamp.
+   *
+   * The escape hatch detects portfolio-shape lockups (WETH dominance + USDC
+   * dryness) and queues a one-time WETH→USDC rebalance trade per cooldown
+   * window. This field gates re-fires so successive cycles don't pile up
+   * rebalances. Optional for backward compat — absent on pre-v21.29 states.
+   *
+   * See `maybeRebalanceWeth()` in agent-v3.2.ts and the
+   * project_nvr_session_2026_05_05 memory.
+   */
+  lastWethRebalanceAt?: string | null;
   // Auto-harvest state
   autoHarvestTransfers: Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>;
   totalAutoHarvestedUSD: number;
