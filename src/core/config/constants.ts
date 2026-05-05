@@ -26,8 +26,11 @@ export const BASE_USDC_ADDRESS = activeChain.usdc.address;
 // AI MODEL ROUTING — Cost Optimization (v20.5)
 // ============================================================================
 
-/** Sonnet for complex decisions: trade execution, portfolio rebalancing, emergencies */
-export const AI_MODEL_HEAVY = 'claude-sonnet-4-20250514';
+/** Sonnet for complex decisions: trade execution, portfolio rebalancing, emergencies.
+ *  v21.30 (2026-05-05): migrated 'claude-sonnet-4-20250514' (Sonnet 4.0, retires
+ *  June 2026) → 'claude-sonnet-4-6' (current). Same per-token cost, better
+ *  reasoning, ahead of deprecation. Cache_control + system block shape unchanged. */
+export const AI_MODEL_HEAVY = 'claude-sonnet-4-6';
 
 /** Haiku for routine monitoring: forced-interval checks, status updates, chat */
 export const AI_MODEL_ROUTINE = 'claude-haiku-4-5-20251001';
