@@ -1134,6 +1134,66 @@ export function apiCriticSummary() {
   };
 }
 
+/**
+ * Returns the raw markdown content of the latest CRITIC report.
+ *
+ * The CRITIC nightly cron writes reports to `data/critic-reports/<date>.md`
+ * (relative to cwd, ie `/app/data/critic-reports/` on Railway). This endpoint
+ * exposes that file content over HTTP so consumers — most importantly the
+ * "NVR · CRITIC-Driven Deletion Proposer" routine — can fetch fresh data
+ * directly instead of relying on a git-cloned copy that grows stale (the
+ * reports are NOT auto-committed to the repo).
+ *
+ * Returns:
+ *   - available=true with `content` populated when a report exists
+ *   - available=false with null fields when no report is on disk yet
+ *     (e.g. just after a container redeploy; CRITIC hasn't run yet for the
+ *     new container instance)
+ *
+ * The route handler in agent-v3.2.ts sends the markdown as text/markdown.
+ * `date` lets the caller include it in an X-Critic-Report-Date header for
+ * trivial freshness checks.
+ */
+export function apiCriticReportMarkdown(): {
+  available: boolean;
+  date: string | null;
+  bytes: number | null;
+  lastModified: string | null;
+  content: string | null;
+} {
+  const reportsDir = path.join(process.cwd(), 'data', 'critic-reports');
+  if (!fs.existsSync(reportsDir)) {
+    return { available: false, date: null, bytes: null, lastModified: null, content: null };
+  }
+  let files: string[];
+  try {
+    files = fs.readdirSync(reportsDir)
+      .filter(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f))
+      .sort();
+  } catch {
+    return { available: false, date: null, bytes: null, lastModified: null, content: null };
+  }
+  if (files.length === 0) {
+    return { available: false, date: null, bytes: null, lastModified: null, content: null };
+  }
+  const latest = files[files.length - 1];
+  const date = latest.replace('.md', '');
+  const fullPath = path.join(reportsDir, latest);
+  try {
+    const stat = fs.statSync(fullPath);
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    return {
+      available: true,
+      date,
+      bytes: stat.size,
+      lastModified: stat.mtime.toISOString(),
+      content,
+    };
+  } catch {
+    return { available: false, date, bytes: null, lastModified: null, content: null };
+  }
+}
+
 export function getDashboardHTML(): string {
     // Try multiple paths to find dashboard/index.html on disk
     const path = require('path');

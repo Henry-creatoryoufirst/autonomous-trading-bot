@@ -526,6 +526,7 @@ import {
   apiIndicators as _apiIndicators, apiIntelligence as _apiIntelligence,
   apiPatterns as _apiPatterns, apiReviews as _apiReviews, apiThresholds as _apiThresholds,
   apiCriticSummary as _apiCriticSummary,
+  apiCriticReportMarkdown as _apiCriticReportMarkdown,
   getActiveDirectives as _getActiveDirectives, addUserDirective as _addUserDirective,
   removeUserDirective as _removeUserDirective, applyConfigChanges as _applyConfigChanges,
   getActiveConfigDirectives as _getActiveConfigDirectives, removeConfigDirective as _removeConfigDirective,
@@ -9762,6 +9763,7 @@ const apiPortfolio = _apiPortfolio;
 const apiBalances = _apiBalances;
 const apiSectors = _apiSectors;
 const apiCriticSummary = _apiCriticSummary;
+const apiCriticReportMarkdown = _apiCriticReportMarkdown;
 const apiTrades = _apiTrades;
 const apiDailyPnL = _apiDailyPnL;
 const apiIndicators = _apiIndicators;
@@ -10117,6 +10119,31 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/critic-summary':
         sendJSON(res, 200, apiCriticSummary());
         break;
+      case '/api/critic-report-markdown': {
+        // Returns the raw markdown of the latest CRITIC report. Powers the
+        // "NVR · CRITIC-Driven Deletion Proposer" routine, which previously
+        // had to clone the bot repo + read stale local files. Now consumers
+        // get the live report directly.
+        const r = apiCriticReportMarkdown();
+        if (!r.available || !r.content) {
+          sendJSON(res, 404, {
+            error: 'no critic report available',
+            date: r.date,
+            note: 'CRITIC may not have run yet on this container instance (reports are written to /app/data, lost on container restart).',
+          });
+        } else {
+          res.writeHead(200, {
+            'Content-Type': 'text/markdown; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'X-Critic-Report-Date': r.date ?? '',
+            'X-Critic-Report-Bytes': String(r.bytes ?? 0),
+            'X-Critic-Report-Last-Modified': r.lastModified ?? '',
+            'Access-Control-Allow-Origin': '*',
+          });
+          res.end(r.content);
+        }
+        break;
+      }
       case '/api/capital-flows':
         await handleCapitalFlows(res, serverCtx);
         break;
