@@ -1,0 +1,96 @@
+{
+  "runDate": "2026-05-04T14:23:48.366Z",
+  "config": {
+    "lookbackHours": 720,
+    "spreadLookbackDays": 7,
+    "spreadThreshold": 0.15,
+    "forwardDays": 5,
+    "targetReversion": 0.05,
+    "pairs": [
+      "AERO/WETH",
+      "DEGEN/WETH",
+      "BRETT/WETH"
+    ]
+  },
+  "verdict": {
+    "n": 6,
+    "hitRate": 1,
+    "nullRate": 0,
+    "edge": 1
+  },
+  "events": [
+    {
+      "pair": "AERO/WETH",
+      "triggerTs": 1777581900,
+      "spreadPct": 1.077181581150166,
+      "direction": "A_over_B",
+      "priceA": 0.442480450901763,
+      "priceB": 0.000806710387773228,
+      "reverted": true,
+      "spreadAtForward": 1.1543035671184696,
+      "reversionPct": 0,
+      "exitDay": 3.4895833333333335
+    },
+    {
+      "pair": "AERO/WETH",
+      "triggerTs": 1777754700,
+      "spreadPct": 1.9236095741375046,
+      "direction": "A_over_B",
+      "priceA": 0.450392460833572,
+      "priceB": 0.00256406214718538,
+      "reverted": true,
+      "spreadAtForward": 1.9287184035019012,
+      "reversionPct": 0,
+      "exitDay": 0.020833333333333332
+    },
+    {
+      "pair": "DEGEN/WETH",
+      "triggerTs": 1777581900,
+      "spreadPct": 1.0440312737233337,
+      "direction": "A_over_B",
+      "priceA": 0.000672506345212976,
+      "priceB": 0.000806710387773228,
+      "reverted": true,
+      "spreadAtForward": 1.1603335114483222,
+      "reversionPct": 0,
+      "exitDay": 3.4895833333333335
+    },
+    {
+      "pair": "DEGEN/WETH",
+      "triggerTs": 1777755600,
+      "spreadPct": 1.877248253931159,
+      "direction": "A_over_B",
+      "priceA": 0.000664206984884021,
+      "priceB": 0.00256379615881511,
+      "reverted": true,
+      "spreadAtForward": 1.877248253931159,
+      "reversionPct": 0,
+      "exitDay": 0.010416666666666666
+    },
+    {
+      "pair": "BRETT/WETH",
+      "triggerTs": 1777581900,
+      "spreadPct": 1.087416474529177,
+      "direction": "A_over_B",
+      "priceA": 0.00703200455857272,
+      "priceB": 0.000806710387773228,
+      "reverted": true,
+      "spreadAtForward": 1.0593218844818277,
+      "reversionPct": 0.028094590047349266,
+      "exitDay": 3.5104166666666665
+    },
+    {
+      "pair": "BRETT/WETH",
+      "triggerTs": 1777754700,
+      "spreadPct": 2.024964465388101,
+      "direction": "A_over_B",
+      "priceA": 0.00803039080699731,
+      "priceB": 0.00256406214718538,
+      "reverted": true,
+      "spreadAtForward": 2.020947332076527,
+      "reversionPct": 0.004017133311573939,
+      "exitDay": 0.020833333333333332
+    }
+  ],
+  "nulls": []
+}

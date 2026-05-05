@@ -1,0 +1,1054 @@
+{
+  "triggers": [
+    {
+      "triggerTs": 1777485622,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 11671.431788118782,
+      "windowStartTs": 1777483822,
+      "windowEndTs": 1777485622,
+      "triggerPrice": 0.4649560023891,
+      "triggerId": "AERO-1777485622-2"
+    },
+    {
+      "triggerTs": 1777487603,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 12133.142750337449,
+      "windowStartTs": 1777485803,
+      "windowEndTs": 1777487603,
+      "triggerPrice": 0.452936794037259,
+      "triggerId": "AERO-1777487603-2"
+    },
+    {
+      "triggerTs": 1777490034,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 18881.23184581739,
+      "windowStartTs": 1777488234,
+      "windowEndTs": 1777490034,
+      "triggerPrice": 0.452936794037259,
+      "triggerId": "AERO-1777490034-2"
+    },
+    {
+      "triggerTs": 1777493004,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 25613.708800988694,
+      "windowStartTs": 1777491204,
+      "windowEndTs": 1777493004,
+      "triggerPrice": 0.459127487660909,
+      "triggerId": "AERO-1777493004-2"
+    },
+    {
+      "triggerTs": 1777497776,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 14482.000455558027,
+      "windowStartTs": 1777495976,
+      "windowEndTs": 1777497776,
+      "triggerPrice": 0.465332319244992,
+      "triggerId": "AERO-1777497776-2"
+    },
+    {
+      "triggerTs": 1777510468,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 23434.56090782257,
+      "windowStartTs": 1777508668,
+      "windowEndTs": 1777510468,
+      "triggerPrice": 0.467489135683817,
+      "triggerId": "AERO-1777510468-2"
+    },
+    {
+      "triggerTs": 1777520133,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 2394.0388065958437,
+      "windowStartTs": 1777518333,
+      "windowEndTs": 1777520133,
+      "triggerPrice": 0.458111633064518,
+      "triggerId": "AERO-1777520133-2"
+    },
+    {
+      "triggerTs": 1777548595,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 200.6677358477571,
+      "windowStartTs": 1777546795,
+      "windowEndTs": 1777548595,
+      "triggerPrice": 0.457054510615681,
+      "triggerId": "AERO-1777548595-2"
+    },
+    {
+      "triggerTs": 1777554630,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x31868c48d33586754a1ae04688603221e6af8557",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 10361.763688920988,
+      "windowStartTs": 1777552830,
+      "windowEndTs": 1777554630,
+      "triggerPrice": 0.448353722815036,
+      "triggerId": "AERO-1777554630-2"
+    },
+    {
+      "triggerTs": 1777556611,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        }
+      ],
+      "totalAmountUsd": 398.10573198495695,
+      "windowStartTs": 1777554811,
+      "windowEndTs": 1777556611,
+      "triggerPrice": 0.445528126928005,
+      "triggerId": "AERO-1777556611-2"
+    },
+    {
+      "triggerTs": 1777563194,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 12768.287928729591,
+      "windowStartTs": 1777561394,
+      "windowEndTs": 1777563194,
+      "triggerPrice": 0.447408325362362,
+      "triggerId": "AERO-1777563194-3"
+    },
+    {
+      "triggerTs": 1777572136,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 2345.5568883703677,
+      "windowStartTs": 1777570336,
+      "windowEndTs": 1777572136,
+      "triggerPrice": 0.440188239506456,
+      "triggerId": "AERO-1777572136-2"
+    },
+    {
+      "triggerTs": 1777574687,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 2615.152050717814,
+      "windowStartTs": 1777572887,
+      "windowEndTs": 1777574687,
+      "triggerPrice": 0.44036439807047,
+      "triggerId": "AERO-1777574687-2"
+    },
+    {
+      "triggerTs": 1777591162,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 3466.996633476063,
+      "windowStartTs": 1777589362,
+      "windowEndTs": 1777591162,
+      "triggerPrice": 0.439863777269453,
+      "triggerId": "AERO-1777591162-2"
+    },
+    {
+      "triggerTs": 1777592963,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 41884.40864753684,
+      "windowStartTs": 1777591163,
+      "windowEndTs": 1777592963,
+      "triggerPrice": 0.442282190273032,
+      "triggerId": "AERO-1777592963-3"
+    },
+    {
+      "triggerTs": 1777606594,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0x31868c48d33586754a1ae04688603221e6af8557",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 11435.420681025964,
+      "windowStartTs": 1777604794,
+      "windowEndTs": 1777606594,
+      "triggerPrice": 0.454181351471022,
+      "triggerId": "AERO-1777606594-3"
+    },
+    {
+      "triggerTs": 1777611098,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 6911.955749613597,
+      "windowStartTs": 1777609298,
+      "windowEndTs": 1777611098,
+      "triggerPrice": 0.460481929552067,
+      "triggerId": "AERO-1777611098-3"
+    },
+    {
+      "triggerTs": 1777619594,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        }
+      ],
+      "totalAmountUsd": 251.22256335169754,
+      "windowStartTs": 1777617794,
+      "windowEndTs": 1777619594,
+      "triggerPrice": 0.455116778754298,
+      "triggerId": "AERO-1777619594-2"
+    },
+    {
+      "triggerTs": 1777623917,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 36918.478621371534,
+      "windowStartTs": 1777622117,
+      "windowEndTs": 1777623917,
+      "triggerPrice": 0.457797914406504,
+      "triggerId": "AERO-1777623917-2"
+    },
+    {
+      "triggerTs": 1777630253,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 36.0986405192912,
+      "windowStartTs": 1777628453,
+      "windowEndTs": 1777630253,
+      "triggerPrice": 0.000672303795510527,
+      "triggerId": "DEGEN-1777630253-2"
+    },
+    {
+      "triggerTs": 1777630854,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 8115.317821066749,
+      "windowStartTs": 1777629054,
+      "windowEndTs": 1777630854,
+      "triggerPrice": 0.455284423691761,
+      "triggerId": "AERO-1777630854-3"
+    },
+    {
+      "triggerTs": 1777637699,
+      "tokenSymbol": "BRETT",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 156.6148019968524,
+      "windowStartTs": 1777635899,
+      "windowEndTs": 1777637699,
+      "triggerPrice": 0.00757277173047261,
+      "triggerId": "BRETT-1777637699-2"
+    },
+    {
+      "triggerTs": 1777640820,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 2650.675632546062,
+      "windowStartTs": 1777639020,
+      "windowEndTs": 1777640820,
+      "triggerPrice": 0.46018786390635,
+      "triggerId": "AERO-1777640820-2"
+    },
+    {
+      "triggerTs": 1777644753,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 15547.517360900047,
+      "windowStartTs": 1777642953,
+      "windowEndTs": 1777644753,
+      "triggerPrice": 0.460243396752003,
+      "triggerId": "AERO-1777644753-3"
+    },
+    {
+      "triggerTs": 1777647187,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 70.08785131829498,
+      "windowStartTs": 1777645387,
+      "windowEndTs": 1777647187,
+      "triggerPrice": 0.000674192600152001,
+      "triggerId": "DEGEN-1777647187-2"
+    },
+    {
+      "triggerTs": 1777655472,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 34.14137532448046,
+      "windowStartTs": 1777653672,
+      "windowEndTs": 1777655472,
+      "triggerPrice": 0.000682231242222565,
+      "triggerId": "DEGEN-1777655472-2"
+    },
+    {
+      "triggerTs": 1777656763,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x31868c48d33586754a1ae04688603221e6af8557",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 10868.570793604214,
+      "windowStartTs": 1777654963,
+      "windowEndTs": 1777656763,
+      "triggerPrice": 0.461122069016963,
+      "triggerId": "AERO-1777656763-2"
+    },
+    {
+      "triggerTs": 1777657815,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 16.174254201228642,
+      "windowStartTs": 1777656015,
+      "windowEndTs": 1777657815,
+      "triggerPrice": 0.000682231242222565,
+      "triggerId": "DEGEN-1777657815-2"
+    },
+    {
+      "triggerTs": 1777669852,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+          "tier": "2"
+        }
+      ],
+      "totalAmountUsd": 1594.6245210781626,
+      "windowStartTs": 1777668052,
+      "windowEndTs": 1777669852,
+      "triggerPrice": 0.450597319674975,
+      "triggerId": "AERO-1777669852-2"
+    },
+    {
+      "triggerTs": 1777671596,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 30.213820308269977,
+      "windowStartTs": 1777669796,
+      "windowEndTs": 1777671596,
+      "triggerPrice": 0.000668740771094731,
+      "triggerId": "DEGEN-1777671596-2"
+    },
+    {
+      "triggerTs": 1777676069,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 31.142840690771667,
+      "windowStartTs": 1777674269,
+      "windowEndTs": 1777676069,
+      "triggerPrice": 0.000661745976077648,
+      "triggerId": "DEGEN-1777676069-2"
+    },
+    {
+      "triggerTs": 1777692280,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 5134.14952947991,
+      "windowStartTs": 1777690480,
+      "windowEndTs": 1777692280,
+      "triggerPrice": 0.451110508731599,
+      "triggerId": "AERO-1777692280-2"
+    },
+    {
+      "triggerTs": 1777696483,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 11691.639019822383,
+      "windowStartTs": 1777694683,
+      "windowEndTs": 1777696483,
+      "triggerPrice": 0.449284115658146,
+      "triggerId": "AERO-1777696483-2"
+    },
+    {
+      "triggerTs": 1777698344,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 8136.04717296084,
+      "windowStartTs": 1777696544,
+      "windowEndTs": 1777698344,
+      "triggerPrice": 0.453973193669893,
+      "triggerId": "AERO-1777698344-2"
+    },
+    {
+      "triggerTs": 1777702878,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x31868c48d33586754a1ae04688603221e6af8557",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 10755.439581698569,
+      "windowStartTs": 1777701078,
+      "windowEndTs": 1777702878,
+      "triggerPrice": 0.458693427656786,
+      "triggerId": "AERO-1777702878-2"
+    },
+    {
+      "triggerTs": 1777703930,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 123.90897328182326,
+      "windowStartTs": 1777702130,
+      "windowEndTs": 1777703930,
+      "triggerPrice": 0.000664324543028774,
+      "triggerId": "DEGEN-1777703930-2"
+    },
+    {
+      "triggerTs": 1777705491,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 27621.147017292606,
+      "windowStartTs": 1777703691,
+      "windowEndTs": 1777705491,
+      "triggerPrice": 0.457675193643427,
+      "triggerId": "AERO-1777705491-2"
+    },
+    {
+      "triggerTs": 1777724946,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 17.77100521224353,
+      "windowStartTs": 1777723146,
+      "windowEndTs": 1777724946,
+      "triggerPrice": 0.000676357254869395,
+      "triggerId": "DEGEN-1777724946-2"
+    },
+    {
+      "triggerTs": 1777738275,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 2475.284102506615,
+      "windowStartTs": 1777736475,
+      "windowEndTs": 1777738275,
+      "triggerPrice": 0.449998152627271,
+      "triggerId": "AERO-1777738275-2"
+    },
+    {
+      "triggerTs": 1777741340,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 28.59193776899208,
+      "windowStartTs": 1777739540,
+      "windowEndTs": 1777741340,
+      "triggerPrice": 0.000666736801637285,
+      "triggerId": "DEGEN-1777741340-2"
+    },
+    {
+      "triggerTs": 1777743169,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 87.02356382686546,
+      "windowStartTs": 1777741369,
+      "windowEndTs": 1777743169,
+      "triggerPrice": 0.000659565941769664,
+      "triggerId": "DEGEN-1777743169-2"
+    },
+    {
+      "triggerTs": 1777757909,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 52628.63375842903,
+      "windowStartTs": 1777756109,
+      "windowEndTs": 1777757909,
+      "triggerPrice": 0.450390036688613,
+      "triggerId": "AERO-1777757909-2"
+    },
+    {
+      "triggerTs": 1777780398,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0x31868c48d33586754a1ae04688603221e6af8557",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 7694.337822484122,
+      "windowStartTs": 1777778598,
+      "windowEndTs": 1777780398,
+      "triggerPrice": 0.448789165107304,
+      "triggerId": "AERO-1777780398-2"
+    },
+    {
+      "triggerTs": 1777826120,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 2363.751290458163,
+      "windowStartTs": 1777824320,
+      "windowEndTs": 1777826120,
+      "triggerPrice": 0.444666701995827,
+      "triggerId": "AERO-1777826120-2"
+    },
+    {
+      "triggerTs": 1777828852,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 35327.377580182554,
+      "windowStartTs": 1777827052,
+      "windowEndTs": 1777828852,
+      "triggerPrice": 0.450305340966047,
+      "triggerId": "AERO-1777828852-2"
+    },
+    {
+      "triggerTs": 1777841582,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 3140.809233550449,
+      "windowStartTs": 1777839782,
+      "windowEndTs": 1777841582,
+      "triggerPrice": 0.450012591436186,
+      "triggerId": "AERO-1777841582-2"
+    },
+    {
+      "triggerTs": 1777856172,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 2452.7273655581075,
+      "windowStartTs": 1777854372,
+      "windowEndTs": 1777856172,
+      "triggerPrice": 0.448932681490612,
+      "triggerId": "AERO-1777856172-2"
+    },
+    {
+      "triggerTs": 1777858396,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 37.73472894375235,
+      "windowStartTs": 1777856596,
+      "windowEndTs": 1777858396,
+      "triggerPrice": 0.000684768338442365,
+      "triggerId": "DEGEN-1777858396-2"
+    },
+    {
+      "triggerTs": 1777859686,
+      "tokenSymbol": "BRETT",
+      "intermediariesFired": [
+        {
+          "address": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 3467.549277764074,
+      "windowStartTs": 1777857886,
+      "windowEndTs": 1777859686,
+      "triggerPrice": 0.00799645062777586,
+      "triggerId": "BRETT-1777859686-2"
+    },
+    {
+      "triggerTs": 1777864879,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 3455.63181307086,
+      "windowStartTs": 1777863079,
+      "windowEndTs": 1777864879,
+      "triggerPrice": 0.45592435702289,
+      "triggerId": "AERO-1777864879-2"
+    },
+    {
+      "triggerTs": 1777872295,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 39.460281647118535,
+      "windowStartTs": 1777870495,
+      "windowEndTs": 1777872295,
+      "triggerPrice": 0.000684872541366893,
+      "triggerId": "DEGEN-1777872295-2"
+    },
+    {
+      "triggerTs": 1777889198,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        },
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        }
+      ],
+      "totalAmountUsd": 110.01262895522659,
+      "windowStartTs": 1777887398,
+      "windowEndTs": 1777889198,
+      "triggerPrice": 0.000681886385000779,
+      "triggerId": "DEGEN-1777889198-2"
+    },
+    {
+      "triggerTs": 1777890939,
+      "tokenSymbol": "AERO",
+      "intermediariesFired": [
+        {
+          "address": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 43138.78132190506,
+      "windowStartTs": 1777889139,
+      "windowEndTs": 1777890939,
+      "triggerPrice": 0.440887394671217,
+      "triggerId": "AERO-1777890939-2"
+    },
+    {
+      "triggerTs": 1777891331,
+      "tokenSymbol": "DEGEN",
+      "intermediariesFired": [
+        {
+          "address": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+          "tier": "3"
+        },
+        {
+          "address": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "tier": "1"
+        }
+      ],
+      "totalAmountUsd": 133.39795928790699,
+      "windowStartTs": 1777889531,
+      "windowEndTs": 1777891331,
+      "triggerPrice": 0.000670910435134721,
+      "triggerId": "DEGEN-1777891331-2"
+    }
+  ]
+}

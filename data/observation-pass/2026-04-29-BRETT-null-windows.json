@@ -1,0 +1,1770 @@
+{
+  "symbol": "BRETT",
+  "windows": [
+    {
+      "fromTs": 1776957925,
+      "toTs": 1776965125,
+      "totalBuys": 97,
+      "userBuys": 44,
+      "routerBuys": 0,
+      "botBuys": 53,
+      "uniqueUserBuyers": 11,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 6168904.233910764,
+          "buyCount": 17
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1150254.1082048682,
+          "buyCount": 15
+        },
+        {
+          "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+          "totalUsd": 18898.070815064053,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xc21543890ac0146533deaefcd34f8b82933ba706",
+          "totalUsd": 14147.704070028247,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+          "totalUsd": 13808.263969820659,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x43bbb129b56a998732767725a183b7a566843dba",
+          "totalUsd": 3935.334167090028,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 2091.1040067624936,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 956.8829619724081,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xffa80952b3800240f11ad25e45e8d3e5c1593e70",
+          "totalUsd": 857.2070764848149,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xc66cd4124913859727422b6d2340e3e73cd70eb1",
+          "totalUsd": 224.02926516967702,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 97
+    },
+    {
+      "fromTs": 1776679089,
+      "toTs": 1776686289,
+      "totalBuys": 158,
+      "userBuys": 47,
+      "routerBuys": 4,
+      "botBuys": 107,
+      "uniqueUserBuyers": 20,
+      "topUserBuyers": [
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 112427.2410430946,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 100067.47806749248,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 18087.298507034073,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 4897.173761946944,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x36a46dff597c5a444bbc521d26787f57867d2214",
+          "totalUsd": 4873.291892344434,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 3807.2936434329463,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xa4caebcbd5d8dab9f360429b9ad1ea2e12849e01",
+          "totalUsd": 2805.4815042415485,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xd13bd333a4fe131d7da70da7591267f4f083c907",
+          "totalUsd": 2551.2583901620224,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xb5241644c28ff8441298e33425d697026e3f8a3b",
+          "totalUsd": 2328.3470019668057,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xb328e1c089857c6a6c83891db77b6d9e9ae19469",
+          "totalUsd": 1973.271034471931,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 153
+    },
+    {
+      "fromTs": 1776315677,
+      "toTs": 1776322877,
+      "totalBuys": 231,
+      "userBuys": 81,
+      "routerBuys": 2,
+      "botBuys": 148,
+      "uniqueUserBuyers": 28,
+      "topUserBuyers": [
+        {
+          "wallet": "0x207807b3ba017020584f0a68e300e3182106ace4",
+          "totalUsd": 518080.6718148856,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 444858.5157617709,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x6a000f20005980200259b80c5102003040001068",
+          "totalUsd": 314512.07875772653,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 284667.1786643076,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 185604.58049991203,
+          "buyCount": 21
+        },
+        {
+          "wallet": "0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3",
+          "totalUsd": 163997.014157584,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+          "totalUsd": 66614.78612915777,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x12c6f6b67f254dadba13e89598abc7cd93538cee",
+          "totalUsd": 63322,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 50063.40446733542,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xb4e552fe3ef5c4acd10de7d6733a3cc961deaefd",
+          "totalUsd": 14575.824361101835,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 229
+    },
+    {
+      "fromTs": 1777445097,
+      "toTs": 1777452297,
+      "totalBuys": 255,
+      "userBuys": 71,
+      "routerBuys": 1,
+      "botBuys": 183,
+      "uniqueUserBuyers": 16,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 21560095.034651954,
+          "buyCount": 23
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1060872.6900592989,
+          "buyCount": 14
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 842982.1628614393,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 178657.95427009964,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0xc8f6b8ba0dc0f175b568b99440b0867f69a29265",
+          "totalUsd": 54001.33196967578,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0xa8a14ce28771ff0e750caa2685d9da636d4808c6",
+          "totalUsd": 29031.763439052218,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+          "totalUsd": 24558.463718475457,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x23558b58509c49c99fd6afbd5cfa7349a75786ab",
+          "totalUsd": 3469.7450823660574,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 3446.4124475448725,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0xf02c81feac92fb07d827ac9d4c59f86a4e60e89a",
+          "totalUsd": 1579.2222588045386,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 255
+    },
+    {
+      "fromTs": 1777357091,
+      "toTs": 1777364291,
+      "totalBuys": 405,
+      "userBuys": 90,
+      "routerBuys": 1,
+      "botBuys": 314,
+      "uniqueUserBuyers": 23,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 1263377.6758452798,
+          "buyCount": 9
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 718085.6600362003,
+          "buyCount": 24
+        },
+        {
+          "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+          "totalUsd": 253730.96899394543,
+          "buyCount": 17
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 100144.53383447547,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x4fe5fa7ef1086e546892c050219725447b1ceab2",
+          "totalUsd": 64473.856461656935,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xbf849d99e3182cb9c8654c797d404c339d93b146",
+          "totalUsd": 27938.428146864768,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x98f870ab30c0530b2e19d1adf5285200f52305a7",
+          "totalUsd": 19397.886927466923,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 16501.36254790228,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+          "totalUsd": 15712.009181793404,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x0303e4fe3d5a3d4f225e7690f038786648657b2b",
+          "totalUsd": 11908.451922063072,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 392
+    },
+    {
+      "fromTs": 1777315528,
+      "toTs": 1777322728,
+      "totalBuys": 159,
+      "userBuys": 46,
+      "routerBuys": 0,
+      "botBuys": 113,
+      "uniqueUserBuyers": 7,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 35269807.08991287,
+          "buyCount": 21
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 2984751.1733440356,
+          "buyCount": 9
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 549514.1936320032,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0xc8f6b8ba0dc0f175b568b99440b0867f69a29265",
+          "totalUsd": 65956.17831129748,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 49830.44847952056,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x44aa392f9411f6e10c085b989702817dcd91ae86",
+          "totalUsd": 718.2416493880462,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 0.7119986970042018,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 159
+    },
+    {
+      "fromTs": 1777153589,
+      "toTs": 1777160789,
+      "totalBuys": 226,
+      "userBuys": 51,
+      "routerBuys": 1,
+      "botBuys": 174,
+      "uniqueUserBuyers": 10,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 30051348.776855465,
+          "buyCount": 22
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 4600231.185552543,
+          "buyCount": 11
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 170736.92671777974,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 88177.81084871803,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 75060.167342472,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3",
+          "totalUsd": 12519.079270863353,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc8f6b8ba0dc0f175b568b99440b0867f69a29265",
+          "totalUsd": 5489.027018143142,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x179b8b0f97e7889a17ea6fd0100543bf8fb8fd05",
+          "totalUsd": 2132.7215500670354,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x796a7beac44557e30be1578c855f6da1e04cfcec",
+          "totalUsd": 1592.6229249088237,
+          "buyCount": 5
+        },
+        {
+          "wallet": "0xb4acbc082b5e7ded571c98ee4257778a9d784b36",
+          "totalUsd": 482.1382350688021,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 222
+    },
+    {
+      "fromTs": 1777088983,
+      "toTs": 1777096183,
+      "totalBuys": 71,
+      "userBuys": 39,
+      "routerBuys": 2,
+      "botBuys": 30,
+      "uniqueUserBuyers": 9,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 3167847.911075869,
+          "buyCount": 12
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 785764.7552875828,
+          "buyCount": 13
+        },
+        {
+          "wallet": "0x8c840abd0e2ffd1cf83f5529462f81e73a601ffa",
+          "totalUsd": 102014.70618288762,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 12205.817705806825,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+          "totalUsd": 6143.401733510676,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc7a98835fcbe29c33d1bf9da309915acefc2f642",
+          "totalUsd": 2656.1930364961695,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x13ab0e4e46c6611cb0a6cd7f776f2c7201bfc337",
+          "totalUsd": 1986.9132861431128,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x1508ef382d4f1f782e8121112214d8869fa30668",
+          "totalUsd": 1416.4454464889347,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8a29392b26277d20ff9f2c36a346fbcf89495f02",
+          "totalUsd": 152.08774786640979,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 71
+    },
+    {
+      "fromTs": 1777120546,
+      "toTs": 1777127746,
+      "totalBuys": 39,
+      "userBuys": 39,
+      "routerBuys": 0,
+      "botBuys": 0,
+      "uniqueUserBuyers": 10,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 18645636.2608381,
+          "buyCount": 22
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 1677968.5488461757,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 159427.97648840927,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0xc216bfa5da000965e820845c32e6fd88db275743",
+          "totalUsd": 34431.219698353525,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 28995.30846513683,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8b5a28e66071854b146822ac9824f69fedc1ee4c",
+          "totalUsd": 2384.5360900055293,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x410a08327bb1cb60fe2a58e969aae63c4757f9cb",
+          "totalUsd": 2374.030944719511,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 1373.1332105862416,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 853.1447243334801,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xbe96d4964d89c17c2c8c4d230313b8b6f7f6507a",
+          "totalUsd": 63.599526826091086,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 39
+    },
+    {
+      "fromTs": 1777181017,
+      "toTs": 1777188217,
+      "totalBuys": 159,
+      "userBuys": 63,
+      "routerBuys": 3,
+      "botBuys": 93,
+      "uniqueUserBuyers": 16,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 29030556.79351486,
+          "buyCount": 23
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 3013323.7679058085,
+          "buyCount": 9
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1009858.007900579,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0x4cc1b30746919c92c7f3c88236ea00a1d23f365c",
+          "totalUsd": 183247.40450262278,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+          "totalUsd": 125343.32682682661,
+          "buyCount": 5
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 64010.61029175763,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 50071.014249830725,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 17012.274151963047,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x9e3dc2af484a3a3cc3b92538a2ba1fa28d1c4691",
+          "totalUsd": 14882.408719214427,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 7772.538480173206,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 157
+    },
+    {
+      "fromTs": 1776880980,
+      "toTs": 1776888180,
+      "totalBuys": 73,
+      "userBuys": 33,
+      "routerBuys": 0,
+      "botBuys": 40,
+      "uniqueUserBuyers": 9,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 3951918.614449879,
+          "buyCount": 14
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 467657.3202855658,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 261559.44403873215,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xdd9dfd67a33955ce4e1bcc0d251ecf1598be5846",
+          "totalUsd": 147631.40643244796,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x179b8b0f97e7889a17ea6fd0100543bf8fb8fd05",
+          "totalUsd": 14056.062738263237,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 13673.786450160274,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x03a520b32c04bf3beef7beb72e919cf822ed34f1",
+          "totalUsd": 1380.2047269209959,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xea881a390eaf2b6c7fa8ca95c5124a560d28b420",
+          "totalUsd": 636.4109561035199,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xcd778d9a542b57a958d3219856875fe4f5ae7893",
+          "totalUsd": 74.92258096263538,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 73
+    },
+    {
+      "fromTs": 1776558759,
+      "toTs": 1776565959,
+      "totalBuys": 74,
+      "userBuys": 37,
+      "routerBuys": 0,
+      "botBuys": 37,
+      "uniqueUserBuyers": 12,
+      "topUserBuyers": [
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 928255.8748680551,
+          "buyCount": 25
+        },
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 783538.585534684,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x0880fdf134cce07fba59c99ddb844628638ac964",
+          "totalUsd": 197925.8754288194,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x64618b8b3eae3fc57d420cf4069a31cd389b5aaf",
+          "totalUsd": 29025.409087710417,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x7d27cdfbfcc878f7e7349e216d44204bfd2afd55",
+          "totalUsd": 14525.177012258235,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x9113ee1ca8c1395ac2b63d204a720e8336434330",
+          "totalUsd": 2771.7123004654895,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 2461.518036217834,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x975ba46e6c0780afee118ff6eb5c4e566f466cd0",
+          "totalUsd": 1471.8642494310486,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae",
+          "totalUsd": 942.8854775456437,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 827.4361533280224,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 74
+    },
+    {
+      "fromTs": 1777239179,
+      "toTs": 1777246379,
+      "totalBuys": 194,
+      "userBuys": 52,
+      "routerBuys": 1,
+      "botBuys": 141,
+      "uniqueUserBuyers": 9,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 18546687.319848243,
+          "buyCount": 22
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 7249278.710115064,
+          "buyCount": 12
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 538808.9036241646,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0x4cc1b30746919c92c7f3c88236ea00a1d23f365c",
+          "totalUsd": 183065.46981216414,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0xa3042a10aba8df55581762b0097d625603ac6319",
+          "totalUsd": 62044.12755021842,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+          "totalUsd": 41424.79190946197,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x33344d4941422457e792ce9cdb221fb53a58f1f2",
+          "totalUsd": 1701.735848176804,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+          "totalUsd": 1638.9527305237016,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 1105.9080232507863,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 191
+    },
+    {
+      "fromTs": 1776412808,
+      "toTs": 1776420008,
+      "totalBuys": 131,
+      "userBuys": 20,
+      "routerBuys": 0,
+      "botBuys": 111,
+      "uniqueUserBuyers": 14,
+      "topUserBuyers": [
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 100006.27090565907,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x349dea22ca5bf79982dd5ac133065f722ae75445",
+          "totalUsd": 91178.16790768367,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7472986ca3ce1b1c107cc85f345306e4b88776e4",
+          "totalUsd": 51222.163005063005,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 38716.472866833996,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x12c6f6b67f254dadba13e89598abc7cd93538cee",
+          "totalUsd": 32511,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xcd778d9a542b57a958d3219856875fe4f5ae7893",
+          "totalUsd": 23962.88458236704,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+          "totalUsd": 8572.27183558985,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7d27cdfbfcc878f7e7349e216d44204bfd2afd55",
+          "totalUsd": 6339.769634455227,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x97522fcee80959466702aab59c7635153d3e5284",
+          "totalUsd": 2167.4113883939403,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xdecd218e03e7df1ca6707f7c61e4b06b4e5bfad9",
+          "totalUsd": 1865.7332603063219,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 131
+    },
+    {
+      "fromTs": 1776669181,
+      "toTs": 1776676381,
+      "totalBuys": 99,
+      "userBuys": 29,
+      "routerBuys": 1,
+      "botBuys": 69,
+      "uniqueUserBuyers": 7,
+      "topUserBuyers": [
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 2457938.8605042035,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1186380.134516747,
+          "buyCount": 21
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 13545.763319946522,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 9961.941603162692,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+          "totalUsd": 8947.198556042425,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x498581ff718922c3f8e6a244956af099b2652b2b",
+          "totalUsd": 3857.4544890665456,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x06ed99fb9311d31d4ce6a522059561ff5f02f54e",
+          "totalUsd": 9.54551889593661,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 99
+    },
+    {
+      "fromTs": 1777269666,
+      "toTs": 1777276866,
+      "totalBuys": 219,
+      "userBuys": 26,
+      "routerBuys": 0,
+      "botBuys": 193,
+      "uniqueUserBuyers": 9,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 1910535.3154805342,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 230924.02184850478,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 9921.55550961262,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x422955c813fe09b32ac775d2ccbc8d578a773e33",
+          "totalUsd": 4023.819158364866,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xb21431503238284e636b69b01b5c475828222632",
+          "totalUsd": 2202.7755790948777,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x0dc7834435460662c6e50afa83d40cc785f73290",
+          "totalUsd": 1535.298019388609,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8a29392b26277d20ff9f2c36a346fbcf89495f02",
+          "totalUsd": 719.1593305826218,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x44aa392f9411f6e10c085b989702817dcd91ae86",
+          "totalUsd": 711.1330744436665,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x03a520b32c04bf3beef7beb72e919cf822ed34f1",
+          "totalUsd": 115.38888390980406,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 219
+    },
+    {
+      "fromTs": 1777407851,
+      "toTs": 1777415051,
+      "totalBuys": 203,
+      "userBuys": 25,
+      "routerBuys": 1,
+      "botBuys": 177,
+      "uniqueUserBuyers": 7,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 2639515.1498904554,
+          "buyCount": 9
+        },
+        {
+          "wallet": "0x207807b3ba017020584f0a68e300e3182106ace4",
+          "totalUsd": 598624.9298890627,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xc8f6b8ba0dc0f175b568b99440b0867f69a29265",
+          "totalUsd": 75273.50166649178,
+          "buyCount": 9
+        },
+        {
+          "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+          "totalUsd": 8124.5531835186885,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x43f9a7aec2a683c4cd6016f92ff76d5f3e7b44d3",
+          "totalUsd": 1582.9868396598386,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xbf849d99e3182cb9c8654c797d404c339d93b146",
+          "totalUsd": 666.7336231112723,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8a29392b26277d20ff9f2c36a346fbcf89495f02",
+          "totalUsd": 117.30387823503449,
+          "buyCount": 2
+        }
+      ],
+      "distinctTxs": 203
+    },
+    {
+      "fromTs": 1776717565,
+      "toTs": 1776724765,
+      "totalBuys": 63,
+      "userBuys": 22,
+      "routerBuys": 3,
+      "botBuys": 38,
+      "uniqueUserBuyers": 10,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 2111284.385697905,
+          "buyCount": 11
+        },
+        {
+          "wallet": "0x6a000f20005980200259b80c5102003040001068",
+          "totalUsd": 72640.90043558205,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8cf61204d27faf33998cc126bfef6600058b80e7",
+          "totalUsd": 8019.567893249348,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 7132.9656377282,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x197346c6c6d2a1dad1aaa8b02f78acd6eb00eaf6",
+          "totalUsd": 3399.441535209207,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xdb331af77fe5472661afd2991a22147040e59756",
+          "totalUsd": 1824.017972902732,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 408.02201875712785,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x84f9f7a6b6889445fb3d77fc2fadbe652ca6412f",
+          "totalUsd": 163.97585286400522,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8a29392b26277d20ff9f2c36a346fbcf89495f02",
+          "totalUsd": 155.86707036992533,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xfd75ee29c15464f4797012c2ae946170ac5f6551",
+          "totalUsd": 75.0761898719815,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 62
+    },
+    {
+      "fromTs": 1776800752,
+      "toTs": 1776807952,
+      "totalBuys": 75,
+      "userBuys": 75,
+      "routerBuys": 0,
+      "botBuys": 0,
+      "uniqueUserBuyers": 19,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 8721743.656536873,
+          "buyCount": 20
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 1240410.7365729483,
+          "buyCount": 13
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 647776.2277569354,
+          "buyCount": 17
+        },
+        {
+          "wallet": "0x84f9f7a6b6889445fb3d77fc2fadbe652ca6412f",
+          "totalUsd": 116358.05420355506,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x03a520b32c04bf3beef7beb72e919cf822ed34f1",
+          "totalUsd": 39384.595556766464,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 34079.98196810952,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 23883.068658746422,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 4105.940343584254,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 3672.144619478674,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x179b8b0f97e7889a17ea6fd0100543bf8fb8fd05",
+          "totalUsd": 2868.8188864748963,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 74
+    },
+    {
+      "fromTs": 1777394682,
+      "toTs": 1777401882,
+      "totalBuys": 306,
+      "userBuys": 58,
+      "routerBuys": 1,
+      "botBuys": 247,
+      "uniqueUserBuyers": 11,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 3156331.706318705,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1757514.0767118866,
+          "buyCount": 25
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 250153.03523952654,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+          "totalUsd": 74879.9917622178,
+          "buyCount": 5
+        },
+        {
+          "wallet": "0xc8f6b8ba0dc0f175b568b99440b0867f69a29265",
+          "totalUsd": 60283.8835413381,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0x4fe5fa7ef1086e546892c050219725447b1ceab2",
+          "totalUsd": 10622.926324680984,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x649589ec5241355eab4f98fac71118c6ceec64ba",
+          "totalUsd": 1921.6208845036376,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xbf849d99e3182cb9c8654c797d404c339d93b146",
+          "totalUsd": 1844.0497618795275,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x43bbb129b56a998732767725a183b7a566843dba",
+          "totalUsd": 1151.3455767090536,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 679.0515177166081,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 306
+    },
+    {
+      "fromTs": 1776827005,
+      "toTs": 1776834205,
+      "totalBuys": 136,
+      "userBuys": 31,
+      "routerBuys": 2,
+      "botBuys": 103,
+      "uniqueUserBuyers": 11,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 5718543.907165471,
+          "buyCount": 17
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 315036.4302921995,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 29503.63945594336,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xa4ad26f96f542ddd51a650f5df0b3f3c61df593d",
+          "totalUsd": 17960.83157939899,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xb897c72ab3a724ca99f02447d0c307978618ef10",
+          "totalUsd": 13442.842529770021,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 9001.206731085109,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x314bc36cf28ae3b06c78a575efdf805e4b0b375d",
+          "totalUsd": 2920.66393765011,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 2033.6341797365092,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x59c7c832e96d2568bea6db468c1aadcbbda08a52",
+          "totalUsd": 843.3987640473543,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x179b8b0f97e7889a17ea6fd0100543bf8fb8fd05",
+          "totalUsd": 764.2591403077876,
+          "buyCount": 2
+        }
+      ],
+      "distinctTxs": 136
+    },
+    {
+      "fromTs": 1776596161,
+      "toTs": 1776603361,
+      "totalBuys": 143,
+      "userBuys": 14,
+      "routerBuys": 1,
+      "botBuys": 128,
+      "uniqueUserBuyers": 8,
+      "topUserBuyers": [
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 413452.38571514824,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 18789.086475137323,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 11886.318495530883,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x63b0a0d33fe906c668b1de4875bfaf562a9d8c5b",
+          "totalUsd": 6653.577468284551,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x98ec492942090364ac0736ef1a741ae6c92ec790",
+          "totalUsd": 1099.76713574407,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x36a46dff597c5a444bbc521d26787f57867d2214",
+          "totalUsd": 622.8124820140313,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xd1898cf2b1460d4acbc2f2a503951d11774d7a98",
+          "totalUsd": 265.9035262135846,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x3b4611ae468dc8a34f97368ec4630642e193f332",
+          "totalUsd": 13.271750781545093,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 143
+    },
+    {
+      "fromTs": 1776892567,
+      "toTs": 1776899767,
+      "totalBuys": 48,
+      "userBuys": 47,
+      "routerBuys": 1,
+      "botBuys": 0,
+      "uniqueUserBuyers": 10,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 15765651.20583294,
+          "buyCount": 21
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 2872044.3553695423,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 607757.6879585191,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 352993.10884348076,
+          "buyCount": 5
+        },
+        {
+          "wallet": "0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3",
+          "totalUsd": 52246.81353823192,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 6101.704253611557,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 2168.2626677087615,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 1591.783338854265,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc21d2227a95278e76b38432ed321eb1fb3ef4081",
+          "totalUsd": 513.3671737429884,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x8a29392b26277d20ff9f2c36a346fbcf89495f02",
+          "totalUsd": 206.40251072768956,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 48
+    },
+    {
+      "fromTs": 1776919503,
+      "toTs": 1776926703,
+      "totalBuys": 92,
+      "userBuys": 60,
+      "routerBuys": 0,
+      "botBuys": 32,
+      "uniqueUserBuyers": 17,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 3275465.8243908104,
+          "buyCount": 11
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1499198.1049394254,
+          "buyCount": 20
+        },
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 596091.2683292974,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+          "totalUsd": 58713.53895938519,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+          "totalUsd": 31699,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 13798.382080313046,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+          "totalUsd": 12125.659676802423,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x207807b3ba017020584f0a68e300e3182106ace4",
+          "totalUsd": 6113.161752771779,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xbf849d99e3182cb9c8654c797d404c339d93b146",
+          "totalUsd": 5258.613144824177,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 2708.5651105379657,
+          "buyCount": 3
+        }
+      ],
+      "distinctTxs": 92
+    },
+    {
+      "fromTs": 1776991002,
+      "toTs": 1776998202,
+      "totalBuys": 71,
+      "userBuys": 41,
+      "routerBuys": 1,
+      "botBuys": 29,
+      "uniqueUserBuyers": 19,
+      "topUserBuyers": [
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 1794655.8649219843,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 868097.9250459435,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 402534.6708609087,
+          "buyCount": 5
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 180611.43001682885,
+          "buyCount": 3
+        },
+        {
+          "wallet": "0x29ef818a2a9d182fa9a9d27d61881a239fa03e4b",
+          "totalUsd": 7087.018462542016,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 6969.1575556095695,
+          "buyCount": 5
+        },
+        {
+          "wallet": "0x9113ee1ca8c1395ac2b63d204a720e8336434330",
+          "totalUsd": 5746.294983642581,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 3001.242371761682,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x2fbca701d8b376ae57abe5539822cc49c1e464f4",
+          "totalUsd": 2878.306590694985,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x36a46dff597c5a444bbc521d26787f57867d2214",
+          "totalUsd": 2572.2270136890174,
+          "buyCount": 2
+        }
+      ],
+      "distinctTxs": 70
+    },
+    {
+      "fromTs": 1776902705,
+      "toTs": 1776909905,
+      "totalBuys": 190,
+      "userBuys": 89,
+      "routerBuys": 1,
+      "botBuys": 100,
+      "uniqueUserBuyers": 25,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 2792521.5914845155,
+          "buyCount": 21
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 1799360.1164862993,
+          "buyCount": 24
+        },
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 1453255.2918231168,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+          "totalUsd": 165863.08186422472,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 134747.6881663049,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 76591.09071380542,
+          "buyCount": 9
+        },
+        {
+          "wallet": "0x43f9a7aec2a683c4cd6016f92ff76d5f3e7b44d3",
+          "totalUsd": 27661.572870746106,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc216bfa5da000965e820845c32e6fd88db275743",
+          "totalUsd": 26203.128337861945,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x8407699e359ae158bd7ec0668600cc19a79f17c3",
+          "totalUsd": 20089.331257731606,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+          "totalUsd": 17299.35419037907,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 186
+    },
+    {
+      "fromTs": 1776751813,
+      "toTs": 1776759013,
+      "totalBuys": 89,
+      "userBuys": 53,
+      "routerBuys": 0,
+      "botBuys": 36,
+      "uniqueUserBuyers": 13,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 1482568.3074815918,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 978259.7015982092,
+          "buyCount": 25
+        },
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 940712.8633263527,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+          "totalUsd": 197596.9752200498,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xb2275f5d84cbddc266adf42bd9e3a46990f55d11",
+          "totalUsd": 173237.5119385068,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x9290995874e5c40f5065c8f11fc21ac62f57e67e",
+          "totalUsd": 157448.7728888845,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+          "totalUsd": 17849.488589908116,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+          "totalUsd": 16210.551109610471,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x1acd48d2d9639a24b8d82a84dede8b614bc65865",
+          "totalUsd": 1290.792557123198,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+          "totalUsd": 489.8354768397246,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 89
+    },
+    {
+      "fromTs": 1776742316,
+      "toTs": 1776749516,
+      "totalBuys": 98,
+      "userBuys": 17,
+      "routerBuys": 1,
+      "botBuys": 80,
+      "uniqueUserBuyers": 8,
+      "topUserBuyers": [
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 1205269.5537494717,
+          "buyCount": 6
+        },
+        {
+          "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+          "totalUsd": 29565.526721035058,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x207807b3ba017020584f0a68e300e3182106ace4",
+          "totalUsd": 4082.211149170996,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 3512.5800596596227,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8d11f29333e66b99b76ac5bfdf3f36d5d26ae62d",
+          "totalUsd": 2209.001854059315,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xc66cd4124913859727422b6d2340e3e73cd70eb1",
+          "totalUsd": 1812.0452468609492,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x796a7beac44557e30be1578c855f6da1e04cfcec",
+          "totalUsd": 750.5823754837312,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xde16e813cfd60062a853f63dba44975ffb0db8ad",
+          "totalUsd": 279.38779560436257,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 97
+    },
+    {
+      "fromTs": 1776374799,
+      "toTs": 1776381999,
+      "totalBuys": 77,
+      "userBuys": 32,
+      "routerBuys": 1,
+      "botBuys": 44,
+      "uniqueUserBuyers": 18,
+      "topUserBuyers": [
+        {
+          "wallet": "0x81db196456ad53fa2c8131a9d276c8c1e661cf4d",
+          "totalUsd": 8630106.173808431,
+          "buyCount": 8
+        },
+        {
+          "wallet": "0x6a000f20005980200259b80c5102003040001068",
+          "totalUsd": 153838.65029033562,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x76bf0abd20f1e0155ce40a62615a90a709a6c3d8",
+          "totalUsd": 94924.97904451794,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+          "totalUsd": 76691.2431262486,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0xb4acbc082b5e7ded571c98ee4257778a9d784b36",
+          "totalUsd": 51021.66443432324,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+          "totalUsd": 28288.09887341514,
+          "buyCount": 4
+        },
+        {
+          "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+          "totalUsd": 23862.089147211394,
+          "buyCount": 2
+        },
+        {
+          "wallet": "0x12c6f6b67f254dadba13e89598abc7cd93538cee",
+          "totalUsd": 14005,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x498581ff718922c3f8e6a244956af099b2652b2b",
+          "totalUsd": 7914.491192503882,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+          "totalUsd": 3771.8428818532257,
+          "buyCount": 1
+        }
+      ],
+      "distinctTxs": 77
+    },
+    {
+      "fromTs": 1776975142,
+      "toTs": 1776982342,
+      "totalBuys": 62,
+      "userBuys": 34,
+      "routerBuys": 0,
+      "botBuys": 28,
+      "uniqueUserBuyers": 8,
+      "topUserBuyers": [
+        {
+          "wallet": "0xcd14819ce87f3468409433026d2a8ce40849a666",
+          "totalUsd": 4646229.112709698,
+          "buyCount": 7
+        },
+        {
+          "wallet": "0x313b6755efe1a31e16aa7d375ae918384acd737e",
+          "totalUsd": 3408024.0769779575,
+          "buyCount": 11
+        },
+        {
+          "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+          "totalUsd": 566173.7570618803,
+          "buyCount": 10
+        },
+        {
+          "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+          "totalUsd": 291454.2893007389,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x9da4bebe838c6d5e54e476025766893886a8b3c0",
+          "totalUsd": 106530.02767970749,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0x8e7dedd9b1a7fd101a08b1c95f3c602fe0d4b486",
+          "totalUsd": 11468.280729473261,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xa8a14ce28771ff0e750caa2685d9da636d4808c6",
+          "totalUsd": 2982.240679687576,
+          "buyCount": 1
+        },
+        {
+          "wallet": "0xe5070c1c90b3141a67818ef62cfa856670801455",
+          "totalUsd": 875.0096480096561,
+          "buyCount": 2
+        }
+      ],
+      "distinctTxs": 61
+    }
+  ]
+}

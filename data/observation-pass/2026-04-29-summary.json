@@ -1,0 +1,27 @@
+{
+  "runDate": "2026-04-29T14:08:46.961Z",
+  "config": {
+    "lookbackHours": 336,
+    "moveThreshold": 0.05,
+    "preWindowHours": 2,
+    "moveWindowHours": 1
+  },
+  "anchor": {
+    "blockNumber": "45341184",
+    "unixSec": 1777471715,
+    "iso": "2026-04-29T14:08:35.000Z"
+  },
+  "perToken": [
+    {
+      "symbol": "DEGEN",
+      "address": "0x4ed4e862860bed51a9570b96d89af5e1b0efefed",
+      "moveCount": 8,
+      "upMoves": 5,
+      "downMoves": 3,
+      "medianAbsPctMove": 0.06025936066237885,
+      "medianUserBuysInPreWindow": 57,
+      "medianUserBuyVolumeUsdInPreWindow": 8513.901006244509,
+      "medianDistinctTxsInPreWindow": 67
+    }
+  ]
+}

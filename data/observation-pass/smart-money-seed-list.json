@@ -1,0 +1,1366 @@
+[
+  {
+    "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+    "tokens": [
+      "AERO",
+      "BRETT",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 20,
+    "downMovesPreceded": 4,
+    "totalUsdInPreWindows": 415863.0115084156,
+    "winRate": 0.8333333333333334,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T05:15:00.000Z",
+        "pctChange": 0.05130751524311022
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T16:00:00.000Z",
+        "pctChange": 0.052118567885626986
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T17:00:00.000Z",
+        "pctChange": 0.05572051849001648
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": -0.054383300230350075
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": 0.0614408913465065
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T00:30:00.000Z",
+        "pctChange": 0.05457244715732603
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-29T03:30:00.000Z",
+        "pctChange": 0.05459607158012246
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T16:00:00.000Z",
+        "pctChange": 0.053372026412410185
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-17T13:15:00.000Z",
+        "pctChange": 0.054761898738101146
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": 0.05596327881683936
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": -0.08129339300199577
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-21T22:45:00.000Z",
+        "pctChange": 0.05404683749965374
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T13:15:00.000Z",
+        "pctChange": 0.06025936066237885
+      }
+    ]
+  },
+  {
+    "wallet": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 13,
+    "downMovesPreceded": 3,
+    "totalUsdInPreWindows": 437292.299863912,
+    "winRate": 0.8125,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T05:15:00.000Z",
+        "pctChange": 0.05130751524311022
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": -0.054383300230350075
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": 0.0614408913465065
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T00:30:00.000Z",
+        "pctChange": 0.05457244715732603
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T06:00:00.000Z",
+        "pctChange": -0.050064852900446113
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-29T03:30:00.000Z",
+        "pctChange": 0.05459607158012246
+      }
+    ]
+  },
+  {
+    "wallet": "0x01989c93890aed05a63d179b03424997075b6acf",
+    "tokens": [
+      "AERO",
+      "BRETT",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 9,
+    "downMovesPreceded": 4,
+    "totalUsdInPreWindows": 198878.47985699703,
+    "winRate": 0.6923076923076923,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T16:00:00.000Z",
+        "pctChange": 0.052118567885626986
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T00:30:00.000Z",
+        "pctChange": 0.05457244715732603
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T06:00:00.000Z",
+        "pctChange": -0.050064852900446113
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": 0.05596327881683936
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": -0.08129339300199577
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T12:15:00.000Z",
+        "pctChange": -0.08179566500198988
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T13:15:00.000Z",
+        "pctChange": 0.06025936066237885
+      }
+    ]
+  },
+  {
+    "wallet": "0x275b26162c69d08af344d453f6891747f1023e3e",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 9,
+    "downMovesPreceded": 3,
+    "totalUsdInPreWindows": 142301.80368558754,
+    "winRate": 0.75,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T05:15:00.000Z",
+        "pctChange": 0.05130751524311022
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": -0.054383300230350075
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": 0.0614408913465065
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T06:00:00.000Z",
+        "pctChange": -0.050064852900446113
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      }
+    ]
+  },
+  {
+    "wallet": "0xaeac1a24f7d0626a4a6fb638f6ccdd702e814a63",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 7,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 12641796.191924777,
+    "winRate": 0.7777777777777778,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T05:15:00.000Z",
+        "pctChange": 0.05130751524311022
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": -0.054383300230350075
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": 0.0614408913465065
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      }
+    ]
+  },
+  {
+    "wallet": "0xe82b91547a6989b23fa7a4e34ec3b51cd2ef8f8c",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 6,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 3648734.9828361217,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-29T03:30:00.000Z",
+        "pctChange": 0.05459607158012246
+      }
+    ]
+  },
+  {
+    "wallet": "0xbda08f0971b7812abb7fb858c2600cf8d8e6d77f",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 6,
+    "downMovesPreceded": 1,
+    "totalUsdInPreWindows": 111466.55174000989,
+    "winRate": 0.8571428571428571,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T17:00:00.000Z",
+        "pctChange": 0.05572051849001648
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      }
+    ]
+  },
+  {
+    "wallet": "0x61040e143a77f165ba44543af4a079f2c809d14b",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 5,
+    "downMovesPreceded": 1,
+    "totalUsdInPreWindows": 2215216.358740449,
+    "winRate": 0.8333333333333334,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T05:15:00.000Z",
+        "pctChange": 0.05130751524311022
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-29T03:30:00.000Z",
+        "pctChange": 0.05459607158012246
+      }
+    ]
+  },
+  {
+    "wallet": "0x51c72848c68a965f66fa7a88855f9f7784502a7f",
+    "tokens": [
+      "AERO",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 5,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 67088.01701469085,
+    "winRate": 0.7142857142857143,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-22T00:30:00.000Z",
+        "pctChange": 0.05457244715732603
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-24T03:30:00.000Z",
+        "pctChange": -0.05643796489383043
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T11:15:00.000Z",
+        "pctChange": 0.05195618766369315
+      }
+    ]
+  },
+  {
+    "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+    "tokens": [
+      "AERO",
+      "BRETT",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 5,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 57566.418940418735,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T16:00:00.000Z",
+        "pctChange": 0.053372026412410185
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      }
+    ]
+  },
+  {
+    "wallet": "0x278d858f05b94576c1e6f73285886876ff6ef8d2",
+    "tokens": [
+      "AERO",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 5,
+    "downMovesPreceded": 5,
+    "totalUsdInPreWindows": 18750.814996291836,
+    "winRate": 0.5,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T16:00:00.000Z",
+        "pctChange": 0.052118567885626986
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": -0.054383300230350075
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": 0.0614408913465065
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-24T03:30:00.000Z",
+        "pctChange": -0.05643796489383043
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T12:15:00.000Z",
+        "pctChange": -0.08179566500198988
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T13:15:00.000Z",
+        "pctChange": 0.06025936066237885
+      }
+    ]
+  },
+  {
+    "wallet": "0x31868c48d33586754a1ae04688603221e6af8557",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 4,
+    "downMovesPreceded": 3,
+    "totalUsdInPreWindows": 183153.01167549298,
+    "winRate": 0.5714285714285714,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T17:00:00.000Z",
+        "pctChange": 0.05572051849001648
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T06:00:00.000Z",
+        "pctChange": -0.050064852900446113
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      }
+    ]
+  },
+  {
+    "wallet": "0x4a4c71fd1cfa1971bbbed65bc0d699043fa474e4",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 4,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 88399.36600263196,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T00:30:00.000Z",
+        "pctChange": 0.05457244715732603
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      }
+    ]
+  },
+  {
+    "wallet": "0x4446adc0b8136ffc55ddb7a488ba5509ace2a5ef",
+    "tokens": [
+      "AERO",
+      "BRETT"
+    ],
+    "upMovesPreceded": 4,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 44107.49476630508,
+    "winRate": 0.6666666666666666,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T20:00:00.000Z",
+        "pctChange": 0.051157976988956085
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T06:00:00.000Z",
+        "pctChange": -0.050064852900446113
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-29T03:30:00.000Z",
+        "pctChange": 0.05459607158012246
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-17T13:15:00.000Z",
+        "pctChange": 0.054761898738101146
+      }
+    ]
+  },
+  {
+    "wallet": "0xc10ee9031f2a0b84766a86b55a8d90f357910fb4",
+    "tokens": [
+      "AERO",
+      "BRETT"
+    ],
+    "upMovesPreceded": 4,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 42836.222017860404,
+    "winRate": 0.6666666666666666,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T17:00:00.000Z",
+        "pctChange": 0.05572051849001648
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T16:00:00.000Z",
+        "pctChange": 0.053372026412410185
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-17T13:15:00.000Z",
+        "pctChange": 0.054761898738101146
+      }
+    ]
+  },
+  {
+    "wallet": "0x729615fc2624a34febb6360ca9e6b7f68414d9fc",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 4,
+    "downMovesPreceded": 1,
+    "totalUsdInPreWindows": 26180.57998981043,
+    "winRate": 0.8,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      }
+    ]
+  },
+  {
+    "wallet": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+    "tokens": [
+      "DEGEN"
+    ],
+    "upMovesPreceded": 4,
+    "downMovesPreceded": 1,
+    "totalUsdInPreWindows": 175.7402979942577,
+    "winRate": 0.8,
+    "appearances": [
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-21T22:45:00.000Z",
+        "pctChange": 0.05404683749965374
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T11:15:00.000Z",
+        "pctChange": 0.05195618766369315
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T12:15:00.000Z",
+        "pctChange": -0.08179566500198988
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T13:15:00.000Z",
+        "pctChange": 0.06025936066237885
+      }
+    ]
+  },
+  {
+    "wallet": "0x6b6e87d2cc438c287a5550a8732c302454e4382b",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 71549.31230331291,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.058161657222731256
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T17:00:00.000Z",
+        "pctChange": 0.05572051849001648
+      }
+    ]
+  },
+  {
+    "wallet": "0x19ceead7105607cd444f5ad10dd51356436095a1",
+    "tokens": [
+      "AERO",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 55148.442500954814,
+    "winRate": 0.6,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-27T01:30:00.000Z",
+        "pctChange": 0.051305212834439916
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T15:15:00.000Z",
+        "pctChange": -0.05446500598405023
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-29T03:30:00.000Z",
+        "pctChange": 0.05459607158012246
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-24T03:30:00.000Z",
+        "pctChange": -0.05643796489383043
+      }
+    ]
+  },
+  {
+    "wallet": "0x8f10b468b06c6fd214b65f87778827f7d113f996",
+    "tokens": [
+      "AERO",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 3,
+    "totalUsdInPreWindows": 32339.36484150445,
+    "winRate": 0.5,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-21T03:00:00.000Z",
+        "pctChange": -0.054383300230350075
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-21T04:00:00.000Z",
+        "pctChange": 0.0614408913465065
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-27T10:00:00.000Z",
+        "pctChange": 0.05009909971753623
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-24T03:30:00.000Z",
+        "pctChange": -0.05643796489383043
+      }
+    ]
+  },
+  {
+    "wallet": "0xeec28cf242b4523c4e2a186252a8d951660f66db",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 1,
+    "totalUsdInPreWindows": 22067.9586261857,
+    "winRate": 0.75,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T05:15:00.000Z",
+        "pctChange": 0.05130751524311022
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T06:15:00.000Z",
+        "pctChange": 0.06274819082525517
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-17T18:00:00.000Z",
+        "pctChange": -0.05799215355581519
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      }
+    ]
+  },
+  {
+    "wallet": "0xc758d5718147c8c5bc440098d623cf8d96b95b83",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 16849.914332351887,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T16:00:00.000Z",
+        "pctChange": 0.052118567885626986
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.05653299773152501
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-26T12:00:00.000Z",
+        "pctChange": 0.05631316073425025
+      }
+    ]
+  },
+  {
+    "wallet": "0x2d5cd0905f246688b75f57f2e88d2b18e67407cc",
+    "tokens": [
+      "BRETT",
+      "DEGEN"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 10599.773907892932,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-21T22:45:00.000Z",
+        "pctChange": 0.05404683749965374
+      }
+    ]
+  },
+  {
+    "wallet": "0x1dc89ab25ab5d8714fcf9ee4bd9c9a58debeb4d8",
+    "tokens": [
+      "AERO",
+      "BRETT"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 7233.677594912662,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-17T16:00:00.000Z",
+        "pctChange": 0.052118567885626986
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T16:00:00.000Z",
+        "pctChange": 0.053372026412410185
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      }
+    ]
+  },
+  {
+    "wallet": "0x32a3cc4e6809198d1dba219dfa42678c9da2ffcf",
+    "tokens": [
+      "DEGEN"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 6955.847606942956,
+    "winRate": 0.6,
+    "appearances": [
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T11:15:00.000Z",
+        "pctChange": 0.05195618766369315
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T12:15:00.000Z",
+        "pctChange": -0.08179566500198988
+      }
+    ]
+  },
+  {
+    "wallet": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+    "tokens": [
+      "AERO"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 4289.612553497667,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "AERO",
+        "date": "2026-04-22T00:30:00.000Z",
+        "pctChange": 0.05457244715732603
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-22T12:00:00.000Z",
+        "pctChange": 0.050933775312988504
+      },
+      {
+        "token": "AERO",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": 0.07652142692261046
+      }
+    ]
+  },
+  {
+    "wallet": "0x15eb4202553d4795d3a3f4e927c1dfd6e9721ba9",
+    "tokens": [
+      "BRETT"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 3183.8125301005357,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T16:00:00.000Z",
+        "pctChange": 0.053372026412410185
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-17T13:15:00.000Z",
+        "pctChange": 0.054761898738101146
+      }
+    ]
+  },
+  {
+    "wallet": "0x4409921ae43a39a11d90f7b7f96cfd0b8093d9fc",
+    "tokens": [
+      "BRETT"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 0,
+    "totalUsdInPreWindows": 2056.886417501569,
+    "winRate": 1.0,
+    "appearances": [
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T16:00:00.000Z",
+        "pctChange": 0.053372026412410185
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-16T19:15:00.000Z",
+        "pctChange": 0.05706276110252399
+      },
+      {
+        "token": "BRETT",
+        "date": "2026-04-17T13:15:00.000Z",
+        "pctChange": 0.054761898738101146
+      }
+    ]
+  },
+  {
+    "wallet": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+    "tokens": [
+      "DEGEN"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 2,
+    "totalUsdInPreWindows": 301.970889089933,
+    "winRate": 0.6,
+    "appearances": [
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-24T03:30:00.000Z",
+        "pctChange": -0.05643796489383043
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T11:15:00.000Z",
+        "pctChange": 0.05195618766369315
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T12:15:00.000Z",
+        "pctChange": -0.08179566500198988
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-27T13:15:00.000Z",
+        "pctChange": 0.06025936066237885
+      }
+    ]
+  },
+  {
+    "wallet": "0xf12da9eb8573ee78e24ec981f3cc3118de3c991c",
+    "tokens": [
+      "DEGEN"
+    ],
+    "upMovesPreceded": 3,
+    "downMovesPreceded": 1,
+    "totalUsdInPreWindows": 200.57986766682802,
+    "winRate": 0.75,
+    "appearances": [
+      {
+        "token": "DEGEN",
+        "date": "2026-04-16T19:00:00.000Z",
+        "pctChange": 0.05081249505516894
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-21T22:45:00.000Z",
+        "pctChange": 0.05404683749965374
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T15:00:00.000Z",
+        "pctChange": -0.20984710195699055
+      },
+      {
+        "token": "DEGEN",
+        "date": "2026-04-23T16:00:00.000Z",
+        "pctChange": 0.2606414507262373
+      }
+    ]
+  }
+]

@@ -1,0 +1,135 @@
+{
+  "version": "smart-money-seed-v1",
+  "generated": "2026-04-29",
+  "method": "specialist observation pass on AERO/BRETT/DEGEN, 14d, z>=2 against 90-window null",
+  "tier_definitions": {
+    "1": "Multi-token (>=2 tokens with significant edge)",
+    "2": "Single-token, near-zero null rate (<5%)",
+    "3": "Single-token, moderate null rate but significant edge"
+  },
+  "wallets": [
+    {
+      "wallet": "0x7747f8d2a76bd6345cc29622a946a929647f2359",
+      "tier": "1",
+      "moveRate": 0.75,
+      "nullRate": 0.35555555555555557,
+      "edge": 0.39444444444444443,
+      "winRate": 0.8333333333333334,
+      "zScore": 3.845882589317163,
+      "ups": 20,
+      "downs": 4,
+      "moveHits": 24,
+      "tokensInMoves": 3
+    },
+    {
+      "wallet": "0xafb62448929664bfccb0aae22f232520e765ba88",
+      "tier": "2",
+      "moveRate": 0.375,
+      "nullRate": 0.0,
+      "edge": 0.375,
+      "winRate": 0.6666666666666666,
+      "zScore": 3.4948942350643053,
+      "ups": 2,
+      "downs": 1,
+      "moveHits": 3,
+      "tokensInMoves": 1
+    },
+    {
+      "wallet": "0x4ae0ad0ba10dc97487cb1dd571aef20537280859",
+      "tier": "2",
+      "moveRate": 0.09375,
+      "nullRate": 0.0,
+      "edge": 0.09375,
+      "winRate": 1.0,
+      "zScore": 2.941123949110886,
+      "ups": 3,
+      "downs": 0,
+      "moveHits": 3,
+      "tokensInMoves": 1
+    },
+    {
+      "wallet": "0x54d281c7cc029a9dd71f9acb7487dd95b1eecf5a",
+      "tier": "3",
+      "moveRate": 0.625,
+      "nullRate": 0.13333333333333333,
+      "edge": 0.4916666666666667,
+      "winRate": 0.6,
+      "zScore": 2.9063501180931346,
+      "ups": 3,
+      "downs": 2,
+      "moveHits": 5,
+      "tokensInMoves": 1
+    },
+    {
+      "wallet": "0x9bd25e67bf390437c8faf480ac735a27bcf6168c",
+      "tier": "3",
+      "moveRate": 0.375,
+      "nullRate": 0.06666666666666667,
+      "edge": 0.30833333333333335,
+      "winRate": 0.6666666666666666,
+      "zScore": 2.69576242475883,
+      "ups": 2,
+      "downs": 1,
+      "moveHits": 3,
+      "tokensInMoves": 1
+    },
+    {
+      "wallet": "0x63242a4ea82847b20e506b63b0e2e2eff0cc6cb0",
+      "tier": "1",
+      "moveRate": 0.15625,
+      "nullRate": 0.03333333333333333,
+      "edge": 0.12291666666666667,
+      "winRate": 1.0,
+      "zScore": 2.4126232810969945,
+      "ups": 5,
+      "downs": 0,
+      "moveHits": 5,
+      "tokensInMoves": 3
+    },
+    {
+      "wallet": "0x31868c48d33586754a1ae04688603221e6af8557",
+      "tier": "3",
+      "moveRate": 0.21875,
+      "nullRate": 0.07777777777777778,
+      "edge": 0.14097222222222222,
+      "winRate": 0.5714285714285714,
+      "zScore": 2.14898710469181,
+      "ups": 4,
+      "downs": 3,
+      "moveHits": 7,
+      "tokensInMoves": 1
+    },
+    {
+      "wallet": "0xa8549424b20a514eb9e7a829ec013065bef9dc1d",
+      "tier": "3",
+      "moveRate": 0.625,
+      "nullRate": 0.23333333333333334,
+      "edge": 0.39166666666666666,
+      "winRate": 0.8,
+      "zScore": 2.117564921456057,
+      "ups": 4,
+      "downs": 1,
+      "moveHits": 5,
+      "tokensInMoves": 1
+    },
+    {
+      "wallet": "0xa9231b80411c0e18d27edee7786692acd2138fdf",
+      "tier": "3",
+      "moveRate": 0.5,
+      "nullRate": 0.3,
+      "edge": 0.2,
+      "winRate": 0.8125,
+      "zScore": 2.0340348117825138,
+      "ups": 13,
+      "downs": 3,
+      "moveHits": 16,
+      "tokensInMoves": 1
+    }
+  ],
+  "caveats": [
+    "RETROSPECTIVE candidates \u2014 these wallets appeared before observed moves; forward validation required.",
+    "Wallets that frequently trade together produce correlated hits across moves; z-test treats independent.",
+    "Some candidates fire before BOTH up and down moves (movement-prediction, not direction-prediction).",
+    "14-day single-period sample \u2014 may not generalize across regimes."
+  ]
+}
