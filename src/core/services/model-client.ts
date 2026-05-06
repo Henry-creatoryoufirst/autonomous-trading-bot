@@ -717,9 +717,17 @@ export function logModelTelemetry(entry: ModelTelemetry): void {
   }
 
   // Console output
+  // v21.33: surface cache_read / cache_create per call so cost-audit can
+  // verify the cache is actually firing. Pre-fix audit (2026-05-06) found
+  // cacheHitRate=0 across all calls because the cacheable prefix was below
+  // Anthropic's 1024-token minimum — but `cache_control` blocks were set,
+  // so the failure was silent. This log line makes it visible per-call.
   const status = entry.escalated ? `ESCALATED: ${entry.escalationReason}` : 'OK';
+  const cacheRead = entry.cacheReadInputTokens ?? 0;
+  const cacheWrite = entry.cacheCreationInputTokens ?? 0;
+  const cacheStr = (cacheRead > 0 || cacheWrite > 0) ? ` | cache ${cacheRead}r/${cacheWrite}w` : ' | cache 0r/0w';
   console.log(
-    `[Model] ${entry.tier}/${entry.model} (${entry.backend}) | ${entry.latencyMs}ms | ${entry.inputTokens}→${entry.outputTokens} tokens | ${status}`
+    `[Model] ${entry.tier}/${entry.model} (${entry.backend}) | ${entry.latencyMs}ms | ${entry.inputTokens}→${entry.outputTokens} tokens${cacheStr} | ${status}`
   );
 }
 

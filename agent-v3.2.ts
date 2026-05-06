@@ -4936,6 +4936,18 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // CORE+STRATEGY stay cached across the refresh.
   const criticMemoryBlock = isFullPrompt ? loadCriticMemory() : null;
 
+  // v21.33 cost-audit fix: routine cycles previously sent only SYSTEM_PROMPT_CORE
+  // (~559 tokens) as the cacheable prefix — BELOW Anthropic's 1024-token caching
+  // minimum. Result: cache_control was set but cache writes silently failed,
+  // so every routine cycle paid full input cost. Adding SYSTEM_PROMPT_STRATEGY
+  // to the routine cached prefix lifts it to ~1783 tokens, well above the
+  // minimum, and the bot finally gets the prompt cache discount it was already
+  // paying the architecture cost for.
+  //
+  // STRATEGY content is mission-/discipline-text that doesn't tighten Haiku-grade
+  // decisions much, but the cost of including it (15 cents per million-token-write
+  // amortized over an hour of reads) is negligible compared to the savings from
+  // cache hits on the larger prefix. Net win.
   const promptBlocks = isFullPrompt
     ? [
         { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
@@ -4946,6 +4958,7 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
       ]
     : [
         { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         { type: 'text' as const, text: dynamicBlock },
       ];
 
