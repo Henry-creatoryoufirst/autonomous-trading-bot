@@ -4589,6 +4589,53 @@ async function makeTradeDecision(
   const underweightSectors = sectorAllocations.filter(s => s.drift < -5);
   const overweightSectors = sectorAllocations.filter(s => s.drift > 10);
 
+  // v21.33: Cost-audit Fix #3 — deterministic pre-LLM HOLD gate.
+  //
+  // When we KNOW the LLM can't make a meaningful BUY/SELL decision, skip
+  // the 1652-token Haiku prompt entirely and emit a synthetic HOLD. Catches
+  // the chronic "USDC=$0 dry powder" pattern (5/5 of recent HOLDs verbatim
+  // per the 2026-05-06 audit) without risking valuable signal-driven SELLs.
+  //
+  // SAFETY GATES — fires only when ALL true:
+  //   1. availableUSDC < $5 (literally cannot open new positions)
+  //   2. No overweight sectors needing trim (drift > 10)
+  //   3. No $50+ position at >+15% unrealized (potential take-profit)
+  //   4. No $50+ position at <-10% unrealized (potential bleeder cut)
+  //
+  // Mechanical exits (cull stale, force-exit stale, drawdown override, dust
+  // cleanup, circuit breaker) run BEFORE this function in the heavy-cycle
+  // sequence. Whatever positions remain are in signal-driven territory. The
+  // gate short-circuits only when EVERY signal category clears AND there's
+  // literally no money — i.e., nothing left for the LLM to decide.
+  //
+  // Per audit FINDING_2026-05-06: short-circuits ~5 of 9 chronic-HOLD cycles,
+  // saves ~$3/mo per bot. Verifiable via grep "DETERMINISTIC_HOLD" in logs;
+  // re-tune if rate drifts above 50% (over-scoping) or below 10% (under-scoping).
+  const DETERMINISTIC_HOLD_GATE_USDC = 5;
+  if (availableUSDC < DETERMINISTIC_HOLD_GATE_USDC && overweightSectors.length === 0) {
+    let hasTakeProfitCandidate = false;
+    let hasBleederCandidate = false;
+    for (const b of balances) {
+      if (b.symbol === 'USDC' || b.usdValue < 50) continue;
+      const cb = state.costBasis[b.symbol];
+      if (!cb || !cb.totalCostBasis || cb.totalCostBasis <= 0) continue;
+      const pnlPct = ((b.usdValue - cb.totalCostBasis) / cb.totalCostBasis) * 100;
+      if (pnlPct > 15) hasTakeProfitCandidate = true;
+      if (pnlPct < -10) hasBleederCandidate = true;
+      if (hasTakeProfitCandidate && hasBleederCandidate) break;
+    }
+    if (!hasTakeProfitCandidate && !hasBleederCandidate) {
+      console.log(`   ⚡ DETERMINISTIC_HOLD: USDC=$${availableUSDC.toFixed(2)} < $${DETERMINISTIC_HOLD_GATE_USDC} floor, 0 overweight sectors, 0 take-profit/bleeder candidates — skipping LLM call`);
+      return [{
+        action: 'HOLD',
+        fromToken: 'NONE',
+        toToken: 'NONE',
+        amountUSD: 0,
+        reasoning: `Deterministic HOLD: availableUSDC=$${availableUSDC.toFixed(2)} below $${DETERMINISTIC_HOLD_GATE_USDC} floor; no overweight sectors; no take-profit (>+15%) or bleeder (<-10%) candidates among $50+ positions. LLM call skipped per cost-audit FINDING_2026-05-06.`,
+      }];
+    }
+  }
+
   const marketBySector: Record<string, string[]> = {};
   for (const token of marketData.tokens) {
     const sector = token.sector || "OTHER";
