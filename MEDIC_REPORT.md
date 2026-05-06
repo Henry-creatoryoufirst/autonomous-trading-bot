@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-05T~current UTC
+# MEDIC REPORT — 2026-05-06T~current UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #30)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #31)
 
 ## Environment
-- Run timestamp: 2026-05-05T~current UTC
+- Run timestamp: 2026-05-06T~current UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-OR6eJ
 
 ## Problem
 
@@ -61,6 +61,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #28 | 2026-05-04T16:15 UTC | Scout added UP (Superform, DeFi neobank, TGE Feb-10-2026, $8.8M 24h vol, Aerodrome Ignition launch, score 7/10); auditor raised GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 — 57-day bear; Kelly criterion research confirms novel token risk elevated in sustained bear; extra 24h GUARDIAN oversight reduces fat-tail losses on untested tokens |
 | #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
+| #31 | 2026-05-06T~current UTC | Scout skipped (cbADA added 05-05 05:08, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 60-day bear; Kelly criterion research confirms faster capital recycling from flat positions improves long-term outcomes; 12h earlier stale-exit for $100+ positions |
 
 ## Bot Health Evidence (from git history)
 
@@ -84,6 +85,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #31 — 2026-05-06T~current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #31).
+- **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added), less than 48h threshold (~25h elapsed).
+- **Auditor**: TRIGGERED by inferred 60-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MIN_AGE_HOURS 48→36 — Kelly criterion bear-market research confirms faster capital recycling from flat meaningful positions improves long-term outcomes; in 60-day bear, $100+ positions showing no movement after 36h have very low recovery probability. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #31 — 2026-05-06)
+- **Signal Quality**: Bear-market oversold bounces are frequent/tradeable but require whale+ML signal alignment. NVR already tracks LARGE_TRADE_THRESHOLD_USD=2500. Full whale+ML combined threshold would require touching confluence scoring (Impact 2/Complexity 4/Risk med) → Watch list. No action.
+- **Execution Efficiency**: Aerodrome METADEX03 with Slipstream V3 concentrated liquidity + embedded MEV auctions (Nov 2025 "Aero" upgrade) — bot auto-benefits from DEX-level improvements. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — VIX-Rank Kelly extension research (arxiv 2508.16598) confirms: during high-volatility bear regimes, smaller Kelly allocations AND faster position recycling improve long-term equity curve. Professional traders use 10-25% full Kelly (we're at 25%). Faster stale-exit recycling is the complementary lever. STALE_POSITION_MIN_AGE_HOURS 48→36 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Autonomous AI agents on Base now 15,800+ (Virtuals Protocol ecosystem Feb-2026, $477M aGDP). Competitive edge is speed + signal quality, not grid-range strategies. Grid bots (ranging/oscillation) are not NVR's approach. MEV protection via sequencer-direct RPC already in place. Watch list: faster intent-routing when Aerodrome native intent layer matures.
 
 ## Jobs Status This Run (Run #30 — 2026-05-05T~current UTC)
 
