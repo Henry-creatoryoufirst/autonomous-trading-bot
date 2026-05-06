@@ -825,7 +825,7 @@ export const SCALE_UP_SIZE_PCT = 3; // Bear-adjusted May-2026: 4→3 — 59-day 
 export const MOMENTUM_EXIT_BUY_RATIO = 45;
 
 /** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
-export const MOMENTUM_EXIT_MIN_PROFIT = 5;
+export const MOMENTUM_EXIT_MIN_PROFIT = 3; // Bear-adjusted May-2026: 5→3 — 60-day bear; momentum runs peak at 3-4% (not 5-7%); 5% hurdle causes exit logic to miss bounce tops; mirrors DECEL_MIN_PROFIT_PCT (3→2) logic for Smart Trim path
 
 /** Token must be up this %+ in 4h to qualify as a wave ride */
 export const RIDE_THE_WAVE_MIN_MOVE = 7; // Bear-adjusted Apr-2026: 5→7 — F&G 31 (Fear); 5% 4h bounces reverse ~65% in fear markets; require stronger wave confirmation before chasing

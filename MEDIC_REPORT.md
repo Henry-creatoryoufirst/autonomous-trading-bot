@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-05T~current UTC
+# MEDIC REPORT — 2026-05-06T04:04 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #30)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #31)
 
 ## Environment
 - Run timestamp: 2026-05-05T~current UTC
@@ -61,6 +61,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #28 | 2026-05-04T16:15 UTC | Scout added UP (Superform, DeFi neobank, TGE Feb-10-2026, $8.8M 24h vol, Aerodrome Ignition launch, score 7/10); auditor raised GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 — 57-day bear; Kelly criterion research confirms novel token risk elevated in sustained bear; extra 24h GUARDIAN oversight reduces fat-tail losses on untested tokens |
 | #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
+| #31 | 2026-05-06T04:04 UTC | Scout skipped (cbADA added 05:08 UTC May-5, ~23h ago, <48h); auditor lowered MOMENTUM_EXIT_MIN_PROFIT 5→3 — 60-day bear; momentum runs peak at 3-4% (not 5-7%); mirrors DECEL_MIN_PROFIT_PCT (3→2) logic for momentum-exit path |
 
 ## Bot Health Evidence (from git history)
 
@@ -96,6 +97,18 @@ Because the API is unreachable, the medic cannot determine:
 - **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing efficiency. Slipstream cross-chain DEX launch April 2026 further optimizes routing — bot auto-benefits without code change. No new action.
 - **Position Sizing**: KEY FINDING — MQL5 Institutional Kelly-VAPS Engine (Apr-2026) and adaptive Kelly criterion research both confirm: in bear markets, position ceiling reduction is a primary lever beyond the Kelly fraction itself. KELLY_POSITION_CEILING_PCT 14→12 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 - **Competitive Intelligence**: Intent-based solver routing (CoW Protocol style) at scale in 2026 — complex architecture change (off-limits). MEV protection via sequencer-direct RPC already in place. Watch list for Henry.
+
+## Jobs Status This Run (Run #31 — 2026-05-06T04:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #31).
+- **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added), ~23h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 60-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding: MOMENTUM_EXIT_MIN_PROFIT 5→3 — in 60-day bear, momentum runs peak at 3-4% (not 5-7%); a 5% hurdle means the momentum-exit path misses most bear-market bounce tops; mirrors DECEL_MIN_PROFIT_PCT reduction (3→2) on the Smart Trim path. Confirmed by two sources: Kelly criterion bear-market profit-target research + competitive intelligence on bear-market momentum bot strategy. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #31 — 2026-05-06)
+- **Signal Quality**: On-chain confluence scoring (Nansen/Dune smart money, 2.5M+ daily signals) becoming standard in 2026. Complex integration (Impact 3/Complexity 4/Risk med) → Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream V2/V3 routing optimizations (2026 roadmap) — bot auto-benefits from DEX-level improvements. No code change needed. (Priority 0)
+- **Position Sizing**: Kelly criterion + VIX-Rank research (arxiv.org/pdf/2508.16598) confirms: reduce profit targets in bear markets as winning trades peak earlier. Supports MOMENTUM_EXIT_MIN_PROFIT 5→3 (direct application). (Impact 3, Complexity 1, Risk low, Priority 3.0 — IMPLEMENTED)
+- **Competitive Intelligence**: Bear-market momentum strategy research confirms: in sustained downtrends, oversold bounces peak at 3-4% before reversing; a 5% exit trigger misses most bounce tops. Lower exit floor → capture profits before reversal. MOMENTUM_EXIT_MIN_PROFIT 5→3 IMPLEMENTED.
 
 ## Jobs Status This Run (Run #28 — 2026-05-04T16:15 UTC)
 
