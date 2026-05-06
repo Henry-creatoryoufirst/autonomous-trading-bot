@@ -7827,10 +7827,11 @@ async function runTradingCycle() {
           decision.amountUSD = Math.min(decision.amountUSD, remainingUSDC);
           console.log(`   ⚡ DEPLOY SIZING: $${decision.amountUSD.toFixed(2)} (floor: $${deployFloor.toFixed(0)}, Kelly would be: $${instSizeCycle.sizeUSD.toFixed(2)})`);
         } else {
-          // NORMAL MODE: Kelly cap with ATR adjustment, no other reductions.
-          const kellyMax = Math.min(instSizeCycle.sizeUSD, remainingUSDC);
+          // NORMAL MODE: Kelly cap with ATR adjustment. Apply 0.5× when drawdown ≥ 12% (circuitBreakerActive) — enforces the halving that was logged but never wired at line 7293.
+          const breakerMult = circuitBreakerActive ? 0.5 : 1.0;
+          const kellyMax = Math.min(instSizeCycle.sizeUSD * breakerMult, remainingUSDC);
           decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
-          console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)`);
+          console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)${circuitBreakerActive ? ' | ⚠️ DRAWDOWN 50% CUT' : ''}`);
 
           // Alpha Budget: cap discovered (non-static) tokens to ALPHA_MAX_SINGLE_POSITION
           // and block entirely if the alpha budget is already full.
