@@ -116,6 +116,13 @@ export interface DiscoveredToken {
   priceChange24h: number;
   /** Number of transactions in 24h */
   txns24h: number;
+  /** v21.32: BUY transactions in 24h. Persisted from DexScreener / GeckoTerminal
+   *  scan so the conviction-scoring formula can compute real buy pressure
+   *  (`buys / (buys + sells)`). Optional for backward compat — pre-v21.32 tokens
+   *  in state will have undefined here and the scorer treats them as neutral. */
+  buys24h?: number;
+  /** v21.32: SELL transactions in 24h. See buys24h. */
+  sells24h?: number;
   /** When this token was first discovered by our scanner */
   discoveredAt: string;
   /** When the pool was created */
@@ -510,7 +517,9 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       if (fdv < cfg.minFdvUSD) continue;
 
       // Filter by transactions
-      const txns = (pair.txns?.h24?.buys || 0) + (pair.txns?.h24?.sells || 0);
+      const buys24h = pair.txns?.h24?.buys || 0;
+      const sells24h = pair.txns?.h24?.sells || 0;
+      const txns = buys24h + sells24h;
       if (txns < cfg.minTxns24h) continue;
 
       // Filter by pair age
@@ -534,6 +543,8 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
         fdvUSD: fdv,
         priceChange24h: pair.priceChange?.h24 || 0,
         txns24h: txns,
+        buys24h,
+        sells24h,
         discoveredAt: new Date().toISOString(),
         pairCreatedAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt).toISOString() : "",
         dexName: pair.dexId || "unknown",
@@ -645,7 +656,9 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
       const vol24h = parseFloat(volObj.h24 || volObj.h6 || '0');
       const fdv = parseFloat(String(attrs.fdv_usd ?? '0')) || 0;
       const txObj = attrs.transactions?.h24 || {};
-      const txns = (txObj.buys || 0) + (txObj.sells || 0);
+      const buys24h = txObj.buys || 0;
+      const sells24h = txObj.sells || 0;
+      const txns = buys24h + sells24h;
       const priceChange = parseFloat(attrs.price_change_percentage?.h24 || attrs.price_change_percentage?.h6 || '0');
       const pairAge = attrs.pool_created_at
         ? (Date.now() - new Date(attrs.pool_created_at).getTime()) / (1000 * 60 * 60)
@@ -672,6 +685,8 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
         fdvUSD: fdv,
         priceChange24h: priceChange,
         txns24h: txns,
+        buys24h,
+        sells24h,
         discoveredAt: new Date().toISOString(),
         pairCreatedAt: attrs.pool_created_at || '',
         dexName: attrs.dex_id || 'unknown',
@@ -986,17 +1001,22 @@ export class TokenDiscoveryEngine {
         ? Math.max(1 - (change - 25) / 75, 0)      // diminishing returns above 25%
         : 0;                                         // below 5% = no momentum
 
-      // Buy pressure — buys / (buys + sells) from txns24h
-      // Derived from the raw pair data stored in the token; fall back to 0.5 if unavailable.
-      // NOTE: txns24h is the SUM of buys+sells; we don't store the split separately on
-      // DiscoveredToken, so we use a neutral 0.5 unless the token was freshly scanned
-      // (the DexScreenerPair buys/sells are consumed during discovery but not persisted).
-      // A future pass can store buys/sells separately; for now this scores neutrally.
-      const buys = (t as any)._buys as number | undefined;
-      const sells = (t as any)._sells as number | undefined;
+      // Buy pressure — buys / (buys + sells) from the 24h txn split.
+      // v21.32 bugfix: previously read `(t as any)._buys` which never existed
+      // on DiscoveredToken — the DexScreener / GeckoTerminal scans fetched the
+      // buys/sells split but never persisted it. Result: ratio always = 0.5,
+      // buyPressureScore always = 0, and the formula's max achievable score
+      // was 80 instead of 100. Tokens that should have scored above 65
+      // structurally couldn't.
+      //
+      // Now reads the persisted `buys24h` / `sells24h` fields. Falls back to
+      // neutral (0.5) for legacy state entries (pre-v21.32) where the fields
+      // are still undefined.
+      const buys = t.buys24h;
+      const sells = t.sells24h;
       const ratio = (buys !== undefined && sells !== undefined && (buys + sells) > 0)
         ? buys / (buys + sells)
-        : 0.5; // neutral if not available
+        : 0.5; // neutral fallback for legacy state entries only
       const buyPressureScore = Math.max(Math.min((ratio - 0.5) / 0.5, 1), 0);
 
       // Weighted composite
