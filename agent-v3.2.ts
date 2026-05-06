@@ -3870,7 +3870,13 @@ async function fetchOutcomeSummary(): Promise<OutcomeSummary | null> {
       lpLockedEdgePct: edgeOf('lpLocked'),
       fetchedAt: Date.now(),
     };
-  } catch {
+  } catch (e) {
+    // v21.33: log on failure so the silent prompt-block disappearance
+    // surfaces. Pre-fix, signal-service hiccups silently dropped the
+    // ALPHA LEDGER block from heavy-cycle prompts with zero log line —
+    // outcome-feedback evaporated and we'd have no idea.
+    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 120);
+    console.warn(`   ⚠️ [Outcome] fetchOutcomeSummary failed — ALPHA LEDGER block will be skipped this cycle: ${msg}`);
     return null;
   }
 }
