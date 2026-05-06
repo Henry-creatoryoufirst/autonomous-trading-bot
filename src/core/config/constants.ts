@@ -831,7 +831,7 @@ export const MOMENTUM_EXIT_MIN_PROFIT = 5;
 export const RIDE_THE_WAVE_MIN_MOVE = 7; // Bear-adjusted Apr-2026: 5→7 — F&G 31 (Fear); 5% 4h bounces reverse ~65% in fear markets; require stronger wave confirmation before chasing
 
 /** Deploy this % of portfolio on a wave ride entry */
-export const RIDE_THE_WAVE_SIZE_PCT = 4;
+export const RIDE_THE_WAVE_SIZE_PCT = 3; // Bear-adjusted May-2026: 4→3 — 60-day bear; SCALE_UP_SIZE_PCT was already cut 4→3; wave rides (chasing 4h momentum) carry higher false-breakout risk than scale-ups in sustained downtrends; harmonising at 3% removes the inconsistency
 
 /** Dedup window in minutes for scale-up buys
  *  v18.0: Widened from 5 to 15 min — reduce churn */

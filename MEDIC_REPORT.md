@@ -60,6 +60,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #27 | 2026-05-04T08:21 UTC | Scout added cbSOL (Coinbase Wrapped Solana, Aerodrome-integrated, 5+ months old, Est >$100K liq); auditor lowered CULL_MIN_AGE_HOURS 168→120 — 56-day bear; stale research positions (<$100) unlikely to recover after 5 days in bear market; accelerates capital recycling by 2 days per culling cycle |
 | #28 | 2026-05-04T16:15 UTC | Scout added UP (Superform, DeFi neobank, TGE Feb-10-2026, $8.8M 24h vol, Aerodrome Ignition launch, score 7/10); auditor raised GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 — 57-day bear; Kelly criterion research confirms novel token risk elevated in sustained bear; extra 24h GUARDIAN oversight reduces fat-tail losses on untested tokens |
 | #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
+| #31 | 2026-05-06T~current UTC | Scout skipped (cbADA at 05:08 UTC, <48h); auditor lowered RIDE_THE_WAVE_SIZE_PCT 4→3 — 60-day bear; harmonises wave-ride sizing with SCALE_UP_SIZE_PCT (already 3); wave rides carry higher false-breakout risk than scale-ups in sustained downtrends |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 
 ## Bot Health Evidence (from git history)
@@ -84,6 +85,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #31 — 2026-05-06T~current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #31).
+- **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added), less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 60-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: RIDE_THE_WAVE_SIZE_PCT 4→3 — harmonises wave-ride sizing with the recent SCALE_UP_SIZE_PCT reduction (4→3, Run #31 git head). Wave rides (chasing 4h momentum) carry higher false-breakout risk than scale-ups on proven winners in a sustained 60-day bear downtrend. 4 searches, top candidate: Priority 3.0 (Impact 3, Complexity 1, Risk low). IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #31 — 2026-05-06)
+- **Signal Quality**: Exchange inflow/outflow monitoring via CryptoQuant/Nansen. Already captured by NVR's LARGE_TRADE_THRESHOLD_USD=2500 whale flow + order flow buy-ratio pipeline. Full on-chain signal integration remains complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing; Aerodrome+Velodrome merge upcoming. Bot auto-benefits without code change. No action needed.
+- **Position Sizing**: KEY FINDING — RIDE_THE_WAVE_SIZE_PCT 4→3: Kelly/volatility research confirms all momentum-chasing vectors should be harmonised in sustained bear. SCALE_UP_SIZE_PCT was already reduced 4→3 (most recent staging commit). Wave rides target 4h momentum moves, which statistically have ~65% reversal rate in bear markets, making them higher-risk than adding to proven winners. Aligning at 3% eliminates the inconsistency. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Grid/DCA strategies standard for bear markets. NVR's wave-riding already implements equivalent physics. Hard position limits (15% portfolio cap) already enforced. MEV protection via sequencer-direct RPC already active. No new action.
 
 ## Jobs Status This Run (Run #30 — 2026-05-05T~current UTC)
 
