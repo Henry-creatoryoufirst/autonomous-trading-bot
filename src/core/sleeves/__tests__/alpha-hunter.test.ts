@@ -79,13 +79,19 @@ describe('AlphaHunterSleeve v1 — entries', () => {
     expect(decisions[0].reasoning).toContain('ALPHA_HUNTER_V1');
   });
 
-  it('skips candidates below the conviction floor (65)', async () => {
+  it('skips candidates below the conviction floor (65) and surfaces reason', async () => {
     const sleeve = new AlphaHunterSleeve();
     const ctx = mkCtx({
       candidates: [mkCandidate({ symbol: 'LOWCONV', convictionScore: 50 })],
     });
     const decisions = await sleeve.decide(ctx);
-    expect(decisions).toHaveLength(0);
+    // v21.31: emit a synthetic HOLD with reasoning instead of returning [].
+    const buysOrSells = decisions.filter((d) => d.action === 'BUY' || d.action === 'SELL');
+    expect(buysOrSells).toHaveLength(0);
+    const hold = decisions.find((d) => d.action === 'HOLD');
+    expect(hold).toBeDefined();
+    expect(hold!.reasoning).toContain('passed filters');
+    expect(hold!.reasoning).toContain('LOWCONV@50');
   });
 
   it('prioritizes runners over higher-score non-runners', async () => {
@@ -113,7 +119,7 @@ describe('AlphaHunterSleeve v1 — entries', () => {
     expect(decisions.filter((d) => d.action === 'BUY')).toHaveLength(0);
   });
 
-  it('refuses to buy protected base tokens (USDC, ETH, WETH, cbBTC)', async () => {
+  it('refuses to buy protected base tokens (USDC, ETH, WETH, cbBTC) and surfaces reason', async () => {
     const sleeve = new AlphaHunterSleeve();
     const ctx = mkCtx({
       candidates: [
@@ -122,7 +128,11 @@ describe('AlphaHunterSleeve v1 — entries', () => {
       ],
     });
     const decisions = await sleeve.decide(ctx);
-    expect(decisions).toHaveLength(0);
+    const buys = decisions.filter((d) => d.action === 'BUY');
+    expect(buys).toHaveLength(0);
+    const hold = decisions.find((d) => d.action === 'HOLD');
+    expect(hold).toBeDefined();
+    expect(hold!.reasoning).toContain('passed filters');
   });
 
   it('caps new entries at 1 per cycle even when multiple candidates qualify', async () => {
@@ -155,14 +165,29 @@ describe('AlphaHunterSleeve v1 — entries', () => {
     expect(decisions.filter((d) => d.action === 'BUY')).toHaveLength(0);
   });
 
-  it('refuses to enter when availableUSDC is below the floor', async () => {
+  it('refuses to enter when availableUSDC is below the floor and surfaces reason', async () => {
     const sleeve = new AlphaHunterSleeve();
     const ctx = mkCtx({
       availableUSDC: 5, // below $10 floor
       candidates: [mkCandidate({ symbol: 'VIRTUAL', convictionScore: 90 })],
     });
     const decisions = await sleeve.decide(ctx);
-    expect(decisions).toHaveLength(0);
+    const buys = decisions.filter((d) => d.action === 'BUY');
+    expect(buys).toHaveLength(0);
+    const hold = decisions.find((d) => d.action === 'HOLD');
+    expect(hold).toBeDefined();
+    expect(hold!.reasoning).toContain('below $10 floor');
+  });
+
+  it('emits HOLD with empty-discovery reason when discovery returns nothing', async () => {
+    // v21.31: silent HOLD becomes informative — the operator can tell the
+    // pipeline returned 0 candidates vs filtered to 0 vs USDC-starved.
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtx({ candidates: [] });
+    const decisions = await sleeve.decide(ctx);
+    const hold = decisions.find((d) => d.action === 'HOLD');
+    expect(hold).toBeDefined();
+    expect(hold!.reasoning).toContain('0 candidates from discovery');
   });
 });
 

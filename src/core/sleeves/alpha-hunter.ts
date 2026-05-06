@@ -107,6 +107,26 @@ export interface AlphaHunterSleeveOptions {
   getExitOverride?: () => SleeveExitOverride | undefined;
 }
 
+/**
+ * v21.31: synthetic HOLD decision used to surface "no-entry" reasoning to
+ * the orchestrator's decision log. Strategy logic unchanged — these are
+ * pure visibility records the cockpit can render so silent HOLDs become
+ * informative.
+ *
+ * The orchestrator's logSleeveDecision (orchestrator.ts:159) already maps
+ * non-BUY/SELL actions to 'HOLD' and reads the reasoning field, so the
+ * existing record schema is enough — no new fields needed.
+ */
+function makeHold(reasoning: string): SleeveDecision {
+  return {
+    action: 'HOLD',
+    fromToken: 'USDC',
+    toToken: 'USDC',
+    amountUSD: 0,
+    reasoning,
+  };
+}
+
 export class AlphaHunterSleeve implements Sleeve {
   readonly id = 'alpha-hunter';
   readonly displayName = 'Alpha Hunter';
@@ -179,15 +199,33 @@ export class AlphaHunterSleeve implements Sleeve {
     // ---------- NEW ENTRIES ----------
     // Respect MAX_POSITIONS counting EXITS as freeing slots (the sim will
     // apply them in-cycle). Budget gate is strict.
+    //
+    // v21.31: when no entries fire, emit a synthetic HOLD decision carrying
+    // human-readable reasoning so the cockpit can see WHY the sleeve sat out.
+    // Strategy logic unchanged — only adds visibility on the silent paths.
     const candidates = ctx.market.discovery?.candidates ?? [];
-    if (candidates.length === 0) return decisions;
+    if (candidates.length === 0) {
+      decisions.push(makeHold(
+        `AlphaHunter: 0 candidates from discovery engine — pipeline returned empty`,
+      ));
+      return decisions;
+    }
 
     const sellsThisCycle = new Set(
       decisions.filter(d => d.action === 'SELL').map(d => d.fromToken),
     );
     const heldAfterExits = ctx.positions.filter(p => !sellsThisCycle.has(p.symbol));
     const slotsOpen = ALPHA_MAX_POSITIONS - heldAfterExits.length;
-    if (slotsOpen <= 0 || ctx.availableUSDC < ALPHA_POSITION_SIZE_FLOOR_USD) {
+    if (slotsOpen <= 0) {
+      decisions.push(makeHold(
+        `AlphaHunter: max positions reached (${ALPHA_MAX_POSITIONS} held, 0 slots open) — no entries until exit fires`,
+      ));
+      return decisions;
+    }
+    if (ctx.availableUSDC < ALPHA_POSITION_SIZE_FLOOR_USD) {
+      decisions.push(makeHold(
+        `AlphaHunter: availableUSDC=$${ctx.availableUSDC.toFixed(2)} below $${ALPHA_POSITION_SIZE_FLOOR_USD} floor — sleeve allocated $${ctx.capitalBudgetUSD.toFixed(0)} but bot's shared USDC pool is dry`,
+      ));
       return decisions;
     }
 
@@ -204,6 +242,20 @@ export class AlphaHunterSleeve implements Sleeve {
         return b.convictionScore - a.convictionScore;
       });
 
+    if (eligible.length === 0) {
+      // Surface WHY no candidate qualified. Show the top 3 candidates with
+      // their conviction scores so the operator can see if conviction is
+      // legitimately weak market-wide vs. close-but-not-65.
+      const topThree = candidates
+        .slice(0, 3)
+        .map(c => `${c.symbol}@${c.convictionScore}`)
+        .join(', ');
+      decisions.push(makeHold(
+        `AlphaHunter: 0/${candidates.length} candidates passed filters (conviction≥${ALPHA_MIN_CONVICTION}, not held, not protected). Top: ${topThree || 'none'}`,
+      ));
+      return decisions;
+    }
+
     const maxNewEntries = Math.min(ALPHA_MAX_NEW_ENTRIES_PER_CYCLE, slotsOpen);
     let entries = 0;
     let remainingBudget = ctx.availableUSDC;
@@ -215,7 +267,12 @@ export class AlphaHunterSleeve implements Sleeve {
         ALPHA_POSITION_SIZE_FLOOR_USD,
         Math.min(ALPHA_POSITION_SIZE_CEILING_USD, baseSize),
       );
-      if (sizeUSD > remainingBudget) break;
+      if (sizeUSD > remainingBudget) {
+        decisions.push(makeHold(
+          `AlphaHunter: sizing loop exhausted after ${entries} entries — sizeUSD=$${sizeUSD.toFixed(2)} > remainingBudget=$${remainingBudget.toFixed(2)}`,
+        ));
+        break;
+      }
 
       const change24h = candidate.priceChange24h ?? 0;
       decisions.push({
