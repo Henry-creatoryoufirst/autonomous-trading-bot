@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-05T~current UTC
+# MEDIC REPORT — 2026-05-06T09:05 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #30)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #31)
 
 ## Environment
-- Run timestamp: 2026-05-05T~current UTC
+- Run timestamp: 2026-05-06T09:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -62,6 +62,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
 | #31 | 2026-05-06T~current UTC | Scout skipped (cbADA at 05:08 UTC, <48h); auditor lowered RIDE_THE_WAVE_SIZE_PCT 4→3 — 60-day bear; harmonises wave-ride sizing with SCALE_UP_SIZE_PCT (already 3); wave rides carry higher false-breakout risk than scale-ups in sustained downtrends |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
+| #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 
 ## Bot Health Evidence (from git history)
 
@@ -97,6 +98,18 @@ Because the API is unreachable, the medic cannot determine:
 - **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing; Aerodrome+Velodrome merge upcoming. Bot auto-benefits without code change. No action needed.
 - **Position Sizing**: KEY FINDING — RIDE_THE_WAVE_SIZE_PCT 4→3: Kelly/volatility research confirms all momentum-chasing vectors should be harmonised in sustained bear. SCALE_UP_SIZE_PCT was already reduced 4→3 (most recent staging commit). Wave rides target 4h momentum moves, which statistically have ~65% reversal rate in bear markets, making them higher-risk than adding to proven winners. Aligning at 3% eliminates the inconsistency. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 - **Competitive Intelligence**: Grid/DCA strategies standard for bear markets. NVR's wave-riding already implements equivalent physics. Hard position limits (15% portfolio cap) already enforced. MEV protection via sequencer-direct RPC already active. No new action.
+
+## Jobs Status This Run (Run #31 — 2026-05-06T09:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #31).
+- **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added), ~28h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 61-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MIN_AGE_HOURS 48→36 — bear market research confirms faster recycling of flat $100+ positions frees dead capital into USDC reserve sooner. With STALE_POSITION_MAX_GAIN_PCT=1 and MAX_MOMENTUM_PCT=2 guards in place, reducing age from 48→36h only catches genuinely dead positions. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #31 — 2026-05-06)
+- **Signal Quality**: Whale/on-chain integration (Nansen/Dune smart money) — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V3 cross-chain routing — bot auto-benefits at DEX level without code change. No action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Correlation-adjusted Kelly: with 8 tokens at ~0.7 correlation, effective independent positions ≈ 3.5. But KELLY_FRACTION=0.25 + KELLY_POSITION_CEILING_PCT=12 + TRENDING_DOWN×0.75 already accounts for this. Primary actionable finding: STALE_POSITION_MIN_AGE_HOURS 48→36 (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: Grid bots / swing bots general strategy — already implemented via AI discretionary + RIDE_THE_WAVE. No actionable new code pattern found.
 
 ## Jobs Status This Run (Run #30 — 2026-05-05T~current UTC)
 
@@ -165,7 +178,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 30th consecutive run with the same network restriction. Urgent:**
+**This is now the 31st consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`

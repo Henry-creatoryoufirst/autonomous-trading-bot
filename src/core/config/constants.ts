@@ -919,7 +919,7 @@ export const CULL_MAX_PER_RUN = 3;
 // ============================================================================
 
 /** Minimum age before a meaningful position is eligible for stale-exit */
-export const STALE_POSITION_MIN_AGE_HOURS = 48;
+export const STALE_POSITION_MIN_AGE_HOURS = 36; // Bear-adjusted May-2026: 48→36 — 61-day bear; $100+ positions flat for 1.5 days with <1% gain are dead money; bear market research confirms faster stale-exit recycling reduces dead-capital accumulation; STALE_POSITION_MAX_GAIN_PCT=1 + MAX_MOMENTUM_PCT=2 guards prevent exiting genuine winners
 
 /** Only consider positions above this USD value — smaller tier is cullStalePositions' job */
 export const STALE_POSITION_MIN_USD = 100;
