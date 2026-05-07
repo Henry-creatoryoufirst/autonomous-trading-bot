@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-06T09:05 UTC
+# MEDIC REPORT — 2026-05-07T (latest: Run #32)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #31)
 
@@ -62,6 +62,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
 | #31 | 2026-05-06T~current UTC | Scout skipped (cbADA at 05:08 UTC, <48h); auditor lowered RIDE_THE_WAVE_SIZE_PCT 4→3 — 60-day bear; harmonises wave-ride sizing with SCALE_UP_SIZE_PCT (already 3); wave rides carry higher false-breakout risk than scale-ups in sustained downtrends |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
+| #32 | 2026-05-07T (current) | Scout added SEAM (Seamless Protocol, $15.87M mktcap, $306K 24h vol, Base native since Dec-2023, score 6/10); auditor lowered KELLY_SMALL_PORTFOLIO_CEILING_PCT 30→20 — 62-day bear; small-portfolio ceiling inconsistently loose vs all other tightened Kelly params |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 
 ## Bot Health Evidence (from git history)
@@ -86,6 +87,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #32 — 2026-05-07T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from this sandbox). MEDIC_REPORT updated (Run #32).
+- **Scout**: RAN — last scout ran 2026-05-05T05:08 UTC (cbADA added), 48h+ elapsed. SEAM (Seamless Protocol) added — Base address `0x1C7a460413dD4e964f96D8dFC56E7223cE88CD85`, TGE Dec-2023, $15.87M market cap, $306.81K 24h vol, 250K+ users, $80M TVL on Base, Base-native DeFi lending protocol, DEFI MEDIUM risk. Score 6/10.
+- **Auditor**: TRIGGERED by inferred 62-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: KELLY_SMALL_PORTFOLIO_CEILING_PCT 30→20 — all large-portfolio Kelly params tightened across 10+ runs (fraction 0.25, ceiling 12%); small-portfolio 30% ceiling was inconsistently loose vs all other tightened Kelly params; 20% aligns with bear-market discipline. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #32 — 2026-05-07)
+- **Signal Quality**: Modern DeFi bots use multi-wallet confluence (trigger only when 2+ watched wallets buy same token). NVR already uses multi-factor confluence scoring. Full smart-wallet tracking integration complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merger → unified "Aero" DEX in Q2 2026; cross-chain expansion July 2026. Bot auto-benefits from DEX-level improvements without code change. No action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — KELLY_SMALL_PORTFOLIO_CEILING_PCT 30→20: Research confirms fractional Kelly reduces volatility more than proportionally reducing growth. Large-portfolio ceiling already at 12%; small-portfolio (<$10K) ceiling at 30% was an outlier inconsistent with all other tightened Kelly params. 20% aligns small-portfolio sizing with 62-day bear discipline ($5K × 20% = $1K max/position). (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: MEV bots (MevX) active on Base; NVR uses sequencer-direct RPC for MEV protection (already implemented). "One agent" models abandoned in 2026 — NVR's specialized service architecture already aligned. CoW Swap intent-based routing requires touching executeDirectDexSwap (off-limits). No new action.
 
 ## Jobs Status This Run (Run #31 — 2026-05-06T~current UTC)
 
