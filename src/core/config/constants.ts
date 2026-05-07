@@ -647,7 +647,7 @@ export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
 export const HOT_MOVER_MIN_POOL_AGE_HOURS = 24;
 
 /** Hot mover quality gate: minimum buy ratio in h1 (55%+ buys = genuine demand, not sell-off) */
-export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0.60 — 47-day bear; pumps with 55-60% buy ratio are predominantly MEV-front-run distribution; require genuine conviction
+export const HOT_MOVER_MIN_BUY_RATIO = 0.63; // Bear-adjusted May-2026: 0.60→0.63 — 62-day bear; MEV bots on Base now routinely manufacture 60-62% buy-ratio pumps that resolve as distribution traps; competitive intelligence confirms increasing on-chain MEV sophistication; 63% threshold filters manufactured pumps while retaining genuine breakouts
 
 // ============================================================================
 // v21.13: ICU WATCH MODE — Intensive monitoring for new/small-cap positions
