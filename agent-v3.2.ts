@@ -9124,17 +9124,8 @@ async function main() {
   _storeSetState(state);
   _storeSetBreakerState(breakerState);
 
-  // NVR-SPEC-026 startup hygiene: in HWM mode, pendingFeeUSDC is meaningless
-  // (the legacy per-trade accumulator) but the orchestrator still subtracts
-  // it from availableUSDC, which can starve sleeves indefinitely if the bot
-  // is below HWM and no payout fires to reset it. Zero it on every startup
-  // so a freshly-deployed HWM-mode bot doesn't inherit a stale reservation.
-  if ((process.env.HARVEST_MODE || 'legacy').toLowerCase() === 'hwm') {
-    if ((state.pendingFeeUSDC || 0) > 0) {
-      console.log(`[HWM startup] Clearing stale pendingFeeUSDC=$${state.pendingFeeUSDC.toFixed(2)} — HWM mode doesn't use it`);
-      state.pendingFeeUSDC = 0;
-    }
-  }
+  // (HWM startup hygiene moved to AFTER loadTradeHistory — pendingFeeUSDC
+  // value isn't loaded from disk until then.)
 
   // Phase 4: Initialize execution engine
   initRpc([...BASE_RPC_ENDPOINTS]);
@@ -9523,6 +9514,21 @@ async function main() {
     setBtcDominanceHistory: (h) => { btcDominanceHistory = h; state.btcDominanceHistory = h; },
   });
   loadTradeHistory();
+
+  // NVR-SPEC-026 startup hygiene: in HWM mode, pendingFeeUSDC is meaningless
+  // (the legacy per-trade accumulator) but the orchestrator still subtracts
+  // it from availableUSDC, which can starve sleeves indefinitely when the bot
+  // is below HWM (no payout fires to reset it). Zero it on every startup so
+  // a freshly-deployed HWM-mode bot doesn't inherit a stale reservation.
+  // Must run AFTER loadTradeHistory so we see the persisted value.
+  if ((process.env.HARVEST_MODE || 'legacy').toLowerCase() === 'hwm') {
+    const stalePending = state.pendingFeeUSDC || 0;
+    if (stalePending > 0) {
+      console.log(`[HWM startup] Clearing stale pendingFeeUSDC=$${stalePending.toFixed(2)} — HWM mode doesn't use it`);
+      state.pendingFeeUSDC = 0;
+      markStateDirty();
+    }
+  }
 
   // v20.7: STATE_BACKUP_URL fallback — if disk state is empty and a backup URL is configured,
   // fetch state from the URL and restore it. This handles cases where volumes AND local disk fail.
