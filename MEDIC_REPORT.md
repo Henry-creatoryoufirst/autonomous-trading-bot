@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-06T09:05 UTC
+# MEDIC REPORT — 2026-05-07T04:05 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #31)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
 
 ## Environment
-- Run timestamp: 2026-05-06T09:05 UTC
+- Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -63,6 +63,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T~current UTC | Scout skipped (cbADA at 05:08 UTC, <48h); auditor lowered RIDE_THE_WAVE_SIZE_PCT 4→3 — 60-day bear; harmonises wave-ride sizing with SCALE_UP_SIZE_PCT (already 3); wave rides carry higher false-breakout risk than scale-ups in sustained downtrends |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
+| #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 
 ## Bot Health Evidence (from git history)
 
@@ -86,6 +87,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #32 — 2026-05-07T04:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #32).
+- **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added), ~47h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 62-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: SCOUT_UPGRADE_BUY_RATIO 55→60 — aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60). Kelly criterion research confirms new/uncertain positions require stronger confirmation; 55% buy ratio in 62-day bear is predominantly early-stage distribution or MEV front-running. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #32 — 2026-05-07)
+- **Signal Quality**: Smart money wallet clustering (multi-wallet same-token buys within time window as confluence) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V3 cross-chain auto-benefits routing without code change. OpenOcean cross-DEX aggregation (Impact 2/Complexity 3) → Watch list (touches off-limits execution path). (Priority 0.67)
+- **Position Sizing**: KEY FINDING — Quarter-Kelly (0.25f*) confirmed optimal for crypto (stratbase.ai, altrady.com, Kelly criterion Wikipedia); "position sizes should be reduced for new tokens with limited history." NVR already at KELLY_FRACTION=0.25. Actionable gap: SCOUT_UPGRADE_BUY_RATIO=55 is inconsistent with all other buy signal thresholds at 60. IMPLEMENTED: 55→60. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing in 2026 (cryptollia.com). Sequencer-direct RPC already active. Intent-based trading (1inch, CoW Protocol) — requires off-limits execution changes. TWAP jitter already at 20%. No new actionable change. (Priority 0)
 
 ## Jobs Status This Run (Run #31 — 2026-05-06T~current UTC)
 
