@@ -17,6 +17,7 @@ import { getModelTelemetry, getAgreementRate, type ModelTelemetry, type GemmaMod
 import { activeChain } from '../../core/config/chain-config.js';
 import { loadPolicy, DEFAULT_POLICY } from '../../core/services/policy.js';
 import { auditAndRepairCostBasis } from '../../core/portfolio/cost-basis.js';
+import { alphaWatcher } from '../../core/services/alpha-watcher.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1349,6 +1350,55 @@ export function handleRepairCostBasis(
   }
 
   ctx.sendJSON(res, 200, report);
+}
+
+// ============================================================================
+// Route handler: /api/admin/alpha-watcher
+//   GET                    → returns status + recent triggers (limit query param)
+//   GET ?action=tick       → forces a single Watcher tick immediately
+//   NVR-SPEC-028 Phase 1 — read-only inspection of Watcher activity.
+// ============================================================================
+
+export function handleAlphaWatcher(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  if (!ctx.isAuthorized(req)) {
+    ctx.sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+    return;
+  }
+  if (req.method !== 'GET') {
+    ctx.sendJSON(res, 405, { error: 'Method not allowed — use GET' });
+    return;
+  }
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const action = url.searchParams.get('action');
+  const limit = Math.max(1, Math.min(500, parseInt(url.searchParams.get('limit') ?? '50', 10)));
+
+  if (action === 'tick') {
+    alphaWatcher
+      .tick()
+      .then((result) => {
+        ctx.sendJSON(res, 200, {
+          tickCompleted: true,
+          firedThisTick: result.triggers.length,
+          triggers: result.triggers,
+          pollsAttempted: result.pollsAttempted,
+          errors: result.errors,
+          status: alphaWatcher.getStatus(),
+        });
+      })
+      .catch((e) => {
+        ctx.sendJSON(res, 500, { error: e?.message ?? 'tick failed' });
+      });
+    return;
+  }
+
+  ctx.sendJSON(res, 200, {
+    status: alphaWatcher.getStatus(),
+    recentTriggers: alphaWatcher.getTriggers(limit),
+  });
 }
 
 // ============================================================================

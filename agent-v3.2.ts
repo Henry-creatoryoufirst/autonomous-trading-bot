@@ -563,7 +563,7 @@ import {
   handleAdaptive, handleDerivatives, handleEquity, handleDiscovery, handleCache,
   handleYield, handleYieldRates, handleDexIntelligence,
   handleFamily, handleFamilyMembers, handleFamilyProfiles, handleFamilyWallets,
-  handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis,
+  handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis, handleAlphaWatcher,
   handleChat, handleDirectives, handleDeleteDirective,
   handleSimulate, handleStrategyVersions, handlePaperPortfolios, handlePaperPortfolioById,
   handleExportResults, handleVersionBacktest,
@@ -9532,6 +9532,18 @@ async function main() {
     }
   }
 
+  // NVR-SPEC-028 Phase 1: Always-On Alpha Watcher.
+  // Pure deterministic scanner — no LLM, no execution. Polls GeckoTerminal
+  // pool data for the cohort every 30s and logs triggers. Phase 2 wakes a
+  // Reviewer (Haiku) on each trigger; Phase 3 adds reflex execution.
+  // OFF by default — flip ALPHA_WATCHER_ENABLED=true on Railway to start
+  // building the trigger log. Inspect via /api/admin/alpha-watcher.
+  if ((process.env.ALPHA_WATCHER_ENABLED ?? 'false').toLowerCase() === 'true') {
+    const { alphaWatcher: watcher } = await import('./src/core/services/alpha-watcher.js');
+    watcher.start();
+    console.log('[Startup] Alpha Watcher enabled (NVR-SPEC-028 Phase 1)');
+  }
+
   // v20.7: STATE_BACKUP_URL fallback — if disk state is empty and a backup URL is configured,
   // fetch state from the URL and restore it. This handles cases where volumes AND local disk fail.
   if (state.tradeHistory.length === 0 && Object.keys(state.costBasis).length === 0 && process.env.STATE_BACKUP_URL) {
@@ -10738,6 +10750,10 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/admin/repair-cost-basis':
         // NVR-SPEC-027: GET=dry-run audit, POST=apply repairs
         handleRepairCostBasis(req, res, serverCtx);
+        break;
+      case '/api/admin/alpha-watcher':
+        // NVR-SPEC-028 Phase 1: inspect Watcher status + recent triggers
+        handleAlphaWatcher(req, res, serverCtx);
         break;
       case '/api/chat':
         if (handleChat(req, res, serverCtx)) return;

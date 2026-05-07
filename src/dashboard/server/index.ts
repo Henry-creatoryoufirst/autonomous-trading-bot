@@ -49,6 +49,7 @@ export {
   handleWinRateTruth,
   handleCorrectState,
   handleRepairCostBasis,
+  handleAlphaWatcher,
 
   // Chat + Directives
   handleChat,
