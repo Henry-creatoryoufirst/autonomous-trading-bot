@@ -563,7 +563,7 @@ import {
   handleAdaptive, handleDerivatives, handleEquity, handleDiscovery, handleCache,
   handleYield, handleYieldRates, handleDexIntelligence,
   handleFamily, handleFamilyMembers, handleFamilyProfiles, handleFamilyWallets,
-  handleHealthAudit, handleWinRateTruth, handleCorrectState,
+  handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis,
   handleChat, handleDirectives, handleDeleteDirective,
   handleSimulate, handleStrategyVersions, handlePaperPortfolios, handlePaperPortfolioById,
   handleExportResults, handleVersionBacktest,
@@ -10561,6 +10561,10 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/admin/correct-state':
         if (handleCorrectState(req, res, serverCtx)) return;
+        break;
+      case '/api/admin/repair-cost-basis':
+        // NVR-SPEC-027: GET=dry-run audit, POST=apply repairs
+        handleRepairCostBasis(req, res, serverCtx);
         break;
       case '/api/chat':
         if (handleChat(req, res, serverCtx)) return;

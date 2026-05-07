@@ -1311,6 +1311,49 @@ export function handleCorrectState(
 }
 
 // ============================================================================
+// Route handler: /api/admin/repair-cost-basis
+//   GET  → dry-run audit (returns what WOULD be repaired)
+//   POST → apply repairs
+// NVR-SPEC-027: Cost-basis correctness fix.
+// ============================================================================
+
+export function handleRepairCostBasis(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  if (!ctx.isAuthorized(req)) {
+    ctx.sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+    return;
+  }
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    ctx.sendJSON(res, 405, { error: 'Method not allowed — use GET (dry-run) or POST (apply)' });
+    return;
+  }
+
+  // Lazy import to avoid circular dep at module load time.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { auditAndRepairCostBasis } = require('../../core/portfolio/cost-basis.js');
+  const balances = ctx.apiBalances().balances;
+  const dryRun = req.method === 'GET';
+  const report = auditAndRepairCostBasis({ dryRun, balances });
+
+  if (!dryRun && (report.repaired.length > 0 || report.unrepaired.length > 0)) {
+    ctx.markStateDirty();
+    ctx.flushStateIfDirty('cost-basis-repair');
+    console.log(`\n🔧 COST-BASIS REPAIR: scanned=${report.scanned} healthy=${report.healthy} repaired=${report.repaired.length} unrepaired=${report.unrepaired.length}`);
+    for (const r of report.repaired) {
+      console.log(`   ✓ ${r.symbol} (${r.method}): avgCost ${r.before.averageCostBasis.toFixed(4)} → ${r.after?.averageCostBasis.toFixed(4) ?? '?'}`);
+    }
+    for (const u of report.unrepaired) {
+      console.log(`   ✗ ${u.symbol}: ${u.reasons.join('; ')}`);
+    }
+  }
+
+  ctx.sendJSON(res, 200, report);
+}
+
+// ============================================================================
 // Route handler: /api/chat (POST with streaming body)
 // Returns true to indicate caller should NOT call res.end()
 // ============================================================================

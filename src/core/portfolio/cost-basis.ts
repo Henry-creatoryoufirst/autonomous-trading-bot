@@ -301,3 +301,175 @@ export function rebuildCostBasisFromTrades(
     }
   }
 }
+
+/**
+ * NVR-SPEC-027: Cost-basis audit + repair.
+ *
+ * Scans every cost-basis entry for corruption patterns observed in production
+ * 2026-05-07:
+ *   - SPX with averageCostBasis = $3.7B/token (decimal-mismatch corruption)
+ *   - WELL/VADER/LUNA/TIBBIR/ENA/cbLTC with averageCostBasis ~ 0 despite
+ *     non-zero current holding (lost history or capital-liberation zeroing)
+ *
+ * Repair priority:
+ *   1. attemptSelfHeal() — replay trade history for that token (best fidelity)
+ *   2. peg-to-market — set avg cost = current market price (honest "we don't
+ *      know historical entry; treat as just-bought"). Last-ditch when trade
+ *      history is missing or unreplayable.
+ *
+ * Realized P&L is preserved across repair (we don't claw back past sells —
+ * those happened, the P&L numbers may be inflated but they're durable
+ * accounting facts in the trade log).
+ *
+ * Use:
+ *   - On startup: report-only mode (dryRun=true) logs what WOULD be repaired
+ *   - Via POST /api/admin/repair-cost-basis: dryRun=false to apply
+ *
+ * Returns a structured audit report so the dashboard / admin tooling can
+ * surface what the bot found and fixed.
+ */
+export interface CostBasisAuditReport {
+  scannedAt: string;
+  scanned: number;
+  healthy: number;
+  repaired: Array<{
+    symbol: string;
+    method: 'self-heal-from-trade-history' | 'peg-to-market' | 'DRY_RUN';
+    reasons: string[];
+    before: { averageCostBasis: number; totalInvestedUSD: number; totalTokensAcquired: number };
+    after: { averageCostBasis: number; totalInvestedUSD: number; totalTokensAcquired: number } | null;
+  }>;
+  unrepaired: Array<{ symbol: string; reasons: string[] }>;
+  dryRun: boolean;
+}
+
+const ABSOLUTE_AVG_COST_CEILING_USD = 100_000;
+const RATIO_TO_MARKET_CEILING = 50; // avgCost > 50× market = corrupted
+const MIN_BALANCE_TO_FLAG_MISSING = 0.000001; // ignore dust
+
+export function auditAndRepairCostBasis(opts: {
+  dryRun?: boolean;
+  balances?: Array<{ symbol: string; balance: number; usdValue: number; price?: number }>;
+} = {}): CostBasisAuditReport {
+  const dryRun = opts.dryRun ?? true;
+  const cbMap = getState().costBasis;
+  const balances = opts.balances ?? ((getState() as any).trading?.balances ?? []);
+
+  const balanceBySym: Record<string, number> = {};
+  const priceBySym: Record<string, number> = {};
+  const usdBySym: Record<string, number> = {};
+  for (const b of balances) {
+    balanceBySym[b.symbol] = b.balance ?? 0;
+    usdBySym[b.symbol] = b.usdValue ?? 0;
+    if (b.balance > 0 && b.usdValue > 0) priceBySym[b.symbol] = b.usdValue / b.balance;
+    else if (b.price && b.price > 0) priceBySym[b.symbol] = b.price;
+  }
+
+  const report: CostBasisAuditReport = {
+    scannedAt: new Date().toISOString(),
+    scanned: 0,
+    healthy: 0,
+    repaired: [],
+    unrepaired: [],
+    dryRun,
+  };
+
+  for (const [symbol, cb] of Object.entries(cbMap)) {
+    report.scanned++;
+    if (symbol === 'USDC') { report.healthy++; continue; }
+
+    const balance = balanceBySym[symbol] ?? cb.currentHolding ?? 0;
+    const price = priceBySym[symbol] ?? 0;
+    const usdValue = usdBySym[symbol] ?? (balance * price);
+
+    const reasons: string[] = [];
+    if (cb.averageCostBasis > ABSOLUTE_AVG_COST_CEILING_USD) {
+      reasons.push(
+        `averageCostBasis $${cb.averageCostBasis.toFixed(2)} exceeds $${ABSOLUTE_AVG_COST_CEILING_USD} ceiling (corruption)`,
+      );
+    }
+    if (price > 0 && cb.averageCostBasis > price * RATIO_TO_MARKET_CEILING) {
+      reasons.push(
+        `averageCostBasis $${cb.averageCostBasis.toFixed(6)} > ${RATIO_TO_MARKET_CEILING}× market $${price.toFixed(6)}`,
+      );
+    }
+    if (
+      balance > MIN_BALANCE_TO_FLAG_MISSING &&
+      usdValue > 1 &&
+      cb.averageCostBasis === 0 &&
+      cb.totalInvestedUSD === 0 &&
+      cb.totalTokensAcquired === 0
+    ) {
+      reasons.push(
+        `holds ${balance.toFixed(6)} ${symbol} ($${usdValue.toFixed(2)}) but no cost-basis history`,
+      );
+    }
+
+    if (reasons.length === 0) {
+      report.healthy++;
+      continue;
+    }
+
+    const before = {
+      averageCostBasis: cb.averageCostBasis,
+      totalInvestedUSD: cb.totalInvestedUSD,
+      totalTokensAcquired: cb.totalTokensAcquired,
+    };
+
+    if (dryRun) {
+      report.repaired.push({ symbol, method: 'DRY_RUN', reasons, before, after: null });
+      continue;
+    }
+
+    // Pre-repair: zero out the corrupted fields so attemptSelfHeal sees an
+    // empty slate and replays cleanly. Self-heal's gate is `averageCostBasis
+    // <= 0 || totalTokensAcquired <= 0`, so resetting forces it to engage.
+    cb.averageCostBasis = 0;
+    cb.totalInvestedUSD = 0;
+    cb.totalTokensAcquired = 0;
+
+    const healed = attemptSelfHeal(symbol, cb);
+
+    if (healed && cb.averageCostBasis > 0 && cb.totalTokensAcquired > 0) {
+      report.repaired.push({
+        symbol,
+        method: 'self-heal-from-trade-history',
+        reasons,
+        before,
+        after: {
+          averageCostBasis: cb.averageCostBasis,
+          totalInvestedUSD: cb.totalInvestedUSD,
+          totalTokensAcquired: cb.totalTokensAcquired,
+        },
+      });
+    } else if (price > 0 && balance > 0) {
+      // Last-ditch: peg to current market. unrealizedPnL becomes 0 (honest:
+      // we don't know what we paid — treat residual as just-bought today).
+      cb.averageCostBasis = price;
+      cb.totalInvestedUSD = price * balance;
+      cb.totalTokensAcquired = balance;
+      cb.currentHolding = balance;
+      cb.unrealizedPnL = 0;
+      report.repaired.push({
+        symbol,
+        method: 'peg-to-market',
+        reasons,
+        before,
+        after: {
+          averageCostBasis: cb.averageCostBasis,
+          totalInvestedUSD: cb.totalInvestedUSD,
+          totalTokensAcquired: cb.totalTokensAcquired,
+        },
+      });
+    } else {
+      // Restore the (corrupted) before-state since we couldn't repair —
+      // don't leave the position in a half-zeroed state.
+      cb.averageCostBasis = before.averageCostBasis;
+      cb.totalInvestedUSD = before.totalInvestedUSD;
+      cb.totalTokensAcquired = before.totalTokensAcquired;
+      report.unrepaired.push({ symbol, reasons });
+    }
+  }
+
+  return report;
+}

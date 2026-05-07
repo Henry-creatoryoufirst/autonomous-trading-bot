@@ -48,6 +48,7 @@ export {
   handleHealthAudit,
   handleWinRateTruth,
   handleCorrectState,
+  handleRepairCostBasis,
 
   // Chat + Directives
   handleChat,
