@@ -3100,6 +3100,35 @@ async function makeTradeDecisionViaSleeve(
 
   const usdcBalance = balances.find(b => b.symbol === 'USDC');
   const availableUSDC = Math.max(0, (usdcBalance?.usdValue ?? 0) - (state.pendingFeeUSDC || 0));
+
+  // NVR-SPEC-025: Sleeve capital isolation. When SLEEVE_ISOLATION_ENABLED is
+  // set, Core sees `availableUSDC − sum(alpha-sleeve reservations)`, and each
+  // alpha sleeve sees `min(liquidity, ownReservation − alreadyDeployed)`.
+  // Without isolation (default on first ship), all live sleeves share the
+  // same pool — Core wins by default because it's allocated 95%.
+  const SLEEVE_ISOLATION_ENABLED = process.env.SLEEVE_ISOLATION_ENABLED === 'true';
+  const ALPHA_SLEEVE_IDS = ['alpha-hunter', 'alpha-rotation'];
+  const MAX_ALPHA_RESERVATION_PCT = 0.25; // defensive cap — alpha can never starve Core
+  const alphaReservedUSDC = SLEEVE_ISOLATION_ENABLED
+    ? ALPHA_SLEEVE_IDS.reduce((sum, id) => {
+        const alpha = state.sleeveConfig?.allocations?.[id] ?? 0;
+        const enabled = state.sleeveConfig?.enabled?.[id] !== false;
+        const modeOverride = state.sleeveConfig?.modeOverrides?.[id];
+        const sleeveDef = sleeves.find(s => s.id === id);
+        const baseMode = sleeveDef?.mode;
+        const effective = baseMode ? resolveEffectiveMode(baseMode, alpha, enabled, modeOverride) : 'paper';
+        if (effective !== 'live') return sum;
+        return sum + totalPortfolioValue * alpha;
+      }, 0)
+    : 0;
+  const cappedAlphaReservation = Math.min(
+    alphaReservedUSDC,
+    totalPortfolioValue * MAX_ALPHA_RESERVATION_PCT,
+  );
+  const coreAvailableUSDC = SLEEVE_ISOLATION_ENABLED
+    ? Math.max(0, availableUSDC - cappedAlphaReservation)
+    : availableUSDC;
+
   const prices: Record<string, number> = {};
   for (const t of marketData.tokens) {
     if (t.symbol && typeof t.price === 'number') prices[t.symbol] = t.price;
@@ -3169,9 +3198,37 @@ async function makeTradeDecisionViaSleeve(
     const capitalBudgetUSD = effectiveMode === 'live'
       ? totalPortfolioValue * allocation
       : paperBudget;
-    const ctxAvailableUSDC = effectiveMode === 'live'
-      ? availableUSDC
-      : availablePaperUSDC(ownership, paperBudget);
+    // NVR-SPEC-025: Sleeve isolation. Core sees coreAvailableUSDC (alpha
+    // reservations subtracted). Alpha sleeves see min(liquidity, headroom)
+    // where headroom = own reservation − already-deployed in this sleeve's
+    // live positions. When SLEEVE_ISOLATION_ENABLED=false, falls back to the
+    // pre-isolation shared-pool behavior.
+    let ctxAvailableUSDC: number;
+    if (effectiveMode === 'live') {
+      if (!SLEEVE_ISOLATION_ENABLED) {
+        ctxAvailableUSDC = availableUSDC;
+      } else if (sleeve.id === 'core') {
+        ctxAvailableUSDC = coreAvailableUSDC;
+      } else if (ALPHA_SLEEVE_IDS.includes(sleeve.id)) {
+        const alphaReservation = totalPortfolioValue * allocation;
+        const alphaDeployed = ownership
+          ? Object.values(ownership.positions ?? {}).reduce(
+              (s: number, p: any) => s + (p?.valueUSD ?? 0),
+              0,
+            )
+          : 0;
+        const headroom = Math.max(0, alphaReservation - alphaDeployed);
+        ctxAvailableUSDC = Math.min(availableUSDC, headroom);
+      } else {
+        // Unknown live sleeve — fall back to shared pool to avoid surprise
+        ctxAvailableUSDC = availableUSDC;
+      }
+    } else {
+      ctxAvailableUSDC = availablePaperUSDC(ownership, paperBudget);
+    }
+    if (SLEEVE_ISOLATION_ENABLED && effectiveMode === 'live') {
+      console.log(`   [CAPITAL] ${sleeve.id}: $${ctxAvailableUSDC.toFixed(2)} available (budget $${capitalBudgetUSD.toFixed(2)})`);
+    }
 
     let sleeveDecisions: TradeDecision[] = [];
     try {
@@ -4583,7 +4640,29 @@ async function makeTradeDecision(
   const usdcBalance = balances.find(b => b.symbol === "USDC");
   // v21.15: Subtract pending fee so reserved payout USDC is never re-deployed
   const pendingFee = state.pendingFeeUSDC || 0;
-  const availableUSDC = Math.max(0, (usdcBalance?.balance || 0) - pendingFee);
+  // NVR-SPEC-025: Sleeve isolation. Core's path here (makeTradeDecision) must
+  // see the SAME availableUSDC the orchestrator handed to Core via ctxAvailableUSDC,
+  // i.e. with alpha-sleeve reservations subtracted. Without this, Core would
+  // compute its own un-isolated availableUSDC and ignore alpha reservations.
+  const SLEEVE_ISOLATION_ENABLED_HEAVY = process.env.SLEEVE_ISOLATION_ENABLED === 'true';
+  const ALPHA_SLEEVE_IDS_HEAVY = ['alpha-hunter', 'alpha-rotation'];
+  const MAX_ALPHA_RESERVATION_PCT_HEAVY = 0.25;
+  let alphaReservedHeavy = 0;
+  if (SLEEVE_ISOLATION_ENABLED_HEAVY && state.sleeveConfig?.allocations) {
+    for (const id of ALPHA_SLEEVE_IDS_HEAVY) {
+      const alpha = state.sleeveConfig.allocations[id] ?? 0;
+      const enabled = state.sleeveConfig.enabled?.[id] !== false;
+      if (!enabled || alpha <= 0) continue;
+      // Only counts toward Core's reservation if the sleeve is configured live.
+      // Paper-mode alpha sleeves don't reserve real USDC.
+      const modeOverride = state.sleeveConfig.modeOverrides?.[id];
+      const isLive = modeOverride === 'live' || (modeOverride === undefined && alpha > 0);
+      if (!isLive) continue;
+      alphaReservedHeavy += totalPortfolioValue * alpha;
+    }
+    alphaReservedHeavy = Math.min(alphaReservedHeavy, totalPortfolioValue * MAX_ALPHA_RESERVATION_PCT_HEAVY);
+  }
+  const availableUSDC = Math.max(0, (usdcBalance?.balance || 0) - pendingFee - alphaReservedHeavy);
 
   const holdingsBySector: Record<string, string[]> = {};
   for (const allocation of sectorAllocations) {
