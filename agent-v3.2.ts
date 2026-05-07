@@ -3100,6 +3100,35 @@ async function makeTradeDecisionViaSleeve(
 
   const usdcBalance = balances.find(b => b.symbol === 'USDC');
   const availableUSDC = Math.max(0, (usdcBalance?.usdValue ?? 0) - (state.pendingFeeUSDC || 0));
+
+  // NVR-SPEC-025: Sleeve capital isolation. When SLEEVE_ISOLATION_ENABLED is
+  // set, Core sees `availableUSDC − sum(alpha-sleeve reservations)`, and each
+  // alpha sleeve sees `min(liquidity, ownReservation − alreadyDeployed)`.
+  // Without isolation (default on first ship), all live sleeves share the
+  // same pool — Core wins by default because it's allocated 95%.
+  const SLEEVE_ISOLATION_ENABLED = process.env.SLEEVE_ISOLATION_ENABLED === 'true';
+  const ALPHA_SLEEVE_IDS = ['alpha-hunter', 'alpha-rotation'];
+  const MAX_ALPHA_RESERVATION_PCT = 0.25; // defensive cap — alpha can never starve Core
+  const alphaReservedUSDC = SLEEVE_ISOLATION_ENABLED
+    ? ALPHA_SLEEVE_IDS.reduce((sum, id) => {
+        const alpha = state.sleeveConfig?.allocations?.[id] ?? 0;
+        const enabled = state.sleeveConfig?.enabled?.[id] !== false;
+        const modeOverride = state.sleeveConfig?.modeOverrides?.[id];
+        const sleeveDef = sleeves.find(s => s.id === id);
+        const baseMode = sleeveDef?.mode;
+        const effective = baseMode ? resolveEffectiveMode(baseMode, alpha, enabled, modeOverride) : 'paper';
+        if (effective !== 'live') return sum;
+        return sum + totalPortfolioValue * alpha;
+      }, 0)
+    : 0;
+  const cappedAlphaReservation = Math.min(
+    alphaReservedUSDC,
+    totalPortfolioValue * MAX_ALPHA_RESERVATION_PCT,
+  );
+  const coreAvailableUSDC = SLEEVE_ISOLATION_ENABLED
+    ? Math.max(0, availableUSDC - cappedAlphaReservation)
+    : availableUSDC;
+
   const prices: Record<string, number> = {};
   for (const t of marketData.tokens) {
     if (t.symbol && typeof t.price === 'number') prices[t.symbol] = t.price;
@@ -3169,9 +3198,37 @@ async function makeTradeDecisionViaSleeve(
     const capitalBudgetUSD = effectiveMode === 'live'
       ? totalPortfolioValue * allocation
       : paperBudget;
-    const ctxAvailableUSDC = effectiveMode === 'live'
-      ? availableUSDC
-      : availablePaperUSDC(ownership, paperBudget);
+    // NVR-SPEC-025: Sleeve isolation. Core sees coreAvailableUSDC (alpha
+    // reservations subtracted). Alpha sleeves see min(liquidity, headroom)
+    // where headroom = own reservation − already-deployed in this sleeve's
+    // live positions. When SLEEVE_ISOLATION_ENABLED=false, falls back to the
+    // pre-isolation shared-pool behavior.
+    let ctxAvailableUSDC: number;
+    if (effectiveMode === 'live') {
+      if (!SLEEVE_ISOLATION_ENABLED) {
+        ctxAvailableUSDC = availableUSDC;
+      } else if (sleeve.id === 'core') {
+        ctxAvailableUSDC = coreAvailableUSDC;
+      } else if (ALPHA_SLEEVE_IDS.includes(sleeve.id)) {
+        const alphaReservation = totalPortfolioValue * allocation;
+        const alphaDeployed = ownership
+          ? Object.values(ownership.positions ?? {}).reduce(
+              (s: number, p: any) => s + (p?.valueUSD ?? 0),
+              0,
+            )
+          : 0;
+        const headroom = Math.max(0, alphaReservation - alphaDeployed);
+        ctxAvailableUSDC = Math.min(availableUSDC, headroom);
+      } else {
+        // Unknown live sleeve — fall back to shared pool to avoid surprise
+        ctxAvailableUSDC = availableUSDC;
+      }
+    } else {
+      ctxAvailableUSDC = availablePaperUSDC(ownership, paperBudget);
+    }
+    if (SLEEVE_ISOLATION_ENABLED && effectiveMode === 'live') {
+      console.log(`   [CAPITAL] ${sleeve.id}: $${ctxAvailableUSDC.toFixed(2)} available (budget $${capitalBudgetUSD.toFixed(2)})`);
+    }
 
     let sleeveDecisions: TradeDecision[] = [];
     try {
@@ -4583,7 +4640,29 @@ async function makeTradeDecision(
   const usdcBalance = balances.find(b => b.symbol === "USDC");
   // v21.15: Subtract pending fee so reserved payout USDC is never re-deployed
   const pendingFee = state.pendingFeeUSDC || 0;
-  const availableUSDC = Math.max(0, (usdcBalance?.balance || 0) - pendingFee);
+  // NVR-SPEC-025: Sleeve isolation. Core's path here (makeTradeDecision) must
+  // see the SAME availableUSDC the orchestrator handed to Core via ctxAvailableUSDC,
+  // i.e. with alpha-sleeve reservations subtracted. Without this, Core would
+  // compute its own un-isolated availableUSDC and ignore alpha reservations.
+  const SLEEVE_ISOLATION_ENABLED_HEAVY = process.env.SLEEVE_ISOLATION_ENABLED === 'true';
+  const ALPHA_SLEEVE_IDS_HEAVY = ['alpha-hunter', 'alpha-rotation'];
+  const MAX_ALPHA_RESERVATION_PCT_HEAVY = 0.25;
+  let alphaReservedHeavy = 0;
+  if (SLEEVE_ISOLATION_ENABLED_HEAVY && state.sleeveConfig?.allocations) {
+    for (const id of ALPHA_SLEEVE_IDS_HEAVY) {
+      const alpha = state.sleeveConfig.allocations[id] ?? 0;
+      const enabled = state.sleeveConfig.enabled?.[id] !== false;
+      if (!enabled || alpha <= 0) continue;
+      // Only counts toward Core's reservation if the sleeve is configured live.
+      // Paper-mode alpha sleeves don't reserve real USDC.
+      const modeOverride = state.sleeveConfig.modeOverrides?.[id];
+      const isLive = modeOverride === 'live' || (modeOverride === undefined && alpha > 0);
+      if (!isLive) continue;
+      alphaReservedHeavy += totalPortfolioValue * alpha;
+    }
+    alphaReservedHeavy = Math.min(alphaReservedHeavy, totalPortfolioValue * MAX_ALPHA_RESERVATION_PCT_HEAVY);
+  }
+  const availableUSDC = Math.max(0, (usdcBalance?.balance || 0) - pendingFee - alphaReservedHeavy);
 
   const holdingsBySector: Record<string, string[]> = {};
   for (const allocation of sectorAllocations) {
@@ -6408,16 +6487,69 @@ async function executeDailyPayout(): Promise<void> {
   const yesterdayEntry = dailyData.days.find(d => d.date === yesterdayStr);
   const realizedPnL = yesterdayEntry?.realized || 0;
 
-  // v21.15: Harvest-on-sell — use per-trade accumulated fee as the authoritative basis.
-  // pendingFeeUSDC was reserved at sell time so it's guaranteed available (not re-deployed).
-  // Fall back to recalculated realizedPnL if no pending accumulation (e.g. first run after deploy).
-  const pendingFeeUSDC = state.pendingFeeUSDC || 0;
   const totalPct = CONFIG.autoHarvest.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+  const pendingFeeUSDC = state.pendingFeeUSDC || 0;
+
+  // NVR-SPEC-026: True-net-wealth harvest gate.
+  // Harvest only when currentEquity > netDeposits + cumulativeHarvested + hwmBuffer.
+  // Round-trip "wins" inside a flat or down portfolio don't generate harvestable
+  // profit — only true new wealth above the bot's prior best does. The 35/65
+  // split is unchanged; what changes is WHEN it fires.
+  //
+  // Default: HARVEST_MODE=legacy preserves the per-trade pendingFee model.
+  // Flip to HARVEST_MODE=hwm on Railway after the staging soak validates the
+  // gate fires correctly on flat/down days.
+  const HARVEST_MODE = (process.env.HARVEST_MODE || 'legacy').toLowerCase();
+  let effectiveRealizedPnL: number;
+  let hwmHarvestableUSD = 0;
+  if (HARVEST_MODE === 'hwm') {
+    const currentEquity = state.trading.totalPortfolioValue || 0;
+    const netDeposits = state.totalDeposited || 0;
+    // Cumulative harvested = sum of every successful daily payout's
+    // totalDistributed. Durable accounting: past payouts can't be undone.
+    const cumulativeHarvested = (state.dailyPayouts || []).reduce(
+      (s: number, p: any) => s + (p?.totalDistributed || 0),
+      0,
+    );
+    const hwmBuffer = state.hwmBuffer || 0;
+    const floorValue = netDeposits + cumulativeHarvested + hwmBuffer;
+    const minHarvestThreshold = 5; // dust gate: <$5 harvestable = skip
+    hwmHarvestableUSD = Math.max(0, currentEquity - floorValue);
+
+    console.log(
+      `[Daily Payout] HWM gate: currentEquity=$${currentEquity.toFixed(2)} | netDeposits=$${netDeposits.toFixed(2)} | cumulativeHarvested=$${cumulativeHarvested.toFixed(2)} | hwmBuffer=$${hwmBuffer.toFixed(2)} | floor=$${floorValue.toFixed(2)} | harvestable=$${hwmHarvestableUSD.toFixed(2)}`,
+    );
+
+    if (hwmHarvestableUSD < minHarvestThreshold) {
+      console.log(`[Daily Payout] HWM gate: harvestable $${hwmHarvestableUSD.toFixed(2)} < $${minHarvestThreshold} — skipping payout (no true new wealth above prior best)`);
+      state.dailyPayouts.push({
+        date: yesterdayStr,
+        payoutDate: now.toISOString(),
+        realizedPnL,
+        payoutPercent: 0,
+        totalDistributed: 0,
+        transfers: [],
+        skippedReason: 'BELOW_HWM',
+      });
+      state.lastDailyPayoutDate = yesterdayStr;
+      // Note: pendingFeeUSDC is NOT cleared — under HWM mode it has no role,
+      // but legacy callers reading it shouldn't see stale data either. Future:
+      // remove the field once HWM mode is the default and soaked.
+      markStateDirty();
+      return;
+    }
+
+    // Synthesize an "effective realized P&L" from the harvestable amount so
+    // the rest of the (legacy) payout flow continues to work unchanged.
+    effectiveRealizedPnL = hwmHarvestableUSD / Math.max(totalPct / 100, 0.001);
+  } else {
+    // v21.15 legacy: per-trade pendingFee accumulation model.
+    // Fall back to recalculated realizedPnL if no pending accumulation.
+    effectiveRealizedPnL = pendingFeeUSDC > 0
+      ? pendingFeeUSDC / Math.max(totalPct / 100, 0.001)
+      : realizedPnL;
+  }
   const recalculatedFee = realizedPnL * (totalPct / 100);
-  // Use whichever is higher — pendingFee is more accurate, recalc is fallback
-  const effectiveRealizedPnL = pendingFeeUSDC > 0
-    ? pendingFeeUSDC / Math.max(totalPct / 100, 0.001)  // back-calculate realizedPnL from reserved fee
-    : realizedPnL;
 
   console.log(`[Daily Payout] Realized P&L: $${realizedPnL.toFixed(2)} | Pending fee reserved: $${pendingFeeUSDC.toFixed(2)} | Effective P&L: $${effectiveRealizedPnL.toFixed(2)}`);
   if (yesterdayEntry) {
@@ -6657,6 +6789,25 @@ async function executeDailyPayout(): Promise<void> {
   }
   // v21.15: Reset pending fee accumulator — funds were sent (or attempted)
   state.pendingFeeUSDC = 0;
+
+  // NVR-SPEC-026: HWM bookkeeping. After a successful payout under hwm mode,
+  // record the new high-water mark = currentEquity − netDeposits − cumulativeHarvested
+  // (where cumulativeHarvested already includes this payout's totalSent).
+  // Future payouts only fire above THIS mark, preventing round-trip "wins"
+  // from re-harvesting the same wealth twice.
+  if (HARVEST_MODE === 'hwm' && totalSent > 0) {
+    const currentEquity = state.trading.totalPortfolioValue || 0;
+    const netDeposits = state.totalDeposited || 0;
+    const cumulativeHarvested = (state.dailyPayouts || []).reduce(
+      (s: number, p: any) => s + (p?.totalDistributed || 0),
+      0,
+    );
+    const newHwmCandidate = currentEquity - netDeposits - cumulativeHarvested;
+    const prevHwm = state.hwmBuffer || 0;
+    state.hwmBuffer = Math.max(prevHwm, newHwmCandidate);
+    console.log(`[Daily Payout] HWM updated: $${prevHwm.toFixed(2)} → $${state.hwmBuffer.toFixed(2)} (currentEquity $${currentEquity.toFixed(2)} − netDeposits $${netDeposits.toFixed(2)} − cumulativeHarvested $${cumulativeHarvested.toFixed(2)})`);
+  }
+
   markStateDirty();  // v21.13-fix: persist reset so a crash-post-payout doesn't re-pay
 
   // v11.4.2: Adjust peakValue downward after payouts — payouts are intentional capital

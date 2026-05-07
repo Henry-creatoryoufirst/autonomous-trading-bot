@@ -120,6 +120,15 @@ export interface AgentState {
   // On-chain deposit tracking
   totalDeposited: number;
   onChainWithdrawn: number;
+  /**
+   * NVR-SPEC-026: True-net-wealth harvest high-water mark.
+   * Tracks the highest `currentEquity − totalDeposited − cumulativeHarvested`
+   * the bot has ever observed at a successful payout. Harvest is only
+   * permitted on equity ABOVE this mark. Round-trip "wins" inside a flat
+   * portfolio don't generate harvestable profit. Optional — only consulted
+   * when HARVEST_MODE=hwm; legacy mode ignores this field.
+   */
+  hwmBuffer?: number;
   lastKnownUSDCBalance: number;
   depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
   // Market intelligence history (persisted for mean-reversion signals)
