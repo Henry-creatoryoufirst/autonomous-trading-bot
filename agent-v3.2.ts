@@ -9555,8 +9555,15 @@ async function main() {
     // NVR-SPEC-028 Phase 3: Reflex execution. Default 'dry-run' — logs
     // would-be entries/exits but doesn't trade. Flip ALPHA_REFLEX_MODE=live
     // when Reviewer accuracy data justifies real capital. =disabled stops
-    // any Reflex action.
-    const reflexMode = ((process.env.ALPHA_REFLEX_MODE ?? 'dry-run').toLowerCase()) as 'disabled' | 'dry-run' | 'live';
+    // any Reflex action. Phase 5 (auto-Promoter) can override the env via
+    // state.alphaReflexModeOverride — that takes precedence so a redeploy
+    // doesn't reset a Promoter-driven live mode back to dry-run.
+    const persistedOverride = (state as any).alphaReflexModeOverride as 'disabled' | 'dry-run' | 'live' | undefined;
+    const envReflexMode = ((process.env.ALPHA_REFLEX_MODE ?? 'dry-run').toLowerCase()) as 'disabled' | 'dry-run' | 'live';
+    const reflexMode = persistedOverride ?? envReflexMode;
+    if (persistedOverride && persistedOverride !== envReflexMode) {
+      console.log(`[Startup] Reflex mode: env=${envReflexMode}, persisted-override=${persistedOverride} — using override`);
+    }
     if (reflexMode !== 'disabled') {
       reflex.init({
         mode: reflexMode,
@@ -9586,6 +9593,14 @@ async function main() {
 
     watcher.start();
     console.log('[Startup] Alpha Watcher enabled (NVR-SPEC-028 Phase 1)');
+
+    // NVR-SPEC-028 Phase 5: Auto-Promoter. Hourly cron evaluates whether
+    // dry-run performance justifies promotion to live (and demotes if live
+    // performance degrades). OFF by default — flip ALPHA_PROMOTER_ENABLED=true
+    // on Railway to enable. Sends Telegram alerts on every state change.
+    const { alphaPromoter: promoter } = await import('./src/core/services/alpha-promoter.js');
+    promoter.restoreFromState();
+    promoter.start();
   }
 
   // v20.7: STATE_BACKUP_URL fallback — if disk state is empty and a backup URL is configured,

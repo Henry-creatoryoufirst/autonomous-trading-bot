@@ -212,6 +212,7 @@ export function loadTradeHistory(): void {
       // UTC payout pays the correct amount even if the bot restarted mid-day.
       state.pendingFeeUSDC = parsed.pendingFeeUSDC || 0;
       state.hwmBuffer = parsed.hwmBuffer || 0;
+      state.alphaReflexModeOverride = parsed.alphaReflexModeOverride;
 
       // Shadow proposals
       if (parsed.shadowProposals && Array.isArray(parsed.shadowProposals)) {
@@ -412,6 +413,7 @@ export function saveTradeHistory(): void {
       dailyPayoutByRecipient: state.dailyPayoutByRecipient,
       pendingFeeUSDC: state.pendingFeeUSDC || 0,
       hwmBuffer: state.hwmBuffer || 0,
+      alphaReflexModeOverride: state.alphaReflexModeOverride,
       strategyPatterns: state.strategyPatterns,
       adaptiveThresholds: state.adaptiveThresholds,
       performanceReviews: state.performanceReviews.slice(-30),

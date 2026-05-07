@@ -156,6 +156,19 @@ export class AlphaReflex {
   }
 
   /**
+   * Runtime mode change — used by the auto-Promoter (NVR-SPEC-028 Phase 5)
+   * to flip dry-run → live (or back) when conditions warrant. Logs the
+   * change. Does NOT close existing positions when demoting; they keep
+   * their original execution status (dry-run positions stay simulated,
+   * live positions still need real exit transactions).
+   */
+  setMode(mode: ReflexMode): void {
+    if (this.mode === mode) return;
+    console.log(`[AlphaReflex] mode change: ${this.mode} → ${mode}`);
+    this.mode = mode;
+  }
+
+  /**
    * Watcher calls this when a trigger's review lands and verdict is BUY
    * with sufficient confidence. Decides whether to enter, sizes the
    * trade, and (in live mode) fires executeTrade. In dry-run mode, logs

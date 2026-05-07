@@ -129,6 +129,14 @@ export interface AgentState {
    * when HARVEST_MODE=hwm; legacy mode ignores this field.
    */
   hwmBuffer?: number;
+  /**
+   * NVR-SPEC-028 Phase 5: Auto-promoter persistent override of Reflex mode.
+   * When set, takes precedence over the ALPHA_REFLEX_MODE env var on
+   * startup — so a redeploy doesn't reset live → dry-run mid-soak. The
+   * Promoter writes to this field whenever it promotes/demotes. Set to
+   * undefined to fall back to env-var default.
+   */
+  alphaReflexModeOverride?: 'disabled' | 'dry-run' | 'live';
   lastKnownUSDCBalance: number;
   depositHistory: Array<{ timestamp: string; amountUSD: number; newTotal: number }>;
   // Market intelligence history (persisted for mean-reversion signals)
