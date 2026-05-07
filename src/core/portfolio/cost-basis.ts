@@ -451,12 +451,17 @@ export function auditAndRepairCostBasis(opts: {
           totalTokensAcquired: cb.totalTokensAcquired,
         },
       });
-    } else if (price > 0 && balance > 0 && balance * price > 1) {
+    } else if (
+      price > 0 &&
+      price < ABSOLUTE_AVG_COST_CEILING_USD &&
+      balance > 0 &&
+      balance * price > 1
+    ) {
       // Peg to current market. unrealizedPnL becomes 0 (honest: we don't
       // know historical entry; treat residual as just-bought today).
-      // Guard: only fire if balance × price seems sane. If `balance` itself
-      // is corrupted (decimal mismatch at on-chain read layer), skip and
-      // fall through to delete.
+      // Guards: skip when implied per-token price is absurd ($100K+ for one
+      // token = corrupted on-chain balance read, like SPX 2026-05-07). Also
+      // skip dust positions (balance × price ≤ $1).
       cb.averageCostBasis = price;
       cb.totalInvestedUSD = price * balance;
       cb.totalTokensAcquired = balance;
