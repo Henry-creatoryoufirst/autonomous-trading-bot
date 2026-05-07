@@ -633,6 +633,34 @@ export class GeckoTerminalService {
     }
   }
 
+  /**
+   * NVR-SPEC-028 Phase 1.5: OHLCV history for hindsight replay.
+   * Returns candles for a given pool, oldest-first.
+   * Each candle: { ts, open, high, low, close, volumeUSD }
+   *
+   * Timeframes supported by GeckoTerminal API: minute / hour / day.
+   * The `aggregate` param controls bucketing within timeframe.
+   */
+  async getOhlcv(
+    poolAddress: string,
+    timeframe: 'minute' | 'hour' | 'day',
+    aggregate = 1,
+    limit = 100,
+  ): Promise<Array<{ ts: number; open: number; high: number; low: number; close: number; volumeUSD: number }>> {
+    try {
+      const url = `${API_BASE}/networks/${NETWORK}/pools/${poolAddress}/ohlcv/${timeframe}?aggregate=${aggregate}&limit=${Math.min(1000, limit)}`;
+      const data = await rateLimitedGet(url);
+      const list = data?.data?.attributes?.ohlcv_list as Array<[number, number, number, number, number, number]> | undefined;
+      if (!list || !Array.isArray(list)) return [];
+      // GT returns newest-first; flip so caller iterates chronologically.
+      return list
+        .map(([ts, open, high, low, close, volumeUSD]) => ({ ts, open, high, low, close, volumeUSD }))
+        .sort((a, b) => a.ts - b.ts);
+    } catch {
+      return [];
+    }
+  }
+
   // --------------------------------------------------------------------------
   // HOT MOVER SCANNER — v21.12
   // --------------------------------------------------------------------------

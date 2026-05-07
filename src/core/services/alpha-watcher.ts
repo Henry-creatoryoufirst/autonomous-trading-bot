@@ -60,11 +60,31 @@ const THRESHOLDS = {
   VOLUME_SPIKE_RATIO: 2.0,
   // Buy pressure: buys / (buys + sells) over h1
   STRONG_BUY_PRESSURE_RATIO: 0.65,
-  // Whale arrival: avg trade size in h1, USD
+  // Whale BUY: high avg trade size + heavy buy ratio
   WHALE_AVG_TRADE_USD: 500,
+  WHALE_BUY_RATIO: 0.6,
+  WHALE_SELL_RATIO: 0.4,
   // Liquidity vacuum: pool liquidity drops > N% from prior poll
   LIQUIDITY_DROP_PCT: 5,
 };
+
+/**
+ * Cooldown — don't re-fire the same {symbol, type} pair more than once per
+ * window UNLESS the new strength is materially higher (1.5x). Prevents
+ * spammy re-firing on the same setup while letting genuine escalations
+ * through.
+ */
+const TRIGGER_COOLDOWN_MIN = 5;
+const STRENGTH_ESCALATION_MULTIPLIER = 1.5;
+
+/**
+ * Outcome window — every fired trigger gets followed for this many minutes.
+ * Long enough to catch typical 5-15% moves; short enough that 96-cycles/day
+ * give us 30+ outcomes within a half-day soak.
+ */
+const OUTCOME_FOLLOW_MINUTES = 30;
+const OUTCOME_TARGET_PCT = 5;
+const OUTCOME_STOP_PCT = 3;
 
 // ============================================================================
 // TYPES
@@ -74,8 +94,34 @@ export type TriggerType =
   | 'MOMENTUM_BREAK'
   | 'VOLUME_SPIKE'
   | 'BUY_PRESSURE'
-  | 'WHALE_ARRIVAL'
+  | 'WHALE_BUY'
+  | 'WHALE_SELL'
   | 'LIQUIDITY_VACUUM';
+
+/**
+ * Outcome of a fired trigger after the 30-min follow-forward window.
+ * Phase 1.5 paper-trade simulator — answers "did this trigger predict
+ * a real move?" without touching capital.
+ */
+export type TriggerOutcomeStatus =
+  | 'OPEN'        // Still being followed (window not elapsed yet)
+  | 'TARGET_HIT'  // Price reached +5% from entry — the win
+  | 'STOP_HIT'    // Price reached -3% from entry first — the loss
+  | 'DECAYED';    // 30 min elapsed without hitting either band — neutral
+
+export interface TriggerOutcome {
+  status: TriggerOutcomeStatus;
+  entryPriceUSD: number;
+  peakPriceUSD: number;
+  troughPriceUSD: number;
+  finalPriceUSD: number;
+  /** % change from entry to whichever endpoint was hit (or to final if DECAYED) */
+  finalPctChange: number;
+  /** ISO timestamp when this outcome was finalized (or last updated if OPEN) */
+  resolvedAt: string;
+  /** Number of price observations recorded across the follow window */
+  observationCount: number;
+}
 
 export interface AlphaTrigger {
   /** ISO timestamp of when the Watcher fired this trigger */
@@ -103,6 +149,13 @@ export interface AlphaTrigger {
     liquidityUSD: number;
     poolAddress: string;
   };
+  /**
+   * Phase 1.5 paper-trade outcome. Populated by the follow-forward loop.
+   * Starts as { status: 'OPEN', ... } and resolves to TARGET_HIT/STOP_HIT/DECAYED
+   * within 30 min. Used as the truth signal for "does this trigger type
+   * actually predict moves?" before any capital is touched (Phase 3+).
+   */
+  outcome?: TriggerOutcome;
 }
 
 export interface WatcherStatus {
@@ -113,11 +166,34 @@ export interface WatcherStatus {
   totalPollsCompleted: number;
   triggersFired24h: number;
   triggersByType24h: Record<TriggerType, number>;
+  /** Phase 1.5: rolling outcome stats for the last 24h of resolved triggers */
+  outcomes24h: {
+    resolved: number;
+    open: number;
+    targetHit: number;
+    stopHit: number;
+    decayed: number;
+    /** Hit rate = targetHit / (resolved with definitive outcome) — the precision number */
+    hitRate: number | null;
+    /** Per-type breakdown so we can see which patterns actually predict */
+    byType: Record<TriggerType, { resolved: number; targetHit: number; stopHit: number; decayed: number; hitRate: number | null }>;
+  };
 }
 
 // ============================================================================
 // WATCHER CLASS
 // ============================================================================
+
+function emptyTypeRecord<T>(zero: T): Record<TriggerType, T> {
+  return {
+    MOMENTUM_BREAK: zero,
+    VOLUME_SPIKE: zero,
+    BUY_PRESSURE: zero,
+    WHALE_BUY: zero,
+    WHALE_SELL: zero,
+    LIQUIDITY_VACUUM: zero,
+  };
+}
 
 export class AlphaWatcher {
   private cohort: string[];
@@ -125,6 +201,9 @@ export class AlphaWatcher {
   private triggers: AlphaTrigger[] = [];
   // Per-token rolling state for delta calculations (e.g., liquidity drop)
   private prevSnapshot: Map<string, { liquidityUSD: number; observedAt: string }> = new Map();
+  // Phase 1.5: cooldown tracking per {symbol, type} — prevents same pattern
+  // re-firing every poll while the underlying h1 window barely shifts.
+  private lastFired: Map<string, { ts: number; strength: number }> = new Map();
   private status: WatcherStatus = {
     enabled: false,
     cohort: [],
@@ -132,12 +211,15 @@ export class AlphaWatcher {
     pollErrors: 0,
     totalPollsCompleted: 0,
     triggersFired24h: 0,
-    triggersByType24h: {
-      MOMENTUM_BREAK: 0,
-      VOLUME_SPIKE: 0,
-      BUY_PRESSURE: 0,
-      WHALE_ARRIVAL: 0,
-      LIQUIDITY_VACUUM: 0,
+    triggersByType24h: emptyTypeRecord(0),
+    outcomes24h: {
+      resolved: 0,
+      open: 0,
+      targetHit: 0,
+      stopHit: 0,
+      decayed: 0,
+      hitRate: null,
+      byType: emptyTypeRecord({ resolved: 0, targetHit: 0, stopHit: 0, decayed: 0, hitRate: null as number | null }),
     },
   };
 
@@ -184,6 +266,9 @@ export class AlphaWatcher {
     const firedThisTick: AlphaTrigger[] = [];
     let pollsAttempted = 0;
     let errors = 0;
+    // Cache pool data per-symbol for the outcome tracker — avoids a second
+    // round-trip when we already have current prices from this poll.
+    const polledPrices: Map<string, number> = new Map();
 
     for (const symbol of this.cohort) {
       pollsAttempted++;
@@ -197,6 +282,7 @@ export class AlphaWatcher {
         const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
         if (pools.length === 0) continue;
         const pool = pools[0];
+        polledPrices.set(symbol, pool.priceUSD);
         const triggers = this.scoreTriggers(symbol, pool);
         for (const t of triggers) {
           this.recordTrigger(t);
@@ -212,6 +298,11 @@ export class AlphaWatcher {
         errors++;
       }
     }
+
+    // Phase 1.5: update outcomes for any open triggers using the prices we
+    // already polled this tick. No additional API calls — the price feed
+    // we collected for trigger scoring is the same feed the outcomes need.
+    this.updateOutcomes(polledPrices);
 
     this.status.lastPollAt = new Date().toISOString();
     this.status.totalPollsCompleted++;
@@ -229,11 +320,66 @@ export class AlphaWatcher {
   }
 
   /**
+   * Phase 1.5 paper-trade outcome tracker. Iterates open triggers and
+   * updates each based on the current poll's price. A trigger resolves
+   * when:
+   *   - price hits +OUTCOME_TARGET_PCT (TARGET_HIT — the win)
+   *   - price hits -OUTCOME_STOP_PCT first (STOP_HIT — the loss)
+   *   - OUTCOME_FOLLOW_MINUTES elapsed without hitting either (DECAYED)
+   *
+   * Once resolved, status changes from 'OPEN' and we stop updating it.
+   */
+  private updateOutcomes(currentPrices: Map<string, number>): void {
+    const now = Date.now();
+    for (const trigger of this.triggers) {
+      const out = trigger.outcome;
+      if (!out || out.status !== 'OPEN') continue;
+
+      const currentPrice = currentPrices.get(trigger.symbol);
+      if (!currentPrice) continue;
+
+      out.observationCount++;
+      out.peakPriceUSD = Math.max(out.peakPriceUSD, currentPrice);
+      out.troughPriceUSD = Math.min(out.troughPriceUSD, currentPrice);
+      out.finalPriceUSD = currentPrice;
+      out.finalPctChange = ((currentPrice - out.entryPriceUSD) / out.entryPriceUSD) * 100;
+      out.resolvedAt = new Date(now).toISOString();
+
+      // Hit target?
+      if (out.finalPctChange >= OUTCOME_TARGET_PCT) {
+        out.status = 'TARGET_HIT';
+        console.log(
+          `[AlphaWatcher] outcome: ${trigger.symbol}/${trigger.type} TARGET_HIT (+${out.finalPctChange.toFixed(2)}%) on trigger from ${trigger.raisedAt}`,
+        );
+        continue;
+      }
+      // Hit stop?
+      if (out.finalPctChange <= -OUTCOME_STOP_PCT) {
+        out.status = 'STOP_HIT';
+        console.log(
+          `[AlphaWatcher] outcome: ${trigger.symbol}/${trigger.type} STOP_HIT (${out.finalPctChange.toFixed(2)}%) on trigger from ${trigger.raisedAt}`,
+        );
+        continue;
+      }
+      // Window expired?
+      const triggerAt = new Date(trigger.raisedAt).getTime();
+      const minutesElapsed = (now - triggerAt) / 60_000;
+      if (minutesElapsed >= OUTCOME_FOLLOW_MINUTES) {
+        out.status = 'DECAYED';
+        console.log(
+          `[AlphaWatcher] outcome: ${trigger.symbol}/${trigger.type} DECAYED (${out.finalPctChange.toFixed(2)}%) after ${minutesElapsed.toFixed(0)}min`,
+        );
+      }
+    }
+  }
+
+  /**
    * Score every trigger pattern against the pool's current state. Pure
-   * deterministic — no LLM. Returns array of triggers that crossed threshold.
+   * deterministic — no LLM. Returns array of triggers that crossed threshold,
+   * filtered through cooldown gate.
    */
   private scoreTriggers(symbol: string, pool: DexPoolData): AlphaTrigger[] {
-    const fired: AlphaTrigger[] = [];
+    const candidates: AlphaTrigger[] = [];
     const now = new Date().toISOString();
     const buys1h = pool.transactions.h1.buys ?? 0;
     const sells1h = pool.transactions.h1.sells ?? 0;
@@ -258,74 +404,130 @@ export class AlphaWatcher {
       poolAddress: pool.poolAddress,
     };
 
+    const mkTrigger = (type: TriggerType, strength: number, reason: string): AlphaTrigger => ({
+      raisedAt: now,
+      symbol,
+      type,
+      strength,
+      reason,
+      snapshot,
+      outcome: {
+        status: 'OPEN',
+        entryPriceUSD: pool.priceUSD,
+        peakPriceUSD: pool.priceUSD,
+        troughPriceUSD: pool.priceUSD,
+        finalPriceUSD: pool.priceUSD,
+        finalPctChange: 0,
+        resolvedAt: now,
+        observationCount: 0,
+      },
+    });
+
     // ── Trigger 1: Momentum break (5-min price change exceeds threshold) ──
     if (Math.abs(pool.priceChange.m5) >= THRESHOLDS.MOMENTUM_BREAK_PCT_5M) {
       const direction = pool.priceChange.m5 > 0 ? 'UP' : 'DOWN';
       const strength = Math.min(1, Math.abs(pool.priceChange.m5) / 5); // 5% = max strength
-      fired.push({
-        raisedAt: now,
-        symbol,
-        type: 'MOMENTUM_BREAK',
-        strength,
-        reason: `5-min price ${direction} ${pool.priceChange.m5.toFixed(2)}% (threshold ${THRESHOLDS.MOMENTUM_BREAK_PCT_5M}%)`,
-        snapshot,
-      });
+      candidates.push(
+        mkTrigger(
+          'MOMENTUM_BREAK',
+          strength,
+          `5-min price ${direction} ${pool.priceChange.m5.toFixed(2)}% (threshold ${THRESHOLDS.MOMENTUM_BREAK_PCT_5M}%)`,
+        ),
+      );
     }
 
     // ── Trigger 2: Volume spike (current rate × 24 vs 24h baseline) ──
     if (volumeSpikeRatio >= THRESHOLDS.VOLUME_SPIKE_RATIO) {
       const strength = Math.min(1, (volumeSpikeRatio - 1) / 4); // ratio 5 = max strength
-      fired.push({
-        raisedAt: now,
-        symbol,
-        type: 'VOLUME_SPIKE',
-        strength,
-        reason: `Volume rate ${volumeSpikeRatio.toFixed(1)}× normal (h1 $${pool.volume.h1.toFixed(0)} vs h24 $${pool.volume.h24.toFixed(0)})`,
-        snapshot,
-      });
+      candidates.push(
+        mkTrigger(
+          'VOLUME_SPIKE',
+          strength,
+          `Volume rate ${volumeSpikeRatio.toFixed(1)}× normal (h1 $${pool.volume.h1.toFixed(0)} vs h24 $${pool.volume.h24.toFixed(0)})`,
+        ),
+      );
     }
 
     // ── Trigger 3: Buy pressure (lopsided buyer/seller ratio) ──
     if (totalTx1h >= 20 && buyRatio1h >= THRESHOLDS.STRONG_BUY_PRESSURE_RATIO) {
       const strength = Math.min(1, (buyRatio1h - 0.5) * 2); // 1.0 ratio = max strength
-      fired.push({
-        raisedAt: now,
-        symbol,
-        type: 'BUY_PRESSURE',
-        strength,
-        reason: `${(buyRatio1h * 100).toFixed(0)}% buys (${buys1h} buys / ${sells1h} sells over 1h)`,
-        snapshot,
-      });
+      candidates.push(
+        mkTrigger(
+          'BUY_PRESSURE',
+          strength,
+          `${(buyRatio1h * 100).toFixed(0)}% buys (${buys1h} buys / ${sells1h} sells over 1h)`,
+        ),
+      );
     }
 
-    // ── Trigger 4: Whale arrival (high avg trade size in h1) ──
-    if (totalTx1h >= 5 && avgTradeSize1hUSD >= THRESHOLDS.WHALE_AVG_TRADE_USD) {
-      const strength = Math.min(1, avgTradeSize1hUSD / 5000); // $5K avg = max strength
-      fired.push({
-        raisedAt: now,
-        symbol,
-        type: 'WHALE_ARRIVAL',
-        strength,
-        reason: `Avg trade size $${avgTradeSize1hUSD.toFixed(0)} (${totalTx1h} txs over 1h)`,
-        snapshot,
-      });
+    // ── Trigger 4: Whale BUY (high avg size + heavy buy ratio) ──
+    if (
+      totalTx1h >= 5 &&
+      avgTradeSize1hUSD >= THRESHOLDS.WHALE_AVG_TRADE_USD &&
+      buyRatio1h >= THRESHOLDS.WHALE_BUY_RATIO
+    ) {
+      const strength = Math.min(1, avgTradeSize1hUSD / 5000);
+      candidates.push(
+        mkTrigger(
+          'WHALE_BUY',
+          strength,
+          `${buys1h} large buys avg $${avgTradeSize1hUSD.toFixed(0)} (${(buyRatio1h * 100).toFixed(0)}% buy ratio)`,
+        ),
+      );
     }
 
-    // ── Trigger 5: Liquidity vacuum (LP withdrawal between polls) ──
+    // ── Trigger 5: Whale SELL (high avg size + heavy sell ratio) ──
+    if (
+      totalTx1h >= 5 &&
+      avgTradeSize1hUSD >= THRESHOLDS.WHALE_AVG_TRADE_USD &&
+      buyRatio1h <= THRESHOLDS.WHALE_SELL_RATIO
+    ) {
+      const strength = Math.min(1, avgTradeSize1hUSD / 5000);
+      candidates.push(
+        mkTrigger(
+          'WHALE_SELL',
+          strength,
+          `${sells1h} large sells avg $${avgTradeSize1hUSD.toFixed(0)} (${((1 - buyRatio1h) * 100).toFixed(0)}% sell ratio)`,
+        ),
+      );
+    }
+
+    // ── Trigger 6: Liquidity vacuum (LP withdrawal between polls) ──
     const prev = this.prevSnapshot.get(symbol);
     if (prev && prev.liquidityUSD > 0 && pool.liquidity > 0) {
       const liquidityDropPct = ((prev.liquidityUSD - pool.liquidity) / prev.liquidityUSD) * 100;
       if (liquidityDropPct >= THRESHOLDS.LIQUIDITY_DROP_PCT) {
         const strength = Math.min(1, liquidityDropPct / 20); // 20% drop = max strength
-        fired.push({
-          raisedAt: now,
-          symbol,
-          type: 'LIQUIDITY_VACUUM',
-          strength,
-          reason: `Liquidity dropped ${liquidityDropPct.toFixed(1)}% since last poll ($${prev.liquidityUSD.toFixed(0)} → $${pool.liquidity.toFixed(0)})`,
-          snapshot,
-        });
+        candidates.push(
+          mkTrigger(
+            'LIQUIDITY_VACUUM',
+            strength,
+            `Liquidity dropped ${liquidityDropPct.toFixed(1)}% since last poll ($${prev.liquidityUSD.toFixed(0)} → $${pool.liquidity.toFixed(0)})`,
+          ),
+        );
       }
+    }
+
+    // ── Cooldown gate ──
+    // For each candidate, only emit if either:
+    //   (a) no prior fire in TRIGGER_COOLDOWN_MIN, OR
+    //   (b) new strength is materially higher (escalation past 1.5x)
+    const fired: AlphaTrigger[] = [];
+    const nowMs = Date.now();
+    for (const c of candidates) {
+      const key = `${c.symbol}:${c.type}`;
+      const prev = this.lastFired.get(key);
+      if (prev) {
+        const minutesSince = (nowMs - prev.ts) / 60_000;
+        if (
+          minutesSince < TRIGGER_COOLDOWN_MIN &&
+          c.strength < prev.strength * STRENGTH_ESCALATION_MULTIPLIER
+        ) {
+          continue; // suppress — within cooldown and not a meaningful escalation
+        }
+      }
+      this.lastFired.set(key, { ts: nowMs, strength: c.strength });
+      fired.push(c);
     }
 
     return fired;
@@ -342,15 +544,244 @@ export class AlphaWatcher {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const recent = this.triggers.filter((t) => new Date(t.raisedAt).getTime() >= cutoff);
     this.status.triggersFired24h = recent.length;
-    const byType: Record<TriggerType, number> = {
-      MOMENTUM_BREAK: 0,
-      VOLUME_SPIKE: 0,
-      BUY_PRESSURE: 0,
-      WHALE_ARRIVAL: 0,
-      LIQUIDITY_VACUUM: 0,
+    const byTypeCount: Record<TriggerType, number> = emptyTypeRecord(0);
+    for (const t of recent) byTypeCount[t.type]++;
+    this.status.triggersByType24h = byTypeCount;
+
+    // Phase 1.5: outcome rollup. resolved = TARGET_HIT + STOP_HIT + DECAYED.
+    // hitRate = TARGET_HIT / resolved (excluding DECAYED matters less than
+    // including it — DECAYED means the trigger didn't predict either way,
+    // which is information; but hit rate is best understood as "of fired
+    // triggers, what fraction reached the +5% target"). We expose both: the
+    // primary hitRate uses resolved-with-definitive-outcome (target + stop)
+    // as the denominator since DECAYED muddles the precision question.
+    const stats = {
+      resolved: 0,
+      open: 0,
+      targetHit: 0,
+      stopHit: 0,
+      decayed: 0,
+      hitRate: null as number | null,
+      byType: emptyTypeRecord({ resolved: 0, targetHit: 0, stopHit: 0, decayed: 0, hitRate: null as number | null }),
     };
-    for (const t of recent) byType[t.type]++;
-    this.status.triggersByType24h = byType;
+    // Deep-copy the per-type sub-records so emptyTypeRecord's shared zero
+    // object isn't mutated across slots.
+    for (const t of Object.keys(stats.byType) as TriggerType[]) {
+      stats.byType[t] = { resolved: 0, targetHit: 0, stopHit: 0, decayed: 0, hitRate: null };
+    }
+
+    for (const t of recent) {
+      const o = t.outcome;
+      if (!o) continue;
+      const slot = stats.byType[t.type];
+      if (o.status === 'OPEN') {
+        stats.open++;
+      } else {
+        stats.resolved++;
+        slot.resolved++;
+        if (o.status === 'TARGET_HIT') {
+          stats.targetHit++;
+          slot.targetHit++;
+        } else if (o.status === 'STOP_HIT') {
+          stats.stopHit++;
+          slot.stopHit++;
+        } else if (o.status === 'DECAYED') {
+          stats.decayed++;
+          slot.decayed++;
+        }
+      }
+    }
+    const definitive = stats.targetHit + stats.stopHit;
+    stats.hitRate = definitive > 0 ? stats.targetHit / definitive : null;
+    for (const t of Object.keys(stats.byType) as TriggerType[]) {
+      const slot = stats.byType[t];
+      const def = slot.targetHit + slot.stopHit;
+      slot.hitRate = def > 0 ? slot.targetHit / def : null;
+    }
+    this.status.outcomes24h = stats;
+  }
+
+  // --------------------------------------------------------------------------
+  // Phase 1.5: Hindsight replay
+  // --------------------------------------------------------------------------
+
+  /**
+   * Synthesize what the Watcher would have fired over the last N minutes
+   * using GeckoTerminal 1-minute OHLCV candles. Then synthesize each
+   * trigger's outcome from the subsequent candles.
+   *
+   * Limitation: only MOMENTUM_BREAK and VOLUME_SPIKE are derivable from
+   * candle data. The microstructure-dependent triggers (BUY_PRESSURE,
+   * WHALE_BUY/SELL, LIQUIDITY_VACUUM) require live transaction-level data
+   * the OHLCV endpoint doesn't expose — those only show up via forward
+   * tracking (which the Watcher does in the live tick loop).
+   *
+   * Returns a structured replay report: per-token candle count, synthetic
+   * triggers fired, synthetic outcomes resolved, hit rate by trigger type.
+   */
+  async replay(minutesBack: number): Promise<{
+    minutesBack: number;
+    runAt: string;
+    perToken: Record<string, {
+      poolAddress: string;
+      candlesAnalyzed: number;
+      syntheticTriggers: Array<{
+        type: TriggerType;
+        firedAt: string;
+        priceUSD: number;
+        reason: string;
+        outcome: { status: TriggerOutcomeStatus; finalPctChange: number; minutesToResolve: number };
+      }>;
+    }>;
+    summary: {
+      totalTriggers: number;
+      byType: Record<TriggerType, { fired: number; targetHit: number; stopHit: number; decayed: number; hitRate: number | null }>;
+    };
+    notes: string[];
+  }> {
+    const runAt = new Date().toISOString();
+    const minutes = Math.max(15, Math.min(720, minutesBack));
+    const candleLimit = minutes + OUTCOME_FOLLOW_MINUTES + 5; // buffer for outcome lookahead
+    const perToken: Record<string, any> = {};
+    const summaryByType: Record<TriggerType, { fired: number; targetHit: number; stopHit: number; decayed: number; hitRate: number | null }> =
+      emptyTypeRecord({ fired: 0, targetHit: 0, stopHit: 0, decayed: 0, hitRate: null as number | null });
+    for (const t of Object.keys(summaryByType) as TriggerType[]) {
+      summaryByType[t] = { fired: 0, targetHit: 0, stopHit: 0, decayed: 0, hitRate: null };
+    }
+    const notes: string[] = [
+      'Replay covers MOMENTUM_BREAK + VOLUME_SPIKE only — these are derivable from candle data.',
+      'Microstructure triggers (BUY_PRESSURE, WHALE_BUY/SELL, LIQUIDITY_VACUUM) only show up via forward tracking.',
+    ];
+    let totalTriggers = 0;
+
+    for (const symbol of this.cohort) {
+      const tokenInfo = TOKEN_REGISTRY[symbol];
+      if (!tokenInfo) continue;
+      try {
+        const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
+        if (pools.length === 0) continue;
+        const pool = pools[0];
+        const candles = await geckoTerminalService.getOhlcv(pool.poolAddress, 'minute', 1, candleLimit);
+        if (candles.length < 6) {
+          perToken[symbol] = { poolAddress: pool.poolAddress, candlesAnalyzed: candles.length, syntheticTriggers: [] };
+          continue;
+        }
+
+        const syntheticTriggers: Array<{
+          type: TriggerType;
+          firedAt: string;
+          priceUSD: number;
+          reason: string;
+          outcome: { status: TriggerOutcomeStatus; finalPctChange: number; minutesToResolve: number };
+        }> = [];
+
+        // Walk candles chronologically. Skip first 5 (need 5-min lookback for momentum/volume).
+        for (let i = 5; i < candles.length; i++) {
+          const c = candles[i];
+          const fiveMinAgo = candles[i - 5];
+          const priceChange5m = ((c.close - fiveMinAgo.close) / fiveMinAgo.close) * 100;
+
+          // Compute synthetic h1 volume from last 60 candles (or whatever we have)
+          const lookback = candles.slice(Math.max(0, i - 59), i + 1);
+          const h1Volume = lookback.reduce((s, x) => s + x.volumeUSD, 0);
+          // Approximate h24 baseline by extrapolating from h1 (we don't have 24h
+          // of 1-min candles). Use the candle's own pool h24 from current pool
+          // data as a pragmatic proxy — same volume regime applies.
+          const h24Volume = pool.volume.h24;
+          const volumeSpikeRatio = h24Volume > 0 ? (h1Volume * 24) / h24Volume : 0;
+
+          // ── Synthetic MOMENTUM_BREAK ──
+          if (Math.abs(priceChange5m) >= THRESHOLDS.MOMENTUM_BREAK_PCT_5M) {
+            const direction = priceChange5m > 0 ? 'UP' : 'DOWN';
+            const outcome = this.synthesizeOutcome(candles, i, c.close);
+            syntheticTriggers.push({
+              type: 'MOMENTUM_BREAK',
+              firedAt: new Date(c.ts * 1000).toISOString(),
+              priceUSD: c.close,
+              reason: `5-min ${direction} ${priceChange5m.toFixed(2)}%`,
+              outcome,
+            });
+            summaryByType.MOMENTUM_BREAK.fired++;
+            if (outcome.status === 'TARGET_HIT') summaryByType.MOMENTUM_BREAK.targetHit++;
+            else if (outcome.status === 'STOP_HIT') summaryByType.MOMENTUM_BREAK.stopHit++;
+            else if (outcome.status === 'DECAYED') summaryByType.MOMENTUM_BREAK.decayed++;
+            totalTriggers++;
+          }
+
+          // ── Synthetic VOLUME_SPIKE ──
+          if (volumeSpikeRatio >= THRESHOLDS.VOLUME_SPIKE_RATIO) {
+            const outcome = this.synthesizeOutcome(candles, i, c.close);
+            syntheticTriggers.push({
+              type: 'VOLUME_SPIKE',
+              firedAt: new Date(c.ts * 1000).toISOString(),
+              priceUSD: c.close,
+              reason: `Volume rate ${volumeSpikeRatio.toFixed(1)}× (h1 $${h1Volume.toFixed(0)})`,
+              outcome,
+            });
+            summaryByType.VOLUME_SPIKE.fired++;
+            if (outcome.status === 'TARGET_HIT') summaryByType.VOLUME_SPIKE.targetHit++;
+            else if (outcome.status === 'STOP_HIT') summaryByType.VOLUME_SPIKE.stopHit++;
+            else if (outcome.status === 'DECAYED') summaryByType.VOLUME_SPIKE.decayed++;
+            totalTriggers++;
+          }
+        }
+
+        perToken[symbol] = {
+          poolAddress: pool.poolAddress,
+          candlesAnalyzed: candles.length,
+          syntheticTriggers,
+        };
+      } catch (e: any) {
+        notes.push(`${symbol}: ${e?.message ?? 'replay failed'}`);
+      }
+    }
+
+    // Compute hitRate per type
+    for (const t of Object.keys(summaryByType) as TriggerType[]) {
+      const s = summaryByType[t];
+      const def = s.targetHit + s.stopHit;
+      s.hitRate = def > 0 ? s.targetHit / def : null;
+    }
+
+    return { minutesBack: minutes, runAt, perToken, summary: { totalTriggers, byType: summaryByType }, notes };
+  }
+
+  /**
+   * Walk forward from candle index `i` for OUTCOME_FOLLOW_MINUTES looking
+   * for whether high crossed +OUTCOME_TARGET_PCT or low crossed
+   * -OUTCOME_STOP_PCT first. Returns a synthesized TriggerOutcome.
+   */
+  private synthesizeOutcome(
+    candles: Array<{ ts: number; high: number; low: number; close: number }>,
+    startIdx: number,
+    entryPrice: number,
+  ): { status: TriggerOutcomeStatus; finalPctChange: number; minutesToResolve: number } {
+    const targetPrice = entryPrice * (1 + OUTCOME_TARGET_PCT / 100);
+    const stopPrice = entryPrice * (1 - OUTCOME_STOP_PCT / 100);
+    const lookahead = Math.min(candles.length - startIdx - 1, OUTCOME_FOLLOW_MINUTES);
+    let lastPrice = entryPrice;
+    for (let j = 1; j <= lookahead; j++) {
+      const c = candles[startIdx + j];
+      lastPrice = c.close;
+      // Check stop and target — within a single 1-min candle, if both bands
+      // were touched, treat the closer-to-open as having hit first. Without
+      // intra-candle order data, use distance from prior close as the
+      // tiebreaker. Conservative: stop wins ties (worse case for hit-rate).
+      const hitTarget = c.high >= targetPrice;
+      const hitStop = c.low <= stopPrice;
+      if (hitTarget && hitStop) {
+        const distTarget = targetPrice - candles[startIdx + j - 1].close;
+        const distStop = candles[startIdx + j - 1].close - stopPrice;
+        if (distTarget < distStop) {
+          return { status: 'TARGET_HIT', finalPctChange: OUTCOME_TARGET_PCT, minutesToResolve: j };
+        }
+        return { status: 'STOP_HIT', finalPctChange: -OUTCOME_STOP_PCT, minutesToResolve: j };
+      }
+      if (hitTarget) return { status: 'TARGET_HIT', finalPctChange: OUTCOME_TARGET_PCT, minutesToResolve: j };
+      if (hitStop) return { status: 'STOP_HIT', finalPctChange: -OUTCOME_STOP_PCT, minutesToResolve: j };
+    }
+    const finalPct = ((lastPrice - entryPrice) / entryPrice) * 100;
+    return { status: 'DECAYED', finalPctChange: finalPct, minutesToResolve: lookahead };
   }
 
   // --------------------------------------------------------------------------

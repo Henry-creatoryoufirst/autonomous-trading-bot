@@ -1395,6 +1395,19 @@ export function handleAlphaWatcher(
     return;
   }
 
+  if (action === 'replay') {
+    const minutes = Math.max(15, Math.min(720, parseInt(url.searchParams.get('minutes') ?? '60', 10)));
+    alphaWatcher
+      .replay(minutes)
+      .then((result) => {
+        ctx.sendJSON(res, 200, result);
+      })
+      .catch((e) => {
+        ctx.sendJSON(res, 500, { error: e?.message ?? 'replay failed' });
+      });
+    return;
+  }
+
   ctx.sendJSON(res, 200, {
     status: alphaWatcher.getStatus(),
     recentTriggers: alphaWatcher.getTriggers(limit),
