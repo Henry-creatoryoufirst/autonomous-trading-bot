@@ -454,6 +454,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "KAITO", name: "Kaito", coingeckoId: "kaito",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-07) ===
+  CLAWNCH: {
+    address: "0xa1F72459dfA10BAD200Ac160eCd78C6b77a747be",
+    symbol: "CLAWNCH", name: "CLAWNCH", coingeckoId: "clawnch",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === AUTO-DISCOVERED (scout 2026-05-04) ===
   cbSOL: {
     address: "0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c",
