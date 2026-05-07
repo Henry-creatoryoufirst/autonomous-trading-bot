@@ -201,6 +201,10 @@ export class AlphaWatcher {
   private triggers: AlphaTrigger[] = [];
   // Per-token rolling state for delta calculations (e.g., liquidity drop)
   private prevSnapshot: Map<string, { liquidityUSD: number; observedAt: string }> = new Map();
+  // Per-token pool address cache. Stable for hours; populated by live ticks
+  // and used by replay to avoid burning GT rate limit on redundant
+  // getTokenPools calls. Empty until a live tick succeeds for the token.
+  private poolAddressCache: Map<string, string> = new Map();
   // Phase 1.5: cooldown tracking per {symbol, type} — prevents same pattern
   // re-firing every poll while the underlying h1 window barely shifts.
   private lastFired: Map<string, { ts: number; strength: number }> = new Map();
@@ -282,6 +286,8 @@ export class AlphaWatcher {
         const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
         if (pools.length === 0) continue;
         const pool = pools[0];
+        // Cache pool address for replay reuse (avoids redundant GT calls)
+        this.poolAddressCache.set(symbol, pool.poolAddress);
         polledPrices.set(symbol, pool.priceUSD);
         const triggers = this.scoreTriggers(symbol, pool);
         for (const t of triggers) {
@@ -661,19 +667,34 @@ export class AlphaWatcher {
         continue;
       }
       try {
-        const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
-        if (pools.length === 0) {
-          notes.push(`${symbol}: getTokenPools returned 0 pools (token=${tokenInfo.address})`);
-          perToken[symbol] = { poolAddress: '', candlesAnalyzed: 0, syntheticTriggers: [] };
-          continue;
+        // Prefer cached pool address — avoids burning GT rate limit on a
+        // redundant getTokenPools call when the live tick has already
+        // discovered the pool. Falls back to fresh fetch if cache empty.
+        let poolAddress = this.poolAddressCache.get(symbol);
+        if (!poolAddress) {
+          const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
+          if (pools.length === 0) {
+            notes.push(`${symbol}: getTokenPools returned 0 pools (token=${tokenInfo.address})`);
+            perToken[symbol] = { poolAddress: '', candlesAnalyzed: 0, syntheticTriggers: [] };
+            continue;
+          }
+          poolAddress = pools[0].poolAddress;
+          this.poolAddressCache.set(symbol, poolAddress);
         }
-        const pool = pools[0];
-        const candles = await geckoTerminalService.getOhlcv(pool.poolAddress, 'minute', 1, candleLimit);
+        const candles = await geckoTerminalService.getOhlcv(poolAddress, 'minute', 1, candleLimit);
         if (candles.length < 6) {
           notes.push(`${symbol}: getOhlcv returned ${candles.length} candles (need ≥6)`);
-          perToken[symbol] = { poolAddress: pool.poolAddress, candlesAnalyzed: candles.length, syntheticTriggers: [] };
+          perToken[symbol] = { poolAddress, candlesAnalyzed: candles.length, syntheticTriggers: [] };
           continue;
         }
+        // For volume-spike comparisons we need an h24 baseline. We don't have
+        // 24h of 1-min candles, so use the most-recent live snapshot's h24
+        // volume as a proxy (same regime). Lookup via prevSnapshot is keyed
+        // by symbol; if absent, sum the entire candle window as a fallback.
+        const prevSnap = this.prevSnapshot.get(symbol);
+        const h24Volume = prevSnap?.liquidityUSD
+          ? candles.slice(-Math.min(candles.length, 1440)).reduce((s, c) => s + c.volumeUSD, 0)
+          : candles.reduce((s, c) => s + c.volumeUSD, 0);
 
         const syntheticTriggers: Array<{
           type: TriggerType;
@@ -692,10 +713,7 @@ export class AlphaWatcher {
           // Compute synthetic h1 volume from last 60 candles (or whatever we have)
           const lookback = candles.slice(Math.max(0, i - 59), i + 1);
           const h1Volume = lookback.reduce((s, x) => s + x.volumeUSD, 0);
-          // Approximate h24 baseline by extrapolating from h1 (we don't have 24h
-          // of 1-min candles). Use the candle's own pool h24 from current pool
-          // data as a pragmatic proxy — same volume regime applies.
-          const h24Volume = pool.volume.h24;
+          // h24Volume computed once outside the loop (already in scope).
           const volumeSpikeRatio = h24Volume > 0 ? (h1Volume * 24) / h24Volume : 0;
 
           // ── Synthetic MOMENTUM_BREAK ──
@@ -735,7 +753,7 @@ export class AlphaWatcher {
         }
 
         perToken[symbol] = {
-          poolAddress: pool.poolAddress,
+          poolAddress,
           candlesAnalyzed: candles.length,
           syntheticTriggers,
         };
