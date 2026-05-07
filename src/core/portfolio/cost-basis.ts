@@ -430,7 +430,16 @@ export function auditAndRepairCostBasis(opts: {
 
     const healed = attemptSelfHeal(symbol, cb);
 
-    if (healed && cb.averageCostBasis > 0 && cb.totalTokensAcquired > 0) {
+    // Validate self-heal result — if replay produced fresh corruption (e.g.
+    // because trade-record tokenAmount values themselves carry the decimal
+    // bug, as observed on SPX 2026-05-07), don't accept the result.
+    const selfHealClean = healed
+      && cb.averageCostBasis > 0
+      && cb.averageCostBasis < ABSOLUTE_AVG_COST_CEILING_USD
+      && cb.totalTokensAcquired > 0
+      && (price <= 0 || cb.averageCostBasis < price * RATIO_TO_MARKET_CEILING);
+
+    if (selfHealClean) {
       report.repaired.push({
         symbol,
         method: 'self-heal-from-trade-history',
@@ -442,9 +451,12 @@ export function auditAndRepairCostBasis(opts: {
           totalTokensAcquired: cb.totalTokensAcquired,
         },
       });
-    } else if (price > 0 && balance > 0) {
-      // Last-ditch: peg to current market. unrealizedPnL becomes 0 (honest:
-      // we don't know what we paid — treat residual as just-bought today).
+    } else if (price > 0 && balance > 0 && balance * price > 1) {
+      // Peg to current market. unrealizedPnL becomes 0 (honest: we don't
+      // know historical entry; treat residual as just-bought today).
+      // Guard: only fire if balance × price seems sane. If `balance` itself
+      // is corrupted (decimal mismatch at on-chain read layer), skip and
+      // fall through to delete.
       cb.averageCostBasis = price;
       cb.totalInvestedUSD = price * balance;
       cb.totalTokensAcquired = balance;
@@ -461,13 +473,35 @@ export function auditAndRepairCostBasis(opts: {
           totalTokensAcquired: cb.totalTokensAcquired,
         },
       });
+    } else if (usdValue < 1 || balance <= 0) {
+      // No real position remaining. Delete the entry — it's a ghost.
+      // Bot will recreate on next buy with clean accounting.
+      delete cbMap[symbol];
+      report.repaired.push({
+        symbol,
+        method: 'delete-ghost-entry',
+        reasons,
+        before,
+        after: { averageCostBasis: 0, totalInvestedUSD: 0, totalTokensAcquired: 0 },
+      });
     } else {
-      // Restore the (corrupted) before-state since we couldn't repair —
-      // don't leave the position in a half-zeroed state.
-      cb.averageCostBasis = before.averageCostBasis;
-      cb.totalInvestedUSD = before.totalInvestedUSD;
-      cb.totalTokensAcquired = before.totalTokensAcquired;
-      report.unrepaired.push({ symbol, reasons });
+      // Position is real ($1+) but BOTH self-heal AND peg-to-market would
+      // produce corruption (typically because on-chain balance itself has
+      // bad decimals, like SPX 2026-05-07). Last resort: zero the
+      // costBasis fields. Future sells return 0 P&L (treated as pure
+      // revenue per existing fallback in updateCostBasisAfterSell);
+      // future buys re-establish costBasis cleanly.
+      cb.averageCostBasis = 0;
+      cb.totalInvestedUSD = 0;
+      cb.totalTokensAcquired = 0;
+      cb.unrealizedPnL = 0;
+      report.repaired.push({
+        symbol,
+        method: 'zero-stuck-position',
+        reasons,
+        before,
+        after: { averageCostBasis: 0, totalInvestedUSD: 0, totalTokensAcquired: 0 },
+      });
     }
   }
 
