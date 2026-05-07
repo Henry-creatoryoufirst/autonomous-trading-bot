@@ -16,6 +16,7 @@ import { runConfidenceGate } from '../../../scripts/confidence-gate.js';
 import { getModelTelemetry, getAgreementRate, type ModelTelemetry, type GemmaMode } from '../../core/services/model-client.js';
 import { activeChain } from '../../core/config/chain-config.js';
 import { loadPolicy, DEFAULT_POLICY } from '../../core/services/policy.js';
+import { auditAndRepairCostBasis } from '../../core/portfolio/cost-basis.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1331,9 +1332,6 @@ export function handleRepairCostBasis(
     return;
   }
 
-  // Lazy import to avoid circular dep at module load time.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { auditAndRepairCostBasis } = require('../../core/portfolio/cost-basis.js');
   const balances = ctx.apiBalances().balances;
   const dryRun = req.method === 'GET';
   const report = auditAndRepairCostBasis({ dryRun, balances });
