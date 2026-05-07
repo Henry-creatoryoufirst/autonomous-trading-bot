@@ -3109,9 +3109,15 @@ async function makeTradeDecisionViaSleeve(
   const SLEEVE_ISOLATION_ENABLED = process.env.SLEEVE_ISOLATION_ENABLED === 'true';
   const ALPHA_SLEEVE_IDS = ['alpha-hunter', 'alpha-rotation'];
   const MAX_ALPHA_RESERVATION_PCT = 0.25; // defensive cap — alpha can never starve Core
+  // NOTE: alpha allocation comes from the dynamic `weights` map (which the
+  // allocator computes from env vars like ALPHA_HUNTER_ALLOCATION_PCT). Reading
+  // state.sleeveConfig.allocations directly returned 0 in prod 2026-05-07
+  // because that field is initialized to 0 by migration and only updates when
+  // someone calls the (currently unwired) hot-reload path. Use weights so
+  // reservation reflects what the per-sleeve dispatch ACTUALLY uses.
   const alphaReservedUSDC = SLEEVE_ISOLATION_ENABLED
     ? ALPHA_SLEEVE_IDS.reduce((sum, id) => {
-        const alpha = state.sleeveConfig?.allocations?.[id] ?? 0;
+        const alpha = weights[id] ?? 0;
         const enabled = state.sleeveConfig?.enabled?.[id] !== false;
         const modeOverride = state.sleeveConfig?.modeOverrides?.[id];
         const sleeveDef = sleeves.find(s => s.id === id);
@@ -4645,22 +4651,18 @@ async function makeTradeDecision(
   // i.e. with alpha-sleeve reservations subtracted. Without this, Core would
   // compute its own un-isolated availableUSDC and ignore alpha reservations.
   const SLEEVE_ISOLATION_ENABLED_HEAVY = process.env.SLEEVE_ISOLATION_ENABLED === 'true';
-  const ALPHA_SLEEVE_IDS_HEAVY = ['alpha-hunter', 'alpha-rotation'];
   const MAX_ALPHA_RESERVATION_PCT_HEAVY = 0.25;
+  // Read env-driven allocation directly — same source as the allocator's
+  // computeWeights uses. Mirrors the orchestrator-level reservation calc but
+  // without needing the `weights` map (not in scope here).
+  const alphaHunterPct = parseFloat(process.env.ALPHA_HUNTER_ALLOCATION_PCT ?? '0') || 0;
+  const alphaHunterLive = (process.env.ALPHA_HUNTER_LIVE ?? 'false').toLowerCase() === 'true';
   let alphaReservedHeavy = 0;
-  if (SLEEVE_ISOLATION_ENABLED_HEAVY && state.sleeveConfig?.allocations) {
-    for (const id of ALPHA_SLEEVE_IDS_HEAVY) {
-      const alpha = state.sleeveConfig.allocations[id] ?? 0;
-      const enabled = state.sleeveConfig.enabled?.[id] !== false;
-      if (!enabled || alpha <= 0) continue;
-      // Only counts toward Core's reservation if the sleeve is configured live.
-      // Paper-mode alpha sleeves don't reserve real USDC.
-      const modeOverride = state.sleeveConfig.modeOverrides?.[id];
-      const isLive = modeOverride === 'live' || (modeOverride === undefined && alpha > 0);
-      if (!isLive) continue;
-      alphaReservedHeavy += totalPortfolioValue * alpha;
-    }
-    alphaReservedHeavy = Math.min(alphaReservedHeavy, totalPortfolioValue * MAX_ALPHA_RESERVATION_PCT_HEAVY);
+  if (SLEEVE_ISOLATION_ENABLED_HEAVY && alphaHunterLive && alphaHunterPct > 0) {
+    alphaReservedHeavy = Math.min(
+      totalPortfolioValue * alphaHunterPct,
+      totalPortfolioValue * MAX_ALPHA_RESERVATION_PCT_HEAVY,
+    );
   }
   const availableUSDC = Math.max(0, (usdcBalance?.balance || 0) - pendingFee - alphaReservedHeavy);
 
