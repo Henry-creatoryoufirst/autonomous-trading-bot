@@ -19,6 +19,7 @@ import { loadPolicy, DEFAULT_POLICY } from '../../core/services/policy.js';
 import { auditAndRepairCostBasis } from '../../core/portfolio/cost-basis.js';
 import { alphaWatcher } from '../../core/services/alpha-watcher.js';
 import { alphaReflex } from '../../core/services/alpha-reflex.js';
+import { alphaLearning } from '../../core/services/alpha-learning.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1406,6 +1407,13 @@ export function handleAlphaWatcher(
       .catch((e) => {
         ctx.sendJSON(res, 500, { error: e?.message ?? 'replay failed' });
       });
+    return;
+  }
+
+  if (action === 'report') {
+    const windowHours = Math.max(1, Math.min(168, parseInt(url.searchParams.get('hours') ?? '24', 10)));
+    const report = alphaLearning.generateReport(windowHours);
+    ctx.sendJSON(res, 200, report);
     return;
   }
 
