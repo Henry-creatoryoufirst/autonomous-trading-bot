@@ -538,7 +538,7 @@ export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before 
 export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
 export const KELLY_POSITION_CEILING_PCT = 12;  // Bear-adjusted May-2026: 14→12 — 59-day bear; with TRENDING_DOWN ×0.75 → 9% effective max; research (Institutional Kelly-VAPS, adaptive Kelly criterion): sustained bear regimes require tighter per-trade ceiling beyond Quarter-Kelly fraction alone
-export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
+export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 20; // Bear-adjusted May-2026: 30→20 — 62-day bear; all large-portfolio Kelly params tightened (fraction 0.25, ceiling 12%); small-portfolio 30% ceiling was inconsistently loose; 20% aligns small-portfolio sizing with bear-market discipline ($5K × 20% = $1,000 max per position)
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**
