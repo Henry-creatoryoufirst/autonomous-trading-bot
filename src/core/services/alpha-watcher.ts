@@ -56,8 +56,11 @@ const TRIGGER_RING_BUFFER_SIZE = 500;
 const THRESHOLDS = {
   // Momentum break: 5-min price change exceeds this absolute pct
   MOMENTUM_BREAK_PCT_5M: 1.5,
-  // Volume spike: h1 volume × 24 (annualized rate) divided by h24 volume
-  VOLUME_SPIKE_RATIO: 2.0,
+  // Volume spike: h1 volume × 24 (annualized rate) divided by h24 volume.
+  // 2026-05-07: replay showed 203/203 = 0% hit rate at 2.0× threshold. The
+  // bar fires too easily on minor volume bumps. Raised to 3.0× to filter
+  // for genuine spike events. Will be retuned by Phase 4 outcome learning.
+  VOLUME_SPIKE_RATIO: 3.0,
   // Buy pressure: buys / (buys + sells) over h1
   STRONG_BUY_PRESSURE_RATIO: 0.65,
   // Whale BUY: high avg trade size + heavy buy ratio
@@ -201,10 +204,12 @@ export class AlphaWatcher {
   private triggers: AlphaTrigger[] = [];
   // Per-token rolling state for delta calculations (e.g., liquidity drop)
   private prevSnapshot: Map<string, { liquidityUSD: number; observedAt: string }> = new Map();
-  // Per-token pool address cache. Stable for hours; populated by live ticks
-  // and used by replay to avoid burning GT rate limit on redundant
-  // getTokenPools calls. Empty until a live tick succeeds for the token.
+  // Per-token pool address + h24 volume cache. Stable for hours; populated
+  // by live ticks and used by replay to avoid burning GT rate limit on
+  // redundant getTokenPools calls AND to provide a real 24h baseline
+  // (replay's candle window is too short to compute its own).
   private poolAddressCache: Map<string, string> = new Map();
+  private poolMetaCache: Map<string, { volume24hUSD: number; updatedAt: number }> = new Map();
   // Phase 1.5: cooldown tracking per {symbol, type} — prevents same pattern
   // re-firing every poll while the underlying h1 window barely shifts.
   private lastFired: Map<string, { ts: number; strength: number }> = new Map();
@@ -286,8 +291,10 @@ export class AlphaWatcher {
         const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
         if (pools.length === 0) continue;
         const pool = pools[0];
-        // Cache pool address for replay reuse (avoids redundant GT calls)
+        // Cache pool address + h24 volume for replay reuse (avoids redundant
+        // GT calls AND gives replay a real 24h baseline for VOLUME_SPIKE).
         this.poolAddressCache.set(symbol, pool.poolAddress);
+        this.poolMetaCache.set(symbol, { volume24hUSD: pool.volume.h24, updatedAt: Date.now() });
         polledPrices.set(symbol, pool.priceUSD);
         const triggers = this.scoreTriggers(symbol, pool);
         for (const t of triggers) {
@@ -687,14 +694,15 @@ export class AlphaWatcher {
           perToken[symbol] = { poolAddress, candlesAnalyzed: candles.length, syntheticTriggers: [] };
           continue;
         }
-        // For volume-spike comparisons we need an h24 baseline. We don't have
-        // 24h of 1-min candles, so use the most-recent live snapshot's h24
-        // volume as a proxy (same regime). Lookup via prevSnapshot is keyed
-        // by symbol; if absent, sum the entire candle window as a fallback.
-        const prevSnap = this.prevSnapshot.get(symbol);
-        const h24Volume = prevSnap?.liquidityUSD
-          ? candles.slice(-Math.min(candles.length, 1440)).reduce((s, c) => s + c.volumeUSD, 0)
-          : candles.reduce((s, c) => s + c.volumeUSD, 0);
+        // For volume-spike comparisons we need a real h24 baseline. Replay's
+        // candle window is too short to derive its own (a 3h window would
+        // make every minute look like a 2× spike). Use live-tick cached h24,
+        // or skip volume-spike triggers entirely if cache is cold.
+        const cachedMeta = this.poolMetaCache.get(symbol);
+        const h24Volume = cachedMeta?.volume24hUSD ?? 0;
+        if (h24Volume === 0) {
+          notes.push(`${symbol}: no cached h24 volume — skipping VOLUME_SPIKE in replay (live tick will populate cache)`);
+        }
 
         const syntheticTriggers: Array<{
           type: TriggerType;
