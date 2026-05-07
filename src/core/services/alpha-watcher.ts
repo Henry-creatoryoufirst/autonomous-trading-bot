@@ -656,13 +656,21 @@ export class AlphaWatcher {
 
     for (const symbol of this.cohort) {
       const tokenInfo = TOKEN_REGISTRY[symbol];
-      if (!tokenInfo) continue;
+      if (!tokenInfo) {
+        notes.push(`${symbol}: not in TOKEN_REGISTRY`);
+        continue;
+      }
       try {
         const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
-        if (pools.length === 0) continue;
+        if (pools.length === 0) {
+          notes.push(`${symbol}: getTokenPools returned 0 pools (token=${tokenInfo.address})`);
+          perToken[symbol] = { poolAddress: '', candlesAnalyzed: 0, syntheticTriggers: [] };
+          continue;
+        }
         const pool = pools[0];
         const candles = await geckoTerminalService.getOhlcv(pool.poolAddress, 'minute', 1, candleLimit);
         if (candles.length < 6) {
+          notes.push(`${symbol}: getOhlcv returned ${candles.length} candles (need ≥6)`);
           perToken[symbol] = { poolAddress: pool.poolAddress, candlesAnalyzed: candles.length, syntheticTriggers: [] };
           continue;
         }
