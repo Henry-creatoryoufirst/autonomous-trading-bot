@@ -6532,9 +6532,11 @@ async function executeDailyPayout(): Promise<void> {
         skippedReason: 'BELOW_HWM',
       });
       state.lastDailyPayoutDate = yesterdayStr;
-      // Note: pendingFeeUSDC is NOT cleared — under HWM mode it has no role,
-      // but legacy callers reading it shouldn't see stale data either. Future:
-      // remove the field once HWM mode is the default and soaked.
+      // NVR-SPEC-026: in HWM mode, pendingFeeUSDC is unused and stale values
+      // would starve sleeves (orchestrator subtracts it from availableUSDC).
+      // Clear it on every BELOW_HWM skip so the field stays at 0 throughout
+      // any flat/down stretch.
+      state.pendingFeeUSDC = 0;
       markStateDirty();
       return;
     }
@@ -9121,6 +9123,18 @@ async function main() {
   // Phase 3c: Wire module-level state into the centralized store
   _storeSetState(state);
   _storeSetBreakerState(breakerState);
+
+  // NVR-SPEC-026 startup hygiene: in HWM mode, pendingFeeUSDC is meaningless
+  // (the legacy per-trade accumulator) but the orchestrator still subtracts
+  // it from availableUSDC, which can starve sleeves indefinitely if the bot
+  // is below HWM and no payout fires to reset it. Zero it on every startup
+  // so a freshly-deployed HWM-mode bot doesn't inherit a stale reservation.
+  if ((process.env.HARVEST_MODE || 'legacy').toLowerCase() === 'hwm') {
+    if ((state.pendingFeeUSDC || 0) > 0) {
+      console.log(`[HWM startup] Clearing stale pendingFeeUSDC=$${state.pendingFeeUSDC.toFixed(2)} — HWM mode doesn't use it`);
+      state.pendingFeeUSDC = 0;
+    }
+  }
 
   // Phase 4: Initialize execution engine
   initRpc([...BASE_RPC_ENDPOINTS]);
