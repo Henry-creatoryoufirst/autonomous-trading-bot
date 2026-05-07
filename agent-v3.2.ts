@@ -9543,6 +9543,7 @@ async function main() {
   if ((process.env.ALPHA_WATCHER_ENABLED ?? 'false').toLowerCase() === 'true') {
     const { alphaWatcher: watcher } = await import('./src/core/services/alpha-watcher.js');
     const { alphaReviewer: reviewer } = await import('./src/core/services/alpha-reviewer.js');
+    const { alphaReflex: reflex } = await import('./src/core/services/alpha-reflex.js');
     const reviewerEnabled = (process.env.ALPHA_REVIEWER_ENABLED ?? 'true').toLowerCase() === 'true';
     if (reviewerEnabled && anthropic) {
       reviewer.init(anthropic);
@@ -9550,6 +9551,39 @@ async function main() {
     } else {
       console.log(`[Startup] Alpha Reviewer DISABLED (env=${process.env.ALPHA_REVIEWER_ENABLED}, anthropic=${anthropic ? 'present' : 'null'})`);
     }
+
+    // NVR-SPEC-028 Phase 3: Reflex execution. Default 'dry-run' — logs
+    // would-be entries/exits but doesn't trade. Flip ALPHA_REFLEX_MODE=live
+    // when Reviewer accuracy data justifies real capital. =disabled stops
+    // any Reflex action.
+    const reflexMode = ((process.env.ALPHA_REFLEX_MODE ?? 'dry-run').toLowerCase()) as 'disabled' | 'dry-run' | 'live';
+    if (reflexMode !== 'disabled') {
+      reflex.init({
+        mode: reflexMode,
+        executeTrade: async (decision) => {
+          // Wrap the monolith's executeTrade with the shape Reflex expects.
+          // Build a TradeDecision; pass current marketData (kept fresh by
+          // the heavy-cycle loop). If marketData is stale or missing, the
+          // monolith's executeTrade has its own freshness guards.
+          const tradeDecision = {
+            action: decision.action,
+            fromToken: decision.fromToken,
+            toToken: decision.toToken,
+            amountUSD: decision.amountUSD,
+            reasoning: decision.reasoning,
+          } as TradeDecision;
+          if (!lastMarketData) {
+            return { success: false, error: 'no marketData (waiting for first heavy cycle)' };
+          }
+          const result = await executeTrade(tradeDecision, lastMarketData);
+          return { success: result.success, txHash: result.txHash, error: result.error };
+        },
+        priceProvider: (symbol) => watcher.getLatestPrice(symbol),
+      });
+    } else {
+      console.log('[Startup] Alpha Reflex DISABLED (ALPHA_REFLEX_MODE=disabled)');
+    }
+
     watcher.start();
     console.log('[Startup] Alpha Watcher enabled (NVR-SPEC-028 Phase 1)');
   }

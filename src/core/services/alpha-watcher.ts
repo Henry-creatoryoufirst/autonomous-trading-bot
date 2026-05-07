@@ -28,6 +28,7 @@ import { geckoTerminalService } from './gecko-terminal.js';
 import type { DexPoolData } from './gecko-terminal.js';
 import { TOKEN_REGISTRY } from '../config/token-registry.js';
 import { alphaReviewer, type TriggerReview } from './alpha-reviewer.js';
+import { alphaReflex } from './alpha-reflex.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -230,6 +231,9 @@ export class AlphaWatcher {
   // (replay's candle window is too short to compute its own).
   private poolAddressCache: Map<string, string> = new Map();
   private poolMetaCache: Map<string, { volume24hUSD: number; updatedAt: number }> = new Map();
+  // Most-recent polled prices per symbol — used by Reflex for stop/target
+  // monitoring without making redundant API calls.
+  private latestPrices: Map<string, number> = new Map();
   // Phase 1.5: cooldown tracking per {symbol, type} — prevents same pattern
   // re-firing every poll while the underlying h1 window barely shifts.
   private lastFired: Map<string, { ts: number; strength: number }> = new Map();
@@ -326,6 +330,7 @@ export class AlphaWatcher {
         this.poolAddressCache.set(symbol, pool.poolAddress);
         this.poolMetaCache.set(symbol, { volume24hUSD: pool.volume.h24, updatedAt: Date.now() });
         polledPrices.set(symbol, pool.priceUSD);
+        this.latestPrices.set(symbol, pool.priceUSD);
         const triggers = this.scoreTriggers(symbol, pool);
         for (const t of triggers) {
           this.recordTrigger(t);
@@ -342,6 +347,14 @@ export class AlphaWatcher {
                   console.log(
                     `[AlphaReviewer] ${t.symbol}/${t.type} → ${review.verdict} (conf ${review.confidence.toFixed(2)}, ${review.latencyMs}ms): ${review.reasoning.slice(0, 80)}`,
                   );
+                  // Phase 3: hand off to Reflex if Reviewer says BUY.
+                  // Reflex enforces budget cap, one-per-token, hard stops/timers.
+                  // In dry-run mode it just logs would-be entries.
+                  if (review.verdict === 'BUY' && alphaReflex.isEnabled()) {
+                    alphaReflex.onApprovedBuy(t).catch((e) => {
+                      console.warn(`[AlphaReflex] onApprovedBuy threw: ${e?.message ?? e}`);
+                    });
+                  }
                 }
               })
               .catch((e) => {
@@ -364,6 +377,16 @@ export class AlphaWatcher {
     // already polled this tick. No additional API calls — the price feed
     // we collected for trigger scoring is the same feed the outcomes need.
     this.updateOutcomes(polledPrices);
+
+    // Phase 3: monitor any open Reflex positions for stop/target/timeout.
+    // Reflex pulls prices from the same polledPrices map (no extra API).
+    if (alphaReflex.isEnabled()) {
+      try {
+        await alphaReflex.monitorPositions();
+      } catch (e: any) {
+        console.warn(`[AlphaReflex] monitor threw: ${e?.message ?? e}`);
+      }
+    }
 
     this.status.lastPollAt = new Date().toISOString();
     this.status.totalPollsCompleted++;
@@ -913,6 +936,16 @@ export class AlphaWatcher {
 
   getTriggers(limit = 100): AlphaTrigger[] {
     return this.triggers.slice(-limit).reverse();
+  }
+
+  /**
+   * Latest polled price for a cohort token, or undefined if the symbol
+   * hasn't been polled yet (or the token isn't in the cohort). Reflex
+   * uses this for stop/target monitoring — same data source as the
+   * Watcher's tick loop, no additional API calls.
+   */
+  getLatestPrice(symbol: string): number | undefined {
+    return this.latestPrices.get(symbol);
   }
 }
 

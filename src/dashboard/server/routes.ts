@@ -18,6 +18,7 @@ import { activeChain } from '../../core/config/chain-config.js';
 import { loadPolicy, DEFAULT_POLICY } from '../../core/services/policy.js';
 import { auditAndRepairCostBasis } from '../../core/portfolio/cost-basis.js';
 import { alphaWatcher } from '../../core/services/alpha-watcher.js';
+import { alphaReflex } from '../../core/services/alpha-reflex.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1411,6 +1412,8 @@ export function handleAlphaWatcher(
   ctx.sendJSON(res, 200, {
     status: alphaWatcher.getStatus(),
     recentTriggers: alphaWatcher.getTriggers(limit),
+    reflex: alphaReflex.getStatus(),
+    reflexClosed: alphaReflex.getRecentClosed(20),
   });
 }
 
