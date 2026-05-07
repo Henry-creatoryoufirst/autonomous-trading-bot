@@ -315,7 +315,7 @@ export const SCOUT_POSITION_FLOOR_USD = 3;
 export const SCOUT_MAX_POSITIONS = 18;
 
 /** Scout-to-full upgrade threshold: buy ratio must exceed this across 2+ timeframes */
-export const SCOUT_UPGRADE_BUY_RATIO = 55;
+export const SCOUT_UPGRADE_BUY_RATIO = 60; // Bear-adjusted May-2026: 55→60 — 62-day bear; aligns with SCALE_UP_BUY_RATIO_MIN=60 and HOT_MOVER_MIN_BUY_RATIO=60 (both raised Run#24); 55-60% buy ratio is MEV-front-run distribution in bear markets; scouts graduating to full positions at 55% commit capital on a weaker signal than any other buying action allows
 
 /** Scout positions below this USD value are exempt from percentage-based stops */
 export const SCOUT_STOP_EXEMPT_THRESHOLD_USD = 15;
