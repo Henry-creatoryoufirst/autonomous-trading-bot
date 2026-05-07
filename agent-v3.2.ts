@@ -9532,14 +9532,24 @@ async function main() {
     }
   }
 
-  // NVR-SPEC-028 Phase 1: Always-On Alpha Watcher.
-  // Pure deterministic scanner — no LLM, no execution. Polls GeckoTerminal
-  // pool data for the cohort every 30s and logs triggers. Phase 2 wakes a
-  // Reviewer (Haiku) on each trigger; Phase 3 adds reflex execution.
-  // OFF by default — flip ALPHA_WATCHER_ENABLED=true on Railway to start
-  // building the trigger log. Inspect via /api/admin/alpha-watcher.
+  // NVR-SPEC-028: Always-On Alpha Watcher + Reviewer.
+  // Phase 1: deterministic scanner polling GeckoTerminal pool data every 30s.
+  // Phase 2: when Watcher fires a trigger, Haiku Reviewer scores BUY/WAIT/PASS.
+  // Phase 3 (next): Reflex execution on greenlit BUYs with hard stops.
+  // OFF by default — flip ALPHA_WATCHER_ENABLED=true on Railway. The Reviewer
+  // auto-enables when the Anthropic client exists; flip
+  // ALPHA_REVIEWER_ENABLED=false to disable Reviewer while keeping Watcher.
+  // Inspect via /api/admin/alpha-watcher.
   if ((process.env.ALPHA_WATCHER_ENABLED ?? 'false').toLowerCase() === 'true') {
     const { alphaWatcher: watcher } = await import('./src/core/services/alpha-watcher.js');
+    const { alphaReviewer: reviewer } = await import('./src/core/services/alpha-reviewer.js');
+    const reviewerEnabled = (process.env.ALPHA_REVIEWER_ENABLED ?? 'true').toLowerCase() === 'true';
+    if (reviewerEnabled && anthropic) {
+      reviewer.init(anthropic);
+      console.log('[Startup] Alpha Reviewer enabled (Haiku gate, NVR-SPEC-028 Phase 2)');
+    } else {
+      console.log(`[Startup] Alpha Reviewer DISABLED (env=${process.env.ALPHA_REVIEWER_ENABLED}, anthropic=${anthropic ? 'present' : 'null'})`);
+    }
     watcher.start();
     console.log('[Startup] Alpha Watcher enabled (NVR-SPEC-028 Phase 1)');
   }

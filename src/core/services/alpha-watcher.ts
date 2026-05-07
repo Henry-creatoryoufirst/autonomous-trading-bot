@@ -27,6 +27,7 @@
 import { geckoTerminalService } from './gecko-terminal.js';
 import type { DexPoolData } from './gecko-terminal.js';
 import { TOKEN_REGISTRY } from '../config/token-registry.js';
+import { alphaReviewer, type TriggerReview } from './alpha-reviewer.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -159,6 +160,12 @@ export interface AlphaTrigger {
    * actually predict moves?" before any capital is touched (Phase 3+).
    */
   outcome?: TriggerOutcome;
+  /**
+   * Phase 2 Reviewer verdict. Populated asynchronously after the trigger
+   * fires — Haiku takes ~2-5s, so we don't block the tick. May be null if
+   * the Reviewer is disabled or the call errored.
+   */
+  review?: TriggerReview | null;
 }
 
 export interface WatcherStatus {
@@ -180,6 +187,19 @@ export interface WatcherStatus {
     hitRate: number | null;
     /** Per-type breakdown so we can see which patterns actually predict */
     byType: Record<TriggerType, { resolved: number; targetHit: number; stopHit: number; decayed: number; hitRate: number | null }>;
+  };
+  /** Phase 2: rolling Reviewer verdict stats */
+  reviews24h: {
+    reviewed: number;
+    pending: number;
+    buy: number;
+    wait: number;
+    pass: number;
+    /** Reviewer's BUY-call hit rate when paired with resolved outcomes */
+    buyHitRate: number | null;
+    /** Cost telemetry */
+    cumulativeInputTokens: number;
+    cumulativeOutputTokens: number;
   };
 }
 
@@ -229,6 +249,16 @@ export class AlphaWatcher {
       decayed: 0,
       hitRate: null,
       byType: emptyTypeRecord({ resolved: 0, targetHit: 0, stopHit: 0, decayed: 0, hitRate: null as number | null }),
+    },
+    reviews24h: {
+      reviewed: 0,
+      pending: 0,
+      buy: 0,
+      wait: 0,
+      pass: 0,
+      buyHitRate: null,
+      cumulativeInputTokens: 0,
+      cumulativeOutputTokens: 0,
     },
   };
 
@@ -300,6 +330,24 @@ export class AlphaWatcher {
         for (const t of triggers) {
           this.recordTrigger(t);
           firedThisTick.push(t);
+          // Phase 2: kick off Reviewer asynchronously. Don't block the tick
+          // — Haiku takes ~2-5s. The trigger is already in the ring buffer;
+          // Reviewer mutates the same object reference once it returns.
+          if (alphaReviewer.isEnabled()) {
+            alphaReviewer
+              .review(t)
+              .then((review) => {
+                if (review) {
+                  t.review = review;
+                  console.log(
+                    `[AlphaReviewer] ${t.symbol}/${t.type} → ${review.verdict} (conf ${review.confidence.toFixed(2)}, ${review.latencyMs}ms): ${review.reasoning.slice(0, 80)}`,
+                  );
+                }
+              })
+              .catch((e) => {
+                console.warn(`[AlphaReviewer] dispatch failed for ${t.symbol}/${t.type}: ${e?.message ?? e}`);
+              });
+          }
         }
         // Update rolling state for next-tick delta calculations
         this.prevSnapshot.set(symbol, {
@@ -612,6 +660,43 @@ export class AlphaWatcher {
       slot.hitRate = def > 0 ? slot.targetHit / def : null;
     }
     this.status.outcomes24h = stats;
+
+    // Phase 2: review stats — accuracy of Haiku BUY calls when paired with
+    // resolved outcomes. Tells us whether the Reviewer is improving on the
+    // Watcher's raw signal or just adding cost.
+    let reviewed = 0, pending = 0, buy = 0, wait = 0, pass = 0;
+    let reviewerBuyResolved = 0, reviewerBuyTargetHit = 0;
+    let cumIn = 0, cumOut = 0;
+    for (const t of recent) {
+      if (t.review === undefined) {
+        pending++;
+        continue;
+      }
+      if (t.review === null) continue; // Reviewer disabled or errored — not counted
+      reviewed++;
+      cumIn += t.review.inputTokens;
+      cumOut += t.review.outputTokens;
+      if (t.review.verdict === 'BUY') {
+        buy++;
+        if (t.outcome && t.outcome.status !== 'OPEN') {
+          if (t.outcome.status === 'TARGET_HIT' || t.outcome.status === 'STOP_HIT') {
+            reviewerBuyResolved++;
+            if (t.outcome.status === 'TARGET_HIT') reviewerBuyTargetHit++;
+          }
+        }
+      } else if (t.review.verdict === 'WAIT') wait++;
+      else if (t.review.verdict === 'PASS') pass++;
+    }
+    this.status.reviews24h = {
+      reviewed,
+      pending,
+      buy,
+      wait,
+      pass,
+      buyHitRate: reviewerBuyResolved > 0 ? reviewerBuyTargetHit / reviewerBuyResolved : null,
+      cumulativeInputTokens: cumIn,
+      cumulativeOutputTokens: cumOut,
+    };
   }
 
   // --------------------------------------------------------------------------
