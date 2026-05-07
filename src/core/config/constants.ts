@@ -315,7 +315,7 @@ export const SCOUT_POSITION_FLOOR_USD = 3;
 export const SCOUT_MAX_POSITIONS = 18;
 
 /** Scout-to-full upgrade threshold: buy ratio must exceed this across 2+ timeframes */
-export const SCOUT_UPGRADE_BUY_RATIO = 55;
+export const SCOUT_UPGRADE_BUY_RATIO = 60; // Bear-adjusted May-2026: 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly research confirms new/uncertain positions require stronger confirmation; 55% buy ratio in bear markets is predominantly early-stage distribution or MEV front-running, not genuine demand signal
 
 /** Scout positions below this USD value are exempt from percentage-based stops */
 export const SCOUT_STOP_EXEMPT_THRESHOLD_USD = 15;
