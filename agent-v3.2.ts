@@ -6487,16 +6487,69 @@ async function executeDailyPayout(): Promise<void> {
   const yesterdayEntry = dailyData.days.find(d => d.date === yesterdayStr);
   const realizedPnL = yesterdayEntry?.realized || 0;
 
-  // v21.15: Harvest-on-sell — use per-trade accumulated fee as the authoritative basis.
-  // pendingFeeUSDC was reserved at sell time so it's guaranteed available (not re-deployed).
-  // Fall back to recalculated realizedPnL if no pending accumulation (e.g. first run after deploy).
-  const pendingFeeUSDC = state.pendingFeeUSDC || 0;
   const totalPct = CONFIG.autoHarvest.recipients.reduce((s: number, r: HarvestRecipient) => s + r.percent, 0);
+  const pendingFeeUSDC = state.pendingFeeUSDC || 0;
+
+  // NVR-SPEC-026: True-net-wealth harvest gate.
+  // Harvest only when currentEquity > netDeposits + cumulativeHarvested + hwmBuffer.
+  // Round-trip "wins" inside a flat or down portfolio don't generate harvestable
+  // profit — only true new wealth above the bot's prior best does. The 35/65
+  // split is unchanged; what changes is WHEN it fires.
+  //
+  // Default: HARVEST_MODE=legacy preserves the per-trade pendingFee model.
+  // Flip to HARVEST_MODE=hwm on Railway after the staging soak validates the
+  // gate fires correctly on flat/down days.
+  const HARVEST_MODE = (process.env.HARVEST_MODE || 'legacy').toLowerCase();
+  let effectiveRealizedPnL: number;
+  let hwmHarvestableUSD = 0;
+  if (HARVEST_MODE === 'hwm') {
+    const currentEquity = state.trading.totalPortfolioValue || 0;
+    const netDeposits = state.totalDeposited || 0;
+    // Cumulative harvested = sum of every successful daily payout's
+    // totalDistributed. Durable accounting: past payouts can't be undone.
+    const cumulativeHarvested = (state.dailyPayouts || []).reduce(
+      (s: number, p: any) => s + (p?.totalDistributed || 0),
+      0,
+    );
+    const hwmBuffer = state.hwmBuffer || 0;
+    const floorValue = netDeposits + cumulativeHarvested + hwmBuffer;
+    const minHarvestThreshold = 5; // dust gate: <$5 harvestable = skip
+    hwmHarvestableUSD = Math.max(0, currentEquity - floorValue);
+
+    console.log(
+      `[Daily Payout] HWM gate: currentEquity=$${currentEquity.toFixed(2)} | netDeposits=$${netDeposits.toFixed(2)} | cumulativeHarvested=$${cumulativeHarvested.toFixed(2)} | hwmBuffer=$${hwmBuffer.toFixed(2)} | floor=$${floorValue.toFixed(2)} | harvestable=$${hwmHarvestableUSD.toFixed(2)}`,
+    );
+
+    if (hwmHarvestableUSD < minHarvestThreshold) {
+      console.log(`[Daily Payout] HWM gate: harvestable $${hwmHarvestableUSD.toFixed(2)} < $${minHarvestThreshold} — skipping payout (no true new wealth above prior best)`);
+      state.dailyPayouts.push({
+        date: yesterdayStr,
+        payoutDate: now.toISOString(),
+        realizedPnL,
+        payoutPercent: 0,
+        totalDistributed: 0,
+        transfers: [],
+        skippedReason: 'BELOW_HWM',
+      });
+      state.lastDailyPayoutDate = yesterdayStr;
+      // Note: pendingFeeUSDC is NOT cleared — under HWM mode it has no role,
+      // but legacy callers reading it shouldn't see stale data either. Future:
+      // remove the field once HWM mode is the default and soaked.
+      markStateDirty();
+      return;
+    }
+
+    // Synthesize an "effective realized P&L" from the harvestable amount so
+    // the rest of the (legacy) payout flow continues to work unchanged.
+    effectiveRealizedPnL = hwmHarvestableUSD / Math.max(totalPct / 100, 0.001);
+  } else {
+    // v21.15 legacy: per-trade pendingFee accumulation model.
+    // Fall back to recalculated realizedPnL if no pending accumulation.
+    effectiveRealizedPnL = pendingFeeUSDC > 0
+      ? pendingFeeUSDC / Math.max(totalPct / 100, 0.001)
+      : realizedPnL;
+  }
   const recalculatedFee = realizedPnL * (totalPct / 100);
-  // Use whichever is higher — pendingFee is more accurate, recalc is fallback
-  const effectiveRealizedPnL = pendingFeeUSDC > 0
-    ? pendingFeeUSDC / Math.max(totalPct / 100, 0.001)  // back-calculate realizedPnL from reserved fee
-    : realizedPnL;
 
   console.log(`[Daily Payout] Realized P&L: $${realizedPnL.toFixed(2)} | Pending fee reserved: $${pendingFeeUSDC.toFixed(2)} | Effective P&L: $${effectiveRealizedPnL.toFixed(2)}`);
   if (yesterdayEntry) {
@@ -6736,6 +6789,25 @@ async function executeDailyPayout(): Promise<void> {
   }
   // v21.15: Reset pending fee accumulator — funds were sent (or attempted)
   state.pendingFeeUSDC = 0;
+
+  // NVR-SPEC-026: HWM bookkeeping. After a successful payout under hwm mode,
+  // record the new high-water mark = currentEquity − netDeposits − cumulativeHarvested
+  // (where cumulativeHarvested already includes this payout's totalSent).
+  // Future payouts only fire above THIS mark, preventing round-trip "wins"
+  // from re-harvesting the same wealth twice.
+  if (HARVEST_MODE === 'hwm' && totalSent > 0) {
+    const currentEquity = state.trading.totalPortfolioValue || 0;
+    const netDeposits = state.totalDeposited || 0;
+    const cumulativeHarvested = (state.dailyPayouts || []).reduce(
+      (s: number, p: any) => s + (p?.totalDistributed || 0),
+      0,
+    );
+    const newHwmCandidate = currentEquity - netDeposits - cumulativeHarvested;
+    const prevHwm = state.hwmBuffer || 0;
+    state.hwmBuffer = Math.max(prevHwm, newHwmCandidate);
+    console.log(`[Daily Payout] HWM updated: $${prevHwm.toFixed(2)} → $${state.hwmBuffer.toFixed(2)} (currentEquity $${currentEquity.toFixed(2)} − netDeposits $${netDeposits.toFixed(2)} − cumulativeHarvested $${cumulativeHarvested.toFixed(2)})`);
+  }
+
   markStateDirty();  // v21.13-fix: persist reset so a crash-post-payout doesn't re-pay
 
   // v11.4.2: Adjust peakValue downward after payouts — payouts are intentional capital
