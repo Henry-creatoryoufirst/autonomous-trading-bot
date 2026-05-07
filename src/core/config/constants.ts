@@ -644,7 +644,7 @@ export const HOT_MOVER_MIN_FDV_USD = 500_000;
 export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
 
 /** Hot mover quality gate: pool must be at least this old in hours (reject brand-new pools = rug risk) */
-export const HOT_MOVER_MIN_POOL_AGE_HOURS = 24;
+export const HOT_MOVER_MIN_POOL_AGE_HOURS = 48; // Bear-adjusted May-2026: 24→48 — 63-day bear; thin bear-market liquidity amplifies MEV sandwich risk on new pools; Kelly research confirms elevated caution on limited-history assets in sustained bear regimes
 
 /** Hot mover quality gate: minimum buy ratio in h1 (55%+ buys = genuine demand, not sell-off) */
 export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0.60 — 47-day bear; pumps with 55-60% buy ratio are predominantly MEV-front-run distribution; require genuine conviction
