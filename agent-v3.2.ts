@@ -490,6 +490,7 @@ import {
   // v20.6: Compressed prompt system
   SYSTEM_PROMPT_CORE,
   SYSTEM_PROMPT_STRATEGY,
+  SYSTEM_PROMPT_OPERATING_KNOWLEDGE,
   estimateTokens,
 } from "./src/core/config/constants.js";
 import type { CooldownDecision, TradeRecord, TradePerformanceStats, StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, ShadowProposal, SectorAllocation, TokenCostBasis, MarketRegime } from "./src/core/types/index.js";
@@ -5070,34 +5071,54 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // CORE+STRATEGY stay cached across the refresh.
   const criticMemoryBlock = isFullPrompt ? loadCriticMemory() : null;
 
-  // v21.33 cost-audit fix: routine cycles previously sent only SYSTEM_PROMPT_CORE
-  // (~559 tokens) as the cacheable prefix — BELOW Anthropic's 1024-token caching
-  // minimum. Result: cache_control was set but cache writes silently failed,
-  // so every routine cycle paid full input cost. Adding SYSTEM_PROMPT_STRATEGY
-  // to the routine cached prefix lifts it to ~1783 tokens, well above the
-  // minimum, and the bot finally gets the prompt cache discount it was already
-  // paying the architecture cost for.
+  // v21.34 prompt-cache fix: the v21.33 fix tried to lift the routine-cycle
+  // cacheable prefix above Anthropic's prompt-cache minimum, but used the wrong
+  // threshold (1024 tok). Haiku 4.5 — and every Opus 4.5+ model — actually
+  // requires a 4096-token prefix to write the cache. CORE (~600 tok) +
+  // STRATEGY (~1300 tok) ≈ 1900 tok still falls under, so cache_control was
+  // attached to a prefix Anthropic was silently dropping. Live telemetry
+  // confirmed: 26 LLM cycles → cacheHitRate=0, cacheCreateTokens=0,
+  // cacheReadTokens=0. Zero writes (not just zero reads) is the dead-giveaway
+  // for a sub-minimum prefix.
   //
-  // STRATEGY content is mission-/discipline-text that doesn't tighten Haiku-grade
-  // decisions much, but the cost of including it (15 cents per million-token-write
-  // amortized over an hour of reads) is negligible compared to the savings from
-  // cache hits on the larger prefix. Net win.
+  // SYSTEM_PROMPT_OPERATING_KNOWLEDGE adds ~2800 tokens of stable operating
+  // context (token universe, signal vocabulary, regime playbook, fee math).
+  // Total cacheable prefix is now CORE+STRATEGY+OPERATING_KNOWLEDGE ≈ 4500–6000
+  // tokens, comfortably above the Haiku 4.5 / Opus 4.5+ 4096-token minimum and
+  // well above the Sonnet 4.6 / Haiku 3.5 2048-token minimum, on every cycle.
+  //
+  // Invariants for the cached prefix:
+  //   - All blocks before the dynamicBlock are byte-stable across cycles
+  //     (no template variables that change per call). policyBlock and
+  //     criticMemoryBlock are stable for hours/days respectively, so their
+  //     cache_control breakpoints invalidate at most their own block plus
+  //     downstream — CORE+STRATEGY+OPERATING_KNOWLEDGE keep caching across
+  //     policy/critic refreshes.
+  //   - The cache_control is on the LAST stable block before dynamicBlock,
+  //     so the entire stable prefix is captured under one breakpoint.
+  //   - dynamicBlock has no cache_control — it's the per-call suffix that
+  //     legitimately varies, and putting cache_control on it would only
+  //     produce per-call write-and-immediately-expire entries.
   const promptBlocks = isFullPrompt
     ? [
-        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
-        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_CORE },
+        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY },
+        { type: 'text' as const, text: SYSTEM_PROMPT_OPERATING_KNOWLEDGE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         ...(policyBlock ? [{ type: 'text' as const, text: policyBlock, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }] : []),
         ...(criticMemoryBlock ? [{ type: 'text' as const, text: criticMemoryBlock, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } }] : []),
         { type: 'text' as const, text: dynamicBlock },
       ]
     : [
-        { type: 'text' as const, text: SYSTEM_PROMPT_CORE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
-        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
+        { type: 'text' as const, text: SYSTEM_PROMPT_CORE },
+        { type: 'text' as const, text: SYSTEM_PROMPT_STRATEGY },
+        { type: 'text' as const, text: SYSTEM_PROMPT_OPERATING_KNOWLEDGE, cache_control: { type: 'ephemeral' as const, ttl: '1h' as const } },
         { type: 'text' as const, text: dynamicBlock },
       ];
 
-  const promptTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : '') + (criticMemoryBlock ?? '') + dynamicBlock);
-  const cacheableTokens = estimateTokens(SYSTEM_PROMPT_CORE + (isFullPrompt ? SYSTEM_PROMPT_STRATEGY : '') + (criticMemoryBlock ?? ''));
+  const cacheablePrefixText = SYSTEM_PROMPT_CORE + SYSTEM_PROMPT_STRATEGY + SYSTEM_PROMPT_OPERATING_KNOWLEDGE
+    + (isFullPrompt ? ((policyBlock ?? '') + (criticMemoryBlock ?? '')) : '');
+  const promptTokens = estimateTokens(cacheablePrefixText + dynamicBlock);
+  const cacheableTokens = estimateTokens(cacheablePrefixText);
   console.log(`  [AI] Using ${modelLabel} for cycle | Reason: ${heavyCycleReason || 'unknown'}`);
   console.log(`  [Prompt] ${isFullPrompt ? 'Full' : 'Compact'} prompt: ~${promptTokens} tokens (cacheable prefix: ~${cacheableTokens})`);
 
