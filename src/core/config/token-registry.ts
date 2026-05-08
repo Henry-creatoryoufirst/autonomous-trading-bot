@@ -465,6 +465,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "UP", name: "Superform", coingeckoId: "superform",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-08) ===
+  SYRUP: {
+    address: "0x688AEe022AA544f150678B8E5720b6b96a9E9a2F",
+    symbol: "SYRUP", name: "Maple Finance", coingeckoId: "maple-finance",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
