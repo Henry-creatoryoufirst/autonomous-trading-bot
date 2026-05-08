@@ -45,7 +45,14 @@
  * NVR-SPEC-017 (Alpha Hunter v1 strategy spec — in draft).
  */
 
-import type { Sleeve, SleeveContext, SleeveDecision, SleeveStats, SleeveMode } from './types.js';
+import type {
+  Sleeve,
+  SleeveContext,
+  SleeveDecision,
+  SleeveStats,
+  SleeveMode,
+  WatcherDirectCandidate,
+} from './types.js';
 import type { SleeveOwnership, SleeveExitOverride } from './state-types.js';
 import { statsFromOwnership } from './sleeve-stats.js';
 
@@ -85,6 +92,41 @@ const ALPHA_STALE_MAX_GAIN_PCT_DEFAULT = 2;
 
 /** Tokens we never touch with Alpha — they're Core's territory or liquidity. */
 const ALPHA_NEVER_BUY = new Set(['USDC', 'ETH', 'WETH', 'cbBTC', 'cbETH', 'wstETH']);
+
+/**
+ * NVR-SPEC-029: Env flag gate for the Watcher-Direct candidate stream.
+ * When false (default), AlphaHunter behaviour is unchanged from v21.31:
+ * it only consumes `market.discovery.candidates` (24h conviction formula).
+ * When true, it consumes `market.watcherDirect.candidates` FIRST and falls
+ * through to discovery if no watcher-direct candidate passes risk gates.
+ *
+ * Read at decide() time (not import time) so the env flag is honored even
+ * when changed via runtime config reload — and so unit tests can flip it
+ * via `process.env` without re-importing the module.
+ */
+function isWatcherDirectEnabled(): boolean {
+  return (process.env.ALPHA_HUNTER_WATCHER_DIRECT ?? 'false').toLowerCase() === 'true';
+}
+
+/**
+ * NVR-SPEC-029: Telemetry counters for the Watcher-Direct candidate path.
+ * Counters live on the sleeve instance so the dashboard /api/sleeves layer
+ * can pick them up alongside getStats() in a follow-up wiring step. For
+ * the soak window, these are also surfaced via console logs with the
+ * [ALPHA_HUNTER_WD] prefix on every candidate evaluation.
+ */
+export interface WatcherDirectStats {
+  /** Cycles where ≥1 watcher-direct candidate was offered to the sleeve. */
+  cyclesWithCandidates: number;
+  /** Total watcher-direct candidates evaluated (sum across cycles). */
+  candidatesEvaluated: number;
+  /** Watcher-direct candidates that resulted in a BUY decision. */
+  executions: number;
+  /** Skip reasons keyed by structured tag (held/protected/budget/cap/etc). */
+  skippedByReason: Record<string, number>;
+  /** ISO timestamp of the most recent watcher-direct execution. */
+  lastExecutionAt: string | null;
+}
 
 export interface AlphaHunterSleeveOptions {
   /** Defaults to 'paper'. Graduate via NVR-SPEC-016 criteria. */
@@ -140,11 +182,42 @@ export class AlphaHunterSleeve implements Sleeve {
   private readonly getPortfolioValue?: () => number;
   private readonly getExitOverride?: () => SleeveExitOverride | undefined;
 
+  /**
+   * NVR-SPEC-029: rolling counters for the watcher-direct candidate path.
+   * Read by getWatcherDirectStats() for telemetry / soak observability.
+   */
+  private wdStats: WatcherDirectStats = {
+    cyclesWithCandidates: 0,
+    candidatesEvaluated: 0,
+    executions: 0,
+    skippedByReason: {},
+    lastExecutionAt: null,
+  };
+
   constructor(opts: AlphaHunterSleeveOptions = {}) {
     this.mode = opts.mode ?? 'paper';
     this.getOwnership = opts.getOwnership;
     this.getPortfolioValue = opts.getPortfolioValue;
     this.getExitOverride = opts.getExitOverride;
+  }
+
+  /**
+   * Snapshot of the watcher-direct telemetry for this sleeve. Cheap; safe
+   * to call from dashboard / API. Returns a clone so callers can't mutate.
+   */
+  getWatcherDirectStats(): WatcherDirectStats {
+    return {
+      cyclesWithCandidates: this.wdStats.cyclesWithCandidates,
+      candidatesEvaluated: this.wdStats.candidatesEvaluated,
+      executions: this.wdStats.executions,
+      skippedByReason: { ...this.wdStats.skippedByReason },
+      lastExecutionAt: this.wdStats.lastExecutionAt,
+    };
+  }
+
+  private bumpWdSkip(reason: string): void {
+    this.wdStats.skippedByReason[reason] =
+      (this.wdStats.skippedByReason[reason] ?? 0) + 1;
   }
 
   /**
@@ -196,7 +269,60 @@ export class AlphaHunterSleeve implements Sleeve {
       }
     }
 
-    // ---------- NEW ENTRIES ----------
+    // ---------- SHARED GATE STATE ----------
+    // Both the watcher-direct path (NVR-SPEC-029, when env-flag-on) and the
+    // existing discovery-driven path consume the same slot/budget pool, so
+    // we compute these once and feed both flows.
+    const sellsThisCycle = new Set(
+      decisions.filter(d => d.action === 'SELL').map(d => d.fromToken),
+    );
+    const heldAfterExits = ctx.positions.filter(p => !sellsThisCycle.has(p.symbol));
+    const slotsOpen = ALPHA_MAX_POSITIONS - heldAfterExits.length;
+    const heldSymbols = new Set(heldAfterExits.map(p => p.symbol));
+
+    // ---------- WATCHER-DIRECT NEW ENTRIES (NVR-SPEC-029) ----------
+    // When env flag ALPHA_HUNTER_WATCHER_DIRECT=true, AlphaHunter consumes
+    // the Watcher → Reviewer signal stream FIRST. These are tokens with a
+    // recent (≤30min) bullish trigger AND a Haiku BUY verdict at conf ≥0.7.
+    // If any pass risk gates (held / protected / budget / cap), they enter
+    // the position — bypassing the 24h conviction formula that structurally
+    // excludes 1h microstructure setups (see
+    // INVESTIGATION_2026-05-08_Conviction-Formula-Diagnosis.md).
+    //
+    // If no WD candidate passes (or none offered, or env flag off), fall
+    // through to the existing discovery-driven path with no behavior change.
+    //
+    // Risk gates intact: this is a candidate-source change, not a
+    // risk-management change. All existing dust guard, protected-symbol
+    // list, position cap, USDC floor, sleeve allocation reservation
+    // logic still applies — we just check it inline below for the WD path.
+    const wdEnabled = isWatcherDirectEnabled();
+    const wdCandidates = ctx.market.watcherDirect?.candidates ?? [];
+    if (wdEnabled && wdCandidates.length > 0) {
+      this.wdStats.cyclesWithCandidates++;
+      const wdResult = this.tryWatcherDirectEntry(
+        wdCandidates,
+        heldSymbols,
+        slotsOpen,
+        ctx.availableUSDC,
+        ctx.capitalBudgetUSD,
+      );
+      if (wdResult.entry) {
+        decisions.push(wdResult.entry);
+        // One entry per cycle is the existing rule (ALPHA_MAX_NEW_ENTRIES_PER_CYCLE).
+        // We took ours from the watcher-direct stream; do not also draw from
+        // the discovery path this cycle.
+        return decisions;
+      }
+      // Surface the WD evaluation in the structured log so the cockpit
+      // shows we considered the watcher-direct stream and why we didn't act.
+      decisions.push(makeHold(
+        `[ALPHA_HUNTER_WD] ${wdResult.holdReason}`,
+      ));
+      // Fall through to discovery — WD didn't yield, but discovery might.
+    }
+
+    // ---------- DISCOVERY-DRIVEN NEW ENTRIES (existing v21.31 path) ----------
     // Respect MAX_POSITIONS counting EXITS as freeing slots (the sim will
     // apply them in-cycle). Budget gate is strict.
     //
@@ -211,11 +337,6 @@ export class AlphaHunterSleeve implements Sleeve {
       return decisions;
     }
 
-    const sellsThisCycle = new Set(
-      decisions.filter(d => d.action === 'SELL').map(d => d.fromToken),
-    );
-    const heldAfterExits = ctx.positions.filter(p => !sellsThisCycle.has(p.symbol));
-    const slotsOpen = ALPHA_MAX_POSITIONS - heldAfterExits.length;
     if (slotsOpen <= 0) {
       decisions.push(makeHold(
         `AlphaHunter: max positions reached (${ALPHA_MAX_POSITIONS} held, 0 slots open) — no entries until exit fires`,
@@ -232,7 +353,7 @@ export class AlphaHunterSleeve implements Sleeve {
     // Filter + rank: qualifying conviction, not already held, not in
     // excluded-symbols list. Runners rank above non-runners; within each,
     // rank by conviction descending.
-    const heldSymbols = new Set(heldAfterExits.map(p => p.symbol));
+    // (heldSymbols computed in shared gate state above — re-used here.)
     const eligible = candidates
       .filter(c => c.convictionScore >= ALPHA_MIN_CONVICTION)
       .filter(c => !heldSymbols.has(c.symbol))
@@ -288,6 +409,123 @@ export class AlphaHunterSleeve implements Sleeve {
     }
 
     return decisions;
+  }
+
+  /**
+   * NVR-SPEC-029: Evaluate the watcher-direct candidate stream and try
+   * to construct a single BUY decision from the best qualifier. Returns
+   * `{ entry, holdReason: '' }` when an entry was made, or
+   * `{ entry: null, holdReason }` with structured reason when nothing
+   * passed the gates. Mutates `this.wdStats` for telemetry on every call.
+   *
+   * Risk gates applied (in order):
+   *   1. Already-held → skip (no averaging on watcher-direct either).
+   *   2. Protected symbol (USDC/ETH/WETH/cbBTC/...) → skip.
+   *   3. Position cap (slotsOpen ≤ 0) → reject all candidates.
+   *   4. USDC floor → reject all candidates.
+   *   5. Per-candidate sizing (floor/ceiling/budget remaining) → skip.
+   *
+   * The first candidate that passes is taken. Stream is already sorted
+   * by recency desc / confidence desc by getWatcherDirectCandidates.
+   */
+  private tryWatcherDirectEntry(
+    wdCandidates: ReadonlyArray<WatcherDirectCandidate>,
+    heldSymbols: Set<string>,
+    slotsOpen: number,
+    availableUSDC: number,
+    capitalBudgetUSD: number,
+  ): { entry: SleeveDecision | null; holdReason: string } {
+    // Cap-level rejections apply across all candidates.
+    if (slotsOpen <= 0) {
+      this.wdStats.skippedByReason.position_cap =
+        (this.wdStats.skippedByReason.position_cap ?? 0) + wdCandidates.length;
+      this.wdStats.candidatesEvaluated += wdCandidates.length;
+      console.log(
+        `[ALPHA_HUNTER_WD] ${wdCandidates.length} watcher-direct candidate(s) offered but max positions reached (${ALPHA_MAX_POSITIONS} held, 0 slots open) — fall through to discovery`,
+      );
+      return {
+        entry: null,
+        holdReason: `${wdCandidates.length} watcher-direct candidate(s) blocked: position cap (${ALPHA_MAX_POSITIONS} held, 0 slots open)`,
+      };
+    }
+    if (availableUSDC < ALPHA_POSITION_SIZE_FLOOR_USD) {
+      this.wdStats.skippedByReason.usdc_floor =
+        (this.wdStats.skippedByReason.usdc_floor ?? 0) + wdCandidates.length;
+      this.wdStats.candidatesEvaluated += wdCandidates.length;
+      console.log(
+        `[ALPHA_HUNTER_WD] ${wdCandidates.length} watcher-direct candidate(s) offered but availableUSDC=$${availableUSDC.toFixed(2)} < $${ALPHA_POSITION_SIZE_FLOOR_USD} floor — fall through to discovery`,
+      );
+      return {
+        entry: null,
+        holdReason: `${wdCandidates.length} watcher-direct candidate(s) blocked: USDC floor ($${availableUSDC.toFixed(2)} < $${ALPHA_POSITION_SIZE_FLOOR_USD})`,
+      };
+    }
+
+    // Per-candidate evaluation.
+    const evaluatedSummaries: string[] = [];
+    for (const c of wdCandidates) {
+      this.wdStats.candidatesEvaluated++;
+      if (heldSymbols.has(c.symbol)) {
+        this.bumpWdSkip('already_held');
+        evaluatedSummaries.push(`${c.symbol}=already_held`);
+        console.log(
+          `[ALPHA_HUNTER_WD] skip ${c.symbol}/${c.triggerType} conf=${c.reviewerConfidence.toFixed(2)} — already held (no averaging on watcher-direct)`,
+        );
+        continue;
+      }
+      if (ALPHA_NEVER_BUY.has(c.symbol)) {
+        this.bumpWdSkip('protected_symbol');
+        evaluatedSummaries.push(`${c.symbol}=protected`);
+        console.log(
+          `[ALPHA_HUNTER_WD] skip ${c.symbol}/${c.triggerType} conf=${c.reviewerConfidence.toFixed(2)} — protected symbol (Core territory)`,
+        );
+        continue;
+      }
+      const baseSize = capitalBudgetUSD * ALPHA_POSITION_SIZE_PCT;
+      const sizeUSD = Math.max(
+        ALPHA_POSITION_SIZE_FLOOR_USD,
+        Math.min(ALPHA_POSITION_SIZE_CEILING_USD, baseSize),
+      );
+      if (sizeUSD > availableUSDC) {
+        this.bumpWdSkip('budget_exhausted');
+        evaluatedSummaries.push(`${c.symbol}=budget`);
+        console.log(
+          `[ALPHA_HUNTER_WD] skip ${c.symbol}/${c.triggerType} conf=${c.reviewerConfidence.toFixed(2)} — sizeUSD=$${sizeUSD.toFixed(2)} > availableUSDC=$${availableUSDC.toFixed(2)}`,
+        );
+        continue;
+      }
+
+      // PASS: this candidate clears every gate. Build the decision.
+      this.wdStats.executions++;
+      this.wdStats.lastExecutionAt = new Date().toISOString();
+      const ageMin = (Date.now() - new Date(c.raisedAt).getTime()) / 60_000;
+      const reasoning =
+        `ALPHA_HUNTER_WD: ${c.triggerType} on ${c.symbol} fired ${ageMin.toFixed(0)}min ago ` +
+        `(strength ${c.triggerStrength.toFixed(2)}: ${c.triggerReason}). ` +
+        `Reviewer BUY conf ${c.reviewerConfidence.toFixed(2)}: ${c.reviewerReasoning}. ` +
+        `Source: Watcher → Reviewer direct (NVR-SPEC-029, bypasses 24h conviction formula). ` +
+        `Tight-exit discipline applies.`;
+      console.log(
+        `[ALPHA_HUNTER_WD] ENTRY ${c.symbol}/${c.triggerType} $${sizeUSD.toFixed(2)} ` +
+        `conf=${c.reviewerConfidence.toFixed(2)} age=${ageMin.toFixed(0)}min — ${c.reviewerReasoning.slice(0, 60)}`,
+      );
+      return {
+        entry: {
+          action: 'BUY',
+          fromToken: 'USDC',
+          toToken: c.symbol,
+          amountUSD: sizeUSD,
+          reasoning,
+        },
+        holdReason: '',
+      };
+    }
+
+    // No candidate passed.
+    return {
+      entry: null,
+      holdReason: `0/${wdCandidates.length} watcher-direct candidate(s) passed gates (${evaluatedSummaries.join(', ')}) — fall through to discovery`,
+    };
   }
 
   getStats(): SleeveStats {
