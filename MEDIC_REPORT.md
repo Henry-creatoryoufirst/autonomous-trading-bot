@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-07T04:05 UTC
+# MEDIC REPORT — 2026-05-08T~current UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #33)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -64,6 +64,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
+| #33 | 2026-05-08T~current UTC | Scout skipped (last scout 2026-05-07 09:39, ~24h ago, <48h threshold); auditor lowered MOMENTUM_EXIT_MIN_PROFIT 5→4 — 64-day bear; gains peak lower/faster; 5% floor misses flow-reversal exits on 4-4.9% winners before they reverse; aligns with DECEL_MIN_PROFIT_PCT=2 and STALE_POSITION_MAX_GAIN_PCT=1 |
 
 ## Bot Health Evidence (from git history)
 
@@ -87,6 +88,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #33 — 2026-05-08T~current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #33).
+- **Scout**: SKIPPED — last scout ran 2026-05-07 09:39 UTC (~24h ago), less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 64-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: MOMENTUM_EXIT_MIN_PROFIT 5→4 — in 64-day bear, gains peak at lower levels and reverse faster; the 5% floor prevented flow-reversal exits on 4-4.9% winners before they turned to losses. Aligns with DECEL_MIN_PROFIT_PCT=2 and STALE_POSITION_MAX_GAIN_PCT=1 adjustments. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #33 — 2026-05-08)
+- **Signal Quality**: On-chain wallet clustering (2+ watched wallets buying same token within observation window). Already partially captured via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) routing efficiency — bot auto-benefits without code change. Cross-chain DEX launch planned July 2026 — no action needed now. (Priority 0)
+- **Position Sizing**: KEY FINDING — Research confirms: "In prolonged bear markets, gains tend to peak at lower levels and reverse faster." Quarter-Kelly (0.25×) already in place. Gap identified: MOMENTUM_EXIT_MIN_PROFIT=5% too high in 64-day bear where many positions only reach 4-4.9% before reversing. IMPLEMENTED: 5→4. Complement to DECEL_MIN_PROFIT_PCT=2 (Smart Trim starts at 2%) and STALE_POSITION_MAX_GAIN_PCT=1 (stale-exit exemption at 1%). (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Multi-strategy bots (momentum + grid + DCA) dominating 2026 bear market. NVR's scout positions approximate DCA accumulation. Full grid integration off-limits (requires execution layer changes). MEV protection via sequencer-direct RPC already active. No new actionable code change. (Priority 0)
 
 ## Jobs Status This Run (Run #32 — 2026-05-07T04:05 UTC)
 

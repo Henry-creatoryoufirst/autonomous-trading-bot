@@ -825,7 +825,7 @@ export const SCALE_UP_SIZE_PCT = 3; // Bear-adjusted May-2026: 4→3 — 59-day 
 export const MOMENTUM_EXIT_BUY_RATIO = 45;
 
 /** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
-export const MOMENTUM_EXIT_MIN_PROFIT = 5;
+export const MOMENTUM_EXIT_MIN_PROFIT = 4; // Bear-adjusted May-2026: 5→4 — 64-day bear; gains peak lower/faster in sustained bear, 5% floor misses flow-reversal exits on 4-4.9% winners before they reverse; aligns with DECEL_MIN_PROFIT_PCT=2 (trim starts at 2%) and STALE_POSITION_MAX_GAIN_PCT=1; covers the 2-5% gain tier with momentum-exit protection
 
 /** Token must be up this %+ in 4h to qualify as a wave ride */
 export const RIDE_THE_WAVE_MIN_MOVE = 7; // Bear-adjusted Apr-2026: 5→7 — F&G 31 (Fear); 5% 4h bounces reverse ~65% in fear markets; require stronger wave confirmation before chasing
