@@ -947,6 +947,115 @@ export class AlphaWatcher {
   getLatestPrice(symbol: string): number | undefined {
     return this.latestPrices.get(symbol);
   }
+
+  /**
+   * NVR-SPEC-029 Watcher-Direct Alpha Execution.
+   *
+   * Returns the freshest BUY-reviewed bullish triggers for AlphaHunter to
+   * consume directly — bypassing the 24h conviction formula in
+   * token-discovery (which structurally excludes 1h microstructure setups,
+   * see INVESTIGATION_2026-05-08_Conviction-Formula-Diagnosis.md).
+   *
+   * Selection rules:
+   *   - Bullish trigger types ONLY (WHALE_BUY, BUY_PRESSURE, MOMENTUM_BREAK
+   *     with positive 5m direction, VOLUME_SPIKE). Excludes WHALE_SELL and
+   *     LIQUIDITY_VACUUM — those are exit signals, not entry signals.
+   *   - Trigger raised within `windowMinutes` (default 30) — old triggers
+   *     don't represent current microstructure.
+   *   - Has a Reviewer verdict of 'BUY' with confidence ≥ `minConfidence`
+   *     (default 0.7 — tighter than Reflex's 0.6 because sleeve sizing
+   *     is larger and the position sits longer than Reflex's 30-min reflex).
+   *   - Per symbol, dedupe to the freshest qualifying trigger so we don't
+   *     return three entries for the same token in the same window.
+   *
+   * Sort: most-recent first, ties broken by confidence descending.
+   *
+   * Output capped at `limit` (default 3) — keep the candidate stream
+   * narrow so the sleeve doesn't drown.
+   *
+   * Pure read — no mutation, no I/O. Safe to call from the hot path.
+   *
+   * Caller still applies all existing risk gates (held / protected /
+   * USDC budget / position cap / sleeve allocation reservation). This is
+   * a candidate-source change, not a risk-management change.
+   */
+  getWatcherDirectCandidates(opts: {
+    windowMinutes?: number;
+    minConfidence?: number;
+    limit?: number;
+  } = {}): Array<{
+    symbol: string;
+    /**
+     * Bullish trigger types ONLY — selection guarantees this. Narrowed from
+     * the full TriggerType union so the consuming SleeveContext can carry
+     * a tight type without runtime checks at the boundary.
+     */
+    triggerType: 'WHALE_BUY' | 'BUY_PRESSURE' | 'MOMENTUM_BREAK' | 'VOLUME_SPIKE';
+    raisedAt: string;
+    reviewerConfidence: number;
+    reviewerReasoning: string;
+    triggerStrength: number;
+    triggerReason: string;
+  }> {
+    const windowMinutes = opts.windowMinutes ?? 30;
+    const minConfidence = opts.minConfidence ?? 0.7;
+    const limit = Math.max(1, opts.limit ?? 3);
+    const cutoffMs = Date.now() - windowMinutes * 60_000;
+
+    const isBullishType = (t: TriggerType): boolean =>
+      t === 'WHALE_BUY' ||
+      t === 'BUY_PRESSURE' ||
+      t === 'MOMENTUM_BREAK' ||
+      t === 'VOLUME_SPIKE';
+
+    // Pass 1: filter for bullish + recent + reviewed BUY + confident.
+    // For MOMENTUM_BREAK we additionally require positive 5m direction
+    // (the trigger fires on absolute |change| so a -2% move and a +2%
+    // move both qualify; only the latter is a buy signal).
+    const eligible = this.triggers.filter((t) => {
+      if (!isBullishType(t.type)) return false;
+      if (new Date(t.raisedAt).getTime() < cutoffMs) return false;
+      if (t.type === 'MOMENTUM_BREAK' && t.snapshot.priceChange5m <= 0) return false;
+      const r = t.review;
+      if (!r || r.verdict !== 'BUY') return false;
+      if (r.confidence < minConfidence) return false;
+      return true;
+    });
+
+    // Pass 2: dedupe by symbol — keep the freshest qualifying trigger per
+    // symbol (multiple distinct trigger types on the same token in the
+    // same window are common; we want one candidate per symbol).
+    const bySymbol = new Map<
+      string,
+      (typeof eligible)[number]
+    >();
+    for (const t of eligible) {
+      const cur = bySymbol.get(t.symbol);
+      if (!cur || new Date(t.raisedAt).getTime() > new Date(cur.raisedAt).getTime()) {
+        bySymbol.set(t.symbol, t);
+      }
+    }
+
+    // Pass 3: sort by recency desc, then confidence desc.
+    const sorted = Array.from(bySymbol.values()).sort((a, b) => {
+      const tDelta = new Date(b.raisedAt).getTime() - new Date(a.raisedAt).getTime();
+      if (tDelta !== 0) return tDelta;
+      const aC = a.review?.confidence ?? 0;
+      const bC = b.review?.confidence ?? 0;
+      return bC - aC;
+    });
+
+    return sorted.slice(0, limit).map((t) => ({
+      symbol: t.symbol,
+      // Cast: isBullishType filter above guarantees this narrowing at runtime.
+      triggerType: t.type as 'WHALE_BUY' | 'BUY_PRESSURE' | 'MOMENTUM_BREAK' | 'VOLUME_SPIKE',
+      raisedAt: t.raisedAt,
+      reviewerConfidence: t.review?.confidence ?? 0,
+      reviewerReasoning: (t.review?.reasoning ?? '').slice(0, 120),
+      triggerStrength: t.strength,
+      triggerReason: t.reason,
+    }));
+  }
 }
 
 // ============================================================================

@@ -14,6 +14,7 @@ export type {
   SleeveStats,
   SharedMarketContext,
   DiscoveryCandidate,
+  WatcherDirectCandidate,
   CapitalAllocator,
 } from './types.js';
 
@@ -25,7 +26,7 @@ export type {
 } from './core-sleeve.js';
 
 export { AlphaHunterSleeve } from './alpha-hunter.js';
-export type { AlphaHunterSleeveOptions } from './alpha-hunter.js';
+export type { AlphaHunterSleeveOptions, WatcherDirectStats } from './alpha-hunter.js';
 
 export { AlphaRotationSleeve } from './alpha-rotation.js';
 export type { AlphaRotationSleeveOptions } from './alpha-rotation.js';

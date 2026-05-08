@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { AlphaHunterSleeve } from '../alpha-hunter.js';
-import type { SleeveContext, SleevePosition, DiscoveryCandidate } from '../types.js';
+import type {
+  SleeveContext,
+  SleevePosition,
+  DiscoveryCandidate,
+  WatcherDirectCandidate,
+} from '../types.js';
 import type { SleeveOwnership } from '../state-types.js';
 
 function mkOwnership(): SleeveOwnership {
@@ -152,11 +157,15 @@ describe('AlphaHunterSleeve v1 — entries', () => {
 
   it('respects max 3 open positions', async () => {
     const sleeve = new AlphaHunterSleeve();
+    // Use a fresh openedAt so the stale-exit (48h+ AND <2% gain) doesn't fire
+    // on the small-gain positions and free a slot. Fixed dates bit-rot here —
+    // the original 2026-04-21 dates went stale relative to wall-clock.
+    const fresh = new Date().toISOString();
     const ctx = mkCtx({
       positions: [
-        mkPosition('X', 50, 50, '2026-04-21T00:00:00.000Z'),
-        mkPosition('Y', 50, 50, '2026-04-21T00:00:00.000Z'),
-        mkPosition('Z', 50, 50, '2026-04-21T00:00:00.000Z'),
+        mkPosition('X', 50, 50, fresh),
+        mkPosition('Y', 50, 50, fresh),
+        mkPosition('Z', 50, 50, fresh),
       ],
       candidates: [mkCandidate({ symbol: 'NEW', convictionScore: 90 })],
       prices: { X: 1.02, Y: 1.01, Z: 1.03 }, // no exits, small gains
@@ -250,5 +259,162 @@ describe('AlphaHunterSleeve v1 — exits', () => {
     });
     const decisions = await sleeve.decide(ctx);
     expect(decisions.filter((d) => d.action === 'SELL')).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// NVR-SPEC-029: Watcher-Direct candidate stream
+// ============================================================================
+function mkWdCandidate(partial: Partial<WatcherDirectCandidate> & { symbol: string }): WatcherDirectCandidate {
+  return {
+    symbol: partial.symbol,
+    triggerType: partial.triggerType ?? 'WHALE_BUY',
+    raisedAt: partial.raisedAt ?? new Date().toISOString(),
+    reviewerConfidence: partial.reviewerConfidence ?? 0.85,
+    reviewerReasoning: partial.reviewerReasoning ?? 'multiple bullish signals align',
+    triggerStrength: partial.triggerStrength ?? 0.8,
+    triggerReason: partial.triggerReason ?? 'whale buys avg $1500',
+  };
+}
+
+function mkCtxWd(partial: {
+  positions?: SleevePosition[];
+  availableUSDC?: number;
+  capitalBudgetUSD?: number;
+  prices?: Record<string, number>;
+  discoveryCandidates?: DiscoveryCandidate[];
+  wdCandidates?: WatcherDirectCandidate[];
+}): SleeveContext {
+  return {
+    capitalBudgetUSD: partial.capitalBudgetUSD ?? 1000,
+    positions: partial.positions ?? [],
+    availableUSDC: partial.availableUSDC ?? 1000,
+    market: {
+      cycleNumber: 42,
+      builtAt: new Date().toISOString(),
+      prices: partial.prices ?? {},
+      regime: 'RANGING',
+      fearGreed: 50,
+      discovery: { candidates: partial.discoveryCandidates ?? [] },
+      watcherDirect: partial.wdCandidates ? {
+        candidates: partial.wdCandidates,
+        builtAt: new Date().toISOString(),
+      } : undefined,
+    },
+  };
+}
+
+describe('AlphaHunterSleeve — Watcher-Direct (NVR-SPEC-029)', () => {
+  afterEach(() => {
+    delete process.env.ALPHA_HUNTER_WATCHER_DIRECT;
+  });
+
+  it('ignores watcher-direct stream when env flag is off (default behavior unchanged)', async () => {
+    // Flag default = false. WD candidates should be ignored even when present.
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+      // No discovery candidates — sleeve should HOLD, not buy AERO.
+    });
+    const decisions = await sleeve.decide(ctx);
+    expect(decisions.filter((d) => d.action === 'BUY')).toHaveLength(0);
+    expect(sleeve.getWatcherDirectStats().candidatesEvaluated).toBe(0);
+  });
+
+  it('buys a watcher-direct candidate when flag is on and gates pass', async () => {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+    });
+    const decisions = await sleeve.decide(ctx);
+    const buys = decisions.filter((d) => d.action === 'BUY');
+    expect(buys).toHaveLength(1);
+    expect(buys[0].toToken).toBe('AERO');
+    expect(buys[0].reasoning).toContain('ALPHA_HUNTER_WD');
+    expect(buys[0].reasoning).toContain('NVR-SPEC-029');
+    const stats = sleeve.getWatcherDirectStats();
+    expect(stats.executions).toBe(1);
+    expect(stats.cyclesWithCandidates).toBe(1);
+    expect(stats.lastExecutionAt).not.toBeNull();
+  });
+
+  it('falls through to discovery when watcher-direct candidate is already held', async () => {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      positions: [mkPosition('AERO', 50, 50, new Date().toISOString())],
+      prices: { AERO: 1.04 }, // no exit
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+      discoveryCandidates: [
+        { symbol: 'VIRTUAL', convictionScore: 90, sector: 'MEME', price: 1, volume24h: 1e5, priceChange24h: 8, isRunner: false },
+      ],
+    });
+    const decisions = await sleeve.decide(ctx);
+    const buys = decisions.filter((d) => d.action === 'BUY');
+    expect(buys).toHaveLength(1);
+    expect(buys[0].toToken).toBe('VIRTUAL'); // discovery fallback
+    expect(sleeve.getWatcherDirectStats().skippedByReason.already_held).toBe(1);
+  });
+
+  it('rejects watcher-direct candidate that is a protected base token', async () => {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'cbBTC' })],
+    });
+    const decisions = await sleeve.decide(ctx);
+    expect(decisions.filter((d) => d.action === 'BUY')).toHaveLength(0);
+    expect(sleeve.getWatcherDirectStats().skippedByReason.protected_symbol).toBe(1);
+  });
+
+  it('rejects all watcher-direct candidates when position cap is reached', async () => {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      positions: [
+        mkPosition('A', 50, 50, new Date().toISOString()),
+        mkPosition('B', 50, 50, new Date().toISOString()),
+        mkPosition('C', 50, 50, new Date().toISOString()),
+      ],
+      prices: { A: 1.02, B: 1.03, C: 1.04 }, // no exits
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+    });
+    const decisions = await sleeve.decide(ctx);
+    expect(decisions.filter((d) => d.action === 'BUY')).toHaveLength(0);
+    expect(sleeve.getWatcherDirectStats().skippedByReason.position_cap).toBe(1);
+  });
+
+  it('rejects watcher-direct candidates when USDC is below floor', async () => {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      availableUSDC: 5,
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+    });
+    const decisions = await sleeve.decide(ctx);
+    expect(decisions.filter((d) => d.action === 'BUY')).toHaveLength(0);
+    expect(sleeve.getWatcherDirectStats().skippedByReason.usdc_floor).toBe(1);
+  });
+
+  it('caps to 1 entry per cycle even with multiple watcher-direct candidates', async () => {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    const sleeve = new AlphaHunterSleeve();
+    const ctx = mkCtxWd({
+      wdCandidates: [
+        mkWdCandidate({ symbol: 'AERO', reviewerConfidence: 0.95 }),
+        mkWdCandidate({ symbol: 'VIRTUAL', reviewerConfidence: 0.85 }),
+      ],
+      discoveryCandidates: [
+        { symbol: 'EXTRA', convictionScore: 99, sector: 'MEME', price: 1, volume24h: 1e5, priceChange24h: 10, isRunner: true },
+      ],
+    });
+    const decisions = await sleeve.decide(ctx);
+    const buys = decisions.filter((d) => d.action === 'BUY');
+    expect(buys).toHaveLength(1);
+    // First WD candidate wins (stream is pre-sorted by getWatcherDirectCandidates)
+    expect(buys[0].toToken).toBe('AERO');
+    // Did NOT also pull from discovery — one entry per cycle.
+    expect(buys.find((b) => b.toToken === 'EXTRA')).toBeUndefined();
   });
 });
