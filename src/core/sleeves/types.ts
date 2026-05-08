@@ -85,8 +85,57 @@ export interface SharedMarketContext {
     /** ISO timestamp of the discovery scan. Stale scans → sleeves should hold. */
     scannedAt?: string;
   };
+  /**
+   * NVR-SPEC-029: Watcher-direct candidate stream. When AlphaHunter is
+   * configured to consume Watcher signals directly (env flag
+   * ALPHA_HUNTER_WATCHER_DIRECT=true), the orchestrator populates this
+   * with the freshest BUY-reviewed bullish triggers from
+   * `alphaWatcher.getWatcherDirectCandidates()`. Bypasses the 24h
+   * conviction formula (which structurally excludes 1h microstructure
+   * setups — see INVESTIGATION_2026-05-08_Conviction-Formula-Diagnosis.md).
+   *
+   * AlphaHunter consumes these FIRST and falls through to `discovery` if
+   * none pass risk gates. When the env flag is off, this is undefined and
+   * AlphaHunter behaviour is unchanged.
+   */
+  watcherDirect?: {
+    candidates: WatcherDirectCandidate[];
+    /** ISO timestamp when the candidate snapshot was captured. */
+    builtAt: string;
+  };
   /** Anything the orchestrator wants to expose without typing it yet. */
   extras?: Record<string, unknown>;
+}
+
+/**
+ * NVR-SPEC-029: A single token surfaced by the Always-On Alpha Watcher
+ * (SPEC-028) that has passed Reviewer review with a BUY verdict and high
+ * confidence. Shape is intentionally narrow — sleeves should depend only
+ * on the fields needed to decide and reason in the structured log.
+ *
+ * Source of truth: `alphaWatcher.getWatcherDirectCandidates()`. The
+ * candidate snapshot reflects 1h microstructure at trigger time, NOT a
+ * 24h aggregate.
+ */
+export interface WatcherDirectCandidate {
+  /** Cohort token symbol (uppercase). */
+  symbol: string;
+  /** The trigger pattern that fired. Bullish-only by selection. */
+  triggerType:
+    | 'WHALE_BUY'
+    | 'BUY_PRESSURE'
+    | 'MOMENTUM_BREAK'
+    | 'VOLUME_SPIKE';
+  /** ISO timestamp the trigger was raised. Drives recency sort. */
+  raisedAt: string;
+  /** 0-1 Reviewer confidence on the BUY verdict. */
+  reviewerConfidence: number;
+  /** Reviewer's one-line rationale (truncated to 120 chars). */
+  reviewerReasoning: string;
+  /** Watcher's deterministic 0-1 strength score on the trigger. */
+  triggerStrength: number;
+  /** Human-readable trigger reason from the Watcher (e.g. '76% buys ...'). */
+  triggerReason: string;
 }
 
 /**

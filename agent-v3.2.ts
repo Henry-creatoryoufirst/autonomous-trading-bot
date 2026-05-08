@@ -542,6 +542,7 @@ import {
   buildDefaultRegistry as _buildDefaultRegistry,
   type SleeveRegistry,
   type DiscoveryCandidate,
+  type WatcherDirectCandidate,
   migrateStateToSleeves,
   resolveEffectiveMode,
   syncCoreSleevePositions,
@@ -3161,6 +3162,39 @@ async function makeTradeDecisionViaSleeve(
         }
       : undefined;
 
+  // NVR-SPEC-029: Build the watcher-direct candidate stream when AlphaHunter
+  // is configured to consume Watcher signals directly. Bypasses the 24h
+  // conviction formula (which structurally excludes 1h microstructure setups
+  // — see INVESTIGATION_2026-05-08_Conviction-Formula-Diagnosis.md).
+  //
+  // Gated behind ALPHA_HUNTER_WATCHER_DIRECT=true. When the flag is false
+  // (default), watcherDirect is undefined and AlphaHunter falls through to
+  // the discovery-driven path with no behavior change. This is the soak gate.
+  //
+  // The Watcher must also be running (ALPHA_WATCHER_ENABLED=true) for any
+  // candidates to exist. We import alphaWatcher lazily — same pattern used
+  // for the admin endpoint — so non-Watcher deployments don't pay the load
+  // cost.
+  let watcherDirect: { candidates: WatcherDirectCandidate[]; builtAt: string } | undefined;
+  if ((process.env.ALPHA_HUNTER_WATCHER_DIRECT ?? 'false').toLowerCase() === 'true') {
+    try {
+      const { alphaWatcher } = await import('./src/core/services/alpha-watcher.js');
+      const wdCandidates = alphaWatcher.getWatcherDirectCandidates();
+      watcherDirect = {
+        candidates: wdCandidates,
+        builtAt: new Date().toISOString(),
+      };
+      if (wdCandidates.length > 0) {
+        console.log(
+          `[ALPHA_HUNTER_WD] orchestrator: ${wdCandidates.length} watcher-direct candidate(s) for this cycle — ` +
+          wdCandidates.map(c => `${c.symbol}/${c.triggerType}@conf${c.reviewerConfidence.toFixed(2)}`).join(', '),
+        );
+      }
+    } catch (e: any) {
+      console.warn(`[ALPHA_HUNTER_WD] failed to import alphaWatcher — falling through to discovery: ${e?.message ?? e}`);
+    }
+  }
+
   const liveDecisions: TradeDecision[] = [];
   const sleeveActivity: Array<{ id: string; mode: string; count: number; paperTrades?: number }> = [];
 
@@ -3250,6 +3284,7 @@ async function makeTradeDecisionViaSleeve(
           regime,
           fearGreed: lastFearGreedValue ?? 50,
           discovery,
+          watcherDirect,
         },
         // Core still receives the full bot payload via extras since its
         // decideFn wraps makeTradeDecision(). Alpha sleeves consume
