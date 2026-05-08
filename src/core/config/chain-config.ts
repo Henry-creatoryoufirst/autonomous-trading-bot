@@ -74,11 +74,11 @@ const BASE_CONFIG: ChainConfig = {
   rpcEndpoints: [
     ...(process.env.BASE_RPC_URL ? [process.env.BASE_RPC_URL] : []),
     'https://rpc.flashbots.net/fast?chainId=8453',
-    'https://mainnet-sequencer.base.org',
     'https://1rpc.io/base',
     'https://mainnet.base.org',
     'https://base.meowrpc.com',
     'https://base.drpc.org',
+    'https://base-rpc.publicnode.com',
   ],
   nativeToken: 'ETH',
   usdc: { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
