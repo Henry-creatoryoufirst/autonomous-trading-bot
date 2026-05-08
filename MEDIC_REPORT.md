@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-07T04:05 UTC
+# MEDIC REPORT — 2026-05-08T10:04 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #33)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-08T10:04 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-tFwFj
 
 ## Problem
 
@@ -64,6 +64,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
+| #33 | 2026-05-08T10:04 UTC | Scout skipped (last scout 2026-05-07 09:39 UTC, ~20h ago, <48h threshold); auditor raised ICU_GRADUATION_HOURS 4→6 — 63-day bear; position sizing research confirms new entries in sustained bear face elevated false-breakout rates; 2h extra ICU monitoring reduces premature graduation of bad entries |
 
 ## Bot Health Evidence (from git history)
 
@@ -87,6 +88,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #33 — 2026-05-08T10:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #33).
+- **Scout**: SKIPPED — last scout ran 2026-05-07T09:39 UTC, ~20h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 63-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: ICU_GRADUATION_HOURS 4→6 — 63-day bear; new entries face elevated false-breakout rates in sustained downtrends; extra 2h of ICU monitoring reduces premature graduation of bad entries before stop-loss protocols can engage. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #33 — 2026-05-08)
+- **Signal Quality**: Smart wallet accumulation as leading signal (DEXTools 2026); multi-factor ML (on-chain + technical + sentiment, ACM 2025, Sharpe ~2.5); Aerodrome LP flow imbalance as Base-native confluence input ($160.5M annual revenue 2025). All complex integrations (Impact 3-4/Complexity 4-5/Risk med-high) → Watch list. No auto-implementation. (Max Priority 1.0)
+- **Execution Efficiency**: Universal Router batching (permit + swap in single tx) — touches executeDirectDexSwap (off-limits). Permit2 AllowanceTransfer — already partially implemented. Slipstream V3 MEV auction internalization — bot auto-benefits at DEX level. No code change. (Priority 0)
+- **Position Sizing**: KEY FINDING — VIX-bucketed Kelly (arXiv 2025) confirms Quarter-Kelly optimal in sustained bear (already at 0.25). Confidence-weighted Kelly + circuit breakers research (3Commas 2025, Cripton AI 2026) highlights new position monitoring as critical in bear; in 63-day bear, ICU_GRADUATION_HOURS 4→6 extends intensive ICU supervision for new entries. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Base Flashblocks 200ms preconfirmations (Chainstack 2025) — RPC endpoint change, not constants. Watch list. Private RPC + tranche execution already implemented (TWAP, sequencer-direct). Outcome feedback loop already live (v21.13). (Priority 0-1.0)
 
 ## Jobs Status This Run (Run #32 — 2026-05-07T04:05 UTC)
 

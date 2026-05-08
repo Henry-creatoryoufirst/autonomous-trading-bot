@@ -657,7 +657,7 @@ export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0
 export const ICU_STOP_LOSS_PCT = 15;
 
 /** Hours a position must survive at > ICU_STABLE_THRESHOLD_PCT before graduating to ESTABLISHED */
-export const ICU_GRADUATION_HOURS = 4;
+export const ICU_GRADUATION_HOURS = 6; // Bear-adjusted May-2026: 4→6 — 63-day bear; new entries face higher false-breakout rates in sustained downtrends; extra 2h of ICU monitoring reduces premature graduation of bad entries before stop-loss protocols engage
 
 /** Minimum P&L % required to graduate out of ICU (position must not be deeply underwater) */
 export const ICU_STABLE_THRESHOLD_PCT = -5;
