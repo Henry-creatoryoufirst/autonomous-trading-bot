@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-07T04:05 UTC
+# MEDIC REPORT — 2026-05-09T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-09T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ogSIq
 
 ## Problem
 
@@ -64,6 +64,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
+| #33 | 2026-05-08T07:16 UTC | Scout added SYRUP; auditor raised VWS_MIN_LIQUIDITY_USD 10K→20K and lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 — 63-day bear |
+| #34 | 2026-05-09T00:00 UTC | Scout skipped (SYRUP added 2026-05-08T07:16, ~17h ago, <48h); auditor: REENTRY_CONFLUENCE_SELL -23→-21 — 64-day bear; restores designed 3-pt premium over NORMAL_CONFLUENCE_SELL (-18), which drifted to 5-pt gap after normal moved -20→-18 |
 
 ## Bot Health Evidence (from git history)
 
@@ -87,6 +89,24 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #34 — 2026-05-09T00:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
+- **Scout**: SKIPPED — last scout ran 2026-05-08T07:16 UTC (SYRUP added), ~17h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 64-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: REENTRY_CONFLUENCE_SELL -23→-21 — restores the designed 3-point premium over NORMAL_CONFLUENCE_SELL. When NORMAL moved -20→-18, REENTRY stayed at -23 causing the gap to widen from 3pt to 5pt, making re-entry sells harder to trigger than intended. Restoring -21 (= -18 - 3) tightens re-sell barrier and reduces position overhang. IMPLEMENTED in constants.ts. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #34 — 2026-05-09)
+- **Signal Quality**: Multi-wallet clustering (2+ wallets buying same token in short window) as confluence signal — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) gas-aware routing + batched settlement — bot auto-benefits from DEX-level improvements without code change. No action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Dynamic VIX-Rank Kelly criterion research (arxiv 2025-2026): "adding volatility constraints can help avoid trading during unfavorable market conditions." In NVR context: REENTRY_CONFLUENCE_SELL gap widened unintentionally from 3pt→5pt when NORMAL moved; restoring 3-pt gap (→-21) directly reduces bear-market position overhang. IMPLEMENTED. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+- **Competitive Intelligence**: Grid bots "thrive in choppy range-bound bear markets — capture small consistent profits from every oscillation" (SaintQuant, 2026-05-04). Supports consistent exit discipline. Already captured by DECEL/FLOW_REVERSAL adjustments; re-sell gap restoration adds another layer. No new code change. (Priority 0.5)
+
+## Jobs Status This Run (Run #33 — 2026-05-08T07:16 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #33).
+- **Scout**: RAN — SYRUP (Maple Finance yield token) added to TOKEN_REGISTRY; cbMEGA rejected (unverifiable contract address). Threshold: >48h since last scout.
+- **Auditor**: TRIGGERED by inferred 63-day BEAR market (48h+ threshold met). Top findings: VWS_MIN_LIQUIDITY_USD 10K→20K (bear slippage floor), CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 (capital preservation). IMPLEMENTED in constants.ts.
 
 ## Jobs Status This Run (Run #32 — 2026-05-07T04:05 UTC)
 

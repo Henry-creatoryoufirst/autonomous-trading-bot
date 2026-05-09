@@ -417,7 +417,7 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
  */
 export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
-export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
+export const REENTRY_CONFLUENCE_SELL = -21;  // Bear-adjusted May-2026: -23→-21 — 64-day bear; NORMAL_CONFLUENCE_SELL moved -20→-18, widening re-sell gap from 3pt to 5pt; restoring designed 3pt premium (-18 + -3 = -21); smaller gap means re-entry sells trigger more easily, reducing position overhang in sustained downtrend
 export const NORMAL_CONFLUENCE_BUY = 27;    // Bear-adjusted May-2026: 25→27 — 46-day bear market; false-positive entry rate elevated; unify with re-entry threshold for equal caution on all buys.
 export const NORMAL_CONFLUENCE_SELL = -18;  // Bear-adjusted May-2026: -20→-18 — 51-day bear; sell-side was the last untouched threshold; lower magnitude allows exits on weaker sell signals, reducing position overhang in sustained downtrend.
 
