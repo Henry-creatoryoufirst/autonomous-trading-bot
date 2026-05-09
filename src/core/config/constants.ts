@@ -557,7 +557,7 @@ export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calcula
  * Triggers on ANY of these conditions
  */
 export const BREAKER_CONSECUTIVE_LOSSES = 5;   // 5 consecutive losing trades → pause (less hair-trigger)
-export const BREAKER_DAILY_DD_PCT = 7;         // 7% daily drawdown → pause (auditor Apr-2026: tightened 8→7; industry practice 5-6%, bear-market defensive posture warrants earlier pause)
+export const BREAKER_DAILY_DD_PCT = 6;         // Bear-adjusted May-2026: 7→6 — day 64 of bear; code's own target "industry practice 5-6%" not yet reached; 6% places breaker at top of that range; one bad hour in a bear market easily cascades, stopping at 6% drawdown cuts the tail
 export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
