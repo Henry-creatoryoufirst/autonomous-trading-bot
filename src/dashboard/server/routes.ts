@@ -1468,6 +1468,37 @@ export function handleAlphaWatcher(
 }
 
 // ============================================================================
+// Route handler: /api/alpha-cohort  (PUBLIC — no auth)
+//   Exposes the watched cohort symbols + per-token specialist counts +
+//   recent trigger activity stats. Non-sensitive — meant for the website's
+//   server-side snapshot fan-out so the master agent fleet (Operator,
+//   Capital Manager, Sleeve agents) can reason about cohort state.
+//   NVR-2026-05-10 specialist-depth visibility.
+// ============================================================================
+
+export function handleAlphaCohortPublic(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  const status = alphaWatcher.getStatus();
+  const specialists = outcomeTracker.getTokenSpecialists(10);
+  const specialistCounts: Record<string, number> = {};
+  for (const symbol of status.cohort) {
+    specialistCounts[symbol] = (specialists[symbol] ?? []).length;
+  }
+  ctx.sendJSON(res, 200, {
+    cohort: status.cohort,
+    cohortSize: status.cohort.length,
+    specialistCounts,
+    triggersFired24h: status.triggersFired24h,
+    triggersByType24h: status.triggersByType24h,
+    pollEnabled: status.enabled,
+    lastPollAt: status.lastPollAt,
+    generatedAt: new Date().toISOString(),
+  });
+}
+
+// ============================================================================
 // Route handler: /api/chat (POST with streaming body)
 // Returns true to indicate caller should NOT call res.end()
 // ============================================================================

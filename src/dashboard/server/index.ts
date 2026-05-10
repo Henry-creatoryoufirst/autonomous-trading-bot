@@ -50,6 +50,7 @@ export {
   handleCorrectState,
   handleRepairCostBasis,
   handleAlphaWatcher,
+  handleAlphaCohortPublic,
 
   // Chat + Directives
   handleChat,

@@ -565,7 +565,7 @@ import {
   handleAdaptive, handleDerivatives, handleEquity, handleDiscovery, handleCache,
   handleYield, handleYieldRates, handleDexIntelligence,
   handleFamily, handleFamilyMembers, handleFamilyProfiles, handleFamilyWallets,
-  handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis, handleAlphaWatcher,
+  handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis, handleAlphaWatcher, handleAlphaCohortPublic,
   handleChat, handleDirectives, handleDeleteDirective,
   handleSimulate, handleStrategyVersions, handlePaperPortfolios, handlePaperPortfolioById,
   handleExportResults, handleVersionBacktest,
@@ -10875,6 +10875,12 @@ const healthServer = http.createServer(async (req, res) => {
       case '/api/admin/alpha-watcher':
         // NVR-SPEC-028 Phase 1: inspect Watcher status + recent triggers
         handleAlphaWatcher(req, res, serverCtx);
+        break;
+      case '/api/alpha-cohort':
+        // NVR-2026-05-10: PUBLIC read-only — cohort + specialist counts +
+        // 24h trigger stats. Consumed by website's snapshot fan-out so the
+        // master agent fleet can reason about cohort state without admin auth.
+        handleAlphaCohortPublic(res, serverCtx);
         break;
       case '/api/chat':
         if (handleChat(req, res, serverCtx)) return;
