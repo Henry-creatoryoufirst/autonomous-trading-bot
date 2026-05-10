@@ -562,7 +562,7 @@ export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
 export const BREAKER_SIZE_REDUCTION = 0.7;     // 30% size reduction for 24h after breaker
-export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
+export const BREAKER_SIZE_REDUCTION_HOURS = 36;// Bear-adjusted May-2026: 24→36 — 63-day bear; Kelly research confirms reduced sizing during losing streaks improves long-term outcomes; 24h window insufficient when bear conditions persist into the next day; 50% longer protection reduces post-breaker overtrading risk
 
 // ============================================================================
 // v8.1: PHASE 2 — EXECUTION QUALITY (VWS, TWAP, Gas, Liquidity)
