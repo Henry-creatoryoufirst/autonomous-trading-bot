@@ -243,6 +243,86 @@ class OutcomeTracker {
   // ——— Analytics ———————————————————————————————————————————————
 
   /**
+   * Get per-(wallet, token) hit rates — which wallets predict moves on which
+   * tokens specifically. Same data as getWalletHitRates() but sliced by token
+   * symbol so we can identify specialists.
+   *
+   * NVR-2026-05-10 specialist-depth foundation. The bot's smart-wallet pool
+   * is currently flat (one pool, applied to all tokens) — but a wallet that
+   * wins on AERO 80% and loses on VIRTUAL 80% has a 50% global hit rate that
+   * masks the per-token signal. This method exposes the slice; replacing the
+   * scoring path is a follow-up cut.
+   *
+   * Returns: { [tokenSymbol]: WalletHitRate[] } sorted by hitRate4h desc per
+   * token. Filters wallets with totalSignals < MIN_SAMPLES_FOR_ACCURACY so
+   * thin per-token data doesn't surface noise.
+   */
+  getWalletHitRatesByToken(): Record<string, WalletHitRate[]> {
+    const bySymbol = new Map<string, DiscoveryOutcome[]>();
+    for (const o of this.outcomes.values()) {
+      const arr = bySymbol.get(o.symbol) ?? [];
+      arr.push(o);
+      bySymbol.set(o.symbol, arr);
+    }
+
+    const now = new Date().toISOString();
+    const result: Record<string, WalletHitRate[]> = {};
+
+    for (const [symbol, outcomes] of bySymbol.entries()) {
+      const stats = new Map<
+        string,
+        { totalSignals: number; hits1h: number; hits4h: number; hits24h: number }
+      >();
+      for (const o of outcomes) {
+        for (const wid of o.smartWalletIds) {
+          const s = stats.get(wid) ?? { totalSignals: 0, hits1h: 0, hits4h: 0, hits24h: 0 };
+          s.totalSignals++;
+          if (o.returnAt1h !== undefined && o.returnAt1h >= HIT_THRESHOLD_1H) s.hits1h++;
+          if (o.returnAt4h !== undefined && o.returnAt4h >= HIT_THRESHOLD_4H) s.hits4h++;
+          if (o.returnAt24h !== undefined && o.returnAt24h >= HIT_THRESHOLD_24H) s.hits24h++;
+          stats.set(wid, s);
+        }
+      }
+
+      const ranked = Array.from(stats.entries())
+        .filter(([, s]) => s.totalSignals >= MIN_SAMPLES_FOR_ACCURACY)
+        .map(([walletId, s]) => ({
+          walletId,
+          totalSignals: s.totalSignals,
+          hits1h: s.hits1h,
+          hits4h: s.hits4h,
+          hits24h: s.hits24h,
+          hitRate4h: s.totalSignals > 0 ? s.hits4h / s.totalSignals : 0,
+          lastUpdated: now,
+        }))
+        .sort((a, b) => b.hitRate4h - a.hitRate4h);
+
+      if (ranked.length > 0) {
+        result[symbol] = ranked;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Identify the top-N "specialist" wallets per token from hit-rate data.
+   * Used by admin visibility (and, in a follow-up cut, by signal-scoring).
+   *
+   * Returns: { [tokenSymbol]: walletIds[] } — only tokens with ≥1 qualified
+   * specialist appear in the result.
+   */
+  getTokenSpecialists(topN: number = 5): Record<string, string[]> {
+    const byToken = this.getWalletHitRatesByToken();
+    const out: Record<string, string[]> = {};
+    for (const [symbol, ranked] of Object.entries(byToken)) {
+      const top = ranked.slice(0, topN).map((r) => r.walletId);
+      if (top.length > 0) out[symbol] = top;
+    }
+    return out;
+  }
+
+  /**
    * Get hit rates per smart wallet — which wallets actually predicted moves.
    * Only returns wallets with at least 1 signal.
    */
