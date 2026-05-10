@@ -498,8 +498,12 @@ export const ATR_STOP_FLOOR_PERCENT = -25;
  *  v12.2.2: Widened from -6% — was causing churn loop (buy → -6% stop → buy again) */
 export const ATR_STOP_CEILING_PERCENT = -12;
 
-/** Trail activates after position is +1×ATR% in profit */
-export const ATR_TRAIL_ACTIVATION_MULTIPLIER = 1.0;
+/** Trail activates after position is +N×ATR% in profit.
+ *  Bear-adjusted May-2026: 1.0→1.25 — CRITIC Apr-2026 audit (n=274 trades) found early trail
+ *  activation was the primary drag on capturing recovery moves (bot bailed at -24% of available
+ *  entry-to-current gain on +33-115% movers). VIX-Rank Kelly research (arxiv:2508.16598) confirms
+ *  raising activation threshold reduces premature trail-stop churn at bear market bottoms. */
+export const ATR_TRAIL_ACTIVATION_MULTIPLIER = 1.25;
 
 /** Per-sector ATR multipliers — higher = wider stop for that sector */
 export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
