@@ -606,6 +606,14 @@ import {
   fetchAllOnChainIntelligence, enrichVolumeData, fetchBaseUSDCSupply,
   computePriceChange, computeLocalAltseasonSignal, parseHarvestRecipients,
 } from "./src/core/data/on-chain-prices.js";
+// v21.35: Fleet observations — fetch the latest thought from each of the 4
+// master-fleet agents on schertzingertrading.com and inject them into the
+// heavy-cycle Sonnet prompt. Closes the loop: agents have been observing
+// + reasoning all day; now the trade decider actually reads what they see.
+import {
+  fetchFleetObservations,
+  formatFleetObservationsBlock,
+} from "./src/core/services/fleet-observations.js";
 // Phase 1b: Extracted algorithm modules
 import {
   calculateRSI as _calculateRSI,
@@ -4981,6 +4989,15 @@ async function makeTradeDecision(
   const sectorRotations = _isFullPrompt ? detectSectorRotation(marketData.tokens) : [];
   const rotationSummary = _isFullPrompt ? formatSectorRotationSummary(sectorRotations) : '';
 
+  // v21.35: Fleet observations — fetch the latest thought from each of the
+  // 4 master-fleet agents (Operator, Capital Manager, Core/Alpha Sleeve).
+  // Heavy-cycle-only (~300-600 tokens budget). Default OFF via
+  // FLEET_OBSERVATIONS_ENABLED env; any fetch failure returns "" so the
+  // prompt is unchanged. This is the "agents talk to themselves; bot listens"
+  // closure — every full cycle gets four expert second-opinions.
+  const fleetData = _isFullPrompt ? await fetchFleetObservations() : null;
+  const fleetObservationsBlock = formatFleetObservationsBlock(fleetData);
+
   // v20.6: Build dynamic data sections (always included regardless of prompt tier)
   const dynamicData = `
 ═══ PORTFOLIO ═══
@@ -5024,7 +5041,7 @@ ${volumeSpikeSection}
 ═══ RECENT TRADE HISTORY ═══
 ${tradeHistoryContext}${_isFullPrompt ? tradeHistorySummary : recentTrades.slice(-3).map(t => `  ${t.timestamp.slice(5, 16)} ${t.action} ${t.fromToken}→${t.toToken} $${t.amountUSD.toFixed(2)} ${t.success ? "✅" : "❌"}`).join("\n") || '  No trades yet'}
 
-${_isFullPrompt ? discoveryIntel : ''}${_isFullPrompt ? hotMoverIntel : ''}═══ TRADING LIMITS ═══
+${_isFullPrompt ? discoveryIntel : ''}${_isFullPrompt ? hotMoverIntel : ''}${_isFullPrompt ? fleetObservationsBlock : ''}═══ TRADING LIMITS ═══
 - Max BUY: $${maxBuyAmount.toFixed(2)} (Kelly ${instSize.kellyPct.toFixed(1)}% × Vol×${instSize.volMultiplier.toFixed(2)} × Mom×${instSize.momentumMultiplier.toFixed(2)}${instSize.breakerReduction ? ' × Breaker 30%' : ''}) | Max SELL: ${CONFIG.trading.maxSellPercent}% of position
 - Available tokens: ${tradeableTokens}`;
 
