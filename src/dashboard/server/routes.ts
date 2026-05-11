@@ -21,6 +21,7 @@ import { alphaWatcher } from '../../core/services/alpha-watcher.js';
 import { alphaReflex } from '../../core/services/alpha-reflex.js';
 import { alphaLearning } from '../../core/services/alpha-learning.js';
 import { alphaPromoter } from '../../core/services/alpha-promoter.js';
+import { outcomeTracker } from '../../core/services/outcome-tracker.js';
 
 // ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
@@ -1428,12 +1429,72 @@ export function handleAlphaWatcher(
     return;
   }
 
+  if (action === 'specialists') {
+    // NVR-2026-05-10 specialist-depth visibility — per-token wallet hit
+    // rates from outcome-tracker, sliced by token symbol. Lets us see which
+    // cohort tokens have actual specialists vs. thin data, before we wire
+    // per-token seeds into the scoring path.
+    const topN = Math.max(1, Math.min(50, parseInt(url.searchParams.get('topN') ?? '10', 10)));
+    const fullByToken = outcomeTracker.getWalletHitRatesByToken();
+    const trimmed: Record<string, ReturnType<typeof outcomeTracker.getWalletHitRates>> = {};
+    for (const [symbol, ranked] of Object.entries(fullByToken)) {
+      trimmed[symbol] = ranked.slice(0, topN);
+    }
+    ctx.sendJSON(res, 200, {
+      cohort: alphaWatcher.getStatus().cohort,
+      perTokenSpecialists: trimmed,
+      generatedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
+  // Default response — adds specialistCounts so the cockpit can show at a
+  // glance how many qualified specialists each cohort token has.
+  const status = alphaWatcher.getStatus();
+  const specialists = outcomeTracker.getTokenSpecialists(10);
+  const specialistCounts: Record<string, number> = {};
+  for (const symbol of status.cohort) {
+    specialistCounts[symbol] = (specialists[symbol] ?? []).length;
+  }
+
   ctx.sendJSON(res, 200, {
-    status: alphaWatcher.getStatus(),
+    status,
+    specialistCounts,
     recentTriggers: alphaWatcher.getTriggers(limit),
     reflex: alphaReflex.getStatus(),
     reflexClosed: alphaReflex.getRecentClosed(20),
     promoter: { recentDecisions: alphaPromoter.getRecentDecisions(10) },
+  });
+}
+
+// ============================================================================
+// Route handler: /api/alpha-cohort  (PUBLIC — no auth)
+//   Exposes the watched cohort symbols + per-token specialist counts +
+//   recent trigger activity stats. Non-sensitive — meant for the website's
+//   server-side snapshot fan-out so the master agent fleet (Operator,
+//   Capital Manager, Sleeve agents) can reason about cohort state.
+//   NVR-2026-05-10 specialist-depth visibility.
+// ============================================================================
+
+export function handleAlphaCohortPublic(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  const status = alphaWatcher.getStatus();
+  const specialists = outcomeTracker.getTokenSpecialists(10);
+  const specialistCounts: Record<string, number> = {};
+  for (const symbol of status.cohort) {
+    specialistCounts[symbol] = (specialists[symbol] ?? []).length;
+  }
+  ctx.sendJSON(res, 200, {
+    cohort: status.cohort,
+    cohortSize: status.cohort.length,
+    specialistCounts,
+    triggersFired24h: status.triggersFired24h,
+    triggersByType24h: status.triggersByType24h,
+    pollEnabled: status.enabled,
+    lastPollAt: status.lastPollAt,
+    generatedAt: new Date().toISOString(),
   });
 }
 

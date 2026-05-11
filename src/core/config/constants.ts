@@ -1180,7 +1180,7 @@ Capital Flow & Momentum > Price Action > On-Chain Flow (buy ratio, volume) > Tec
 Sector balance is a GUIDELINE, not a rule. If DeFi is where the wave is, go 100% DeFi. If memes are ripping, ride memes. Follow the money, not the spreadsheet.
 
 ═══ CASH DISCIPLINE (THE ONE HARD RULE) ═══
-Maintain ~25% of portfolio in USDC as dry powder. This is a RULE, not a guideline. The reserve exists for alpha strikes — when a meme/alt opportunity appears, deploy from the reserve and exit fast. Do NOT drain the reserve to add to existing winners or chase sector rotations — that's what the other 75% is for. If USDC drops below 25%, the reserve restorer will auto-sell the weakest positions to refill; avoid triggering that by leaving room before deploying aggressively. The reserve is rolling, not idle: USDC → alpha entry → fast exit → USDC.`;
+Maintain ~25% of portfolio in USDC as dry powder. This is a discipline target you (the AI) are responsible for managing — no automatic restorer exists. The reserve serves alpha strikes: when a meme/alt opportunity appears, deploy from the reserve and exit fast back into USDC. Do NOT drain it to add to existing winners or chase sector rotations — that's what the other 75% is for. If USDC drifts below 25%, BUY decisions must size down or HOLD until natural turnover (harvest, stale-exit, drawdown override, take-profit) replenishes it; do not assume any process will refill the reserve on your behalf. Below 15% USDC, treat all new BUY proposals as high-bar: only the highest-conviction setups deploy further. The reserve is rolling, not idle: USDC → alpha entry → fast exit → USDC.`;
 
 /** Stable operating-knowledge addendum — sent on EVERY cycle as part of the
  *  cacheable prefix. Two jobs:

@@ -6,9 +6,10 @@
  * deterministic scoring — the LLM only enters at the Reviewer gate (Phase 2).
  *
  * Architecture:
- *   - Polls GeckoTerminal pool data every WATCHER_POLL_INTERVAL_SEC for the
- *     watched cohort. Per-pool data includes 5m/1h price changes, 1h/24h
- *     volume, buy/sell counts, liquidity, buyers/sellers.
+ *   - Polls GeckoTerminal pool data on an adaptive interval (30s for
+ *     cohorts ≤8, 60s otherwise) for the watched cohort. Per-pool data
+ *     includes 5m/1h price changes, 1h/24h volume, buy/sell counts,
+ *     liquidity, buyers/sellers.
  *   - For each poll, computes 5 trigger scores (momentum break, liquidity
  *     vacuum, whale arrival, volume spike, buy pressure).
  *   - When ANY score crosses its threshold, emits a Trigger to the in-memory
@@ -37,17 +38,54 @@ import { alphaReflex } from './alpha-reflex.js';
 /**
  * Default watched cohort. Tokens with high enough volume that 5-15% intraday
  * moves happen daily, distinct enough character that they don't move as one
- * correlated bloc, and stable enough contracts not to rug. Excludes WETH —
- * Core handles WETH; AlphaHunter focuses on the volatile mid/small-caps.
+ * correlated bloc, and stable enough contracts not to rug. Excludes WETH/cbBTC —
+ * Core handles those; AlphaHunter focuses on the volatile mid-cap layer.
+ *
+ * 2026-05-10 expansion (4 → 15): per Henry's call, pure-meme breadth dialed
+ * down in favor of "real alts with macro narratives" — wrapped majors
+ * (cbXRP/cbLTC/cbADA/cbSOL/cbDOGE) are alpha plays in this frame, not blue
+ * chip. Memory: feedback_specialist_depth_beats_breadth (10-20 sweet spot).
  *
  * Override via env: ALPHA_WATCHER_COHORT="AERO,VIRTUAL,AIXBT,CLANKER"
  */
-const DEFAULT_COHORT = ['AERO', 'VIRTUAL', 'AIXBT', 'CLANKER'];
+const DEFAULT_COHORT = [
+  // Wrapped-major alpha (macro narrative + volatility)
+  'cbXRP', 'cbLTC', 'cbADA', 'cbSOL', 'cbDOGE',
+  // Existing watched (working)
+  'AERO', 'VIRTUAL', 'AIXBT', 'CLANKER',
+  // AI / narrative
+  'HIGHER', 'KAITO',
+  // DeFi mid-cap
+  'MORPHO', 'PENDLE',
+  // Memes (dialed down from full breadth)
+  'BRETT', 'DEGEN',
+];
 
-const WATCHER_POLL_INTERVAL_SEC = Math.max(
-  20,
-  parseInt(process.env.ALPHA_WATCHER_POLL_SEC ?? '30', 10),
-);
+/**
+ * Adaptive polling: 30s for tight cohorts, 60s when cohort > 8. Keeps us
+ * under GeckoTerminal's ~30 calls/min public rate limit (we're hitting
+ * getTokenPools once per cohort symbol per tick + outcome-tracker calls
+ * elsewhere). Live override via ALPHA_WATCHER_POLL_SEC env still wins.
+ */
+const COHORT_LARGE_THRESHOLD = 8;
+const POLL_INTERVAL_SMALL_SEC = 30;
+const POLL_INTERVAL_LARGE_SEC = 60;
+
+function resolvePollIntervalSec(cohortSize: number): number {
+  const envOverride = process.env.ALPHA_WATCHER_POLL_SEC;
+  if (envOverride) {
+    const parsed = parseInt(envOverride, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.max(20, parsed);
+    }
+    console.warn(
+      `[AlphaWatcher] ignoring invalid ALPHA_WATCHER_POLL_SEC=${envOverride} — falling back to adaptive default`,
+    );
+  }
+  return cohortSize > COHORT_LARGE_THRESHOLD
+    ? POLL_INTERVAL_LARGE_SEC
+    : POLL_INTERVAL_SMALL_SEC;
+}
 
 const TRIGGER_RING_BUFFER_SIZE = 500;
 
@@ -280,8 +318,9 @@ export class AlphaWatcher {
       console.log('[AlphaWatcher] start() called but already running');
       return;
     }
+    const pollSec = resolvePollIntervalSec(this.cohort.length);
     console.log(
-      `[AlphaWatcher] starting — cohort=${this.cohort.join(',')} pollInterval=${WATCHER_POLL_INTERVAL_SEC}s`,
+      `[AlphaWatcher] starting — cohort=${this.cohort.join(',')} (${this.cohort.length}) pollInterval=${pollSec}s`,
     );
     this.status.enabled = true;
     // Fire one immediately so the log gets a first reading without waiting
@@ -292,7 +331,7 @@ export class AlphaWatcher {
       this.tick().catch((e) => {
         console.warn(`[AlphaWatcher] tick failed: ${e?.message ?? e}`);
       });
-    }, WATCHER_POLL_INTERVAL_SEC * 1000);
+    }, pollSec * 1000);
   }
 
   stop(): void {
