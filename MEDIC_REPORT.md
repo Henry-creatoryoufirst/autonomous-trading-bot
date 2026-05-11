@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-07T04:05 UTC
+# MEDIC REPORT — 2026-05-11T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-11T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-unT4W
 
 ## Problem
 
@@ -64,6 +64,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
+| #33 | 2026-05-08T~current UTC | Scout added SYRUP (Maple Finance, Base `0x688AEE...`, DEFI MEDIUM, score 7/10); cbMEGA REJECTED (addr unverifiable); auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 — 63-day bear; effective buy threshold for cash deployment raised (27-15=12); requires stronger signal before deploying idle USDC in sustained bear |
+| #34 | 2026-05-11T00:00 UTC | Scout: no qualifying tokens (BSX Protocol $508 24h vol < $50k threshold, other candidates lacked verifiable on-chain data); auditor raised DECEL_BASE_TRIM_PCT 10→12 — 66-day bear; Polymarket AI bot research (Feb-2026, 4200+ trades) confirms aggressive momentum-decel trimming halves drawdowns |
 
 ## Bot Health Evidence (from git history)
 
@@ -87,6 +89,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #34 — 2026-05-11T00:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34). Proceeded to Scout and Auditor.
+- **Scout**: RAN (last scout 2026-05-08, SYRUP added, 72+ hours elapsed). No qualifying tokens found: BSX Protocol ($508 24h vol, far below $50k threshold); other candidates from WebSearch had unverifiable contract addresses or metrics. Standards maintained.
+- **Auditor**: TRIGGERED by inferred 66-day BEAR market (48h+ threshold, marketRegime BEAR far exceeds 48h condition). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: DECEL_BASE_TRIM_PCT 10→12 — 66-day bear; Polymarket AI bot research (Feb-2026, Polystrat agent, 4200+ trades, peak 376% returns on individual positions) confirms aggressive momentum-decel trimming halves drawdowns in bear markets; 20% more aggressive exit per decel cycle; DECEL_MAX_TRIM_PCT=30 ceiling unchanged. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #34 — 2026-05-11)
+- **Signal Quality**: DeFi bots in 2026 with 2.5M+ daily signals combine price data, on-chain data, and NLP sentiment. Multi-wallet buy clustering (2+ wallets same token within observation window) = confluence. Already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500 whale flow). Full Nansen/Dune integration complex (Impact 4/Complexity 4/Risk medium) → Watch list. (Priority 1.0)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) multi-pool pathing improvements — bot auto-benefits at DEX level. Permit2 batch approvals already in use ("table stakes for 2026"). No new action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Polymarket AI bots (Polystrat, Feb-2026) use aggressive momentum deceleration trimming to halve drawdowns; multi-agent systems yield 20-30% better Sharpe ratios in 2026. Current DECEL_BASE_TRIM_PCT=10 fires at 10% trim per cycle — insufficient aggression for 66-day sustained bear where each decel reading is more reliably distribution signal than in normal markets. IMPLEMENTED: DECEL_BASE_TRIM_PCT 10→12. Guards unchanged: DECEL_MIN_PROFIT_PCT=2, DECEL_MIN_DROP_FROM_PEAK=6, DECEL_MAX_TRIM_PCT=30. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV ecosystem in 2026 dominated by specialized bots; Base is "perfectly suitable for early-stage MEV bot launch" (MEXC). NVR sequencer-direct RPC already active. ElizaOS multi-agent framework growing. Intent-based routing (1inch, CoW Protocol, $9B/mo volume) — complex execution-path change (off-limits). No new action. (Priority 0)
 
 ## Jobs Status This Run (Run #32 — 2026-05-07T04:05 UTC)
 
@@ -191,7 +205,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 34th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`

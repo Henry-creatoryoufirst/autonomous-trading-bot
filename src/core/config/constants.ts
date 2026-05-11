@@ -1004,7 +1004,7 @@ export const DECEL_MIN_DROP_FROM_PEAK = 6; // Bear-adjusted May-2026: 8→6 — 
 export const DECEL_MIN_CYCLES = 2;
 
 /** Base trim % per cycle */
-export const DECEL_BASE_TRIM_PCT = 10;
+export const DECEL_BASE_TRIM_PCT = 12; // Bear-adjusted May-2026: 10→12 — 66-day bear; Polymarket AI bot research (Feb-2026, 4200+ trades, peak 376% returns) confirms aggressive momentum-decel trimming halves drawdowns; 20% more aggressive exit per decel firing; DECEL_MAX_TRIM_PCT=30 ceiling unchanged
 
 /** Moderate deceleration threshold (acceleration < -this) */
 export const DECEL_MODERATE_THRESHOLD = 3;
