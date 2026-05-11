@@ -9,8 +9,66 @@
  * Results are cached and merged with the static TOKEN_REGISTRY.
  */
 
-import axios from "axios";
+import axios, { AxiosRequestConfig, AxiosResponse, isAxiosError } from "axios";
 import { activeChain } from "../config/chain-config.js";
+
+// ============================================================================
+// v21.39 (Stream Q): 429-aware retry-with-backoff for GeckoTerminal calls.
+//
+// Stream N (f961081) added observability to the silent catches in this file
+// and surfaced what's been blocking the discovery pipeline for 2+ days:
+// GeckoTerminal returns HTTP 429 (rate limit) on multiple call sites from
+// Railway's egress IP, every single time. The alpha-watcher's 15-token /
+// 60s polling burns most of the free-tier budget; discovery scans land on
+// an empty quota.
+//
+// This helper wraps axios.get with exponential backoff on 429. Three
+// attempts at 1s / 2s / 4s delays — gives transient rate-limit windows a
+// chance to clear before we give up and log. Respects Retry-After header
+// if the API sends one (some endpoints do).
+//
+// Other status codes propagate normally; only 429 triggers retry.
+// ============================================================================
+
+async function geckoGetWithRetry(
+  url: string,
+  options: AxiosRequestConfig,
+  opts: { maxRetries?: number; baseDelayMs?: number } = {},
+): Promise<AxiosResponse> {
+  const maxRetries = opts.maxRetries ?? 3;
+  const baseDelayMs = opts.baseDelayMs ?? 1000;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await axios.get(url, options);
+    } catch (err) {
+      lastErr = err;
+      const isRateLimited = isAxiosError(err) && err.response?.status === 429;
+      if (!isRateLimited || attempt === maxRetries) throw err;
+
+      // Respect Retry-After if provided. Header can be in seconds or
+      // an HTTP-date; we only handle the seconds form (most common) and
+      // fall back to exponential backoff otherwise.
+      const retryAfterRaw = isAxiosError(err)
+        ? err.response?.headers?.['retry-after']
+        : undefined;
+      const retryAfterSec =
+        typeof retryAfterRaw === 'string' ? parseInt(retryAfterRaw, 10) : NaN;
+      const delay = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? Math.min(retryAfterSec * 1000, 30_000)
+        : baseDelayMs * Math.pow(2, attempt);
+
+      const endpointPath = (() => {
+        try { return new URL(url).pathname; } catch { return url.slice(0, 80); }
+      })();
+      console.warn(
+        `  ⚠️ 429 on ${endpointPath} (attempt ${attempt + 1}/${maxRetries + 1}) — retrying in ${delay}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw lastErr;
+}
 
 // ============================================================================
 // ON-CHAIN TOKEN DECIMALS FETCHER
@@ -353,17 +411,21 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
     for (const page of [1, 2, 3]) {
       try {
         const gtUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/trending_pools?page=${page}`;
-        // v21.38 (Stream N): explicit User-Agent. GeckoTerminal silently rate-
-        // limits / 403s default Node axios UAs from cloud egress (Railway).
-        // Without this header, the call succeeds locally but returns nothing
-        // (or 4xx that we used to silently swallow) on prod.
-        const gtRes = await axios.get(gtUrl, {
+        // v21.39 (Stream Q): retry-with-backoff on 429. Stream N surfaced
+        // HTTP 429s on every page of this call — alpha-watcher's polling
+        // eats most of the GeckoTerminal free-tier budget. Three retries
+        // at 1s/2s/4s delays gives transient rate-limit windows a chance.
+        const gtRes = await geckoGetWithRetry(gtUrl, {
           timeout: 10000,
           headers: {
             'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
             Accept: 'application/json',
           },
         });
+        // Inter-page delay so we don't fire pages 1/2/3 back-to-back and
+        // burst the rate-limit budget. 500ms still keeps the full scan
+        // under 2 seconds total.
+        if (page < 3) await new Promise((r) => setTimeout(r, 500));
         const pools = gtRes.data?.data || [];
 
         for (const pool of pools) {
@@ -425,8 +487,8 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       // where real momentum is happening anyway — and then sort the response
       // client-side by 24h price change to recover the "gainers" framing.
       const gainersUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_volume_usd_desc&page=1`;
-      // v21.38 (Stream N): explicit User-Agent — see trending_pools comment.
-      const gainersRes = await axios.get(gainersUrl, {
+      // v21.39 (Stream Q): retry-with-backoff on 429.
+      const gainersRes = await geckoGetWithRetry(gainersUrl, {
         timeout: 10000,
         headers: {
           'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
@@ -500,8 +562,8 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
     // Higher liquidity bar so we only surface launches with real capital behind them.
     try {
       const newPoolsUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/new_pools?page=1`;
-      // v21.38 (Stream N): explicit User-Agent — see trending_pools comment.
-      const newPoolsRes = await axios.get(newPoolsUrl, {
+      // v21.39 (Stream Q): retry-with-backoff on 429.
+      const newPoolsRes = await geckoGetWithRetry(newPoolsUrl, {
         timeout: 10000,
         headers: {
           'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
@@ -699,12 +761,11 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
     // price change to recover the "gainers" framing. Drops zero/negative-
     // change pools so the downstream safety filters only see real movers.
     const geckoNetwork = activeChain.geckoTerminalNetwork;
-    const gainersRes = await axios.get(
+    // v21.39 (Stream Q): retry-with-backoff on 429.
+    const gainersRes = await geckoGetWithRetry(
       `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_volume_usd_desc&page=1`,
       {
         timeout: 10000,
-        // v21.38 (Stream N): explicit User-Agent — GeckoTerminal silently
-        // rate-limits default Node axios UAs from cloud egress.
         headers: {
           'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
           Accept: 'application/json',
