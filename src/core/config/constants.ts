@@ -638,7 +638,7 @@ export const HOT_MOVER_COOLDOWN_MS = 25 * 60 * 1000;
 export const HOT_MOVER_URGENT_CYCLE_MS = 90_000;
 
 /** Hot mover quality gate: minimum FDV ($500K — reject micro-cap rugs) */
-export const HOT_MOVER_MIN_FDV_USD = 500_000;
+export const HOT_MOVER_MIN_FDV_USD = 750_000; // Bear-adjusted May-2026: 500K→750K — 63-day bear; bear-market cap compression pushes formerly mid-cap tokens into MEV sandwich risk range; MEV research confirms sub-$750K FDV pools are primary front-running targets in thin bear liquidity
 
 /** Hot mover quality gate: maximum FDV ($300M — not already fully mooned) */
 export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
