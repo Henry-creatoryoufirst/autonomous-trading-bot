@@ -3150,6 +3150,24 @@ async function makeTradeDecisionViaSleeve(
     if (t.symbol && typeof t.price === 'number') prices[t.symbol] = t.price;
   }
 
+  // v21.37 (Stream M): fetch recent Watcher triggers so the conviction
+  // scorer can apply a 1h-microstructure boost. Bounded fetch (50 most
+  // recent triggers). Wrapped in try/catch — any failure → empty array,
+  // scorer falls back to pre-v21.37 behavior.
+  let recentWatcherTriggers: Array<{ symbol: string; type: string; raisedAt: string }> = [];
+  if (process.env.WATCHER_CONVICTION_BOOST_ENABLED === 'true' && tokenDiscoveryEngine) {
+    try {
+      const { alphaWatcher: watcherForConviction } = await import('./src/core/services/alpha-watcher.js');
+      recentWatcherTriggers = watcherForConviction.getTriggers(50).map(t => ({
+        symbol: t.symbol,
+        type: t.type,
+        raisedAt: t.raisedAt,
+      }));
+    } catch (err) {
+      console.warn(`[WatcherConvictionBoost] failed to fetch triggers: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // v21.16 Phase 2: Build discovery candidates from the existing token-discovery
   // engine. Shared across all sleeves via SleeveContext.market.discovery.
   // Alpha Hunter consumes these scores; Core ignores them (its extras path feeds
@@ -3157,7 +3175,7 @@ async function makeTradeDecisionViaSleeve(
   const discovery: { candidates: DiscoveryCandidate[]; scannedAt?: string } | undefined =
     tokenDiscoveryEngine
       ? {
-          candidates: (tokenDiscoveryEngine.getTopOpportunities(10) || []).map((t) => ({
+          candidates: (tokenDiscoveryEngine.getTopOpportunities(10, { recentTriggers: recentWatcherTriggers }) || []).map((t) => ({
             symbol: t.symbol,
             convictionScore: t.compositeScore ?? 0,
             sector: t.sector,

@@ -1014,7 +1014,29 @@ export class TokenDiscoveryEngine {
    * Runner override: any token with 30%+ price change AND $100K+ volume forces into top 5.
    * Note: timing score de-weights runners so the AI knows they're late-stage entries.
    */
-  getTopOpportunities(maxCount: number = 5): (DiscoveredToken & { compositeScore: number; isRunner: boolean })[] {
+  getTopOpportunities(
+    maxCount: number = 5,
+    opts?: {
+      /**
+       * Recent Watcher triggers (from alpha-watcher.getTriggers()). When
+       * provided AND env flag WATCHER_CONVICTION_BOOST_ENABLED=true, tokens
+       * with multiple bullish triggers (WHALE_BUY / BUY_PRESSURE) in the
+       * last 30 min get a conviction-score boost. Path B-structural from
+       * INVESTIGATION_2026-05-08: the Watcher catches 1h microstructure
+       * that the 24h conviction formula structurally misses. This wires
+       * the two systems together — the Watcher's physics finally feeds
+       * the discovery scorer.
+       *
+       * Trigger shape minimised to {symbol, type, raisedAt} so callers
+       * can pass watcher triggers without leaking the full shape.
+       */
+      recentTriggers?: ReadonlyArray<{
+        symbol: string;
+        type: string;
+        raisedAt: string;
+      }>;
+    },
+  ): (DiscoveredToken & { compositeScore: number; isRunner: boolean })[] {
     const tradeable = this.getTradableTokens();
     if (tradeable.length === 0) return [];
 
@@ -1023,6 +1045,25 @@ export class TokenDiscoveryEngine {
     const liquidities = tradeable.map(t => t.liquidityUSD);
     const medianVolume = [...volumes].sort((a, b) => a - b)[Math.floor(volumes.length / 2)] || 1;
     const maxLiquidity = Math.max(...liquidities) || 1;
+
+    // v21.37 (Stream M): pre-bucket recent bullish triggers per symbol so
+    // we don't re-filter the array for every token. Only counts the last
+    // 30 min of WHALE_BUY + BUY_PRESSURE — WHALE_SELL and LIQUIDITY_VACUUM
+    // are bearish/exit signals and must NOT boost a BUY conviction.
+    const watcherBoostEnabled =
+      process.env.WATCHER_CONVICTION_BOOST_ENABLED === 'true';
+    const recent = watcherBoostEnabled && opts?.recentTriggers ? opts.recentTriggers : [];
+    const watcherTriggerCounts = new Map<string, number>();
+    if (recent.length > 0) {
+      const cutoffMs = Date.now() - 30 * 60 * 1000;
+      for (const trig of recent) {
+        if (trig.type !== 'WHALE_BUY' && trig.type !== 'BUY_PRESSURE') continue;
+        const raisedMs = Date.parse(trig.raisedAt);
+        if (!Number.isFinite(raisedMs) || raisedMs < cutoffMs) continue;
+        const key = trig.symbol.toUpperCase();
+        watcherTriggerCounts.set(key, (watcherTriggerCounts.get(key) ?? 0) + 1);
+      }
+    }
 
     // Score each token
     const scored = tradeable.map(t => {
@@ -1082,6 +1123,32 @@ export class TokenDiscoveryEngine {
         timingScore * 0.20 +
         buyPressureScore * 0.30
       ) * 100;
+
+      // v21.37 (Stream M): Watcher conviction boost — Path B-structural
+      // fix from INVESTIGATION_2026-05-08. The Watcher catches 1h
+      // microstructure events (WHALE_BUY, BUY_PRESSURE) that the 24h
+      // conviction formula structurally misses. When a token has multiple
+      // recent bullish triggers, that's real physics happening RIGHT NOW
+      // — boost its score so it can clear the 65 conviction floor and
+      // become eligible for AlphaHunter, not buried under 24h aggregates
+      // that haven't yet caught up.
+      //
+      //   3+ triggers in 30 min → +15 pts (strong signal)
+      //   2   triggers in 30 min → +10 pts
+      //   1   trigger  in 30 min →  +5 pts
+      //   0   triggers          →   0 pts (no change from prior behavior)
+      //
+      // Capped to prevent watcher noise from dominating. Behind
+      // WATCHER_CONVICTION_BOOST_ENABLED env flag (default off until
+      // verified). Bullish-only by filter above — WHALE_SELL +
+      // LIQUIDITY_VACUUM are excluded.
+      const bullishTriggers =
+        watcherTriggerCounts.get(t.symbol.toUpperCase()) ?? 0;
+      let watcherBoost = 0;
+      if (bullishTriggers >= 3) watcherBoost = 15;
+      else if (bullishTriggers === 2) watcherBoost = 10;
+      else if (bullishTriggers === 1) watcherBoost = 5;
+      if (watcherBoost > 0) compositeScore += watcherBoost;
 
       // Safety bonus
       if (t.lpLocked === true) compositeScore += 5;
