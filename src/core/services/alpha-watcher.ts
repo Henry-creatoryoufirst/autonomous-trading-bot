@@ -50,6 +50,13 @@ import {
   fetchChainlinkPrices,
   getPoolRegistry,
 } from '../data/on-chain-prices.js';
+// Stream S: on-chain Swap event flow data — replaces GT's transactions/
+// volume/priceChange fields on the cohort. Behind ALPHA_WATCHER_ONCHAIN_FLOW.
+import {
+  getOnChainFlow,
+  type OnChainFlowResult,
+} from '../data/onchain-flow.js';
+import { rpcCall } from '../execution/rpc.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -403,6 +410,79 @@ export class AlphaWatcher {
       }
     }
 
+    // Stream S: on-chain FLOW (buys/sells/volume/priceChange) for cohort
+    // tokens with poolRegistry entries. Same pattern as Stream R prices —
+    // fetch once per tick, override the GT pool object inside the loop.
+    // Behind ALPHA_WATCHER_ONCHAIN_FLOW (default OFF).
+    const useOnChainFlow = process.env.ALPHA_WATCHER_ONCHAIN_FLOW === 'true';
+    const onChainFlowResults = new Map<string, OnChainFlowResult>();
+    if (useOnChainFlow) {
+      try {
+        const registry = getPoolRegistry();
+        // Quote-token USD prices. Reuse Stream R's Chainlink fetch when on,
+        // else do a small standalone fetch — ~3 RPC calls.
+        let ethPrice = 0;
+        let btcPrice = 0;
+        if (useOnChainPrices && onChainPrices.size > 0) {
+          ethPrice =
+            onChainPrices.get('ETH') ?? onChainPrices.get('WETH') ?? 0;
+          btcPrice = onChainPrices.get('cbBTC') ?? 0;
+        }
+        if (ethPrice <= 0 || btcPrice <= 0) {
+          try {
+            const cl = await fetchChainlinkPrices();
+            if (ethPrice <= 0) {
+              ethPrice = cl.get('ETH') ?? cl.get('WETH') ?? 0;
+            }
+            if (btcPrice <= 0) btcPrice = cl.get('BTC') ?? cl.get('cbBTC') ?? 0;
+          } catch { /* falls through to per-symbol skip */ }
+        }
+        let currentBlock = 0;
+        try {
+          const blockHex = await rpcCall('eth_blockNumber', []);
+          currentBlock = blockHex ? parseInt(blockHex, 16) : 0;
+        } catch { /* per-symbol skip below */ }
+
+        if (currentBlock > 0) {
+          await Promise.allSettled(
+            this.cohort.map(async (sym) => {
+              const poolEntry = registry[sym];
+              if (!poolEntry) return; // no pool entry → GT fallback for this token
+              // Pick base-token price: Stream R on-chain → previous tick's
+              // latestPrices. If neither has it (cold start), skip — GT will
+              // populate price this tick, on-chain flow next tick.
+              const basePrice =
+                onChainPrices.get(sym) ?? this.latestPrices.get(sym) ?? 0;
+              if (basePrice <= 0) return;
+              // Quote-token USD price
+              let quotePrice = 1;
+              if (poolEntry.quoteToken === 'WETH') quotePrice = ethPrice;
+              else if (poolEntry.quoteToken === 'cbBTC') quotePrice = btcPrice;
+              else if (poolEntry.quoteToken === 'USDC') quotePrice = 1;
+              else if (poolEntry.quoteToken === 'VIRTUAL') {
+                quotePrice = this.latestPrices.get('VIRTUAL') ?? 0;
+              }
+              if (quotePrice <= 0) return;
+              try {
+                const flow = await getOnChainFlow(
+                  sym,
+                  poolEntry,
+                  basePrice,
+                  quotePrice,
+                  currentBlock,
+                );
+                if (flow) onChainFlowResults.set(sym, flow);
+              } catch { /* per-symbol failure non-fatal */ }
+            }),
+          );
+        }
+      } catch (e: any) {
+        console.warn(
+          `[AlphaWatcher] on-chain flow prefetch failed: ${e?.message ?? e}`,
+        );
+      }
+    }
+
     for (const symbol of this.cohort) {
       pollsAttempted++;
       const tokenInfo = TOKEN_REGISTRY[symbol];
@@ -436,6 +516,36 @@ export class AlphaWatcher {
           } else {
             console.warn(
               `[AlphaWatcher] ${symbol} on-chain price $${onChainPrice.toFixed(6)} diverges >25% from GT $${pool.priceUSD.toFixed(6)} — keeping GT (pool mismatch?)`,
+            );
+          }
+        }
+        // Stream S: override GT's flow fields with on-chain Swap-event
+        // aggregations when available AND within ±50% of GT's h24 volume.
+        // Wider gap suggests the registry pool ≠ GT's chosen pool — safer
+        // to keep GT for trigger consistency.
+        const onChainFlow = onChainFlowResults.get(symbol);
+        if (onChainFlow && pool.volume.h24 > 0) {
+          const ocH24 = onChainFlow.volume.h24;
+          const gtH24 = pool.volume.h24;
+          const divergence = Math.abs(ocH24 - gtH24) / gtH24;
+          if (divergence <= 0.5) {
+            pool.transactions.h1.buys = onChainFlow.transactions.h1.buys;
+            pool.transactions.h1.sells = onChainFlow.transactions.h1.sells;
+            pool.transactions.h24.buys = onChainFlow.transactions.h24.buys;
+            pool.transactions.h24.sells = onChainFlow.transactions.h24.sells;
+            pool.volume.h1 = onChainFlow.volume.h1;
+            pool.volume.h24 = onChainFlow.volume.h24;
+            pool.priceChange.m5 = onChainFlow.priceChange.m5;
+            pool.priceChange.h1 = onChainFlow.priceChange.h1;
+            pool.priceChange.h24 = onChainFlow.priceChange.h24;
+            if (Math.random() < 0.05) {
+              console.log(
+                `[AlphaWatcher] ${symbol} flow source: on-chain (h1 ${onChainFlow.transactions.h1.buys}b/${onChainFlow.transactions.h1.sells}s, h24 vol $${(ocH24 / 1000).toFixed(1)}K, m5 ${onChainFlow.priceChange.m5.toFixed(2)}%, ${onChainFlow.diagnostics.swapsH1}/${onChainFlow.diagnostics.swapsH24} swaps)`,
+              );
+            }
+          } else {
+            console.warn(
+              `[AlphaWatcher] ${symbol} on-chain h24 vol $${ocH24.toFixed(0)} diverges ${(divergence * 100).toFixed(0)}% from GT $${gtH24.toFixed(0)} — keeping GT (pool mismatch?)`,
             );
           }
         }
