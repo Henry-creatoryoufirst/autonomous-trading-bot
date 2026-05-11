@@ -25,6 +25,8 @@ build/
 data/*.json
 data/*.yaml
 data/critic-reports/
+data/spec-sweep/
+data/v22-harness/
 
 # Exception: ship the latest CRITIC artifacts as a cockpit seed. Railway
 # containers are ephemeral, so without these committed the Spirit-vs-Letter
