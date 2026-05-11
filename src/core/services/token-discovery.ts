@@ -353,7 +353,17 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
     for (const page of [1, 2, 3]) {
       try {
         const gtUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/trending_pools?page=${page}`;
-        const gtRes = await axios.get(gtUrl, { timeout: 10000 });
+        // v21.38 (Stream N): explicit User-Agent. GeckoTerminal silently rate-
+        // limits / 403s default Node axios UAs from cloud egress (Railway).
+        // Without this header, the call succeeds locally but returns nothing
+        // (or 4xx that we used to silently swallow) on prod.
+        const gtRes = await axios.get(gtUrl, {
+          timeout: 10000,
+          headers: {
+            'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
+            Accept: 'application/json',
+          },
+        });
         const pools = gtRes.data?.data || [];
 
         for (const pool of pools) {
@@ -395,7 +405,13 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
             pairCreatedAt: attrs.pool_created_at ? new Date(attrs.pool_created_at).getTime() : 0,
           });
         }
-      } catch { /* skip page failures */ }
+      } catch (err) {
+        // v21.38 (Stream N): surface page failures — they were silently
+        // swallowed prior, hiding things like rate-limits and UA blocks
+        // that left the discovery pool empty for 2+ days.
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`  ⚠️ trending_pools page ${page} failed: ${msg.slice(0, 200)}`);
+      }
     }
 
     // SECONDARY: GeckoTerminal gainers — tokens sorted by 24h price change.
@@ -409,7 +425,14 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       // where real momentum is happening anyway — and then sort the response
       // client-side by 24h price change to recover the "gainers" framing.
       const gainersUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_volume_usd_desc&page=1`;
-      const gainersRes = await axios.get(gainersUrl, { timeout: 10000 });
+      // v21.38 (Stream N): explicit User-Agent — see trending_pools comment.
+      const gainersRes = await axios.get(gainersUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
+          Accept: 'application/json',
+        },
+      });
       const rawPools = (gainersRes.data?.data || []) as Array<{
         attributes?: { price_change_percentage?: { h24?: string; h6?: string } };
       }>;
@@ -465,13 +488,26 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
         gainerCount++;
       }
       console.log(`  📈 GeckoTerminal gainers: +${gainerCount} new tokens`);
-    } catch { /* gainers endpoint optional */ }
+    } catch (err) {
+      // v21.38 (Stream N): surface gainers failures — Stream J fixed the
+      // sort regression but if anything else fails (rate limit, UA block,
+      // schema drift), we want to see it not silently lose the segment.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  ⚠️ GeckoTerminal gainers failed: ${msg.slice(0, 200)}`);
+    }
 
     // TERTIARY: GeckoTerminal new pools — catch funded fresh launches before they trend.
     // Higher liquidity bar so we only surface launches with real capital behind them.
     try {
       const newPoolsUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/new_pools?page=1`;
-      const newPoolsRes = await axios.get(newPoolsUrl, { timeout: 10000 });
+      // v21.38 (Stream N): explicit User-Agent — see trending_pools comment.
+      const newPoolsRes = await axios.get(newPoolsUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
+          Accept: 'application/json',
+        },
+      });
       const freshPools = newPoolsRes.data?.data || [];
       let newPoolCount = 0;
 
@@ -515,7 +551,11 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
       if (newPoolCount > 0) {
         console.log(`  🆕 GeckoTerminal new pools: +${newPoolCount} fresh tokens`);
       }
-    } catch { /* new pools endpoint optional */ }
+    } catch (err) {
+      // v21.38 (Stream N): surface new_pools failures.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  ⚠️ GeckoTerminal new_pools failed: ${msg.slice(0, 200)}`);
+    }
 
     for (const pair of basePairs) {
       const token = pair.baseToken;
@@ -661,7 +701,15 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
     const geckoNetwork = activeChain.geckoTerminalNetwork;
     const gainersRes = await axios.get(
       `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_volume_usd_desc&page=1`,
-      { timeout: 10000 }
+      {
+        timeout: 10000,
+        // v21.38 (Stream N): explicit User-Agent — GeckoTerminal silently
+        // rate-limits default Node axios UAs from cloud egress.
+        headers: {
+          'User-Agent': 'nvr-capital-bot/1.0 (+https://schertzingertrading.com)',
+          Accept: 'application/json',
+        },
+      }
     );
     const rawPools = (gainersRes.data?.data || []) as Array<{
       attributes?: { price_change_percentage?: { h24?: string; h6?: string } };
