@@ -992,14 +992,22 @@ export class TokenDiscoveryEngine {
       // Liquidity depth — normalized to pool max
       const liquidityScore = Math.min(t.liquidityUSD / maxLiquidity, 1);
 
-      // Timing score — reward MODERATE gains (5-25% in 24h = momentum without being
+      // Timing score — reward MODERATE gains (2-25% in 24h = momentum without being
       // overextended) and penalise extreme gains (>40% = likely late entry).
+      //
+      // v21.33: floor lowered from 5% → 2% per INVESTIGATION_2026-05-08.
+      // The 5% cliff was structurally excluding meme/alt tokens with genuine
+      // intraday physics (1h whale-buy bursts, accumulation) whose 24h
+      // cumulative change hadn't yet crossed 5%. The Watcher fires on these
+      // (1h microstructure), the scorer was rejecting them (24h aggregate).
+      // 2% lets borderline movers compete; pure-flat tokens (0-2%) still
+      // score zero on timing.
       const change = t.priceChange24h;
-      const timingScore = change >= 5 && change <= 25
-        ? Math.min((change - 5) / 20, 1)          // sweet spot: 5-25%
+      const timingScore = change >= 2 && change <= 25
+        ? Math.min((change - 2) / 23, 1)          // sweet spot: 2-25%
         : change > 25
         ? Math.max(1 - (change - 25) / 75, 0)      // diminishing returns above 25%
-        : 0;                                         // below 5% = no momentum
+        : 0;                                         // below 2% = no momentum
 
       // Buy pressure — buys / (buys + sells) from the 24h txn split.
       // v21.32 bugfix: previously read `(t as any)._buys` which never existed
@@ -1019,12 +1027,20 @@ export class TokenDiscoveryEngine {
         : 0.5; // neutral fallback for legacy state entries only
       const buyPressureScore = Math.max(Math.min((ratio - 0.5) / 0.5, 1), 0);
 
-      // Weighted composite
+      // Weighted composite.
+      //
+      // v21.33: weights re-balanced per INVESTIGATION_2026-05-08.
+      // - timing 30% → 20%: 24h trend matters less for meme/alt swing entries.
+      // - buyPressure 20% → 30%: the core accumulation signal — when whales
+      //   and flow are tilting bullish, that's the alpha-hunter signal, more
+      //   than a tidy 24h chart.
+      // - volume + liquidity weights unchanged (deep-pool / high-flow tokens
+      //   still preferred for execution friction).
       let compositeScore = (
         volumeScore * 0.35 +
         liquidityScore * 0.15 +
-        timingScore * 0.30 +
-        buyPressureScore * 0.20
+        timingScore * 0.20 +
+        buyPressureScore * 0.30
       ) * 100;
 
       // Safety bonus
