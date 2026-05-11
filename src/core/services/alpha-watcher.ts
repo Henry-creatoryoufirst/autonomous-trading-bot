@@ -30,6 +30,26 @@ import type { DexPoolData } from './gecko-terminal.js';
 import { TOKEN_REGISTRY } from '../config/token-registry.js';
 import { alphaReviewer, type TriggerReview } from './alpha-reviewer.js';
 import { alphaReflex } from './alpha-reflex.js';
+// v21.40 (Stream R): on-chain prices as PRIMARY source for cohort tokens.
+// The bot is trading on Base; pool reserves are right there, readable in
+// <100ms via eth_call. GeckoTerminal's free-tier rate limit + CDN caching
+// means stale prices that have caused panic-sell incidents (multiple
+// sessions of pain). The bot already has fetchOnChainTokenPrice +
+// fetchChainlinkPrices + poolRegistry — we just weren't using them here.
+//
+// New flow: alpha-watcher still calls getTokenPools for FLOW data (buy/
+// sell counts, volume), but OVERRIDES the price with the on-chain read
+// when poolRegistry has an entry for the symbol. GeckoTerminal price
+// becomes the fallback for tokens without on-chain pools.
+//
+// Behind ALPHA_WATCHER_ONCHAIN_PRICES env flag (default OFF). Flip on
+// after staging soak verifies on-chain prices track GeckoTerminal prices
+// within tolerance.
+import {
+  fetchOnChainTokenPrice,
+  fetchChainlinkPrices,
+  getPoolRegistry,
+} from '../data/on-chain-prices.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -352,6 +372,37 @@ export class AlphaWatcher {
     // round-trip when we already have current prices from this poll.
     const polledPrices: Map<string, number> = new Map();
 
+    // v21.40 (Stream R): fetch on-chain prices for the cohort ONCE per tick,
+    // before iterating. Only fetches Chainlink ETH (1 RPC call) and the
+    // per-cohort-token pool reads (1 RPC call per token in poolRegistry).
+    // Total: ~16 RPC calls per tick to free Base RPC. Eliminates the
+    // dependency on GeckoTerminal for price freshness on cohort tokens.
+    const useOnChainPrices = process.env.ALPHA_WATCHER_ONCHAIN_PRICES === 'true';
+    const onChainPrices = new Map<string, number>();
+    if (useOnChainPrices) {
+      try {
+        const chainlinkMap = await fetchChainlinkPrices();
+        const ethPrice = chainlinkMap.get('ETH') || chainlinkMap.get('WETH') || 0;
+        const btcPrice = chainlinkMap.get('BTC') || chainlinkMap.get('cbBTC') || 0;
+        const registry = getPoolRegistry();
+        if (ethPrice > 0) {
+          await Promise.allSettled(
+            this.cohort.map(async (sym) => {
+              if (!registry[sym]) return; // no pool entry → GT fallback
+              try {
+                const p = await fetchOnChainTokenPrice(sym, ethPrice, btcPrice);
+                if (p !== null && p > 0 && isFinite(p)) {
+                  onChainPrices.set(sym, p);
+                }
+              } catch { /* per-token failure non-fatal */ }
+            }),
+          );
+        }
+      } catch (e: any) {
+        console.warn(`[AlphaWatcher] on-chain price prefetch failed: ${e?.message ?? e}`);
+      }
+    }
+
     for (const symbol of this.cohort) {
       pollsAttempted++;
       const tokenInfo = TOKEN_REGISTRY[symbol];
@@ -364,6 +415,30 @@ export class AlphaWatcher {
         const pools = await geckoTerminalService.getTokenPools(tokenInfo.address, 1);
         if (pools.length === 0) continue;
         const pool = pools[0];
+        // v21.40 (Stream R): override GeckoTerminal's (possibly stale) price
+        // with the on-chain real-time read when available. Only override if
+        // the on-chain price is within ±25% of GT's — wider gap means the
+        // pool registry's pool differs from the one GT picked, and the
+        // safer move is to trust GT for trigger detection consistency.
+        const onChainPrice = onChainPrices.get(symbol);
+        if (onChainPrice !== undefined && pool.priceUSD > 0) {
+          const ratio = onChainPrice / pool.priceUSD;
+          if (ratio >= 0.75 && ratio <= 1.25) {
+            const before = pool.priceUSD;
+            pool.priceUSD = onChainPrice;
+            // Quiet log — fires ~15x per tick when active, would flood logs.
+            // Console.debug doesn't show in Railway by default; useful in dev.
+            if (Math.random() < 0.05) {
+              console.log(
+                `[AlphaWatcher] ${symbol} price source: on-chain $${onChainPrice.toFixed(6)} (GT was $${before.toFixed(6)}, ratio ${ratio.toFixed(3)})`,
+              );
+            }
+          } else {
+            console.warn(
+              `[AlphaWatcher] ${symbol} on-chain price $${onChainPrice.toFixed(6)} diverges >25% from GT $${pool.priceUSD.toFixed(6)} — keeping GT (pool mismatch?)`,
+            );
+          }
+        }
         // Cache pool address + h24 volume for replay reuse (avoids redundant
         // GT calls AND gives replay a real 24h baseline for VOLUME_SPIKE).
         this.poolAddressCache.set(symbol, pool.poolAddress);
