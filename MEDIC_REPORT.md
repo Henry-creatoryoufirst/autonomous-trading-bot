@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-07T04:05 UTC
+# MEDIC REPORT — 2026-05-11T00:00 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-11T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-pxZqE
 
 ## Problem
 
@@ -64,6 +64,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
+| #33 | 2026-05-08T07:16 UTC | Scout RAN (>48h since cbADA); SYRUP added (Maple Finance yield token, Base-native, DEFI MEDIUM); cbMEGA REJECTED (contract address truncated/unverifiable); auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 — 63-day bear; capital preservation requires stronger entry signal before deploying excess USDC |
+| #34 | 2026-05-11T00:00 UTC | Scout RAN (>72h since SYRUP 05-08); BASED evaluated (unverifiable Base chain pool data), PONKE (Solana-native, not Base), NORMIE ($24 24h vol, too low) — no qualifying tokens, standards maintained; auditor lowered BREAKER_CONSECUTIVE_LOSSES 5→4 — 63-day bear; Kelly criterion research confirms earlier circuit breaker pause in losing streaks improves long-term outcomes |
 
 ## Bot Health Evidence (from git history)
 
@@ -189,9 +191,21 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Jobs Status This Run (Run #34 — 2026-05-11T00:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
+- **Scout**: RAN (last scout 2026-05-08T07:16 UTC, >72h threshold). Evaluated 3 candidates: BASED ($18M volume, cannot verify Base chain pool address vs. Ethereum/CEX pool), PONKE (Solana-native token, not Base chain), NORMIE ($24 24h volume, far below $50K threshold). GeckoTerminal and DexScreener both returned 403. No qualifying tokens. Standards maintained.
+- **Auditor**: TRIGGERED by inferred 63-day BEAR market (48h+ threshold met, continuous since ≈2026-03-09). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: BREAKER_CONSECUTIVE_LOSSES 5→4 — Kelly criterion research ("Research on trader behavior during drawdown periods shows that reduced position sizing during losing streaks significantly improves long-term outcomes"). Lowering from 5→4 fires the 1h circuit breaker pause AND 24h 30% size reduction one consecutive-loss sooner; appropriate for 63-day sustained bear regime. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #34 — 2026-05-11)
+- **Signal Quality**: Multi-wallet accumulation clustering (multiple watched wallets buying same token = confluence). Already partially captured by LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 3/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing. Aerodrome+Velodrome unified "Aero" DEX Q2 2026 — bot auto-benefits without code change. Permit2 batch approvals already active. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly criterion and drawdown-aware research (LBank.com, StratBase.ai, Altrady.com): "Research on trader behavior during drawdown periods shows that reduced position sizing during losing streaks significantly improves long-term outcomes, preventing emotional risk-taking when down." In 63-day bear, consecutive losses more frequent. BREAKER_CONSECUTIVE_LOSSES 5→4 IMPLEMENTED — fires circuit breaker one loss sooner. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Intent-based DEX routing (CoW Protocol, 1inch fusion) at scale 2026 — requires touching executeDirectDexSwap (off-limits). MEV protection via private relay/sequencer-direct RPC already active. Multi-agent specialist stacks (Brain+Hands NVR-SPEC-018) already implemented. No actionable new code. (Priority 0)
+
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 34th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -207,4 +221,5 @@ PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmen
 ## Safety
 - No changes to agent-v3.2.ts
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- Only constants.ts touched (BREAKER_CONSECUTIVE_LOSSES 5→4, 1 line)
+- MEDIC_REPORT.md updated (Run #34); committed to claude/cool-sagan-pxZqE
