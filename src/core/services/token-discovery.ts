@@ -403,9 +403,30 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
     console.log(`  📊 GeckoTerminal trending: ${basePairs.length} unique ${chainId} tokens`);
 
     try {
-      const gainersUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_price_change_percentage_desc&page=1`;
+      // v21.34: GeckoTerminal removed `h24_price_change_percentage_desc` as
+      // a sort option (API now only accepts `h24_volume_usd_desc` and
+      // `h24_tx_count_desc`). We pull by 24h volume — high-volume pools are
+      // where real momentum is happening anyway — and then sort the response
+      // client-side by 24h price change to recover the "gainers" framing.
+      const gainersUrl = `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_volume_usd_desc&page=1`;
       const gainersRes = await axios.get(gainersUrl, { timeout: 10000 });
-      const gainerPools = gainersRes.data?.data || [];
+      const rawPools = (gainersRes.data?.data || []) as Array<{
+        attributes?: { price_change_percentage?: { h24?: string; h6?: string } };
+      }>;
+      const gainerPools = rawPools
+        .filter((p) => {
+          const ch = parseFloat(
+            p.attributes?.price_change_percentage?.h24 ??
+              p.attributes?.price_change_percentage?.h6 ??
+              "0",
+          );
+          return Number.isFinite(ch) && ch > 0;
+        })
+        .sort((a, b) => {
+          const ca = parseFloat(a.attributes?.price_change_percentage?.h24 ?? "0");
+          const cb = parseFloat(b.attributes?.price_change_percentage?.h24 ?? "0");
+          return cb - ca;
+        });
       let gainerCount = 0;
 
       for (const pool of gainerPools) {
@@ -631,15 +652,34 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
   try {
     console.log(`  ⚡ Momentum scan: GeckoTerminal gainers (organic price momentum)...`);
 
-    // Single call to GeckoTerminal price-change-sorted pools.
-    // Replaces the old 2-step pattern (boosted addresses → individual DexScreener lookups)
-    // which surfaced paid promotions rather than real momentum.
+    // v21.34: GeckoTerminal removed `h24_price_change_percentage_desc` as a
+    // sort option — API now only accepts `h24_volume_usd_desc` and
+    // `h24_tx_count_desc`. We pull by 24h volume (high-volume pools are
+    // where real momentum is happening anyway) and sort client-side by 24h
+    // price change to recover the "gainers" framing. Drops zero/negative-
+    // change pools so the downstream safety filters only see real movers.
     const geckoNetwork = activeChain.geckoTerminalNetwork;
     const gainersRes = await axios.get(
-      `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_price_change_percentage_desc&page=1`,
+      `https://api.geckoterminal.com/api/v2/networks/${geckoNetwork}/pools?sort=h24_volume_usd_desc&page=1`,
       { timeout: 10000 }
     );
-    const gainerPools = gainersRes.data?.data || [];
+    const rawPools = (gainersRes.data?.data || []) as Array<{
+      attributes?: { price_change_percentage?: { h24?: string; h6?: string } };
+    }>;
+    const gainerPools = rawPools
+      .filter((p) => {
+        const ch = parseFloat(
+          p.attributes?.price_change_percentage?.h24 ??
+            p.attributes?.price_change_percentage?.h6 ??
+            "0",
+        );
+        return Number.isFinite(ch) && ch > 0;
+      })
+      .sort((a, b) => {
+        const ca = parseFloat(a.attributes?.price_change_percentage?.h24 ?? "0");
+        const cb = parseFloat(b.attributes?.price_change_percentage?.h24 ?? "0");
+        return cb - ca;
+      });
 
     for (const pool of gainerPools) {
       const attrs = pool.attributes || {};
