@@ -55,6 +55,7 @@ import type {
 } from './types.js';
 import type { SleeveOwnership, SleeveExitOverride } from './state-types.js';
 import { statsFromOwnership } from './sleeve-stats.js';
+import { outcomeTracker } from '../services/outcome-tracker.js';
 
 // ============================================================================
 // STRATEGY CONSTANTS
@@ -77,6 +78,62 @@ const ALPHA_POSITION_SIZE_FLOOR_USD = 10;
 
 /** Dollar ceiling — caps over-sizing when budget is large. */
 const ALPHA_POSITION_SIZE_CEILING_USD = 100;
+
+// v21.36: Specialist sizing — scale position size by per-token wallet
+// hit-rate data from the outcome tracker. When wallets that historically
+// predict 4h moves on THIS specific token have high hit rates, AlphaHunter
+// sizes UP (riding the specialist signal). When no specialist data exists
+// (cold start, or thin data), the multiplier is exactly 1.0 — same
+// behavior as before. Flag-gated for safe rollout.
+//
+// Formula: linear map of avg(top 3 specialists' hit_rate_4h) ∈ [0, 1] to
+// multiplier ∈ [MIN, MAX]. Hit rate 0.5 (random) ≈ 1.05x; 0.65 ≈ 1.19x;
+// 0.8 ≈ 1.32x; 1.0 ≈ 1.5x. Bounded by floor/ceiling in clamp step.
+const ALPHA_SPECIALIST_MULTIPLIER_MIN = 0.6;
+const ALPHA_SPECIALIST_MULTIPLIER_MAX = 1.5;
+const ALPHA_SPECIALIST_TOP_N = 3;
+
+interface SpecialistSizing {
+  multiplier: number;
+  reason: string;
+}
+
+function getTokenSpecialistMultiplier(symbol: string): SpecialistSizing {
+  if (process.env.ALPHA_SPECIALIST_SIZING_ENABLED !== 'true') {
+    return { multiplier: 1.0, reason: 'disabled' };
+  }
+  try {
+    const byToken = outcomeTracker.getWalletHitRatesByToken();
+    const specialists = byToken[symbol.toUpperCase()] || [];
+    if (specialists.length === 0) {
+      return { multiplier: 1.0, reason: `no specialist data for ${symbol} (neutral 1.0x)` };
+    }
+    const top = specialists.slice(0, ALPHA_SPECIALIST_TOP_N);
+    const avgHitRate =
+      top.reduce((s, w) => s + (w.hitRate4h ?? 0), 0) / top.length;
+    const raw =
+      ALPHA_SPECIALIST_MULTIPLIER_MIN +
+      avgHitRate *
+        (ALPHA_SPECIALIST_MULTIPLIER_MAX - ALPHA_SPECIALIST_MULTIPLIER_MIN);
+    const clamped = Math.max(
+      ALPHA_SPECIALIST_MULTIPLIER_MIN,
+      Math.min(ALPHA_SPECIALIST_MULTIPLIER_MAX, raw),
+    );
+    return {
+      multiplier: clamped,
+      reason: `${top.length} specialists (n=${top
+        .map((w) => w.totalSignals)
+        .join(',')}); avg hit_rate_4h ${(avgHitRate * 100).toFixed(0)}% → ${clamped.toFixed(2)}x`,
+    };
+  } catch (err) {
+    return {
+      multiplier: 1.0,
+      reason: `outcome-tracker error (safe fallback 1.0x): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    };
+  }
+}
 
 /** Take-profit threshold. At +X% unrealized, book the win. */
 const ALPHA_PROFIT_TAKE_PCT = 15;
@@ -384,9 +441,14 @@ export class AlphaHunterSleeve implements Sleeve {
     for (const candidate of eligible) {
       if (entries >= maxNewEntries) break;
       const baseSize = ctx.capitalBudgetUSD * ALPHA_POSITION_SIZE_PCT;
+      const spec = getTokenSpecialistMultiplier(candidate.symbol);
+      const adjustedSize = baseSize * spec.multiplier;
       const sizeUSD = Math.max(
         ALPHA_POSITION_SIZE_FLOOR_USD,
-        Math.min(ALPHA_POSITION_SIZE_CEILING_USD, baseSize),
+        Math.min(ALPHA_POSITION_SIZE_CEILING_USD, adjustedSize),
+      );
+      console.log(
+        `[ALPHA_HUNTER] ${candidate.symbol} sizing: base=$${baseSize.toFixed(2)} × specMult ${spec.multiplier.toFixed(2)} → $${adjustedSize.toFixed(2)} → clamped $${sizeUSD.toFixed(2)} [${spec.reason}]`,
       );
       if (sizeUSD > remainingBudget) {
         decisions.push(makeHold(
@@ -401,7 +463,7 @@ export class AlphaHunterSleeve implements Sleeve {
         fromToken: 'USDC',
         toToken: candidate.symbol,
         amountUSD: sizeUSD,
-        reasoning: `ALPHA_HUNTER_V1: ${candidate.isRunner ? '🚀 RUNNER ' : ''}conviction ${candidate.convictionScore}/100, sector ${candidate.sector ?? 'UNKNOWN'}, 24h ${change24h >= 0 ? '+' : ''}${change24h.toFixed(1)}%. Meme/alt swing — tight-exit discipline applies.`,
+        reasoning: `ALPHA_HUNTER_V1: ${candidate.isRunner ? '🚀 RUNNER ' : ''}conviction ${candidate.convictionScore}/100, sector ${candidate.sector ?? 'UNKNOWN'}, 24h ${change24h >= 0 ? '+' : ''}${change24h.toFixed(1)}%. SpecMult ${spec.multiplier.toFixed(2)}x (${spec.reason}). Meme/alt swing — tight-exit discipline applies.`,
         sector: candidate.sector,
       });
       remainingBudget -= sizeUSD;
@@ -482,9 +544,14 @@ export class AlphaHunterSleeve implements Sleeve {
         continue;
       }
       const baseSize = capitalBudgetUSD * ALPHA_POSITION_SIZE_PCT;
+      const spec = getTokenSpecialistMultiplier(c.symbol);
+      const adjustedSize = baseSize * spec.multiplier;
       const sizeUSD = Math.max(
         ALPHA_POSITION_SIZE_FLOOR_USD,
-        Math.min(ALPHA_POSITION_SIZE_CEILING_USD, baseSize),
+        Math.min(ALPHA_POSITION_SIZE_CEILING_USD, adjustedSize),
+      );
+      console.log(
+        `[ALPHA_HUNTER_WD] ${c.symbol} sizing: base=$${baseSize.toFixed(2)} × specMult ${spec.multiplier.toFixed(2)} → $${adjustedSize.toFixed(2)} → clamped $${sizeUSD.toFixed(2)} [${spec.reason}]`,
       );
       if (sizeUSD > availableUSDC) {
         this.bumpWdSkip('budget_exhausted');
