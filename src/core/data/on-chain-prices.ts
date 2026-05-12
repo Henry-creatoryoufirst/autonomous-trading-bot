@@ -488,6 +488,7 @@ export async function fetchAllOnChainPrices(
           addrToSymbol.set(TOKEN_REGISTRY[s].address.toLowerCase(), s);
         }
         const recovered: string[] = [];
+        const poolEntriesAdded: string[] = [];
         for (const pool of res.data) {
           if (pool.chainId !== 'base') continue;
           const baseAddr = (pool.baseToken?.address || '').toLowerCase();
@@ -509,9 +510,52 @@ export async function fetchAllOnChainPrices(
           }
           prices.set(symbol, priceUsd);
           recovered.push(`${symbol}@$${priceUsd < 0.01 ? priceUsd.toFixed(8) : priceUsd.toFixed(4)}`);
+
+          // 2026-05-12: also register a poolRegistry entry when the recovered pool
+          // is on a whitelisted DEX, has one of our four supported quote tokens
+          // (WETH/USDC/cbBTC/VIRTUAL), and probes successfully as V2 or V3. Without
+          // this, the pool gate in agent-v3.2.ts blocks BUYs on cohort tokens like
+          // MORPHO and PENDLE — Watcher-Direct triggers fire, Reviewer approves,
+          // AlphaHunter sizes the entry, then the gate refuses. Tokens with exotic
+          // pools (V4) or non-standard quotes (AERO) stay correctly out of registry
+          // and continue priced-but-not-tradable via the priceUsd-only path above.
+          if (poolRegistry[symbol]) continue;
+          const dexId = (pool.dexId || '').toLowerCase();
+          if (!KNOWN_DEX_IDS.has(dexId)) continue;
+          const quoteAddr = (pool.quoteToken?.address || '').toLowerCase();
+          let quoteToken: 'WETH' | 'USDC' | 'cbBTC' | 'VIRTUAL' | null = null;
+          if (quoteAddr === WETH_ADDRESS) quoteToken = 'WETH';
+          else if (quoteAddr === USDC_ADDRESS) quoteToken = 'USDC';
+          else if (quoteAddr === CBBTC_ADDRESS) quoteToken = 'cbBTC';
+          else if (quoteAddr === VIRTUAL_ADDRESS) quoteToken = 'VIRTUAL';
+          if (!quoteToken) continue;
+          const pairAddress = pool.pairAddress;
+          if (!pairAddress || typeof pairAddress !== 'string') continue;
+          const poolType = await probePoolType(pairAddress, dexId);
+          if (!poolType) continue; // V4 or other non-readable shape — skip silently
+          const tokenInfo = TOKEN_REGISTRY[symbol];
+          const tokenAddr = tokenInfo.address.toLowerCase();
+          const addr0 = tokenAddr < quoteAddr ? tokenAddr : quoteAddr;
+          const token0IsBase = addr0 === tokenAddr;
+          const quoteDec = QUOTE_DECIMALS[quoteToken] ?? 18;
+          poolRegistry[symbol] = {
+            poolAddress: pairAddress,
+            poolType,
+            quoteToken,
+            token0IsBase,
+            token0Decimals: token0IsBase ? tokenInfo.decimals : quoteDec,
+            token1Decimals: token0IsBase ? quoteDec : tokenInfo.decimals,
+            dexName: pool.dexId || 'unknown',
+            liquidityUSD: liqUsd,
+            consecutiveFailures: 0,
+          };
+          poolEntriesAdded.push(`${symbol}(${poolType}/${quoteToken})`);
         }
         if (recovered.length > 0) {
           console.log(`  📎 Recovery pass priced ${recovered.length} unmapped token(s) via DexScreener: ${recovered.join(', ')}`);
+        }
+        if (poolEntriesAdded.length > 0) {
+          console.log(`  🔗 Recovery pass also registered ${poolEntriesAdded.length} pool(s) (now BUY-able through pool gate): ${poolEntriesAdded.join(', ')}`);
         }
       }
     } catch (e: any) {
