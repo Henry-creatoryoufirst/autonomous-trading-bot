@@ -1463,6 +1463,157 @@ function maybeRebalanceWeth(
 }
 
 /**
+ * NVR-SPEC-029 follow-on: USDC Fast-Strike Liberation.
+ *
+ * One-shot capital-liberation when AlphaHunter wants to fire a high-conviction
+ * Watcher-Direct candidate but USDC is starved. Frees ≤ $150 from a single
+ * stale-flat Core position so the next cycle's WD entry has budget.
+ *
+ * Disabled by default. Enable per-bot:
+ *   ALPHA_HUNTER_FAST_STRIKE_ENABLED=true
+ *
+ * Trigger conditions (ALL must be true at decision time):
+ *   1. AlphaHunter has a WD candidate with Reviewer confidence ≥ FAST_STRIKE_MIN_CONF
+ *      (default 0.75) AND not already held
+ *   2. Available USDC < FAST_STRIKE_USDC_FLOOR (default 25)
+ *   3. ≥1 Core sleeve position qualifies as stale-flat:
+ *        - $usdValue ≥ 100
+ *        - held ≥ 48h
+ *        - unrealized P&L between -3% and +3%
+ *        - not in icuPositions (active management)
+ *        - symbol not in protected set: USDC, ETH, WETH, cbBTC, WBTC
+ *   4. Cooldown: ≥ 24h since the last fire (state.lastAlphaLiberationAt)
+ *
+ * Most-stagnant tie-break: smallest |P&L%| (closest to truly flat).
+ *
+ * Sizing: min(positionValue, FAST_STRIKE_MAX_LIBERATE_USD = 150).
+ *
+ * Returns null when conditions aren't met or kill-switch is off. When a
+ * TradeDecision is returned, the caller MUST update state.lastAlphaLiberationAt
+ * on success. Routes through executeTrade — risk-review / surge-cap / MEV
+ * protection still apply.
+ *
+ * Tunables (all env-driven):
+ *   ALPHA_HUNTER_FAST_STRIKE_ENABLED   — kill switch (default off)
+ *   FAST_STRIKE_MIN_CONF               — min reviewer conf (default 0.75)
+ *   FAST_STRIKE_USDC_FLOOR             — fire below this USDC (default 25)
+ *   FAST_STRIKE_MAX_LIBERATE_USD       — sell at most this (default 150)
+ *   FAST_STRIKE_COOLDOWN_HOURS         — min hours between fires (default 24)
+ *   FAST_STRIKE_MIN_POSITION_USD       — position size floor (default 100)
+ *   FAST_STRIKE_MIN_AGE_HOURS          — position age floor (default 48)
+ *   FAST_STRIKE_FLAT_BAND_PCT          — |P&L| ≤ this counts as flat (default 3)
+ */
+async function maybeAlphaLiberation(
+  balances: { symbol: string; usdValue: number; balance: number; price?: number }[],
+  state: AgentState,
+): Promise<{ decision: TradeDecision; context: { wdSymbol: string; wdConf: number; usdcBefore: number } } | null> {
+  if (process.env.ALPHA_HUNTER_FAST_STRIKE_ENABLED !== 'true') return null;
+
+  // Tunables (read fresh each call — match maybeRebalanceWeth's style).
+  const minConf = parseFloat(process.env.FAST_STRIKE_MIN_CONF ?? '0.75');
+  const usdcFloor = parseFloat(process.env.FAST_STRIKE_USDC_FLOOR ?? '25');
+  const maxLiberateUSD = parseFloat(process.env.FAST_STRIKE_MAX_LIBERATE_USD ?? '150');
+  const cooldownHours = parseFloat(process.env.FAST_STRIKE_COOLDOWN_HOURS ?? '24');
+  const minPositionUSD = parseFloat(process.env.FAST_STRIKE_MIN_POSITION_USD ?? '100');
+  const minAgeHours = parseFloat(process.env.FAST_STRIKE_MIN_AGE_HOURS ?? '48');
+  const flatBandPct = parseFloat(process.env.FAST_STRIKE_FLAT_BAND_PCT ?? '3');
+
+  // Gate 1: cooldown.
+  const last = state.lastAlphaLiberationAt;
+  if (last) {
+    const hoursAgo = (Date.now() - new Date(last).getTime()) / 3_600_000;
+    if (hoursAgo < cooldownHours) return null;
+  }
+
+  // Gate 2: USDC starvation.
+  const usdcBalance = balances.find(b => (b.symbol || '').toUpperCase() === 'USDC');
+  const usdcUSD = usdcBalance?.usdValue ?? 0;
+  if (usdcUSD >= usdcFloor) return null;
+
+  // Gate 3: a qualifying WD candidate exists.
+  let topWd: { symbol: string; reviewerConfidence: number } | null = null;
+  try {
+    const { alphaWatcher } = await import('./src/core/services/alpha-watcher.js');
+    const candidates = alphaWatcher.getWatcherDirectCandidates({ minConfidence: minConf });
+    // Skip candidates already held (no averaging via fast-strike).
+    const heldSymbols = new Set(balances.filter(b => (b.usdValue ?? 0) > 1).map(b => b.symbol));
+    const eligible = candidates.filter(c => !heldSymbols.has(c.symbol));
+    if (eligible.length === 0) return null;
+    topWd = { symbol: eligible[0].symbol, reviewerConfidence: eligible[0].reviewerConfidence };
+  } catch (e: any) {
+    console.warn(`[ALPHA_LIBERATION] alphaWatcher import failed — skipping: ${e?.message ?? e}`);
+    return null;
+  }
+
+  // Gate 4: find the most-stagnant qualifying Core position.
+  const NEVER_LIBERATE = new Set(['USDC', 'ETH', 'WETH', 'CBBTC', 'WBTC']);
+  const now = Date.now();
+  let bestCandidate: {
+    symbol: string;
+    usdValue: number;
+    pnlPct: number;
+    ageHours: number;
+  } | null = null;
+  let candidatesChecked = 0;
+
+  for (const b of balances) {
+    const symbol = (b.symbol || '').toUpperCase();
+    if (NEVER_LIBERATE.has(symbol)) continue;
+
+    const usdValue = b.usdValue ?? 0;
+    if (usdValue < minPositionUSD) continue;
+    candidatesChecked++;
+
+    // Active-management skip.
+    if (icuPositions.has(b.symbol) && icuPositions.get(b.symbol)?.mode === 'ICU') continue;
+
+    const cb = state.costBasis[b.symbol];
+    if (!cb?.firstBuyDate) continue;
+
+    const ageHours = (now - new Date(cb.firstBuyDate).getTime()) / 3_600_000;
+    if (ageHours < minAgeHours) continue;
+
+    const currentPrice = b.price ?? (b.balance > 0 ? usdValue / b.balance : 0);
+    const pnlPct = cb.averageCostBasis > 0
+      ? ((currentPrice - cb.averageCostBasis) / cb.averageCostBasis) * 100
+      : 0;
+    if (Math.abs(pnlPct) > flatBandPct) continue;
+
+    // Most-stagnant = closest to truly flat.
+    if (!bestCandidate || Math.abs(pnlPct) < Math.abs(bestCandidate.pnlPct)) {
+      bestCandidate = { symbol: b.symbol, usdValue, pnlPct, ageHours };
+    }
+  }
+
+  if (!bestCandidate) {
+    console.log(
+      `[ALPHA_LIBERATION] WD wants to strike but no stale-flat Core position available — skipping ` +
+      `(USDC=$${usdcUSD.toFixed(2)}, candidates checked: ${candidatesChecked}, WD: ${topWd.symbol}@conf${topWd.reviewerConfidence.toFixed(2)})`,
+    );
+    return null;
+  }
+
+  const sizeUSD = Math.min(bestCandidate.usdValue, maxLiberateUSD);
+  const reasoning =
+    `ALPHA_LIBERATION: freed $${sizeUSD.toFixed(2)} from stale Core position ${bestCandidate.symbol} ` +
+    `(held ${bestCandidate.ageHours.toFixed(0)}h, ${bestCandidate.pnlPct >= 0 ? '+' : ''}${bestCandidate.pnlPct.toFixed(1)}% P&L) — ` +
+    `AlphaHunter has a conf ${topWd.reviewerConfidence.toFixed(2)} WD candidate on ${topWd.symbol} ` +
+    `and USDC was $${usdcUSD.toFixed(2)}. Capital follows conviction.`;
+
+  return {
+    decision: {
+      action: 'SELL',
+      fromToken: bestCandidate.symbol,
+      toToken: 'USDC',
+      amountUSD: sizeUSD,
+      reasoning,
+      sector: TOKEN_REGISTRY[bestCandidate.symbol]?.sector,
+    },
+    context: { wdSymbol: topWd.symbol, wdConf: topWd.reviewerConfidence, usdcBefore: usdcUSD },
+  };
+}
+
+/**
  * Calculate total capital currently deployed in alpha (discovery) positions.
  * Used to enforce the alpha budget ceiling.
  */
@@ -7882,6 +8033,39 @@ async function runTradingCycle() {
           }
         } else {
           console.warn(`   ❌ Rebalance failed: ${result.error}`);
+        }
+      }
+    }
+
+    // === NVR-SPEC-029 follow-on — USDC Fast-Strike Liberation ===
+    // One-shot Core liberation when AlphaHunter has a high-conviction WD
+    // candidate but USDC is starved. Frees ≤ $150 from a single stale-flat
+    // Core position so the next cycle's WD entry has budget.
+    // Disabled by default — enable per-bot via ALPHA_HUNTER_FAST_STRIKE_ENABLED=true.
+    {
+      const liberation = await maybeAlphaLiberation(balances, state);
+      if (liberation) {
+        console.log(`\n💧 ALPHA LIBERATION: ${liberation.decision.reasoning}`);
+        const result = await executeTrade(liberation.decision, marketData);
+        if (result.success) {
+          state.lastAlphaLiberationAt = new Date().toISOString();
+          markStateDirty(true);
+          console.log(`   ✅ Liberation success: $${liberation.decision.amountUSD.toFixed(2)} ${liberation.decision.fromToken}→USDC, tx=${result.txHash?.slice(0, 10)}…`);
+          await telegramService.sendAlert({
+            severity: "INFO",
+            title: "💧 Alpha Liberation Fired",
+            message:
+              `Freed $${liberation.decision.amountUSD.toFixed(2)} from stale Core position ${liberation.decision.fromToken} → USDC ` +
+              `so AlphaHunter can strike ${liberation.context.wdSymbol} (WD conf ${liberation.context.wdConf.toFixed(2)}).\n\n` +
+              `${liberation.decision.reasoning}`,
+          }).catch(e => console.warn('[Telegram] Alert failed:', e?.message?.slice(0, 80)));
+          // Refresh balances so the WD entry attempt this cycle sees fresh USDC.
+          const refreshedBalances = await getBalances();
+          if (refreshedBalances && refreshedBalances.length > 0) {
+            balances = refreshedBalances;
+          }
+        } else {
+          console.warn(`   ❌ Liberation failed: ${result.error}`);
         }
       }
     }

@@ -69,6 +69,18 @@ export interface AgentState {
    * project_nvr_session_2026_05_05 memory.
    */
   lastWethRebalanceAt?: string | null;
+  /**
+   * NVR-SPEC-029 follow-on: USDC fast-strike liberation — last fire timestamp.
+   *
+   * The fast-strike detects "USDC starved + high-conviction WD candidate" and
+   * frees capital by selling a single stale-flat Core position so the next
+   * cycle's WD entry has budget. This field gates the 24h cooldown so we
+   * don't churn Core positions trying to feed back-to-back WD signals.
+   * Optional for backward compat — absent on pre-feature states.
+   *
+   * See `maybeAlphaLiberation()` in agent-v3.2.ts.
+   */
+  lastAlphaLiberationAt?: string | null;
   // Auto-harvest state
   autoHarvestTransfers: Array<{ timestamp: string; amountETH: string; amountUSD: number; txHash: string; destination: string }>;
   totalAutoHarvestedUSD: number;
