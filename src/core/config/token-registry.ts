@@ -471,6 +471,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "SYRUP", name: "Maple Finance", coingeckoId: "maple-finance",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-12) ===
+  CHIP: {
+    address: "0x0c1c1c109fe34733fca54b82d7b46b75cfb71f6e",
+    symbol: "CHIP", name: "USD.AI", coingeckoId: "usd-ai",
+    sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
