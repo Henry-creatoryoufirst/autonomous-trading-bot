@@ -462,6 +462,63 @@ export async function fetchAllOnChainPrices(
     }
   }
 
+  // ============================================================================
+  // RECOVERY PASS — DexScreener priceUsd fallback for tokens missing from poolRegistry
+  // ============================================================================
+  // Catches the case where pool discovery skipped a token (unsupported quote token
+  // like AERO, exotic DEX like Uniswap V4, or a transient DexScreener failure during
+  // the original bulk discovery). Without this, positions on those tokens go blind:
+  // balance.price is undefined, usdValue=0, stale-exit can't fire, capital stuck.
+  // Uses DexScreener's pre-computed priceUsd so we don't have to read the pool ABI.
+  const recoveryCandidates = Object.keys(TOKEN_REGISTRY).filter(
+    s => !prices.has(s) && s !== 'USDC' && TOKEN_REGISTRY[s].address !== 'native',
+  );
+  if (recoveryCandidates.length > 0) {
+    try {
+      const addresses = recoveryCandidates
+        .map(s => TOKEN_REGISTRY[s].address)
+        .join(',');
+      const res = await axios.get(
+        `https://api.dexscreener.com/tokens/v1/base/${addresses}`,
+        { timeout: 10000 },
+      );
+      if (res.data && Array.isArray(res.data)) {
+        const addrToSymbol = new Map<string, string>();
+        for (const s of recoveryCandidates) {
+          addrToSymbol.set(TOKEN_REGISTRY[s].address.toLowerCase(), s);
+        }
+        const recovered: string[] = [];
+        for (const pool of res.data) {
+          if (pool.chainId !== 'base') continue;
+          const baseAddr = (pool.baseToken?.address || '').toLowerCase();
+          const symbol = addrToSymbol.get(baseAddr);
+          if (!symbol) continue;
+          if (prices.has(symbol)) continue;
+          const priceUsd = parseFloat(pool.priceUsd);
+          if (!Number.isFinite(priceUsd) || priceUsd <= 0) continue;
+          const liqUsd = pool.liquidity?.usd || 0;
+          if (liqUsd < 1000) continue; // skip dust pools (< $1K liquidity)
+          // Sanity check against last known price — loose at 5x (memes can move fast)
+          const lastPrice = fallbackPrices[symbol]?.price;
+          if (lastPrice && lastPrice > 0) {
+            const ratio = priceUsd / lastPrice;
+            if (ratio > 5 || ratio < 0.2) {
+              console.warn(`  ⚠️ Recovery skipped for ${symbol}: DexScreener=$${priceUsd.toFixed(6)} vs last=$${lastPrice.toFixed(6)} (${ratio.toFixed(2)}x divergence)`);
+              continue;
+            }
+          }
+          prices.set(symbol, priceUsd);
+          recovered.push(`${symbol}@$${priceUsd < 0.01 ? priceUsd.toFixed(8) : priceUsd.toFixed(4)}`);
+        }
+        if (recovered.length > 0) {
+          console.log(`  📎 Recovery pass priced ${recovered.length} unmapped token(s) via DexScreener: ${recovered.join(', ')}`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`  ⚠️ Recovery pass failed: ${e.message?.substring(0, 100) || e}`);
+    }
+  }
+
   // Chainlink deviation detection
   const clPrices = await fetchChainlinkPricesRaw();
   const deviations: typeof chainlinkDeviations = [];
