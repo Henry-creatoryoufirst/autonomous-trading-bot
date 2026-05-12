@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { AlphaHunterSleeve } from '../alpha-hunter.js';
 import type {
   SleeveContext,
@@ -416,5 +416,134 @@ describe('AlphaHunterSleeve — Watcher-Direct (NVR-SPEC-029)', () => {
     expect(buys[0].toToken).toBe('AERO');
     // Did NOT also pull from discovery — one entry per cycle.
     expect(buys.find((b) => b.toToken === 'EXTRA')).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// NVR-SPEC-029 follow-on: WD-specific tight exits
+// ============================================================================
+describe('AlphaHunterSleeve — WD tight exits (NVR-SPEC-029 follow-on)', () => {
+  afterEach(() => {
+    delete process.env.ALPHA_HUNTER_WATCHER_DIRECT;
+    delete process.env.ALPHA_HUNTER_WD_TIGHT_EXITS;
+  });
+
+  /**
+   * Tight-exit constants are read at module init, so we vi.resetModules()
+   * and re-import after flipping the env flag to exercise the gates.
+   */
+  async function freshSleeve(env: Record<string, string> = {}) {
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    process.env.ALPHA_HUNTER_WD_TIGHT_EXITS = 'true';
+    vi.resetModules();
+    const mod = await import('../alpha-hunter.js');
+    return new mod.AlphaHunterSleeve();
+  }
+
+  async function freshSleeveKillSwitchOff() {
+    process.env.ALPHA_HUNTER_WATCHER_DIRECT = 'true';
+    delete process.env.ALPHA_HUNTER_WD_TIGHT_EXITS;
+    vi.resetModules();
+    const mod = await import('../alpha-hunter.js');
+    return new mod.AlphaHunterSleeve();
+  }
+
+  it('fires WD_TAKE_PROFIT at +8% above entry', async () => {
+    const sleeve = await freshSleeve({});
+    // Cycle 1: WD entry stamps AERO at $1.
+    await sleeve.decide(mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+      prices: { AERO: 1.0 },
+    }));
+
+    // Cycle 2: AERO at $1.09 → +9%, trip take-profit.
+    const ctx2 = mkCtxWd({
+      positions: [mkPosition('AERO', 100, 100, new Date().toISOString())],
+      prices: { AERO: 1.09 },
+    });
+    const decisions = await sleeve.decide(ctx2);
+    const sells = decisions.filter((d: any) => d.action === 'SELL');
+    expect(sells).toHaveLength(1);
+    expect(sells[0].fromToken).toBe('AERO');
+    expect(sells[0].percent).toBe(100);
+    expect(sells[0].reasoning).toContain('WD_TAKE_PROFIT');
+  });
+
+  it('fires WD_TRAILING_STOP after +5% peak then -3% retrace', async () => {
+    const sleeve = await freshSleeve({});
+    // Cycle 1: entry at $1.
+    await sleeve.decide(mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+      prices: { AERO: 1.0 },
+    }));
+    // Cycle 2: peak at $1.06 (+6% — arms trailing stop). No exit yet.
+    const noExit = await sleeve.decide(mkCtxWd({
+      positions: [mkPosition('AERO', 100, 100, new Date().toISOString())],
+      prices: { AERO: 1.06 },
+    }));
+    expect(noExit.filter((d: any) => d.action === 'SELL')).toHaveLength(0);
+
+    // Cycle 3: retrace to $1.027 → -3.1% from peak $1.06 → fire trailing stop.
+    const decisions = await sleeve.decide(mkCtxWd({
+      positions: [mkPosition('AERO', 100, 100, new Date().toISOString())],
+      prices: { AERO: 1.027 },
+    }));
+    const sells = decisions.filter((d: any) => d.action === 'SELL');
+    expect(sells).toHaveLength(1);
+    expect(sells[0].reasoning).toContain('WD_TRAILING_STOP');
+  });
+
+  it('fires WD_MAX_HOLD after 12h regardless of state', async () => {
+    const sleeve = await freshSleeve({});
+    // Cycle 1: entry. To simulate aging, we directly stub the entry record's
+    // entryTime to 13h ago after the BUY lands.
+    await sleeve.decide(mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+      prices: { AERO: 1.0 },
+    }));
+    const rec = (sleeve as any).wdEntries.get('AERO');
+    expect(rec).toBeDefined();
+    rec.entryTime = new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString();
+
+    // Cycle 2: price is flat (+2%) — neither TP nor trailing stop would fire,
+    // but max-hold should.
+    const ctx2 = mkCtxWd({
+      positions: [mkPosition('AERO', 100, 100, new Date().toISOString())],
+      prices: { AERO: 1.02 },
+    });
+    const decisions = await sleeve.decide(ctx2);
+    const sells = decisions.filter((d: any) => d.action === 'SELL');
+    expect(sells).toHaveLength(1);
+    expect(sells[0].reasoning).toContain('WD_MAX_HOLD');
+  });
+
+  it('does NOT apply WD exits to discovery-path positions (unchanged behavior)', async () => {
+    const sleeve = await freshSleeve({});
+    // Discovery-path position at +9%. Should NOT trip WD_TAKE_PROFIT (no
+    // WD tag); should fall through to existing Alpha gates (no exit since
+    // +9% < ALPHA_PROFIT_TAKE_PCT 15% and not stale and not -5% drawdown).
+    const ctx = mkCtx({
+      positions: [mkPosition('VIRTUAL', 100, 100, new Date().toISOString())],
+      prices: { VIRTUAL: 1.09 },
+    });
+    const decisions = await sleeve.decide(ctx);
+    expect(decisions.filter((d: any) => d.action === 'SELL')).toHaveLength(0);
+  });
+
+  it('kill-switch off: WD positions still use generic Alpha exits', async () => {
+    const sleeve = await freshSleeveKillSwitchOff();
+    // Cycle 1: WD entry.
+    await sleeve.decide(mkCtxWd({
+      wdCandidates: [mkWdCandidate({ symbol: 'AERO' })],
+      prices: { AERO: 1.0 },
+    }));
+    // Cycle 2: +9% — would trip WD_TAKE_PROFIT but kill-switch off, so falls
+    // through to generic gates (no exit at +9%, still below +15%).
+    const decisions = await sleeve.decide(mkCtxWd({
+      positions: [mkPosition('AERO', 100, 100, new Date().toISOString())],
+      prices: { AERO: 1.09 },
+    }));
+    expect(decisions.filter((d: any) => d.action === 'SELL')).toHaveLength(0);
   });
 });
