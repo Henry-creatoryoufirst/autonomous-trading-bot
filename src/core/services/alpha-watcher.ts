@@ -543,11 +543,21 @@ export class AlphaWatcher {
                 `[AlphaWatcher] ${symbol} flow source: on-chain (h1 ${onChainFlow.transactions.h1.buys}b/${onChainFlow.transactions.h1.sells}s, h24 vol $${(ocH24 / 1000).toFixed(1)}K, m5 ${onChainFlow.priceChange.m5.toFixed(2)}%, ${onChainFlow.diagnostics.swapsH1}/${onChainFlow.diagnostics.swapsH24} swaps)`,
               );
             }
-          } else {
+          } else if (ocH24 > 0) {
+            // Genuine on-chain/GT divergence above the 50% threshold — worth
+            // logging because it suggests the registered pool isn't tracking
+            // the same liquidity surface as GT.
             console.warn(
               `[AlphaWatcher] ${symbol} on-chain h24 vol $${ocH24.toFixed(0)} diverges ${(divergence * 100).toFixed(0)}% from GT $${gtH24.toFixed(0)} — keeping GT (pool mismatch?)`,
             );
           }
+          // else: ocH24 == 0 — no swap events decoded for this pool over h24.
+          // Common when the registered pool is on PancakeSwap V3 (different Swap
+          // event topic than Uniswap V3) or another fork we haven't added decoder
+          // support for. Silently fall back to GT data; logging this every cycle
+          // for every quiet pool drowns out real signal. TODO: support PancakeSwap
+          // V3's Swap event topic in onchain-flow.ts so AERO/cbADA flow data comes
+          // from on-chain instead of GT fallback.
         }
         // Cache pool address + h24 volume for replay reuse (avoids redundant
         // GT calls AND gives replay a real 24h baseline for VOLUME_SPIKE).
