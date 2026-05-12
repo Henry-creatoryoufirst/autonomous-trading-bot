@@ -2801,6 +2801,22 @@ function loadPriceCache() {
           console.log(`⏭️ No usable price cache — will fetch fresh`);
         }
       }
+      // 2026-05-12: scrub absurdly-high cached prices (decimal-mismatch artifacts).
+      // Without this, the price-sanity gate in fetchAllOnChainPrices keeps rejecting
+      // the corrected on-chain price as a "100% deviation" from the cached bad value.
+      // cbBTC at ~$67K is the highest legitimate per-token price; any cache entry
+      // over $1M is a stale decimal bug — drop it so the next cycle accepts truth.
+      const scrubbed: string[] = [];
+      for (const sym of Object.keys(lastKnownPrices)) {
+        const p = lastKnownPrices[sym]?.price;
+        if (typeof p === 'number' && p > 1_000_000) {
+          delete lastKnownPrices[sym];
+          scrubbed.push(`${sym}=$${p.toExponential(2)}`);
+        }
+      }
+      if (scrubbed.length > 0) {
+        console.log(`🧹 Price cache scrub: dropped ${scrubbed.length} implausibly-high entries (likely decimal-mismatch artifacts): ${scrubbed.join(', ')}`);
+      }
     }
   } catch { /* non-critical */ }
 }

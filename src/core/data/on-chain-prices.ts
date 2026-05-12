@@ -66,7 +66,7 @@ import type { TechnicalIndicators, AltseasonSignal } from '../../algorithm/index
 // MODULE STATE
 // ============================================================================
 
-const POOL_REGISTRY_VERSION = 6;
+const POOL_REGISTRY_VERSION = 7; // bumped 2026-05-12 — cbADA + cbDOGE decimals fix forces re-discovery
 
 let poolRegistry: Record<string, PoolRegistryEntry> = {};
 let lastPoolTicks: Record<string, number> = {};

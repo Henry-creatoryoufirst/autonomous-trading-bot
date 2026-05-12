@@ -423,15 +423,14 @@ export const TOKEN_REGISTRY: Record<string, {
     sector: "DEFI", riskLevel: "HIGH", minTradeUSD: 25, decimals: 18,
   },
   // === AUTO-DISCOVERED (scout 2026-05-01) ===
-  cbADA: {
-    address: "0xcbADA732173e39521CDBE8bf59a6Dc85A9fc7b8c",
-    symbol: "cbADA", name: "Coinbase Wrapped ADA", coingeckoId: "coinbase-wrapped-ada",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
-  },
+  // cbADA: removed — duplicate of curated entry above (which has correct decimals=6).
+  //   This auto-discovered version had decimals=18 and was overriding the curated
+  //   entry because both shared the "cbADA" key. The mismatch produced the
+  //   $274B/token on-chain price reads that the ±25% sanity gate was rejecting.
   cbDOGE: {
     address: "0xcbD06E5A2B0C65597161de254AA074E489dEb510",
     symbol: "cbDOGE", name: "Coinbase Wrapped DOGE", coingeckoId: "coinbase-wrapped-doge",
-    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18,
+    sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8,
   },
   NOICE: {
     address: "0x9cb41fd9dc6891bae8187029461bfaadf6cc0c69",
