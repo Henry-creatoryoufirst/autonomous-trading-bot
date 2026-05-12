@@ -150,6 +150,37 @@ const ALPHA_STALE_MAX_GAIN_PCT_DEFAULT = 2;
 /** Tokens we never touch with Alpha — they're Core's territory or liquidity. */
 const ALPHA_NEVER_BUY = new Set(['USDC', 'ETH', 'WETH', 'cbBTC', 'cbETH', 'wstETH']);
 
+// ============================================================================
+// WD TIGHT EXITS (NVR-SPEC-029 follow-on)
+// ============================================================================
+//
+// Watcher-Direct entries catch 1h microstructure setups (volume spike, whale
+// buy, momentum break). The thesis is fast: a few percent up in the next
+// hour or two, then back to noise. The bot's generic exit gates (48h stale,
+// -8% drawdown cut, -5% sleeve drawdown override) don't fit that shape —
+// they let WD entries round-trip to flat or worse while we wait for either
+// the +15% sleeve take-profit or 48h timeout. Tight exits encode the WD
+// thesis directly: lock the small win or get out fast.
+//
+// Read once at module init. Flipping requires redeploy — these are real-money
+// behaviour and a per-cycle flag flap is a footgun.
+const WD_TIGHT_EXITS_ENABLED = process.env.ALPHA_HUNTER_WD_TIGHT_EXITS === 'true';
+
+function parsePositiveFloat(raw: string | undefined, fallback: number): number {
+  if (raw == null) return fallback;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Sell 100% at +X% above entry. */
+const WD_TAKE_PROFIT_PCT = parsePositiveFloat(process.env.WD_TAKE_PROFIT_PCT, 8);
+/** Once gain has crossed +5%, trail and sell on a -X% drop from peak. */
+const WD_TRAILING_STOP_PCT = parsePositiveFloat(process.env.WD_TRAILING_STOP_PCT, 3);
+/** Sell 100% if still held after X hours regardless of state. */
+const WD_MAX_HOLD_HOURS = parsePositiveFloat(process.env.WD_MAX_HOLD_HOURS, 12);
+/** Gain threshold that arms the trailing stop. Hardcoded — not worth a tunable. */
+const WD_TRAIL_ARM_GAIN_PCT = 5;
+
 /**
  * NVR-SPEC-029: Env flag gate for the Watcher-Direct candidate stream.
  * When false (default), AlphaHunter behaviour is unchanged from v21.31:
@@ -172,6 +203,29 @@ function isWatcherDirectEnabled(): boolean {
  * the soak window, these are also surfaced via console logs with the
  * [ALPHA_HUNTER_WD] prefix on every candidate evaluation.
  */
+/**
+ * NVR-SPEC-029 tight-exit follow-on: per-symbol bookkeeping for positions
+ * that AlphaHunter opened via the Watcher-Direct path. Used by the WD
+ * tight-exit gates (take-profit / trailing-stop / max-hold) so we don't
+ * subject discovery-path positions to WD-shaped exits.
+ *
+ * Lives in-memory on the sleeve instance (not in AgentState). On bot
+ * restart the WD tag is lost and a still-held WD position falls back to
+ * the generic Alpha exits — safe degradation, not silent over-trading.
+ */
+export interface WdEntryRecord {
+  /** Avg cost per token at entry; used as the basis for HWM/TP math. */
+  entryPrice: number;
+  /** ISO timestamp of the WD BUY decision. Drives the max-hold gate. */
+  entryTime: string;
+  /**
+   * Highest observed price since entry. Updated every cycle the position
+   * is still held. Drives the trailing-stop gate once gain crosses
+   * WD_TRAIL_ARM_GAIN_PCT.
+   */
+  peakPrice: number;
+}
+
 export interface WatcherDirectStats {
   /** Cycles where ≥1 watcher-direct candidate was offered to the sleeve. */
   cyclesWithCandidates: number;
@@ -251,6 +305,14 @@ export class AlphaHunterSleeve implements Sleeve {
     lastExecutionAt: null,
   };
 
+  /**
+   * NVR-SPEC-029 tight-exit follow-on: symbols this sleeve entered via the
+   * Watcher-Direct path. Cleared per-symbol when the WD tight-exit fires
+   * (or when the discovery exits sweep the symbol — gc'd next cycle when
+   * the position no longer appears in ctx.positions).
+   */
+  private wdEntries = new Map<string, WdEntryRecord>();
+
   constructor(opts: AlphaHunterSleeveOptions = {}) {
     this.mode = opts.mode ?? 'paper';
     this.getOwnership = opts.getOwnership;
@@ -278,6 +340,100 @@ export class AlphaHunterSleeve implements Sleeve {
   }
 
   /**
+   * NVR-SPEC-029 tight-exit follow-on. Decides whether a WD-tagged position
+   * should be sold this cycle. Returns a SELL TradeDecision if any gate
+   * fires, otherwise null (the position keeps riding). Mutates `rec` to
+   * keep peakPrice fresh and to patch a missing entryPrice on first
+   * sighting.
+   *
+   * Gate order (first-match wins):
+   *   1. WD_TAKE_PROFIT_PCT — price ≥ entry × (1 + tp%)
+   *   2. WD trailing stop — once gain has crossed WD_TRAIL_ARM_GAIN_PCT,
+   *      sell on price ≤ peak × (1 - trail%)
+   *   3. WD_MAX_HOLD_HOURS — sell regardless of state
+   *
+   * Routes through normal executeTrade so risk-review / surge-cap / MEV
+   * protection still apply — this just emits the decision intent.
+   */
+  private evaluateWdTightExit(
+    symbol: string,
+    price: number,
+    currentValue: number,
+    rec: WdEntryRecord,
+    nowMs: number,
+  ): SleeveDecision | null {
+    // Repair an unset entry price on first sighting (BUY decision may have
+    // landed without a price hint in the orchestrator snapshot).
+    if (!rec.entryPrice || rec.entryPrice <= 0) {
+      rec.entryPrice = price;
+      rec.peakPrice = price;
+    }
+    // Track the new high.
+    if (price > rec.peakPrice) rec.peakPrice = price;
+
+    const gainPct = ((price - rec.entryPrice) / rec.entryPrice) * 100;
+    const heldMs = nowMs - new Date(rec.entryTime).getTime();
+    const heldMin = heldMs / 60_000;
+    const heldHours = heldMs / 3_600_000;
+    const heldLabel = heldMin < 90
+      ? `${heldMin.toFixed(0)}min`
+      : `${heldHours.toFixed(1)}h`;
+
+    // 1. Take-profit
+    if (gainPct >= WD_TAKE_PROFIT_PCT) {
+      this.wdEntries.delete(symbol);
+      return {
+        action: 'SELL',
+        fromToken: symbol,
+        toToken: 'USDC',
+        amountUSD: currentValue,
+        percent: 100,
+        reasoning:
+          `WD_TAKE_PROFIT: +${gainPct.toFixed(1)}% ≥ +${WD_TAKE_PROFIT_PCT}% above entry $${rec.entryPrice.toPrecision(6)}, ` +
+          `held ${heldLabel}. NVR-SPEC-029 tight exit — lock the win before mean reversion.`,
+      };
+    }
+
+    // 2. Trailing stop (only after the position armed it by hitting +5%)
+    const armingGainPct = ((rec.peakPrice - rec.entryPrice) / rec.entryPrice) * 100;
+    if (armingGainPct >= WD_TRAIL_ARM_GAIN_PCT) {
+      const stopPrice = rec.peakPrice * (1 - WD_TRAILING_STOP_PCT / 100);
+      if (price <= stopPrice) {
+        const dropPct = ((price - rec.peakPrice) / rec.peakPrice) * 100;
+        this.wdEntries.delete(symbol);
+        return {
+          action: 'SELL',
+          fromToken: symbol,
+          toToken: 'USDC',
+          amountUSD: currentValue,
+          percent: 100,
+          reasoning:
+            `WD_TRAILING_STOP: peak +${armingGainPct.toFixed(1)}% from entry $${rec.entryPrice.toPrecision(6)} → ` +
+            `now ${dropPct.toFixed(1)}% off peak (≤ -${WD_TRAILING_STOP_PCT}%), held ${heldLabel}. ` +
+            `NVR-SPEC-029 tight exit — give back ${WD_TRAILING_STOP_PCT}% max once armed.`,
+        };
+      }
+    }
+
+    // 3. Max-hold
+    if (heldHours >= WD_MAX_HOLD_HOURS) {
+      this.wdEntries.delete(symbol);
+      return {
+        action: 'SELL',
+        fromToken: symbol,
+        toToken: 'USDC',
+        amountUSD: currentValue,
+        percent: 100,
+        reasoning:
+          `WD_MAX_HOLD: held ${heldHours.toFixed(1)}h ≥ ${WD_MAX_HOLD_HOURS}h at ${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}%. ` +
+          `NVR-SPEC-029 tight exit — 1h microstructure thesis times out.`,
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * v1 strategy. Produces exits for every held position that trips a rule,
    * plus up to ALPHA_MAX_NEW_ENTRIES_PER_CYCLE new strikes from the top of
    * the discovery candidate list.
@@ -292,9 +448,23 @@ export class AlphaHunterSleeve implements Sleeve {
     const maxHoldHours = override.maxHoldHours ?? ALPHA_MAX_HOLD_HOURS_DEFAULT;
     const staleMaxGainPct = override.staleMaxGainPct ?? ALPHA_STALE_MAX_GAIN_PCT_DEFAULT;
 
+    // GC the WD entry tracker: drop any tag whose position is no longer
+    // present in this sleeve's positions (closed/swept by prior cycle).
+    if (this.wdEntries.size > 0) {
+      const held = new Set(ctx.positions.map(p => p.symbol));
+      for (const sym of Array.from(this.wdEntries.keys())) {
+        if (!held.has(sym)) this.wdEntries.delete(sym);
+      }
+    }
+
     // ---------- EXITS FIRST ----------
     // A single position can only trip one exit per cycle. Drawdown wins over
     // profit-take (they can't overlap anyway) and profit-take wins over stale.
+    //
+    // Path-aware: Watcher-Direct entries (NVR-SPEC-029) use the WD tight-exit
+    // gates (take-profit / trailing-stop / max-hold) instead — the WD thesis
+    // is a fast 1h microstructure move, not a 48h-hold meme/alt swing.
+    // Discovery-path positions stay on the original Alpha gates.
     for (const position of ctx.positions) {
       const price = ctx.market.prices[position.symbol];
       if (!price || price <= 0) continue;
@@ -304,6 +474,16 @@ export class AlphaHunterSleeve implements Sleeve {
         ? ((currentValue - position.costBasisUSD) / position.costBasisUSD) * 100
         : 0;
       const ageHours = (nowMs - new Date(position.openedAt).getTime()) / (1000 * 60 * 60);
+
+      // WD-tagged position — run the tight-exit ladder and skip generic gates.
+      const wdRec = this.wdEntries.get(position.symbol);
+      if (WD_TIGHT_EXITS_ENABLED && wdRec) {
+        const wdExit = this.evaluateWdTightExit(position.symbol, price, currentValue, wdRec, nowMs);
+        if (wdExit) {
+          decisions.push(wdExit);
+        }
+        continue;
+      }
 
       let exitReason: string | null = null;
       if (pnlPct <= drawdownCutPct) {
@@ -363,6 +543,7 @@ export class AlphaHunterSleeve implements Sleeve {
         slotsOpen,
         ctx.availableUSDC,
         ctx.capitalBudgetUSD,
+        ctx.market.prices,
       );
       if (wdResult.entry) {
         decisions.push(wdResult.entry);
@@ -496,6 +677,7 @@ export class AlphaHunterSleeve implements Sleeve {
     slotsOpen: number,
     availableUSDC: number,
     capitalBudgetUSD: number,
+    prices: Record<string, number>,
   ): { entry: SleeveDecision | null; holdReason: string } {
     // Cap-level rejections apply across all candidates.
     if (slotsOpen <= 0) {
@@ -564,7 +746,20 @@ export class AlphaHunterSleeve implements Sleeve {
 
       // PASS: this candidate clears every gate. Build the decision.
       this.wdStats.executions++;
-      this.wdStats.lastExecutionAt = new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      this.wdStats.lastExecutionAt = nowIso;
+      // Tag this symbol as WD-entered so the next cycle's exit pass routes
+      // it through the WD tight-exit gates (NVR-SPEC-029 follow-on).
+      // entryPriceHint comes from the orchestrator's price snapshot; if it's
+      // 0/missing here, the first cycle the position lands with a valid
+      // price will repair it (see evaluateWdTightExit).
+      const entryPriceHint = prices[c.symbol] ?? 0;
+      const entryPriceRef = entryPriceHint > 0 ? entryPriceHint : 0;
+      this.wdEntries.set(c.symbol, {
+        entryPrice: entryPriceRef,
+        entryTime: nowIso,
+        peakPrice: entryPriceRef,
+      });
       const ageMin = (Date.now() - new Date(c.raisedAt).getTime()) / 60_000;
       const reasoning =
         `ALPHA_HUNTER_WD: ${c.triggerType} on ${c.symbol} fired ${ageMin.toFixed(0)}min ago ` +
