@@ -1,3 +1,21 @@
+# MEDIC REPORT — 2026-05-12T08:05 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-05-12T08:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — last scout ran 2026-05-10T08:24 UTC (Run#34 ODOS REJECTED, scout activity noted in commit), ~47h 41min ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred 67-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — the only un-adjusted HOT_MOVER filter. At $75K pool depth, a typical $15-20K NVR trade is 20-27% of pool (extreme slippage + MEV sandwiching exposure). Research: "top 1% wallets dump 70%+ within 4h of peak DEX volume" — thin pools amplify this attack vector. Raising to $100K maintains ≤20% depth ratio. Aligns with Run#34's HOT_MOVER_MIN_VOLUME_H1_USD raise (150K→200K). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-12)
+- **Signal Quality**: Reversal signals from on-chain wallet behavior appear 2-3h before RSI/MACD with 78% accuracy on Base/Solana tokens (walletfinder.ai). KEY FINDING: "wallet exhaustion cascades — top 1% of wallets dump 70%+ within 4h of peak DEX volume" amplified in thin-liquidity pools. HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K IMPLEMENTED to defend against this. Multi-wallet confluence already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500). (Impact 3, Complexity 1, Priority 3.0)
+- **Execution Efficiency**: Aerodrome Slipstream V3 + embedded MEV auctions (METADEX03) already active — bot auto-benefits at DEX level. Permit2 batch approvals already implemented. Order decomposition (3-5 tranches, 5-15 min windows) touches off-limits execution path. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) confirmed optimal for crypto bear markets — unchanged. Bear market duration context: "2018 and 2022 bears lasted 12-14 months"; current bear is ~2.2 months — sustained caution remains warranted. All sizing parameters already at bear-adjusted levels. No new action. (Priority 1)
+- **Competitive Intelligence**: CowSwap intent-based MEV protection (off-chain order batching, batch settlement) — requires executeDirectDexSwap architecture changes (off-limits). Private RPC MEV protection already active. "Pre-sign simulation + conditional signing" — already in CDP/Permit2 flow. No new action. (Priority 0)
+
+---
+
 # MEDIC REPORT — 2026-05-07T04:05 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
