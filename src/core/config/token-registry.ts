@@ -471,6 +471,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "SYRUP", name: "Maple Finance", coingeckoId: "maple-finance",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-12) ===
+  NOCK: {
+    address: "0x9b5e262cf9bb04869ab40b19af91d2dc85761722",
+    symbol: "NOCK", name: "Nockchain", coingeckoId: "nockchain",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
