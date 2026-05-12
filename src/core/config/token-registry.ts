@@ -157,11 +157,10 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "VADER", name: "VaderAI by Virtuals", coingeckoId: "vaderai-by-virtuals",
     sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
-  TIBBIR: {
-    address: "0x1b52e2eedaab38e198a349f50f74fc3d12722e4c",
-    symbol: "TIBBIR", name: "Ribbita by Virtuals", coingeckoId: "ribbita-by-virtuals",
-    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
-  },
+  // TIBBIR (first occurrence at 0x1b52e...) removed 2026-05-12 — duplicate of the
+  // canonical entry below (0xa4a2e...). Both addresses return name() "Ribbita by
+  // Virtuals" on-chain but only the second has live liquidity ($194K on Aerodrome)
+  // and matches the wallet's actual 266 TIBBIR balance. The first contract is dust.
   AXR: {
     address: "0x58db197e91bc8cf1587f75850683e4bd0730e6bf",
     symbol: "AXR", name: "Axelrod by Virtuals", coingeckoId: "axelrod-by-virtuals",
