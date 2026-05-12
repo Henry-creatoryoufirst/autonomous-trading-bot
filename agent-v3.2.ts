@@ -117,6 +117,9 @@ async function publishNvrDecision(payload: {
 
 let nvrLastSeenTs = 0;
 let nvrSubscribeFailures = 0;
+let nvrPollCount = 0;
+let nvrLastDecisionExecutedAt: number | null = null;
+const NVR_HEARTBEAT_EVERY_N_POLLS = 30; // ≈ once every 30 min at 60s poll cadence
 // Cache of latest computed marketData — set by runTradingCycle, used by NVR subscriber for execution
 let lastMarketData: any = null;
 let lastMarketDataAt = 0;
@@ -125,6 +128,7 @@ const nvrMirrorCooldown = new Map<string, number>();
 
 async function pollNvrSubscriber(): Promise<void> {
   if (!NVR_SUBSCRIBE_ENABLED) return;
+  nvrPollCount++;
   try {
     const url = `${NVR_SUBSCRIBE_URL}/nvr-decisions?since=${nvrLastSeenTs}&limit=20`;
     const controller = new AbortController();
@@ -139,6 +143,21 @@ async function pollNvrSubscriber(): Promise<void> {
     nvrSubscribeFailures = 0;
     const data: any = await response.json();
     const decisions: any[] = data?.decisions || [];
+
+    // Stable-state heartbeat: every N polls (≈30 min) log subscriber health so
+    // operators can confirm the mirror loop is alive even on quiet days. Without
+    // this, a silent subscriber is indistinguishable from a broken one until
+    // someone notices the family bot hasn't traded in hours.
+    if (nvrPollCount % NVR_HEARTBEAT_EVERY_N_POLLS === 0) {
+      const lastExecAgo = nvrLastDecisionExecutedAt
+        ? `${((Date.now() - nvrLastDecisionExecutedAt) / 60000).toFixed(0)}m ago`
+        : 'never';
+      const bufferedNow = typeof data?.totalBuffered === 'number' ? data.totalBuffered : '?';
+      console.log(
+        `[NVR Subscribe] heartbeat: ${nvrPollCount} polls completed | last mirror exec: ${lastExecAgo} | feed buffer=${bufferedNow} | since=${nvrLastSeenTs}`,
+      );
+    }
+
     if (decisions.length === 0) return;
 
     const myBotId = process.env.BOT_INSTANCE_NAME || 'unknown';
@@ -242,6 +261,39 @@ async function pollNvrSubscriber(): Promise<void> {
         const result = await executeTrade(localDecision, lastMarketData);
         if (result.success) {
           console.log(`  ↳ [NVR] EXECUTED: ${decision.action} $${scaledUSD.toFixed(2)} ${focusToken} | tx ${result.txHash?.slice(0, 10)}...`);
+          nvrLastDecisionExecutedAt = Date.now();
+
+          // Mirror-WD inheritance: when the source decision came from Henry's
+          // Watcher-Direct path (reasoning carries the `ALPHA_HUNTER_WD` marker),
+          // tag this newly-mirrored BUY on the local AlphaHunter sleeve so the
+          // WD tight-exit ladder (NVR-SPEC-029 follow-on: TP / trailing stop /
+          // max-hold) applies to the family-bot position just like it does on
+          // Henry's bot. Without this hook, subscriber bots run the OLD generic
+          // exit gates on mirrored entries and the new discipline silently
+          // doesn't reach them.
+          if (
+            decision.action === 'BUY' &&
+            typeof decision.reasoning === 'string' &&
+            decision.reasoning.includes('ALPHA_HUNTER_WD')
+          ) {
+            try {
+              const alphaSleeve: any = sleeveRegistry.get('alpha-hunter');
+              if (alphaSleeve && typeof alphaSleeve.registerMirrorWdEntry === 'function') {
+                const entryPrice = lastMarketData?.tokens?.find(
+                  (t: any) => t.symbol === focusToken,
+                )?.price ?? 0;
+                alphaSleeve.registerMirrorWdEntry(focusToken, entryPrice);
+                console.log(
+                  `  ↳ [NVR] WD-tag inherited for ${focusToken} @ $${entryPrice.toFixed(6)} — tight-exit ladder applies`,
+                );
+              }
+            } catch (tagErr) {
+              // Non-fatal: position still lands and gets generic Alpha exits.
+              console.warn(
+                `  ↳ [NVR] WD-tag failed (non-fatal, generic exits will apply): ${(tagErr as Error)?.message?.slice(0, 80)}`,
+              );
+            }
+          }
         } else {
           console.warn(`  ↳ [NVR] FAILED: ${result.error?.slice(0, 100)}`);
         }
