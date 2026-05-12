@@ -340,6 +340,39 @@ export class AlphaHunterSleeve implements Sleeve {
   }
 
   /**
+   * Register a Watcher-Direct entry that originated from the NVR canonical
+   * decision feed (mirror path) rather than this bot's own AlphaHunter loop.
+   *
+   * Subscriber bots (Ryan, Zachary, K&H, etc.) run with
+   * NVR_SUBSCRIBER_ONLY=true — their own AlphaHunter decision flow is muted
+   * and they execute trades exclusively from Henry's published decisions.
+   * Without this hook, mirrored WD entries skip the WD-tight-exit ladder
+   * because `tryWatcherDirectEntry()` (where wdEntries gets populated on
+   * publisher bots) never runs on the subscriber side. The position lands
+   * via the subscriber's `executeTrade` path, gets generic Alpha exits, and
+   * the new TP / trailing-stop / max-hold discipline silently doesn't apply.
+   *
+   * The subscriber detects WD-sourced decisions by scanning the published
+   * reasoning for "ALPHA_HUNTER_WD" and calls this method after a successful
+   * BUY execution. Idempotent — safe to call multiple times for the same
+   * symbol if the subscriber re-attempts; the most recent entry wins.
+   *
+   * @param symbol     The token symbol (e.g. "MORPHO", "DEGEN")
+   * @param entryPrice Price at execution; used as TP/HWM basis. 0 if unknown
+   *                   — the next cycle with a valid price will repair it
+   *                   (see evaluateWdTightExit).
+   */
+  registerMirrorWdEntry(symbol: string, entryPrice: number): void {
+    const nowIso = new Date().toISOString();
+    const safePrice = Number.isFinite(entryPrice) && entryPrice > 0 ? entryPrice : 0;
+    this.wdEntries.set(symbol, {
+      entryPrice: safePrice,
+      entryTime: nowIso,
+      peakPrice: safePrice,
+    });
+  }
+
+  /**
    * NVR-SPEC-029 tight-exit follow-on. Decides whether a WD-tagged position
    * should be sold this cycle. Returns a SELL TradeDecision if any gate
    * fires, otherwise null (the position keeps riding). Mutates `rec` to
