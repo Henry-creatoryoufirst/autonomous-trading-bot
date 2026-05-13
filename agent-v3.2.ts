@@ -1007,6 +1007,7 @@ import { callModelWithShadow, logModelTelemetry } from './src/core/services/mode
 import type { GemmaMode } from './src/core/services/model-client.js';
 import { loadPolicy, renderPolicyPromptBlock } from './src/core/services/policy.js';
 import { loadCriticMemory } from './src/core/services/critic-memory.js';
+import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -7556,6 +7557,35 @@ async function runTradingCycle() {
   console.log(`🤖 TRADING CYCLE #${state.totalCycles} [HEAVY: ${heavyReason}] | ${new Date().toISOString()}`);
   console.log(`   Light/Heavy ratio: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H | Cache hit rate: ${cacheManager.getStats().hitRate}`);
   console.log("═".repeat(70));
+
+  // NVR-SPEC-030 v0.1 — Goal-State Reasoner (write-only mode).
+  //
+  // Runs at heavy-cycle start, BEFORE any new trade reasoning. Loads the
+  // master goal-state from Vercel KV, builds a system-prompt block ("Your
+  // goal is X; last cycle you decided Y; outcome was Z; active blockers
+  // are W"), and writes back the next-step the existing decision path is
+  // about to take. v0.1 does NOT drive trades — the existing decision path
+  // remains source of truth. Promotion to driving comes via a second flag
+  // after 48h of coherent goal-state files. See NVR-SPEC-030 + DECISIONS_
+  // 2026-05-13_open-questions-answered for context.
+  //
+  // Gated, fail-safe: skips silently if env flag is off or KV is unconfigured.
+  if (process.env.GOAL_STATE_REASONER === 'true') {
+    try {
+      const goalReasoning = await reasonAboutGoal({
+        agentId: MASTER_AGENT_ID,
+        proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.1 write-only mode)`,
+      });
+      if (goalReasoning) {
+        console.log(`[GoalState] ${goalReasoning.savedState ? 'wrote' : 'load-only (KV conflict / unavailable)'}`);
+        console.log(goalReasoning.systemPromptBlock);
+      } else {
+        console.log(`[GoalState] flag on but KV unconfigured — skipping`);
+      }
+    } catch (err: any) {
+      console.warn(`[GoalState] reasoner error (non-fatal): ${err?.message ?? err}`);
+    }
+  }
 
   // v14.2: Track exploration trades per cycle for RANGING market cap
   let explorationsThisCycle = 0;
