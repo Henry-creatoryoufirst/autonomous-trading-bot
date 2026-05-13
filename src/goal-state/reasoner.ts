@@ -40,6 +40,7 @@ import {
   evaluateCycleAgainstGoal,
   evaluationToEvidence,
   type EvaluationContext,
+  type EvaluationSnapshot,
   type EvaluationResult,
 } from './evaluator.js';
 import {
@@ -57,8 +58,16 @@ export interface ReasonerInput {
   proposedNextStep: string;
   /** Optional fresh evidence the heavy cycle wants to record (e.g. "Watcher fired VOLUME_SPIKE on $VVV at conf 0.73"). */
   newEvidence?: GoalEvidence;
-  /** v0.2 — optional cycle context for the evaluator. If provided, the evaluator runs and writes evidence. */
-  cycleSummary?: string;
+  /**
+   * v0.2.1 — structured snapshot for the evaluator. When provided, the
+   * evaluator runs against named fields (PORTFOLIO_VALUE_USD,
+   * USDC_BALANCE_USD, etc.) instead of a prose summary. Eliminates the
+   * field-confusion failure mode from v0.2.0 cycle #2 where the evaluator
+   * read "Portfolio: $3230" as "USDC pool $3230". Replaces the older
+   * `cycleSummary` string field.
+   */
+  snapshot?: EvaluationSnapshot;
+  /** Optional one-line concrete observation. */
   cycleObservation?: string;
   /** v0.2 — main heavy-cycle token usage to fold into the goal's budget. */
   mainCycleTokens?: { model: string; inputTokens: number; outputTokens: number };
@@ -104,16 +113,16 @@ export async function reasonAboutGoal(
   //    criteria are human-prose. Reasoner reads them through; manual prune.
   const survivingBlockers = state.blockers;
 
-  // 4. EVALUATE — v0.2: separate Haiku evaluator. Only fires when caller
-  //    provides a cycleSummary (so we don't spend tokens evaluating an
-  //    empty cycle).
+  // 4. EVALUATE — v0.2.1: separate Haiku evaluator running over a STRUCTURED
+  //    snapshot (named fields, not prose). Only fires when caller provides
+  //    `snapshot` so we don't spend tokens on an empty cycle.
   let evaluation: EvaluationResult | undefined;
-  let newEvidence: GoalEvidence[] = input.newEvidence
+  const newEvidence: GoalEvidence[] = input.newEvidence
     ? [input.newEvidence]
     : [];
-  if (input.cycleSummary) {
+  if (input.snapshot) {
     const ctx: EvaluationContext = {
-      cycleSummary: input.cycleSummary,
+      snapshot: input.snapshot,
       cycleObservation: input.cycleObservation,
     };
     const result = await evaluateCycleAgainstGoal(state, ctx);

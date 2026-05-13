@@ -534,8 +534,6 @@ import {
   STALE_POSITION_DRAWDOWN_OVERRIDE_PCT,
   STALE_POSITION_MAX_EXITS_PER_CYCLE,
   STALE_POSITION_CHECK_INTERVAL_CYCLES,
-  // v21.27: dry-powder + liberation imports DELETED with their functions.
-  // (MIN_DRY_POWDER_PCT, RESERVE_*, DRY_POWDER_*, LIBERATION_* — all gone)
   // v20.0: Centralized failure circuit breaker constants (previously shadowed locally)
   MAX_CONSECUTIVE_FAILURES,
   FAILURE_COOLDOWN_HOURS,
@@ -7577,16 +7575,39 @@ async function runTradingCycle() {
   // Gated, fail-safe: skips silently if env flag is off or KV is unconfigured.
   if (process.env.GOAL_STATE_REASONER === 'true') {
     try {
-      const portfolioStr = state.trading?.totalPortfolioValue
-        ? `$${state.trading.totalPortfolioValue.toFixed(0)}`
-        : 'unknown';
-      const lastLiveExecHours = lastSuccessfulTradeAt > 0
-        ? ((Date.now() - lastSuccessfulTradeAt) / 3_600_000).toFixed(1)
-        : 'never';
+      // v0.2.1: pass a STRUCTURED snapshot to the reasoner so the evaluator
+      // sees named fields (PORTFOLIO_VALUE_USD vs USDC_BALANCE_USD) instead
+      // of a prose summary. The v0.2.0 prose form caused the cycle-#2
+      // confusion ("Portfolio: $3230" misread as "USDC pool $3230").
+      const portfolioValueUsd = state.trading?.totalPortfolioValue ?? 0;
+      const balancesArr: Array<{ symbol?: string; usdValue?: number }> =
+        ((state as unknown) as { balances?: Array<{ symbol?: string; usdValue?: number }> }).balances ?? [];
+      const usdcEntry = balancesArr.find(
+        (b) => (b.symbol ?? '').toUpperCase() === 'USDC',
+      );
+      const usdcBalanceUsd = typeof usdcEntry?.usdValue === 'number' ? usdcEntry.usdValue : 0;
+      const openPositionCount = balancesArr.filter(
+        (b) => (b.symbol ?? '').toUpperCase() !== 'USDC' && (b.usdValue ?? 0) > 1,
+      ).length;
+      const blockedTokenCount = (typeof circuitBreaker !== 'undefined' && circuitBreaker)
+        ? Object.keys(((circuitBreaker as unknown) as { blockedTokens?: Record<string, unknown> }).blockedTokens ?? {}).length
+        : 0;
+      const hoursSinceLastLiveExecution = lastSuccessfulTradeAt > 0
+        ? (Date.now() - lastSuccessfulTradeAt) / 3_600_000
+        : null;
+
       const goalReasoning = await reasonAboutGoal({
         agentId: MASTER_AGENT_ID,
         proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.2 write-only mode)`,
-        cycleSummary: `Heavy cycle #${state.totalCycles} starting. Trigger: ${heavyReason}. Portfolio: ${portfolioStr}. Last live execution: ${lastLiveExecHours}h ago.`,
+        snapshot: {
+          portfolioValueUsd,
+          usdcBalanceUsd,
+          openPositionCount,
+          blockedTokenCount,
+          hoursSinceLastLiveExecution,
+          heavyCycleReason: heavyReason,
+          cycleNumber: state.totalCycles,
+        },
       });
       if (goalReasoning) {
         const verdict = goalReasoning.evaluation

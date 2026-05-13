@@ -17,10 +17,34 @@ import { GoalEvidence, GoalState } from './types.js';
 const EVALUATOR_MODEL = process.env.GOAL_STATE_EVALUATOR_MODEL ?? 'claude-haiku-4-5-20251001';
 const EVALUATOR_MAX_TOKENS = 250;
 
+/**
+ * Structured snapshot for the evaluator. Replaces the v0.2.0 prose
+ * `cycleSummary` field — the prose form caused field-confusion in
+ * Cycle #2 (evaluator read "Portfolio: $3230" as "USDC pool $3230"
+ * because the blocker mentioned "USDC pool thin"). Structured fields,
+ * rendered into clearly-named sections, eliminate that ambiguity.
+ */
+export interface EvaluationSnapshot {
+  /** Total portfolio value in USD across all assets. */
+  portfolioValueUsd: number;
+  /** USDC-only balance (the dry-powder reserve specifically). */
+  usdcBalanceUsd: number;
+  /** Number of non-USDC positions currently held. */
+  openPositionCount: number;
+  /** Number of cohort tokens currently in route-circuit-breaker blocklist. */
+  blockedTokenCount: number;
+  /** Hours since the last successful live trade execution; null if never. */
+  hoursSinceLastLiveExecution: number | null;
+  /** Why this heavy cycle is firing (price move, forced interval, emergency, etc.). */
+  heavyCycleReason: string;
+  /** Cycle counter for orientation. */
+  cycleNumber: number;
+}
+
 export interface EvaluationContext {
-  /** What just happened this cycle, in 1-3 sentences. */
-  cycleSummary: string;
-  /** Optional concrete observation worth recording (price move, trade fired, blocker cleared). */
+  /** Structured snapshot of the bot's current state. The evaluator sees this rendered into named sections — no prose ambiguity. */
+  snapshot: EvaluationSnapshot;
+  /** Optional concrete one-line observation worth recording (price move, trade fired, blocker cleared). */
   cycleObservation?: string;
   /** Tokens spent in main heavy-cycle reasoning this cycle (added to evaluator cost for total). */
   mainCycleTokens?: { input: number; output: number };
@@ -50,32 +74,67 @@ function isTextBlock(b: unknown): b is AnthropicTextBlock {
 
 /**
  * Build the evaluator prompt. Deliberately spare — the evaluator only sees
- * the goal, the blockers, the last decision, and the latest cycle summary.
- * It does NOT see the full market state — that's the reasoner's job. The
- * evaluator answers exactly one question: did the cycle move us closer.
+ * the goal, the blockers, the last decision, and a STRUCTURED snapshot of
+ * the bot's current state. Fields are named (PORTFOLIO_VALUE_USD,
+ * USDC_BALANCE_USD, etc.) to prevent field-confusion — the prose form in
+ * v0.2.0 caused the evaluator to read "Portfolio: $3230" as "USDC pool
+ * $3230" because the blocker mentioned "USDC pool thin." Named fields fix
+ * that.
+ *
+ * The evaluator answers exactly one question: did this cycle move us
+ * closer to the goal, given the snapshot and the active blockers.
  */
 function buildEvaluatorPrompt(state: GoalState, ctx: EvaluationContext): string {
+  const s = ctx.snapshot;
   const lines = [
-    `Goal: ${state.goal}`,
-    `Last decided: ${state.lastNextStep}`,
+    `### GOAL`,
+    state.goal,
+    ``,
+    `### LAST CYCLE'S DECISION`,
+    state.lastNextStep,
+    ``,
   ];
+
   if (state.blockers.length > 0) {
-    lines.push(`Active blockers:`);
+    lines.push(`### ACTIVE BLOCKERS`);
     for (const b of state.blockers.slice(0, 5)) {
-      lines.push(`  - ${b.description} (resolves when: ${b.resolutionCriterion})`);
+      lines.push(`- ${b.description}`);
+      lines.push(`  resolves when: ${b.resolutionCriterion}`);
     }
+    lines.push(``);
   }
-  lines.push('', `Cycle just ran. Summary:`, ctx.cycleSummary);
-  if (ctx.cycleObservation) {
-    lines.push('', `Concrete observation from the cycle:`, ctx.cycleObservation);
-  }
+
+  lines.push(`### CURRENT BOT STATE (this is the structured snapshot — do not invent fields not listed here)`);
+  lines.push(`- CYCLE_NUMBER: ${s.cycleNumber}`);
+  lines.push(`- HEAVY_CYCLE_REASON: ${s.heavyCycleReason}`);
+  lines.push(`- PORTFOLIO_VALUE_USD: $${s.portfolioValueUsd.toFixed(2)}  // total value across ALL assets`);
+  lines.push(`- USDC_BALANCE_USD: $${s.usdcBalanceUsd.toFixed(2)}  // USDC-only — the dry-powder reserve`);
+  lines.push(`- OPEN_POSITION_COUNT: ${s.openPositionCount}  // non-USDC positions held`);
+  lines.push(`- ROUTE_BLOCKLIST_TOKEN_COUNT: ${s.blockedTokenCount}  // cohort tokens the Watcher cannot fire on`);
   lines.push(
-    '',
-    `Question: did this cycle move closer to the goal, or was it noise?`,
-    `Respond with a single JSON object:`,
-    `  { "moveCloser": true|false, "reason": "one sentence" }`,
-    `Nothing else. No code fences. No prose before or after.`,
+    `- HOURS_SINCE_LAST_LIVE_EXECUTION: ${
+      s.hoursSinceLastLiveExecution === null
+        ? 'never (no live trade since boot)'
+        : `${s.hoursSinceLastLiveExecution.toFixed(1)}h`
+    }`,
   );
+
+  if (ctx.cycleObservation) {
+    lines.push('');
+    lines.push(`### CONCRETE OBSERVATION FROM THIS CYCLE`);
+    lines.push(ctx.cycleObservation);
+  }
+
+  lines.push('');
+  lines.push(`### QUESTION`);
+  lines.push(
+    `Did this cycle move closer to the GOAL, or was it noise? Anchor your reasoning in the structured fields above. When citing numbers, USE THE EXACT FIELD NAME (e.g. "USDC_BALANCE_USD" not "the USDC pool") so there's no ambiguity about which value you're referring to.`,
+  );
+  lines.push(``);
+  lines.push(`Respond with a single JSON object only:`);
+  lines.push(`  { "moveCloser": true|false, "reason": "one sentence, anchored in field names" }`);
+  lines.push(`Nothing else. No code fences. No prose before or after.`);
+
   return lines.join('\n');
 }
 
