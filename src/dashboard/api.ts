@@ -180,6 +180,96 @@ export function calculateRiskRewardMetrics(): {
   };
 }
 
+/**
+ * v21.28-systemState: build the capability-level state object exposed via
+ * /api/portfolio.systemState. Read-only snapshot — no mutations, safe to
+ * call every poll.
+ *
+ * The dashboard's SystemStatePanel renders this verbatim. Adding a new
+ * flag here is a single-file change; the panel reads optional fields
+ * defensively, so old dashboards won't break on new ones.
+ */
+function buildSystemState() {
+  const envTrue = (k: string) => (process.env[k] ?? '').trim().toLowerCase() === 'true';
+  const envNumber = (k: string, dflt: number): number => {
+    const raw = parseFloat(process.env[k] ?? '');
+    return Number.isFinite(raw) ? raw : dflt;
+  };
+
+  const allocationPct = envNumber('ALPHA_HUNTER_ALLOCATION_PCT', 0);
+
+  // Breaker block: surface WHY the bot is paused so operators don't have
+  // to grep Railway logs. lastBreakerTriggered + lastBreakerReason live
+  // on breakerState; pauseHours is set via the CircuitBreaker config but
+  // we use the same 1h default the existing logic uses (good enough for
+  // a status surface — the dashboard shows minutes remaining either way).
+  const PAUSE_HOURS = parseFloat(process.env.CIRCUIT_BREAKER_PAUSE_HOURS ?? '1') || 1;
+  let breaker: {
+    state: 'normal' | 'paused' | 'caution';
+    reason: string | null;
+    triggeredAt: string | null;
+    expiresAt: string | null;
+    remainingMs: number | null;
+    consecutiveLosses: number;
+  } = {
+    state: 'normal',
+    reason: null,
+    triggeredAt: null,
+    expiresAt: null,
+    remainingMs: null,
+    consecutiveLosses: 0,
+  };
+  try {
+    const bs = breakerState ?? {};
+    breaker.consecutiveLosses = bs.consecutiveLosses ?? 0;
+    if (bs.lastBreakerTriggered) {
+      const triggeredMs = new Date(bs.lastBreakerTriggered).getTime();
+      const expiresMs = triggeredMs + PAUSE_HOURS * 3600000;
+      const remaining = expiresMs - Date.now();
+      if (remaining > 0) {
+        breaker.state = 'paused';
+        breaker.reason = bs.lastBreakerReason ?? 'unknown';
+        breaker.triggeredAt = new Date(triggeredMs).toISOString();
+        breaker.expiresAt = new Date(expiresMs).toISOString();
+        breaker.remainingMs = remaining;
+      } else if (bs.breakerSizeReductionUntil && Date.now() < new Date(bs.breakerSizeReductionUntil).getTime()) {
+        breaker.state = 'caution';
+        breaker.reason = 'Post-pause size reduction active';
+        breaker.expiresAt = bs.breakerSizeReductionUntil;
+        breaker.remainingMs = new Date(bs.breakerSizeReductionUntil).getTime() - Date.now();
+      }
+    }
+  } catch { /* fail open — return defaults */ }
+
+  return {
+    flags: {
+      alphaHunterLive: envTrue('ALPHA_HUNTER_LIVE'),
+      watcherDirect: envTrue('ALPHA_HUNTER_WATCHER_DIRECT'),
+      wdTightExits: envTrue('ALPHA_HUNTER_WD_TIGHT_EXITS'),
+      fastStrikeEnabled: envTrue('ALPHA_HUNTER_FAST_STRIKE_ENABLED'),
+      subscriberOnly: envTrue('NVR_SUBSCRIBER_ONLY'),
+      nvrSubscribe: envTrue('NVR_SUBSCRIBE'),
+      nvrPublishConfigured: !!(process.env.NVR_PUBLISH_URL && process.env.NVR_PUBLISH_KEY),
+    },
+    tunables: {
+      alphaAllocationPct: allocationPct,
+      wdTakeProfitPct: envNumber('WD_TAKE_PROFIT_PCT', 8),
+      wdTrailingStopPct: envNumber('WD_TRAILING_STOP_PCT', 3),
+      wdMaxHoldHours: envNumber('WD_MAX_HOLD_HOURS', 12),
+      fastStrikeMinConf: envNumber('FAST_STRIKE_MIN_CONF', 0.75),
+      fastStrikeUsdcFloor: envNumber('FAST_STRIKE_USDC_FLOOR', 25),
+      fastStrikeMaxLiberateUsd: envNumber('FAST_STRIKE_MAX_LIBERATE_USD', 150),
+    },
+    breaker,
+    publisher: {
+      // Bot identity — helps operators distinguish Henry's bot from family bots
+      // when viewing the same dashboard surface against different bot URLs.
+      botInstance: process.env.BOT_INSTANCE_NAME ?? 'unknown',
+      role: envTrue('NVR_SUBSCRIBER_ONLY') ? 'subscriber' : 'publisher',
+    },
+  };
+}
+
 export function apiPortfolio() {
   try {
   const uptime = Math.floor((Date.now() - state.startTime.getTime()) / 1000);
@@ -358,6 +448,13 @@ export function apiPortfolio() {
     cycleIntervalSec: typeof getCurrentCycleIntervalSec === 'function'
       ? (getCurrentCycleIntervalSec() || 600)
       : 600,
+    // v21.28-systemState: capability-level visibility for the /admin cockpit.
+    // Exposes the env-driven feature flags + tunables + current institutional-
+    // breaker state so the dashboard can show what discipline the bot is
+    // actually enforcing — not just what's happening. Per Henry's
+    // feedback_admin_dash_is_cockpit: the dashboard must answer "what is the
+    // system doing right now" without operators needing to grep Railway logs.
+    systemState: buildSystemState(),
   };
   } catch (err: any) {
     // v21.0: Graceful fallback — return minimal portfolio data instead of 500 error
