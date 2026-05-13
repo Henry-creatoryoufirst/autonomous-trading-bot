@@ -94,9 +94,19 @@ const NVR_DECISION_STALE_MS = 5 * 60 * 1000;     // decisions older than 5min ar
 // the bot's ALPHA LEDGER prompt block + v22 cluster pattern both unlock.
 //
 // Specialist universe per `feedback_specialist_depth_beats_breadth`:
-// 9 tokens spanning DeFi / AI / Meme — mid-cap range where smart-wallet
-// volume actually moves the price needle. Tunable via SMART_WALLET_UNIVERSE
-// constant; not env-exposed for now to avoid drift.
+// 15 tokens unified with stc-website's COHORT_TOKENS in src/lib/specialist-cohort.ts
+// so the writer (this universe scan) and the readers (specialist agents, master
+// fleet, dashboard) all reason over the same token set. Pre-unification this
+// list was 9 tokens with only partial overlap with the specialist cohort, which
+// surfaced as the 2026-05-13 cascade — specialists writing about tokens we
+// were not recording.
+//
+// All tokens screened on 2026-05-13 for:
+//   - Real Base-mainnet pools on DexScreener (>$20k/day volume floor)
+//   - NOT in the 13-token route circuit-breaker blocklist
+//   - Smart-wallet-trackable shape (memecoin / AI-agent, not bridged majors)
+//
+// See FINDING_2026-05-13_cohort-composition-proposal.md for the full rationale.
 
 interface UniverseToken {
   symbol: string;
@@ -104,15 +114,24 @@ interface UniverseToken {
 }
 
 const SMART_WALLET_UNIVERSE: UniverseToken[] = [
-  { symbol: 'AERO',    address: '0x940181a94A35A4569E4529A3CDfB74e38FD98631' },
-  { symbol: 'VIRTUAL', address: '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b' },
+  // AI-agent narrative (7) — Henry's alpha thesis bucket
+  { symbol: 'VVV',     address: '0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf' },
+  { symbol: 'BNKR',    address: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3B' },
   { symbol: 'AIXBT',   address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825' },
-  { symbol: 'HIGHER',  address: '0x0578d8A44db98B23BF096A382e016e29a5Ce0ffe' },
-  { symbol: 'BRETT',   address: '0x532f27101965dd16442E59d40670FaF5eBB142E4' },
+  { symbol: 'CLANKER', address: '0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb' },
+  { symbol: 'FAI',     address: '0xb33Ff54b9F7242EF1593d2C9Bcd8f9df46c77935' },
+  { symbol: 'GAME',    address: '0x1C4CcA7C5DB003824208ADDA61Bd749e55F463a3' },
+  { symbol: 'COOKIE',  address: '0xC0041EF357B183448B235a8Ea73Ce4E4eC8c265F' },
+  // Memes with real Base-native volume (4)
+  { symbol: 'SPX',     address: '0x50dA645f148798F68EF2d7dB7C1CB22A6819bb2C' },
   { symbol: 'DEGEN',   address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed' },
-  { symbol: 'TOSHI',   address: '0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4' },
+  { symbol: 'doginme', address: '0x6921B130D297cc43754AfbA22e5EAc0FBf8Db75b' },
+  { symbol: 'MIGGLES', address: '0xB1a03EdA10342529bBF8EB700a06C60441fEf25d' },
+  // DeFi / infra / attention (4)
   { symbol: 'MORPHO',  address: '0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842' },
-  { symbol: 'AAVE',    address: '0x63706e401c06ac8513145b7687a14804d17f814b' },
+  { symbol: 'KAITO',   address: '0x98d0baa52b2D063E780DE12F615f963Fe8537553' },
+  { symbol: 'ZORA',    address: '0x1111111111166b7FE7bd91427724B487980aFc69' },
+  { symbol: 'TOSHI',   address: '0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4' },
 ];
 
 /** Cadence for the universe scan. Outcome tracker dedupes by 1h, so 15min
