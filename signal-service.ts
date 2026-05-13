@@ -962,6 +962,32 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /specialists?topN=10 — per-token specialist wallet data. The main
+  // bot process used to read its own (always-empty) outcomeTracker singleton
+  // when serving /api/alpha-cohort; the data only ever existed here in the
+  // signal-service process. This bridges the cross-process gap so master
+  // and mirror agents stop reasoning over `0 of 15 specialists` snapshots.
+  if (path === '/specialists') {
+    const topN = Math.max(1, Math.min(50, parseInt(url.searchParams.get('topN') ?? '10', 10)));
+    const fullByToken = outcomeTracker.getWalletHitRatesByToken();
+    const perTokenSpecialists: Record<string, ReturnType<typeof outcomeTracker.getWalletHitRates>> = {};
+    const tokenSpecialists = outcomeTracker.getTokenSpecialists(topN);
+    const specialistCounts: Record<string, number> = {};
+    for (const [symbol, ranked] of Object.entries(fullByToken)) {
+      perTokenSpecialists[symbol] = ranked.slice(0, topN);
+    }
+    for (const [symbol, walletIds] of Object.entries(tokenSpecialists)) {
+      specialistCounts[symbol] = walletIds.length;
+    }
+    sendJSON(res, 200, {
+      perTokenSpecialists,
+      tokenSpecialists,
+      specialistCounts,
+      generatedAt: new Date().toISOString(),
+    });
+    return;
+  }
+
   send404(res);
 });
 

@@ -24,6 +24,55 @@ import { alphaPromoter } from '../../core/services/alpha-promoter.js';
 import { outcomeTracker } from '../../core/services/outcome-tracker.js';
 
 // ============================================================================
+// Signal-service specialist bridge — outcomeTracker is a module singleton with
+// in-memory state, so the bot process and signal-service process each get
+// their own empty / populated copies. Only signal-service writes to it (smart-
+// wallet universe scan); the bot process used to read its own (always empty)
+// copy here, which fed "0 of 15 specialists" into every cohort snapshot and
+// drove the 2026-05-13 specialist agent cascade. Fix: cross-process fetch with
+// graceful fallback to local empty data if signal-service is unreachable.
+// ============================================================================
+interface SpecialistBridgeData {
+  perTokenSpecialists: Record<string, Array<{ walletId: string; tokenSymbol?: string; hitRate4h: number; totalSignals: number }>>;
+  tokenSpecialists: Record<string, string[]>;
+  specialistCounts: Record<string, number>;
+  fetchedAt: number;
+}
+const SPECIALIST_CACHE_TTL_MS = 60_000;
+let specialistCache: SpecialistBridgeData | null = null;
+async function fetchSpecialistData(topN: number): Promise<SpecialistBridgeData> {
+  const empty: SpecialistBridgeData = {
+    perTokenSpecialists: {},
+    tokenSpecialists: {},
+    specialistCounts: {},
+    fetchedAt: Date.now(),
+  };
+  const now = Date.now();
+  if (specialistCache && (now - specialistCache.fetchedAt) < SPECIALIST_CACHE_TTL_MS) {
+    return specialistCache;
+  }
+  const serviceUrl = process.env.SIGNAL_SERVICE_URL;
+  if (!serviceUrl) return empty;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const r = await fetch(`${serviceUrl}/specialists?topN=${topN}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!r.ok) return empty;
+    const data = await r.json() as Partial<SpecialistBridgeData>;
+    specialistCache = {
+      perTokenSpecialists: data.perTokenSpecialists ?? {},
+      tokenSpecialists: data.tokenSpecialists ?? {},
+      specialistCounts: data.specialistCounts ?? {},
+      fetchedAt: now,
+    };
+    return specialistCache;
+  } catch {
+    return empty;
+  }
+}
+
+// ============================================================================
 // ServerContext — all monolith state/functions passed in from agent-v3.2.ts
 // ============================================================================
 export interface ServerContext {
@@ -1431,40 +1480,38 @@ export function handleAlphaWatcher(
 
   if (action === 'specialists') {
     // NVR-2026-05-10 specialist-depth visibility — per-token wallet hit
-    // rates from outcome-tracker, sliced by token symbol. Lets us see which
-    // cohort tokens have actual specialists vs. thin data, before we wire
-    // per-token seeds into the scoring path.
+    // rates, fetched cross-process from signal-service which is the only
+    // process that writes outcomes. See SpecialistBridgeData docs above.
     const topN = Math.max(1, Math.min(50, parseInt(url.searchParams.get('topN') ?? '10', 10)));
-    const fullByToken = outcomeTracker.getWalletHitRatesByToken();
-    const trimmed: Record<string, ReturnType<typeof outcomeTracker.getWalletHitRates>> = {};
-    for (const [symbol, ranked] of Object.entries(fullByToken)) {
-      trimmed[symbol] = ranked.slice(0, topN);
-    }
-    ctx.sendJSON(res, 200, {
-      cohort: alphaWatcher.getStatus().cohort,
-      perTokenSpecialists: trimmed,
-      generatedAt: new Date().toISOString(),
-    });
+    void (async () => {
+      const bridge = await fetchSpecialistData(topN);
+      ctx.sendJSON(res, 200, {
+        cohort: alphaWatcher.getStatus().cohort,
+        perTokenSpecialists: bridge.perTokenSpecialists,
+        generatedAt: new Date().toISOString(),
+      });
+    })();
     return;
   }
 
   // Default response — adds specialistCounts so the cockpit can show at a
   // glance how many qualified specialists each cohort token has.
-  const status = alphaWatcher.getStatus();
-  const specialists = outcomeTracker.getTokenSpecialists(10);
-  const specialistCounts: Record<string, number> = {};
-  for (const symbol of status.cohort) {
-    specialistCounts[symbol] = (specialists[symbol] ?? []).length;
-  }
-
-  ctx.sendJSON(res, 200, {
-    status,
-    specialistCounts,
-    recentTriggers: alphaWatcher.getTriggers(limit),
-    reflex: alphaReflex.getStatus(),
-    reflexClosed: alphaReflex.getRecentClosed(20),
-    promoter: { recentDecisions: alphaPromoter.getRecentDecisions(10) },
-  });
+  void (async () => {
+    const status = alphaWatcher.getStatus();
+    const bridge = await fetchSpecialistData(10);
+    const specialistCounts: Record<string, number> = {};
+    for (const symbol of status.cohort) {
+      specialistCounts[symbol] = bridge.specialistCounts[symbol] ?? 0;
+    }
+    ctx.sendJSON(res, 200, {
+      status,
+      specialistCounts,
+      recentTriggers: alphaWatcher.getTriggers(limit),
+      reflex: alphaReflex.getStatus(),
+      reflexClosed: alphaReflex.getRecentClosed(20),
+      promoter: { recentDecisions: alphaPromoter.getRecentDecisions(10) },
+    });
+  })();
 }
 
 // ============================================================================
@@ -1480,22 +1527,24 @@ export function handleAlphaCohortPublic(
   res: http.ServerResponse,
   ctx: ServerContext,
 ): void {
-  const status = alphaWatcher.getStatus();
-  const specialists = outcomeTracker.getTokenSpecialists(10);
-  const specialistCounts: Record<string, number> = {};
-  for (const symbol of status.cohort) {
-    specialistCounts[symbol] = (specialists[symbol] ?? []).length;
-  }
-  ctx.sendJSON(res, 200, {
-    cohort: status.cohort,
-    cohortSize: status.cohort.length,
-    specialistCounts,
-    triggersFired24h: status.triggersFired24h,
-    triggersByType24h: status.triggersByType24h,
-    pollEnabled: status.enabled,
-    lastPollAt: status.lastPollAt,
-    generatedAt: new Date().toISOString(),
-  });
+  void (async () => {
+    const status = alphaWatcher.getStatus();
+    const bridge = await fetchSpecialistData(10);
+    const specialistCounts: Record<string, number> = {};
+    for (const symbol of status.cohort) {
+      specialistCounts[symbol] = bridge.specialistCounts[symbol] ?? 0;
+    }
+    ctx.sendJSON(res, 200, {
+      cohort: status.cohort,
+      cohortSize: status.cohort.length,
+      specialistCounts,
+      triggersFired24h: status.triggersFired24h,
+      triggersByType24h: status.triggersByType24h,
+      pollEnabled: status.enabled,
+      lastPollAt: status.lastPollAt,
+      generatedAt: new Date().toISOString(),
+    });
+  })();
 }
 
 // ============================================================================
