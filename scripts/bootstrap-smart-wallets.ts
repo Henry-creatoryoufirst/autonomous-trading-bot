@@ -47,13 +47,20 @@ interface BaseMover {
   launchApprox: string;
 }
 
+// Refreshed 2026-05-13: previous list (BRETT/DEGEN/VIRTUAL/AERO/TOSHI/MOCHI)
+// was bootstrapped 2026-04-14 and produced wallet seeds tracking tokens that
+// have since been route-blocklisted or dropped from cohort. That's why
+// activeWalletTokens=0 on every universe scan — we were watching wallets
+// of a dead meta. New list mirrors the unified specialist cohort, picking
+// the 6 highest-volume + longest-track-record members so historical Transfer
+// events have enough density to surface real early buyers.
 const KNOWN_BASE_MOVERS: BaseMover[] = [
-  { symbol: 'BRETT',   address: '0x532f27101965dd16442e59d40670faf5ebb142e4', launchApprox: '2024-03-01' },
-  { symbol: 'DEGEN',   address: '0x4ed4e862860bed51a9570b96d89af5e1b0ebebc4', launchApprox: '2024-01-01' },
-  { symbol: 'VIRTUAL', address: '0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b', launchApprox: '2024-06-01' },
-  { symbol: 'AERO',    address: '0x940181a94a35a4569e4529a3cdfb74e38fd98631', launchApprox: '2023-08-01' },
-  { symbol: 'TOSHI',   address: '0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4', launchApprox: '2023-09-01' },
-  { symbol: 'MOCHI',   address: '0xf6e932ca12afa26665dc4dde7e27be02a7c02e50', launchApprox: '2023-10-01' },
+  { symbol: 'VVV',     address: '0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf', launchApprox: '2025-01-01' },
+  { symbol: 'BNKR',    address: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3B', launchApprox: '2025-02-01' },
+  { symbol: 'AIXBT',   address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825', launchApprox: '2024-11-01' },
+  { symbol: 'CLANKER', address: '0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb', launchApprox: '2024-11-01' },
+  { symbol: 'MORPHO',  address: '0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842', launchApprox: '2024-10-01' },
+  { symbol: 'DEGEN',   address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed', launchApprox: '2024-01-01' },
 ];
 
 // ---------------------------------------------------------------------------
