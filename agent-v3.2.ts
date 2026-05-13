@@ -7556,73 +7556,11 @@ async function runTradingCycle() {
   console.log(`   Light/Heavy ratio: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H | Cache hit rate: ${cacheManager.getStats().hitRate}`);
   console.log("═".repeat(70));
 
-  // NVR-SPEC-030 v0.2 — Goal-State Reasoner (write-only mode + Haiku evaluator + budget).
-  //
-  // Runs at heavy-cycle start, BEFORE any new trade reasoning. Loads the
-  // master goal-state from Vercel KV, builds a system-prompt block ("Your
-  // goal is X; last cycle you decided Y; outcome was Z; active blockers
-  // are W"), runs a separate Haiku evaluator on the current state vs goal,
-  // charges the goal's budget, and writes back. v0.2 still does NOT drive
-  // trades — existing decision path is source of truth. Stage 3 (flipping
-  // GOAL_STATE_DRIVES_DECISIONS) promotes the reasoner to driving.
-  //
-  // v0.2 additions over v0.1: separate Haiku evaluator (returns moveCloser
-  // + reason), cumulative budget tracking with ask_human escalation when
-  // exceeded. Pattern aligns with Anthropic's `/goal` (Claude Code 2.1.139,
-  // May 2026) — independent evaluator, hard ceiling. See NVR-SPEC-030 +
-  // DECISIONS_2026-05-13_open-questions-answered.
-  //
-  // Gated, fail-safe: skips silently if env flag is off or KV is unconfigured.
-  if (process.env.GOAL_STATE_REASONER === 'true') {
-    try {
-      // v0.2.1: pass a STRUCTURED snapshot to the reasoner so the evaluator
-      // sees named fields (PORTFOLIO_VALUE_USD vs USDC_BALANCE_USD) instead
-      // of a prose summary. The v0.2.0 prose form caused the cycle-#2
-      // confusion ("Portfolio: $3230" misread as "USDC pool $3230").
-      const portfolioValueUsd = state.trading?.totalPortfolioValue ?? 0;
-      const balancesArr: Array<{ symbol?: string; usdValue?: number }> =
-        ((state as unknown) as { balances?: Array<{ symbol?: string; usdValue?: number }> }).balances ?? [];
-      const usdcEntry = balancesArr.find(
-        (b) => (b.symbol ?? '').toUpperCase() === 'USDC',
-      );
-      const usdcBalanceUsd = typeof usdcEntry?.usdValue === 'number' ? usdcEntry.usdValue : 0;
-      const openPositionCount = balancesArr.filter(
-        (b) => (b.symbol ?? '').toUpperCase() !== 'USDC' && (b.usdValue ?? 0) > 1,
-      ).length;
-      const blockedTokenCount = (typeof circuitBreaker !== 'undefined' && circuitBreaker)
-        ? Object.keys(((circuitBreaker as unknown) as { blockedTokens?: Record<string, unknown> }).blockedTokens ?? {}).length
-        : 0;
-      const hoursSinceLastLiveExecution = lastSuccessfulTradeAt > 0
-        ? (Date.now() - lastSuccessfulTradeAt) / 3_600_000
-        : null;
-
-      const goalReasoning = await reasonAboutGoal({
-        agentId: MASTER_AGENT_ID,
-        proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.2 write-only mode)`,
-        snapshot: {
-          portfolioValueUsd,
-          usdcBalanceUsd,
-          openPositionCount,
-          blockedTokenCount,
-          hoursSinceLastLiveExecution,
-          heavyCycleReason: heavyReason,
-          cycleNumber: state.totalCycles,
-        },
-      });
-      if (goalReasoning) {
-        const verdict = goalReasoning.evaluation
-          ? ` · evaluator: ${goalReasoning.evaluation.moveCloser ? 'CLOSER' : 'noise'} (${goalReasoning.evaluation.reason})`
-          : '';
-        const budgetFlag = goalReasoning.budgetExceeded ? ' · BUDGET EXCEEDED' : '';
-        console.log(`[GoalState] ${goalReasoning.savedState ? 'wrote' : 'load-only'}${verdict}${budgetFlag}`);
-        console.log(goalReasoning.systemPromptBlock);
-      } else {
-        console.log(`[GoalState] flag on but KV unconfigured — skipping`);
-      }
-    } catch (err: any) {
-      console.warn(`[GoalState] reasoner error (non-fatal): ${err?.message ?? err}`);
-    }
-  }
+  // v0.2.2: NVR-SPEC-030 reasoner call moved to AFTER setupStage so the
+  // snapshot has real balances. v0.2.0 read state.balances at this point
+  // (before setupStage), which is always empty — evaluator saw USDC_BALANCE_USD
+  // = $0 every cycle. The reasoner call now lives just after `balances`
+  // local is populated below. See `// === GOAL-STATE REASONER ===` block.
 
   // v14.2: Track exploration trades per cycle for RANGING market cap
   let explorationsThisCycle = 0;
@@ -7656,6 +7594,64 @@ async function runTradingCycle() {
     // Pull results back into local vars used by the remaining inline sections
     let balances      = cycleCtx.balances as Awaited<ReturnType<typeof getBalances>>;
     marketData        = cycleCtx.marketData!;
+
+    // === GOAL-STATE REASONER (NVR-SPEC-030 v0.2.2) ===
+    //
+    // Runs right after setupStage so the snapshot has real balances + market
+    // data. Loads the master goal-state from Vercel KV, runs the separate
+    // Haiku evaluator on a STRUCTURED snapshot (named fields, no prose
+    // confusion), charges the goal's budget, and writes back. WRITE-ONLY
+    // mode in v0.2 — existing decision path is still source-of-truth for
+    // trades. Stage 3 (GOAL_STATE_DRIVES_DECISIONS) promotes to driving.
+    //
+    // Pattern aligns with Anthropic's `/goal` (Claude Code 2.1.139, May 2026)
+    // and the Dreams API (Managed Agents research preview). See NVR-SPEC-030
+    // + DECISIONS_2026-05-13_open-questions-answered for full context.
+    //
+    // Gated, fail-safe: skips silently if env flag is off or KV unconfigured.
+    if (process.env.GOAL_STATE_REASONER === 'true') {
+      try {
+        const portfolioValueUsd = balances.reduce((sum, b) => sum + (b.usdValue ?? 0), 0);
+        const usdcEntry = balances.find((b) => (b.symbol ?? '').toUpperCase() === 'USDC');
+        const usdcBalanceUsd = typeof usdcEntry?.usdValue === 'number' ? usdcEntry.usdValue : 0;
+        const openPositionCount = balances.filter(
+          (b) => (b.symbol ?? '').toUpperCase() !== 'USDC' && (b.usdValue ?? 0) > 1,
+        ).length;
+        const blockedTokenCount = (typeof circuitBreaker !== 'undefined' && circuitBreaker)
+          ? Object.keys(((circuitBreaker as unknown) as { blockedTokens?: Record<string, unknown> }).blockedTokens ?? {}).length
+          : 0;
+        const hoursSinceLastLiveExecution = lastSuccessfulTradeAt > 0
+          ? (Date.now() - lastSuccessfulTradeAt) / 3_600_000
+          : null;
+
+        const goalReasoning = await reasonAboutGoal({
+          agentId: MASTER_AGENT_ID,
+          proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.2 write-only mode)`,
+          snapshot: {
+            portfolioValueUsd,
+            usdcBalanceUsd,
+            openPositionCount,
+            blockedTokenCount,
+            hoursSinceLastLiveExecution,
+            heavyCycleReason: heavyReason,
+            cycleNumber: state.totalCycles,
+          },
+        });
+        if (goalReasoning) {
+          const verdict = goalReasoning.evaluation
+            ? ` · evaluator: ${goalReasoning.evaluation.moveCloser ? 'CLOSER' : 'noise'} (${goalReasoning.evaluation.reason})`
+            : '';
+          const budgetFlag = goalReasoning.budgetExceeded ? ' · BUDGET EXCEEDED' : '';
+          console.log(`[GoalState] ${goalReasoning.savedState ? 'wrote' : 'load-only'}${verdict}${budgetFlag}`);
+          console.log(goalReasoning.systemPromptBlock);
+        } else {
+          console.log(`[GoalState] flag on but KV unconfigured — skipping`);
+        }
+      } catch (err: any) {
+        console.warn(`[GoalState] reasoner error (non-fatal): ${err?.message ?? err}`);
+      }
+    }
+
     // NVR Phase 3b: cache marketData so the subscriber loop can execute mirror trades with fresh context
     lastMarketData = marketData;
     lastMarketDataAt = Date.now();
