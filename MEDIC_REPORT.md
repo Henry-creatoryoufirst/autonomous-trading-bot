@@ -1,3 +1,25 @@
+# MEDIC REPORT — 2026-05-13T (current UTC)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+
+## Jobs Status This Run (Run #34 — 2026-05-13T current UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
+- **Scout**: RAN — last scout ran 2026-05-08T04:10 UTC (SYRUP added), ~5 days ago, 48h+ elapsed. **MAMO** (Mamo AI finance bot on Base) added — contract `0x7300B37DfdfAb110d83290A29DfB31B1740219fE`, 24h vol $510-$667k, market cap $6M, multiple Aerodrome pairs (ETH/USDC/ZORA/TOSHI), Score 7/10. cbMEGA ($2.19M 24h vol, Coinbase wrapped MEGA) flagged — REJECTED for 2nd consecutive run (contract truncated as `0xcb11...167D23`, cannot verify full address in API-blocked sandbox). NEIRO on Base REJECTED ($47k vol, below $50k threshold).
+- **Auditor**: TRIGGERED by inferred 66-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: BREAKER_DAILY_DD_PCT 7→6 — completing convergence to industry-standard 5-6% daily circuit breaker threshold. Since Apr-2026 comment already acknowledged "industry practice 5-6%"; 66-day bear warrants the additional step. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #34 — 2026-05-13)
+- **Signal Quality**: Multi-wallet same-token clustering as confluence signal (Dune-style smart money). Already captured via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + buy ratio. Full multi-wallet clustering integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 34x capital efficiency already live — bot auto-benefits at DEX level without code change. Slipstream V2 Flashblocks: 10x faster execution speeds also auto-benefit. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Circuit breaker research (cripton.ai, stratbase.ai, multiple 2026 sources) confirms daily drawdown circuit breaker industry standard is 3-5% for aggressive bots and 5-6% for conservative. NVR at 7% has been acknowledged as above-industry since Apr-2026. 66-day bear: completing the convergence. BREAKER_DAILY_DD_PCT 7→6 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing in 2026 (cryptollia.com). Sequencer-direct RPC already active. Slippage for meme coins 10-20% standard — already handled. "Last real edge" in custom transfer mechanics and small pool triangular paths — complex architecture (off-limits). MEV private relay already in RPC endpoints. No new actionable change. (Priority 0)
+
+## Watch List (for Henry)
+- **cbMEGA**: 2nd consecutive run unable to verify full contract address. $2.19M 24h volume, $0.1509 price. Henry should verify on BaseScan and add manually if qualified. Partial address: `0xcb11...167D23`.
+- **Multi-wallet smart money clustering**: Dune/Nansen-style per-cycle wallet clustering as enhanced confluence signal (Impact 2/Complexity 4/Risk medium) — worth investigating for NVR v22+.
+
+---
+
 # MEDIC REPORT — 2026-05-07T04:05 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
