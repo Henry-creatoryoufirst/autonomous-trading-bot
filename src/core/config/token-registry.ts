@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA", "TIBBIR"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA", "TIBBIR", "CLAWBANK"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -33,7 +33,7 @@ export const SECTORS = {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX"],
+    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX", "MRDN"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
@@ -467,6 +467,17 @@ export const TOKEN_REGISTRY: Record<string, {
   SYRUP: {
     address: "0x688AEe022AA544f150678B8E5720b6b96a9E9a2F",
     symbol: "SYRUP", name: "Maple Finance", coingeckoId: "maple-finance",
+    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  // === AUTO-DISCOVERED (scout 2026-05-13) ===
+  CLAWBANK: {
+    address: "0x16332535E2c27da578bC2e82bEb09Ce9d3C8EB07",
+    symbol: "CLAWBANK", name: "ClawBank", coingeckoId: "clawbank",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
+  MRDN: {
+    address: "0xe57e601c06689d3e2bf7db7bebb14b4ff28400c6",
+    symbol: "MRDN", name: "Meridian", coingeckoId: "meridian",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
   // === TOKENIZED STOCKS (5%) ===
