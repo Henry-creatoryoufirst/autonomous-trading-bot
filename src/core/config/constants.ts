@@ -534,7 +534,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  * Position = Kelly% × KELLY_FRACTION × Portfolio
  */
 export const KELLY_FRACTION = 0.25;           // Bear-adjusted May-2026: 0.30→0.25 — 54-day bear; true Quarter-Kelly (0.25×); effective max 4.2%→3.5% portfolio per trade; research: Quarter-Kelly optimal for sustained bear regimes (crypto fat tails + bear drawdown control)
-export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
+export const KELLY_MIN_TRADES = 30;           // Aligned with KELLY_ROLLING_WINDOW — Kelly activates only once the full 30-trade window is populated; research confirms <30 samples produce ±10pp win-rate estimation error that destabilises Kelly fractions
 export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
 export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
 export const KELLY_POSITION_CEILING_PCT = 12;  // Bear-adjusted May-2026: 14→12 — 59-day bear; with TRENDING_DOWN ×0.75 → 9% effective max; research (Institutional Kelly-VAPS, adaptive Kelly criterion): sustained bear regimes require tighter per-trade ceiling beyond Quarter-Kelly fraction alone
