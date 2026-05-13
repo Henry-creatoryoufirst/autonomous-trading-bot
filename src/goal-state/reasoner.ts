@@ -1,31 +1,34 @@
-// NVR-SPEC-030 Goal-State Reasoner — v0.1
+// NVR-SPEC-030 Goal-State Reasoner — v0.2
 //
-// The loop. Runs at the start of every heavy cycle, before any new
-// reasoning. Six steps, exactly as in NVR-SPEC-030 §4:
+// The loop. Runs at the start of every heavy cycle, before any new reasoning.
+// Six steps per NVR-SPEC-030 §4:
 //
-//   1. LOAD   — read the goal-state from KV (or seed on first run)
-//   2. REPLAY — return a system-prompt block the caller appends
-//   3. PRUNE  — drop blockers whose resolution criterion is satisfied
-//   4. EVALUATE — did last cycle's nextStep produce evidence of progress?
-//   5. DECIDE — record the cycle's chosen next step (caller passes it in)
-//   6. SAVE   — write back with optimistic-concurrency
+//   1. LOAD     — read the goal-state from KV (or seed on first run)
+//   2. REPLAY   — return a system-prompt block the caller appends
+//   3. PRUNE    — drop blockers whose resolution criterion is satisfied [stubbed]
+//   4. EVALUATE — separate-model Haiku evaluator judges last cycle's outcome
+//                 (v0.2 — matches Anthropic's `/goal` independent-evaluator pattern)
+//   5. DECIDE   — record the cycle's chosen next step (caller passes it in)
+//                 OR escalate to ask_human when budget exceeded
+//   6. SAVE     — write back with content_sha256 optimistic concurrency
 //
-// v0.1 IMPORTANT: the reasoner WRITES the goal-state but does NOT DRIVE
-// trade execution. The bot's existing decision path remains source-of-
-// truth for trades. After 48h of coherent goal-state files we flip a
-// second flag (proposed: GOAL_STATE_DRIVES_DECISIONS) to actually promote
-// the reasoner's decision.action — that's v0.1.5 / v0.2, not this commit.
+// v0.2 ADDITIONS over v0.1:
+//   - Separate Haiku evaluator (evaluator.ts) called when caller provides
+//     a cycleSummary. Returns moveCloser + reason, appended to evidence and
+//     saved to lastEvaluation. Token cost charged to budget.
+//   - Budget tracking (budget.ts). Cumulative since goalSetAt. When budget
+//     is exceeded, the reasoner overrides proposedNextStep with an
+//     ask_human escalation message so the caller knows to surface it.
 //
-// Steps 3 (PRUNE) and 4 (EVALUATE) are scaffolded but stubbed in v0.1:
-// resolution-criterion checking lands in v0.2 once we have one cycle of
-// real goal-state files to anchor the criteria DSL against. The fields
-// exist and write through; the auto-detection of resolution is what's
-// stubbed.
+// IMPORTANT v0.2 vs v0.1 semantic — still WRITE-ONLY:
+//   The reasoner WRITES to goal-state, runs the evaluator, tracks budget —
+//   but it does NOT drive trade execution. The existing decision path
+//   remains source of truth for trades. Stage 3 (flipping
+//   GOAL_STATE_DRIVES_DECISIONS) promotes the reasoner to driving.
 
 import {
   GoalState,
   GoalEvidence,
-  NextStepOutcome,
 } from './types.js';
 import {
   loadGoalState,
@@ -33,6 +36,19 @@ import {
   isGoalStateConfigured,
 } from './store.js';
 import { seedMasterGoalState, MASTER_AGENT_ID } from './seed.js';
+import {
+  evaluateCycleAgainstGoal,
+  evaluationToEvidence,
+  type EvaluationContext,
+  type EvaluationResult,
+} from './evaluator.js';
+import {
+  chargeBudget,
+  checkBudget,
+  emptyBudgetUsage,
+  DEFAULT_BUDGET,
+  type BudgetUsage,
+} from './budget.js';
 
 export interface ReasonerInput {
   /** Which agent's goal-state to advance. v0.1 = MASTER_AGENT_ID only. */
@@ -41,22 +57,27 @@ export interface ReasonerInput {
   proposedNextStep: string;
   /** Optional fresh evidence the heavy cycle wants to record (e.g. "Watcher fired VOLUME_SPIKE on $VVV at conf 0.73"). */
   newEvidence?: GoalEvidence;
+  /** v0.2 — optional cycle context for the evaluator. If provided, the evaluator runs and writes evidence. */
+  cycleSummary?: string;
+  cycleObservation?: string;
+  /** v0.2 — main heavy-cycle token usage to fold into the goal's budget. */
+  mainCycleTokens?: { model: string; inputTokens: number; outputTokens: number };
 }
 
 export interface ReasonerOutput {
-  /** Always returned. The system-prompt block the caller appends BEFORE the new reasoning step. */
   systemPromptBlock: string;
-  /** The state as it was at cycle start (post-load, pre-update). For dashboard / telemetry. */
   loadedState: GoalState;
-  /** The state after this cycle's write. Null if KV unavailable / concurrency conflict (caller's existing decision path continues unaffected). */
   savedState: GoalState | null;
+  /** v0.2 — evaluation result, present when cycleSummary was provided and evaluator succeeded. */
+  evaluation?: EvaluationResult;
+  /** v0.2 — true when the goal's cumulative budget is exhausted after this cycle. Caller may want to surface to Telegram. */
+  budgetExceeded: boolean;
 }
 
 /**
- * The reasoner loop. Pure orchestration — no LLM calls, no trade execution.
- * Returns the system-prompt block to inject and the persisted state.
- * Failure modes (KV down, concurrency conflict): return savedState=null and
- * a system-prompt block built from the most recent observable state.
+ * The reasoner loop. Pure orchestration. Returns the system-prompt block to
+ * inject + the persisted state + optional evaluator output. Never throws
+ * into the heavy-cycle path.
  */
 export async function reasonAboutGoal(
   input: ReasonerInput,
@@ -69,7 +90,7 @@ export async function reasonAboutGoal(
   let expectedSha = state?.contentSha256 ?? '';
   if (!state) {
     if (input.agentId !== MASTER_AGENT_ID) {
-      // v0.1 only seeds the master. Per-token specialists + mirrors come in v0.2.
+      // v0.1 only seeds the master. Per-token specialists + mirrors come later.
       return null;
     }
     state = seedMasterGoalState(now);
@@ -79,43 +100,90 @@ export async function reasonAboutGoal(
   // 2. REPLAY — build the system-prompt block from the loaded state.
   const systemPromptBlock = renderReplayBlock(state);
 
-  // 3. PRUNE — stubbed in v0.1. Resolution-criterion DSL lands in v0.2 once
-  //    we have one cycle of real goal-state files to anchor against. Today
-  //    the criteria are human-prose; the reasoner reads them through but
-  //    doesn't auto-drop. Henry / future Claude prunes manually for now.
+  // 3. PRUNE — stubbed. Resolution-criterion DSL is a v0.3 task; today the
+  //    criteria are human-prose. Reasoner reads them through; manual prune.
   const survivingBlockers = state.blockers;
 
-  // 4. EVALUATE — last cycle's lastNextStep. Stubbed: we mark its outcome
-  //    'pending' if not already set. v0.2 wires in real progress detection.
-  const lastOutcome: NextStepOutcome = state.lastNextStepOutcome === 'pending'
-    ? 'pending'
-    : state.lastNextStepOutcome;
+  // 4. EVALUATE — v0.2: separate Haiku evaluator. Only fires when caller
+  //    provides a cycleSummary (so we don't spend tokens evaluating an
+  //    empty cycle).
+  let evaluation: EvaluationResult | undefined;
+  let newEvidence: GoalEvidence[] = input.newEvidence
+    ? [input.newEvidence]
+    : [];
+  if (input.cycleSummary) {
+    const ctx: EvaluationContext = {
+      cycleSummary: input.cycleSummary,
+      cycleObservation: input.cycleObservation,
+    };
+    const result = await evaluateCycleAgainstGoal(state, ctx);
+    if (result) {
+      evaluation = result;
+      newEvidence.push(evaluationToEvidence(result));
+    }
+  }
 
-  // 5. DECIDE — record the proposed next step from the caller. The caller
-  //    is the existing decision path; the reasoner WRITES it through, it
-  //    doesn't DRIVE. That promotion is gated separately (see file header).
+  // 4b. BUDGET — charge evaluator + main-cycle tokens, then check ceiling.
+  let budget: BudgetUsage = state.budgetUsage ?? emptyBudgetUsage(now);
+  if (evaluation) {
+    budget = chargeBudget(
+      budget,
+      process.env.GOAL_STATE_EVALUATOR_MODEL ?? 'claude-haiku-4-5-20251001',
+      evaluation.evaluatorTokens.input,
+      evaluation.evaluatorTokens.output,
+      now,
+    );
+  }
+  if (input.mainCycleTokens) {
+    budget = chargeBudget(
+      budget,
+      input.mainCycleTokens.model,
+      input.mainCycleTokens.inputTokens,
+      input.mainCycleTokens.outputTokens,
+      now,
+    );
+  }
+  const budgetCheck = checkBudget(budget, DEFAULT_BUDGET);
+
+  // 5. DECIDE — record the proposed next step. If budget is exceeded, override
+  //    the next step with an ask_human escalation so the caller (and Henry
+  //    via the cockpit) can see the goal is paused pending decision.
   const nowIso = now.toISOString();
+  const effectiveNextStep = budgetCheck.exceeded
+    ? `BLOCKED: budget exceeded (${budgetCheck.reason}). Awaiting human decision on whether to continue spending on this goal or revise it.`
+    : input.proposedNextStep;
+
   const updated: GoalState = {
     ...state,
     blockers: survivingBlockers,
-    evidenceOfProgress: input.newEvidence
-      ? [...state.evidenceOfProgress, input.newEvidence]
-      : state.evidenceOfProgress,
-    lastNextStep: input.proposedNextStep,
+    evidenceOfProgress: [
+      ...state.evidenceOfProgress,
+      ...newEvidence,
+    ],
+    lastNextStep: effectiveNextStep,
     lastNextStepAt: nowIso,
     lastNextStepOutcome: 'pending',
+    lastEvaluation: evaluation
+      ? {
+          moveCloser: evaluation.moveCloser,
+          reason: evaluation.reason,
+          evaluatedAt: evaluation.evaluatedAt,
+        }
+      : state.lastEvaluation,
+    budgetUsage: budget,
     lastUpdatedAt: nowIso,
     contentSha256: state.contentSha256, // saveGoalState recomputes
   };
 
-  // 6. SAVE — optimistic-concurrency write. On conflict (savedState null)
-  //    we return the loaded state so the caller still has the replay block.
+  // 6. SAVE — optimistic-concurrency write.
   const savedState = await saveGoalState(updated, expectedSha);
 
   return {
     systemPromptBlock,
     loadedState: state,
     savedState,
+    evaluation,
+    budgetExceeded: budgetCheck.exceeded,
   };
 }
 
@@ -127,6 +195,10 @@ export function renderReplayBlock(state: GoalState): string {
   lines.push(`Your goal: ${state.goal}`);
   lines.push(`Last cycle you decided: ${state.lastNextStep}`);
   lines.push(`Outcome of last decision: ${state.lastNextStepOutcome}`);
+  if (state.lastEvaluation) {
+    const verdict = state.lastEvaluation.moveCloser ? 'CLOSER' : 'noise';
+    lines.push(`Evaluator verdict on last cycle: ${verdict} — ${state.lastEvaluation.reason}`);
+  }
   if (state.blockers.length > 0) {
     lines.push(`Active blockers:`);
     for (const b of state.blockers) {
@@ -138,6 +210,11 @@ export function renderReplayBlock(state: GoalState): string {
     for (const e of recentEvidence) {
       lines.push(`  - ${e.at}: ${e.observation} (${e.moveCloser ? 'closer' : 'noise'})`);
     }
+  }
+  if (state.budgetUsage) {
+    lines.push(
+      `Budget so far: $${state.budgetUsage.cumulativeUsd.toFixed(2)} · ${state.budgetUsage.cumulativeInputTokens.toLocaleString()} in / ${state.budgetUsage.cumulativeOutputTokens.toLocaleString()} out tokens.`,
+    );
   }
   return lines.join('\n');
 }

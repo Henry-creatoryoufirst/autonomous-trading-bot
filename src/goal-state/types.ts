@@ -31,6 +31,18 @@ export interface GoalBlocker {
   addedAt: string;
 }
 
+/**
+ * Budget tracking. Reset on each goal change (goalSetAt advances).
+ * Defined here on GoalState so dreaming + cockpit can read it without
+ * an extra KV roundtrip. See budget.ts for the helpers.
+ */
+export interface GoalBudgetUsage {
+  cumulativeInputTokens: number;
+  cumulativeOutputTokens: number;
+  cumulativeUsd: number;
+  lastChargedAt: string;
+}
+
 export interface GoalState {
   // Identity
   agentId: string;
@@ -49,6 +61,16 @@ export interface GoalState {
   lastNextStep: string;
   lastNextStepAt: string;
   lastNextStepOutcome: NextStepOutcome;
+
+  // v0.2 — evaluator + budget
+  /** Most recent evaluator output. Optional — populated once v0.2 evaluator runs. */
+  lastEvaluation?: {
+    moveCloser: boolean;
+    reason: string;
+    evaluatedAt: string;
+  };
+  /** Cumulative spend since goalSetAt. Optional for back-compat with v0.1 state files. */
+  budgetUsage?: GoalBudgetUsage;
 
   // Bookkeeping
   lastUpdatedAt: string;

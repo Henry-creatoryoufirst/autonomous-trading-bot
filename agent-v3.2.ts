@@ -7558,26 +7558,42 @@ async function runTradingCycle() {
   console.log(`   Light/Heavy ratio: ${cycleStats.totalLight}L / ${cycleStats.totalHeavy}H | Cache hit rate: ${cacheManager.getStats().hitRate}`);
   console.log("═".repeat(70));
 
-  // NVR-SPEC-030 v0.1 — Goal-State Reasoner (write-only mode).
+  // NVR-SPEC-030 v0.2 — Goal-State Reasoner (write-only mode + Haiku evaluator + budget).
   //
   // Runs at heavy-cycle start, BEFORE any new trade reasoning. Loads the
   // master goal-state from Vercel KV, builds a system-prompt block ("Your
   // goal is X; last cycle you decided Y; outcome was Z; active blockers
-  // are W"), and writes back the next-step the existing decision path is
-  // about to take. v0.1 does NOT drive trades — the existing decision path
-  // remains source of truth. Promotion to driving comes via a second flag
-  // after 48h of coherent goal-state files. See NVR-SPEC-030 + DECISIONS_
-  // 2026-05-13_open-questions-answered for context.
+  // are W"), runs a separate Haiku evaluator on the current state vs goal,
+  // charges the goal's budget, and writes back. v0.2 still does NOT drive
+  // trades — existing decision path is source of truth. Stage 3 (flipping
+  // GOAL_STATE_DRIVES_DECISIONS) promotes the reasoner to driving.
+  //
+  // v0.2 additions over v0.1: separate Haiku evaluator (returns moveCloser
+  // + reason), cumulative budget tracking with ask_human escalation when
+  // exceeded. Pattern aligns with Anthropic's `/goal` (Claude Code 2.1.139,
+  // May 2026) — independent evaluator, hard ceiling. See NVR-SPEC-030 +
+  // DECISIONS_2026-05-13_open-questions-answered.
   //
   // Gated, fail-safe: skips silently if env flag is off or KV is unconfigured.
   if (process.env.GOAL_STATE_REASONER === 'true') {
     try {
+      const portfolioStr = state.trading?.totalPortfolioValue
+        ? `$${state.trading.totalPortfolioValue.toFixed(0)}`
+        : 'unknown';
+      const lastLiveExecHours = lastSuccessfulTradeAt > 0
+        ? ((Date.now() - lastSuccessfulTradeAt) / 3_600_000).toFixed(1)
+        : 'never';
       const goalReasoning = await reasonAboutGoal({
         agentId: MASTER_AGENT_ID,
-        proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.1 write-only mode)`,
+        proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.2 write-only mode)`,
+        cycleSummary: `Heavy cycle #${state.totalCycles} starting. Trigger: ${heavyReason}. Portfolio: ${portfolioStr}. Last live execution: ${lastLiveExecHours}h ago.`,
       });
       if (goalReasoning) {
-        console.log(`[GoalState] ${goalReasoning.savedState ? 'wrote' : 'load-only (KV conflict / unavailable)'}`);
+        const verdict = goalReasoning.evaluation
+          ? ` · evaluator: ${goalReasoning.evaluation.moveCloser ? 'CLOSER' : 'noise'} (${goalReasoning.evaluation.reason})`
+          : '';
+        const budgetFlag = goalReasoning.budgetExceeded ? ' · BUDGET EXCEEDED' : '';
+        console.log(`[GoalState] ${goalReasoning.savedState ? 'wrote' : 'load-only'}${verdict}${budgetFlag}`);
         console.log(goalReasoning.systemPromptBlock);
       } else {
         console.log(`[GoalState] flag on but KV unconfigured — skipping`);
