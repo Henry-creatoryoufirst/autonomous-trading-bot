@@ -5504,29 +5504,6 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
           console.log(`   🚀 Multi-trade: AI returned ${rawDecisions.length} action(s)`);
         }
 
-        // NVR-SPEC-030 Stage 3 v1 — audit log. Emits a single grep-able line
-        // per cycle pairing reasoner state with Sonnet's decision. The exit
-        // condition for v1 → v2 lives in this log: after a soak window,
-        // audit alignment between reasoner.nextStep and sonnet.actions on
-        // profitable trades, then scope v2 with evidence.
-        if (goalStateDrivesDecisions && lastGoalReasoning) {
-          const sonnetActions = rawDecisions
-            .map((d) => `${d.action}:${d.toToken ?? d.fromToken ?? 'NONE'}@$${d.amountUSD ?? 0}`)
-            .join(',');
-          const r = lastGoalReasoning;
-          const evalVerdict = r.evaluation
-            ? `${r.evaluation.moveCloser ? 'CLOSER' : 'noise'}`
-            : 'none';
-          const blockerCount = r.loadedState.blockers.length;
-          const goal = r.loadedState.goal.replace(/\s+/g, ' ').slice(0, 80);
-          const reasonerNext = (r.savedState?.lastNextStep ?? r.loadedState.lastNextStep)
-            .replace(/\s+/g, ' ')
-            .slice(0, 120);
-          console.log(
-            `[GoalState:audit] goal="${goal}" lastEval=${evalVerdict} blockers=${blockerCount} reasoner.nextStep="${reasonerNext}" sonnet.actions=[${sonnetActions}]`,
-          );
-        }
-
         // v6.2: Include curated discovered tokens in validation (top 5 only, not full discovery pool)
         const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens, ...discoveredSymbols];
         const validatedDecisions: TradeDecision[] = [];
@@ -8547,6 +8524,46 @@ async function runTradingCycle() {
       return;
     }
     let decisions = cycleCtx.decisions;
+
+    // NVR-SPEC-030 Stage 3 v1 — universal audit log. Fires on EVERY heavy
+    // cycle regardless of decision path (Sonnet, DETERMINISTIC_HOLD,
+    // NVR_SUBSCRIBER_ONLY mute, etc.). Pairs reasoner.nextStep + lastEval +
+    // active blockers with the bot's ACTUAL decisions for that cycle.
+    //
+    // This is the v2 design doc — written by the live system. After the soak
+    // window, classify each line into: aligned-and-profitable /
+    // aligned-and-unprofitable / diverged-Sonnet-right / diverged-reasoner-
+    // right / noise-HOLD. That distribution is what tells us whether to
+    // promote to v2 (reasoner-as-source-of-truth) or iterate on the reasoner
+    // first.
+    //
+    // Gated on GOAL_STATE_DRIVES_DECISIONS so the log volume only kicks in
+    // when v1 is actively engaged. lastGoalReasoning is the module-level
+    // cache populated at the reasoner call site upstream in this same cycle.
+    if (process.env.GOAL_STATE_DRIVES_DECISIONS === 'true' && lastGoalReasoning) {
+      const r = lastGoalReasoning;
+      const actions = (decisions ?? [])
+        .map((d) => `${d.action}:${d.toToken ?? d.fromToken ?? 'NONE'}@$${d.amountUSD ?? 0}`)
+        .join(',');
+      const evalVerdict = r.evaluation
+        ? `${r.evaluation.moveCloser ? 'CLOSER' : 'noise'}`
+        : 'none';
+      const blockerCount = r.loadedState.blockers.length;
+      const goal = r.loadedState.goal.replace(/\s+/g, ' ').slice(0, 80);
+      const reasonerNext = (r.savedState?.lastNextStep ?? r.loadedState.lastNextStep)
+        .replace(/\s+/g, ' ')
+        .slice(0, 120);
+      // Path classification — readable at-a-glance when scanning logs.
+      const firstReasoning = (decisions?.[0]?.reasoning ?? '').toLowerCase();
+      const path = firstReasoning.startsWith('deterministic hold')
+        ? 'deterministic'
+        : NVR_SUBSCRIBER_ONLY
+          ? 'subscriber-mute'
+          : 'llm';
+      console.log(
+        `[GoalState:audit] cycle=${state.totalCycles} path=${path} goal="${goal}" lastEval=${evalVerdict} blockers=${blockerCount} reasoner.nextStep="${reasonerNext}" bot.actions=[${actions}]`,
+      );
+    }
 
     // === NVR_SUBSCRIBER_ONLY mute mode ===
     // Subscriber bots defer to the NVR Bot canonical feed. Their own AI decisions
