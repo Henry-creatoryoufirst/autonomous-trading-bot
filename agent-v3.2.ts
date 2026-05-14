@@ -131,6 +131,13 @@ let lastMarketDataAt = 0;
 // last cycle), so this cache is a fast-path hint, not authoritative.
 let lastPositionAttribution: import('./src/core/types/position-attribution.js').PositionAttributionResponse | null = null;
 let lastPositionAttributionAt = 0;
+// NVR-SPEC-030 Stage 3 v1 — cache the most recent reasoner output so that
+// makeTradeDecision (called later in the same heavy cycle, and again on
+// routine cycles between heavies) can inject the goal-state replay block
+// into Sonnet's prompt. Gated by GOAL_STATE_DRIVES_DECISIONS=true so the
+// reasoner can run in pure-observer mode (v0.2) until we promote.
+let lastGoalReasoning: import('./src/goal-state/reasoner.js').ReasonerOutput | null = null;
+let lastGoalReasoningAt = 0;
 // Per-token cooldown to prevent echo storms (e.g. publisher and subscriber bouncing same token)
 const nvrMirrorCooldown = new Map<string, number>();
 
@@ -5359,9 +5366,25 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   //
   // v21.20 SPEC-018: OSS_TRADER_MODE=primary always uses the full prompt too — OSS is the
   // decision-maker and needs the same STRATEGY context Sonnet would have had.
-  const dynamicBlock = isFullPrompt
+  // NVR-SPEC-030 Stage 3 v1 — when GOAL_STATE_DRIVES_DECISIONS is on, append
+  // the reasoner's replay block (built earlier this heavy cycle in
+  // reasonAboutGoal → renderReplayBlock, stashed on lastGoalReasoning) as the
+  // tail of the dynamic block. Goes AFTER all other dynamic context so the
+  // goal/blockers/lastNextStep land closest to Sonnet's output position —
+  // and stays OUT of the cached prefix so cache_control breakpoints upstream
+  // (CORE+STRATEGY+OPERATING_KNOWLEDGE+policy+critic) remain stable.
+  //
+  // Failure-safe: missing cache, null block, or flag off → empty string,
+  // dynamicBlock behaves exactly as before.
+  const goalStateDrivesDecisions = process.env.GOAL_STATE_DRIVES_DECISIONS === 'true';
+  const goalStateInject =
+    goalStateDrivesDecisions && lastGoalReasoning?.systemPromptBlock
+      ? '\n\n' + lastGoalReasoning.systemPromptBlock
+      : '';
+  const dynamicBlock = (isFullPrompt
     ? dynamicData + '\n\n' + dynamicStrategyAddenda + formatSelfImprovementPrompt() + formatUserDirectivesPrompt()
-    : dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt();
+    : dynamicData + formatSelfImprovementPrompt() + formatUserDirectivesPrompt())
+    + goalStateInject;
 
   // v21.20 SPEC-018: policy block from NVR-REGIME injected between STRATEGY and
   // dynamic market data. Its own cache_control breakpoint means policy updates
@@ -5479,6 +5502,29 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
         const rawDecisions: any[] = Array.isArray(parsed) ? parsed : [parsed];
         if (Array.isArray(parsed)) {
           console.log(`   🚀 Multi-trade: AI returned ${rawDecisions.length} action(s)`);
+        }
+
+        // NVR-SPEC-030 Stage 3 v1 — audit log. Emits a single grep-able line
+        // per cycle pairing reasoner state with Sonnet's decision. The exit
+        // condition for v1 → v2 lives in this log: after a soak window,
+        // audit alignment between reasoner.nextStep and sonnet.actions on
+        // profitable trades, then scope v2 with evidence.
+        if (goalStateDrivesDecisions && lastGoalReasoning) {
+          const sonnetActions = rawDecisions
+            .map((d) => `${d.action}:${d.toToken ?? d.fromToken ?? 'NONE'}@$${d.amountUSD ?? 0}`)
+            .join(',');
+          const r = lastGoalReasoning;
+          const evalVerdict = r.evaluation
+            ? `${r.evaluation.moveCloser ? 'CLOSER' : 'noise'}`
+            : 'none';
+          const blockerCount = r.loadedState.blockers.length;
+          const goal = r.loadedState.goal.replace(/\s+/g, ' ').slice(0, 80);
+          const reasonerNext = (r.savedState?.lastNextStep ?? r.loadedState.lastNextStep)
+            .replace(/\s+/g, ' ')
+            .slice(0, 120);
+          console.log(
+            `[GoalState:audit] goal="${goal}" lastEval=${evalVerdict} blockers=${blockerCount} reasoner.nextStep="${reasonerNext}" sonnet.actions=[${sonnetActions}]`,
+          );
         }
 
         // v6.2: Include curated discovered tokens in validation (top 5 only, not full discovery pool)
@@ -7756,6 +7802,12 @@ async function runTradingCycle() {
           const budgetFlag = goalReasoning.budgetExceeded ? ' · BUDGET EXCEEDED' : '';
           console.log(`[GoalState] ${goalReasoning.savedState ? 'wrote' : 'load-only'}${verdict}${budgetFlag}`);
           console.log(goalReasoning.systemPromptBlock);
+          // NVR-SPEC-030 Stage 3 v1 — stash for makeTradeDecision to inject
+          // into Sonnet's prompt downstream. When GOAL_STATE_DRIVES_DECISIONS
+          // is off, this cache is still maintained so flipping the flag is a
+          // pure runtime change with no warm-up needed.
+          lastGoalReasoning = goalReasoning;
+          lastGoalReasoningAt = Date.now();
         } else {
           console.log(`[GoalState] flag on but KV unconfigured — skipping`);
         }
