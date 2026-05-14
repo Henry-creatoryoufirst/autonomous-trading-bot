@@ -7611,11 +7611,32 @@ async function runTradingCycle() {
     // Gated, fail-safe: skips silently if env flag is off or KV unconfigured.
     if (process.env.GOAL_STATE_REASONER === 'true') {
       try {
-        const portfolioValueUsd = balances.reduce((sum, b) => sum + (b.usdValue ?? 0), 0);
-        const usdcEntry = balances.find((b) => (b.symbol ?? '').toUpperCase() === 'USDC');
-        const usdcBalanceUsd = typeof usdcEntry?.usdValue === 'number' ? usdcEntry.usdValue : 0;
-        const openPositionCount = balances.filter(
-          (b) => (b.symbol ?? '').toUpperCase() !== 'USDC' && (b.usdValue ?? 0) > 1,
+        // v0.2.3: enrich usdValue inline. v0.2.2 trusted balances[].usdValue
+        // at this call site, but the USD-enrichment loop at line ~7681 hadn't
+        // run yet — only USDC had a populated usdValue, so OPEN_POSITION_COUNT
+        // came back as 0 every cycle for 12+ hours. We compute usdValue here
+        // from marketData (which IS populated post-setupStage), with WETH
+        // falling through to ETH price.
+        const enrichedBalances = balances.map((b) => {
+          const sym = (b.symbol ?? '').toUpperCase();
+          if (sym === 'USDC') return { symbol: b.symbol, usdValue: b.balance };
+          if (typeof b.usdValue === 'number' && b.usdValue > 0) {
+            // already enriched by some earlier path
+            return { symbol: b.symbol, usdValue: b.usdValue };
+          }
+          let md = marketData?.tokens?.find((t) => t.symbol === b.symbol);
+          if (!md && sym === 'WETH') {
+            md = marketData?.tokens?.find((t) => t.symbol === 'ETH');
+          }
+          const price = (md?.price ?? 0) > 0 ? md!.price : 0;
+          return { symbol: b.symbol, usdValue: b.balance * price };
+        });
+
+        const portfolioValueUsd = enrichedBalances.reduce((sum, b) => sum + b.usdValue, 0);
+        const usdcEntry = enrichedBalances.find((b) => (b.symbol ?? '').toUpperCase() === 'USDC');
+        const usdcBalanceUsd = usdcEntry?.usdValue ?? 0;
+        const openPositionCount = enrichedBalances.filter(
+          (b) => (b.symbol ?? '').toUpperCase() !== 'USDC' && b.usdValue > 1,
         ).length;
         const blockedTokenCount = (typeof circuitBreaker !== 'undefined' && circuitBreaker)
           ? Object.keys(((circuitBreaker as unknown) as { blockedTokens?: Record<string, unknown> }).blockedTokens ?? {}).length

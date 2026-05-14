@@ -96,11 +96,27 @@ function buildEvaluatorPrompt(state: GoalState, ctx: EvaluationContext): string 
   ];
 
   if (state.blockers.length > 0) {
-    lines.push(`### ACTIVE BLOCKERS`);
+    lines.push(`### ACTIVE BLOCKERS (may be stale — see below for live state)`);
     for (const b of state.blockers.slice(0, 5)) {
       lines.push(`- ${b.description}`);
       lines.push(`  resolves when: ${b.resolutionCriterion}`);
     }
+    lines.push(``);
+    lines.push(
+      `IMPORTANT: blockers above are human-prose; auto-pruning is not yet wired.`,
+    );
+    lines.push(
+      `The CURRENT BOT STATE block below is AUTHORITATIVE. If a blocker's resolutionCriterion`,
+    );
+    lines.push(
+      `is satisfied by the live state (e.g. usdcBalance >= 100 and USDC_BALANCE_USD = 169.62),`,
+    );
+    lines.push(
+      `treat the blocker as RESOLVED in your reasoning — note it as such and do NOT cite it as`,
+    );
+    lines.push(
+      `still-blocking. Anchor every numeric comparison in the named snapshot fields below.`,
+    );
     lines.push(``);
   }
 
