@@ -27,12 +27,10 @@ export function seedMasterGoalState(now: Date = new Date()): GoalState {
     goalSetBy: 'henry',
     evidenceOfProgress: [],
     blockers: [
-      {
-        id: 'usdc-pool-thin',
-        description: 'USDC pool too thin for Watcher-Direct entries to size meaningfully',
-        resolutionCriterion: 'usdcBalance >= 100',
-        addedAt: iso,
-      },
+      // 2026-05-14: usdc-pool-thin DROPPED per the first Dream artifact's
+      // proposal — USDC is now $169.62 > $100 threshold; keeping it was
+      // training the evaluator to ignore its own conclusions ("stale-blocker
+      // drift is corrosive"). See GOAL_STATE_DREAM_2026-05-14_the-nvr-bot.md.
       {
         id: 'specialist-data-cold-start',
         description: 'Specialist wallet data for new cohort tokens still cold — universe scan needs cycles to populate',
@@ -43,6 +41,25 @@ export function seedMasterGoalState(now: Date = new Date()): GoalState {
         id: 'no-wd-candidate-above-threshold',
         description: 'No Watcher-Direct candidate has crossed Reviewer confidence >= 0.75 yet',
         resolutionCriterion: 'mostRecentWdCandidate.reviewerConfidence >= 0.75',
+        addedAt: iso,
+      },
+      // 2026-05-14: ADDED per the first Dream's proposal — Open positions
+      // (15-17) appeared after a cycle-counter reset with no Path-D attribution.
+      // Their capital + risk profile is opaque inside this goal-state.
+      {
+        id: 'open-positions-unexplained',
+        description: 'OPEN_POSITION_COUNT (15-17) without Path-D attribution — capital allocation + P&L of these positions are untracked, may be consuming the USDC headroom needed for Path-D entries',
+        resolutionCriterion: 'each open position attributed to a decision path (Core / Alpha-WD / liberation) in evidenceOfProgress',
+        addedAt: iso,
+      },
+      // 2026-05-14: ADDED per the first Dream's proposal — a cycle-counter
+      // reset (#163 → #1) was observed with elapsed time ~1.78 billion sec,
+      // suggesting state-persistence failure. Needs diagnostic before
+      // trusting accumulated scan state.
+      {
+        id: 'cycle-counter-state-corruption',
+        description: 'Cycle counter reset #163 → #1 with elapsed time of ~1.78 billion seconds (~56 years) — indicates restart or state-persistence failure that may have wiped specialist wallet data + reviewer confidence history',
+        resolutionCriterion: 'restart event diagnosed + accumulated scan state verified intact OR explicitly re-seeded',
         addedAt: iso,
       },
     ],
