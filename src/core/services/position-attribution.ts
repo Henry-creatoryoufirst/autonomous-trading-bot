@@ -1,13 +1,19 @@
 /**
- * NVR-SPEC-032 — Position Attribution: Phase 1 (Backfill Synthesis)
+ * NVR-SPEC-032 — Position Attribution: Phase 1 (Backfill Synthesis) +
+ *                                     Phase 2 (Live entry capture)
  *
  * Pure synthesis function that reads the bot's existing state (balances,
- * costBasis, sleeveOwnership, tradeHistory) and emits the contract shape
- * defined in `../types/position-attribution.ts`.
+ * costBasis, sleeveOwnership, tradeHistory, positionEntries) and emits
+ * the contract shape defined in `../types/position-attribution.ts`.
  *
- * Phase 1 = best-effort backfill from history. Phase 2 will populate
- * entryContext at executeTrade time, so future rows graduate from
- * backfilled=true → backfilled=false as the bot churns through positions.
+ * Phase 1 = best-effort backfill from history (still active for any
+ *           position the bot held before Phase 2 shipped).
+ * Phase 2 = inherent attribution captured at the moment of trade. The
+ *           helpers `buildEntryRowFromDecision()` + `recordPositionEntry()`
+ *           are called from executeTrade(); the resulting rows live on
+ *           `state.trading.positionEntries[symbol]`. When the synthesizer
+ *           sees a live row it prefers it (`backfilled: false`) over any
+ *           trade-history match.
  *
  * Constraints (per spec):
  *   - No I/O. No LLM calls. No extra RPC.
@@ -15,10 +21,10 @@
  *   - Cheap enough to run inside every heavy cycle.
  *
  * Consumed by:
- *   - GET /api/positions/attribution (this commit)
- *   - cycleCtx.positionAttribution (this commit, downstream readers)
- *   - Phase 3 goal-state reasoner (separate commit)
- *   - Phase 4 stc-website cockpit (separate commit)
+ *   - GET /api/positions/attribution (Phase 1)
+ *   - cycleCtx.positionAttribution
+ *   - Phase 3 goal-state reasoner
+ *   - Phase 4 stc-website cockpit
  */
 
 import type {
@@ -31,7 +37,9 @@ import type {
   PositionRole,
 } from '../types/position-attribution.js';
 import type { BalanceEntry, TokenCostBasis, TradeRecord } from '../types/index.js';
+import type { PositionEntryRow } from '../types/state.js';
 import type { SleeveOwnership } from '../sleeves/state-types.js';
+import type { TradeDecision } from '../types/market-data.js';
 
 // ============================================================================
 // Static classification tables
@@ -75,6 +83,14 @@ export interface SynthesisDeps {
    */
   tokenRegistry?: Record<string, { sector?: string }>;
   /**
+   * NVR-SPEC-032 Phase 2: per-symbol entry rows captured at BUY time by
+   * `recordPositionEntry()` and persisted on `state.trading.positionEntries`.
+   * When present for a symbol, the synthesizer uses this row as the
+   * source of truth (`backfilled: false`) instead of scanning trade history.
+   * Absent symbols fall back to Phase 1 backfill.
+   */
+  positionEntries?: Record<string, PositionEntryRow>;
+  /**
    * Override "now" for testing. Defaults to Date.now().
    */
   now?: number;
@@ -99,6 +115,7 @@ export function synthesizePositionAttributions(
   const costBasis = deps.costBasis ?? {};
   const tradeHistory = Array.isArray(deps.tradeHistory) ? deps.tradeHistory : [];
   const sleeveOwnership = deps.sleeveOwnership ?? {};
+  const positionEntries = deps.positionEntries ?? {};
 
   // Pre-window trade history to keep the per-position scan O(n) cheap.
   const cutoffMs = now - TRADE_HISTORY_LOOKBACK_DAYS * 86_400_000;
@@ -127,6 +144,10 @@ export function synthesizePositionAttributions(
     }
     if (usdValue <= 1) continue;
 
+    // Phase 2: prefer live entry row when present (keyed by canonical symbol
+    // or its uppercase form). Falls through to backfill when undefined.
+    const liveEntry = positionEntries[bal.symbol] ?? positionEntries[symbolUpper];
+
     positions.push(
       buildPositionAttribution({
         balance: bal,
@@ -134,6 +155,7 @@ export function synthesizePositionAttributions(
         recentTrades,
         sleeveBySymbol,
         tokenRegistry: deps.tokenRegistry,
+        liveEntry,
         synthesizedAt,
         now,
       }),
@@ -158,12 +180,14 @@ interface RowInputs {
   recentTrades: TradeRecord[];
   sleeveBySymbol: Map<string, string>;
   tokenRegistry?: Record<string, { sector?: string }>;
+  /** NVR-SPEC-032 Phase 2: live entry row keyed by symbol, when present. */
+  liveEntry?: PositionEntryRow;
   synthesizedAt: string;
   now: number;
 }
 
 function buildPositionAttribution(args: RowInputs): PositionAttribution {
-  const { balance, costBasis, recentTrades, sleeveBySymbol, tokenRegistry, synthesizedAt, now } = args;
+  const { balance, costBasis, recentTrades, sleeveBySymbol, tokenRegistry, liveEntry, synthesizedAt, now } = args;
   const symbol = balance.symbol;
   const symbolUpper = symbol.toUpperCase();
 
@@ -193,6 +217,45 @@ function buildPositionAttribution(args: RowInputs): PositionAttribution {
   // --- Sleeve attribution ---
   const sleeve = sleeveBySymbol.get(symbolUpper);
 
+  // --- Role tag ---
+  const role = classifyRole(symbolUpper, tokenRegistry);
+
+  // ==========================================================================
+  // Phase 2 path: live entry row was captured at executeTrade time.
+  // Prefer it over trade-history backfill — it's the ground truth.
+  // ==========================================================================
+  if (liveEntry) {
+    let ageHours: number | undefined;
+    const t = Date.parse(liveEntry.enteredAt);
+    if (Number.isFinite(t)) {
+      ageHours = Math.max(0, (now - t) / 3_600_000);
+    }
+    return {
+      symbol,
+      address: '',
+      currentValueUsd,
+      balance: bal,
+      currentPriceUsd,
+      invested,
+      entryPriceUsd,
+      unrealizedPnLUsd,
+      unrealizedPnLPct,
+      enteredAt: liveEntry.enteredAt,
+      ageHours,
+      enteredBy: liveEntry.enteredBy,
+      role,
+      sleeve,
+      entryContext: liveEntry.entryContext,
+      exitCriterion: liveEntry.exitCriterion ?? inferExitCriterion(liveEntry.enteredBy),
+      synthesizedAt,
+      backfilled: false,
+    };
+  }
+
+  // ==========================================================================
+  // Phase 1 fallback: backfill from trade history.
+  // ==========================================================================
+
   // --- Find the most-recent matching BUY ---
   const matchingTrade = findMostRecentBuy(recentTrades, symbol);
 
@@ -221,9 +284,6 @@ function buildPositionAttribution(args: RowInputs): PositionAttribution {
       ageHours = Math.max(0, (now - t) / 3_600_000);
     }
   }
-
-  // --- Role tag ---
-  const role = classifyRole(symbolUpper, tokenRegistry);
 
   // --- Exit criterion (best effort, derived from enteredBy) ---
   const exitCriterion = inferExitCriterion(enteredBy);
@@ -481,4 +541,185 @@ function computeSummary(
     phase2AttributedCount,
     legacyUnknownCount,
   };
+}
+
+// ============================================================================
+// NVR-SPEC-032 Phase 2 — Entry-capture helpers (called by executeTrade)
+//
+// `buildEntryRowFromDecision` turns a successful BUY's TradeDecision into a
+// `PositionEntryRow` ready to drop onto `state.trading.positionEntries`.
+// `clearPositionEntry` removes the row on a successful SELL.
+// Both are pure (no module-level state) so they can be unit-tested in
+// isolation — agent-v3.2.ts is the only side-effecting caller.
+// ============================================================================
+
+export interface BuildEntryRowDeps {
+  decision: TradeDecision;
+  /** The macro-regime singleton's current value (BULL/RANGING/BEAR). */
+  macroRegime?: 'BULL' | 'RANGING' | 'BEAR';
+  /**
+   * Optional override of the entry timestamp. Defaults to "now" ISO.
+   * Tests pass a fixed value; production callers omit it.
+   */
+  enteredAt?: string;
+  /**
+   * True when this BUY was triggered immediately after a FAST_STRIKE /
+   * ALPHA_LIBERATION SELL liberated USDC in the same cycle. Promotes the
+   * resulting attribution to 'alpha-hunter-wd' — that liberated capital
+   * was always destined for a WD strike, even if the BUY decision's
+   * reasoning doesn't mention WD explicitly.
+   */
+  followsFastStrikeLiberation?: boolean;
+}
+
+/** Default WD exit ladder, mirrored from `src/core/sleeves/alpha-hunter.ts`. */
+const PHASE_2_WD_DEFAULTS = {
+  takeProfitPct: 8,
+  trailingStopPct: 3,
+  maxHoldHours: 12,
+} as const;
+
+/**
+ * Build a PositionEntryRow from a successful BUY decision. The caller is
+ * responsible for writing the row to state.trading.positionEntries[symbol]
+ * and persisting state. Returns `null` for non-BUY decisions or when the
+ * target symbol is missing/USDC (defensive — should never happen in prod).
+ */
+export function buildEntryRowFromDecision(deps: BuildEntryRowDeps): PositionEntryRow | null {
+  const { decision } = deps;
+  if (!decision || decision.action !== 'BUY') return null;
+  const symbol = decision.toToken;
+  if (!symbol || symbol === 'USDC') return null;
+
+  const reasoning = (decision.reasoning ?? '').toString();
+  const md = (decision.metadata ?? {}) as Record<string, unknown>;
+
+  // --- Classify entry path ---
+  // Strongest signal: the FAST_STRIKE liberation cue from the orchestrator —
+  // a BUY immediately following a USDC-liberation SELL is by construction a WD entry.
+  let enteredBy: PositionEnteredBy;
+  if (deps.followsFastStrikeLiberation) {
+    enteredBy = 'alpha-hunter-wd';
+  } else if (/Watcher-Direct|ALPHA_HUNTER_WD/.test(reasoning)) {
+    enteredBy = 'alpha-hunter-wd';
+  } else if (/ALPHA_LIBERATION|fast[-\s]strike/i.test(reasoning)) {
+    enteredBy = 'fast-strike-liberation';
+  } else if (/WETH_REBALANCE/.test(reasoning)) {
+    enteredBy = 'weth-rebalance';
+  } else if (/\bmanual\b|operator override/i.test(reasoning)) {
+    enteredBy = 'manual';
+  } else if ((decision.ownerSleeve ?? '').toLowerCase() === 'alpha-rotation') {
+    enteredBy = 'alpha-rotation';
+  } else if ((decision.ownerSleeve ?? '').toLowerCase() === 'alpha-hunter' ||
+             (decision.ownerSleeve ?? '').toLowerCase() === 'alpha-hunter-wd') {
+    enteredBy = 'alpha-hunter-wd';
+  } else {
+    // Default: Core sleeve normal-conviction BUY.
+    enteredBy = 'core';
+  }
+
+  // --- Entry context ---
+  const ctx: PositionEntryContext = {};
+
+  // Decision metadata wins when present.
+  if (typeof md.triggerId === 'string') ctx.triggerId = md.triggerId;
+  if (typeof md.triggerType === 'string') ctx.triggerType = md.triggerType;
+  if (md.reviewerVerdict === 'BUY' || md.reviewerVerdict === 'WAIT' || md.reviewerVerdict === 'PASS') {
+    ctx.reviewerVerdict = md.reviewerVerdict;
+  }
+  if (typeof md.reviewerConfidence === 'number' && Number.isFinite(md.reviewerConfidence)) {
+    ctx.reviewerConfidence = md.reviewerConfidence;
+  }
+
+  // Reasoning-marker fallback for trigger type (matches the Phase 1 backfill set).
+  if (!ctx.triggerType) {
+    const tm = reasoning.match(/(WHALE_BUY|BUY_PRESSURE|MOMENTUM_BREAK|VOLUME_SPIKE)/);
+    if (tm) ctx.triggerType = tm[1];
+  }
+
+  // Regime — prefer decision.signalContext.marketRegime then the macroRegime singleton.
+  const sigRegime = (decision.signalContext?.marketRegime ?? '').toString().toUpperCase();
+  if (sigRegime === 'BULL' || sigRegime === 'RANGING' || sigRegime === 'BEAR') {
+    ctx.regimeAtEntry = sigRegime;
+  } else if (sigRegime === 'TRENDING_UP') {
+    ctx.regimeAtEntry = 'BULL';
+  } else if (sigRegime === 'TRENDING_DOWN') {
+    ctx.regimeAtEntry = 'BEAR';
+  } else if (deps.macroRegime) {
+    ctx.regimeAtEntry = deps.macroRegime;
+  }
+
+  // Reasoning — first 200 chars per spec.
+  if (reasoning) {
+    ctx.reasoning = reasoning.length > 200 ? reasoning.slice(0, 200) : reasoning;
+  }
+
+  // --- Exit criterion derived from entry path ---
+  let exitCriterion: PositionExitCriterion | undefined;
+  switch (enteredBy) {
+    case 'alpha-hunter-wd':
+    case 'fast-strike-liberation':
+      exitCriterion = {
+        type: 'wd-tight-exit',
+        takeProfitPct: PHASE_2_WD_DEFAULTS.takeProfitPct,
+        trailingStopPct: PHASE_2_WD_DEFAULTS.trailingStopPct,
+        maxHoldHours: PHASE_2_WD_DEFAULTS.maxHoldHours,
+      };
+      break;
+    case 'core':
+      exitCriterion = { type: 'core-thesis-driven' };
+      break;
+    case 'alpha-rotation':
+      exitCriterion = { type: 'alpha-rotation' };
+      break;
+    case 'weth-rebalance':
+    case 'manual':
+      exitCriterion = { type: 'ad-hoc' };
+      break;
+    default:
+      exitCriterion = undefined;
+  }
+
+  return {
+    enteredAt: deps.enteredAt ?? new Date().toISOString(),
+    enteredBy,
+    entryContext: ctx,
+    exitCriterion,
+  };
+}
+
+/**
+ * Side-effecting writer. Mutates `target` (e.g. state.trading.positionEntries
+ * — caller is responsible for `?? {}` defensiveness BEFORE calling).
+ * Returns the row that was written, for logging.
+ */
+export function recordPositionEntry(
+  target: Record<string, PositionEntryRow>,
+  symbol: string,
+  row: PositionEntryRow,
+): PositionEntryRow {
+  target[symbol] = row;
+  return row;
+}
+
+/**
+ * Side-effecting deleter. Removes the entry for a symbol on successful SELL.
+ * Safe to call when the entry doesn't exist (no-op). Returns true if a row
+ * was removed.
+ */
+export function clearPositionEntry(
+  target: Record<string, PositionEntryRow> | undefined,
+  symbol: string,
+): boolean {
+  if (!target || !symbol) return false;
+  if (target[symbol] !== undefined) {
+    delete target[symbol];
+    return true;
+  }
+  const upper = symbol.toUpperCase();
+  if (target[upper] !== undefined) {
+    delete target[upper];
+    return true;
+  }
+  return false;
 }

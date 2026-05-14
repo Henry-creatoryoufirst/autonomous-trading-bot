@@ -6,6 +6,31 @@
 import type { StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, TradeRecord, TokenCostBasis, SectorAllocation } from './index.js';
 import type { ConfigDirective } from '../services/strategy-config.js';
 import type { SleeveOwnership, SleeveConfig } from '../sleeves/state-types.js';
+import type { PositionEnteredBy, PositionEntryContext, PositionExitCriterion } from './position-attribution.js';
+
+// ============================================================================
+// NVR-SPEC-032 Phase 2: per-position entry attribution row.
+//
+// Written by executeTrade() on every successful BUY (keyed by canonical
+// symbol), removed on every successful SELL. The position-attribution
+// synthesizer prefers this row over backfilled trade-history matching when
+// present, so future cycles never need to re-derive attribution from
+// reasoning strings — the truth is captured at the moment of entry.
+//
+// Optional on AgentState.trading for back-compat: existing serialized
+// states (pre-Phase-2) have `positionEntries === undefined`. All readers
+// MUST handle this defensively (`?? {}`).
+// ============================================================================
+export interface PositionEntryRow {
+  /** ISO timestamp of the BUY that opened this position. */
+  enteredAt: string;
+  /** Which decision path put this position on the books. */
+  enteredBy: PositionEnteredBy;
+  /** Full entry context (trigger, reviewer verdict, regime, reasoning). */
+  entryContext: PositionEntryContext;
+  /** Exit criterion currently in force (WD tight-exit, core-thesis, etc.). */
+  exitCriterion?: PositionExitCriterion;
+}
 
 // ============================================================================
 // AGENT STATE — The core global state persisted across cycles
@@ -46,6 +71,13 @@ export interface AgentState {
     allTimePeakNominal?: number;
     sectorAllocations: SectorAllocation[];
     marketRegime?: string;
+    /**
+     * NVR-SPEC-032 Phase 2: per-symbol attribution captured at BUY time.
+     * Optional for back-compat — pre-Phase-2 states have this undefined,
+     * and the position-attribution synthesizer falls back to trade-history
+     * backfill in that case. Keyed by canonical (state-balance) symbol.
+     */
+    positionEntries?: Record<string, PositionEntryRow>;
   };
   tradeHistory: TradeRecord[];
   costBasis: Record<string, TokenCostBasis>;

@@ -189,4 +189,18 @@ export interface TradeDecision {
     isExploration?: boolean;
     isForced?: boolean;
   };
+  /**
+   * NVR-SPEC-032 Phase 2: optional entry-context payload propagated by the
+   * decision producer (Watcher-Direct path, Alpha-rotation, manual override,
+   * etc.) so executeTrade can capture inherent attribution at the moment of
+   * the BUY without parsing the reasoning string. Absent for legacy paths;
+   * the executor falls back to reasoning markers when undefined.
+   */
+  metadata?: {
+    triggerId?: string;
+    triggerType?: string;
+    reviewerVerdict?: 'BUY' | 'WAIT' | 'PASS';
+    reviewerConfidence?: number;
+    [k: string]: unknown;
+  };
 }
