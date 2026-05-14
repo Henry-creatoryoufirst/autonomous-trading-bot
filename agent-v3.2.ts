@@ -138,6 +138,58 @@ let lastPositionAttributionAt = 0;
 // reasoner can run in pure-observer mode (v0.2) until we promote.
 let lastGoalReasoning: import('./src/goal-state/reasoner.js').ReasonerOutput | null = null;
 let lastGoalReasoningAt = 0;
+
+/**
+ * NVR-SPEC-030 Stage 3 v1 — build the string that gets recorded as the
+ * cycle's actual `lastNextStep` in the goal-state KV. Called after
+ * decisionStage so we describe what the bot ACTUALLY did, not a pre-
+ * decision placeholder. The next cycle's evaluator (Haiku, separate model)
+ * reads this string + the cycle's snapshot and decides moveCloser.
+ *
+ * Format: `<path>: <action-summary>` — short, structured, evaluator-
+ * friendly. Truncates long reasoning so the goal-state KV document stays
+ * compact and human-skimmable.
+ */
+function buildActualNextStep(
+  path: 'deterministic' | 'llm' | 'subscriber-mute',
+  decisions: ReadonlyArray<{ action: string; fromToken?: string; toToken?: string; amountUSD?: number; reasoning?: string }> | undefined | null,
+  firstReasoning: string,
+): string {
+  const arr = decisions ?? [];
+  const nonHoldActions = arr.filter((d) => d.action !== 'HOLD');
+
+  if (path === 'deterministic') {
+    // firstReasoning starts with "Deterministic HOLD: <details>" — take the
+    // tail after the colon and trim, so the prefix isn't duplicated.
+    const original = (arr[0]?.reasoning ?? '').trim();
+    const detail = original.replace(/^deterministic hold:\s*/i, '').slice(0, 180);
+    return `deterministic: HOLD — ${detail}`;
+  }
+
+  if (path === 'subscriber-mute') {
+    return `subscriber-mute: HOLD — NVR_SUBSCRIBER_ONLY mode, master canonical feed governs trades`;
+  }
+
+  // path === 'llm'
+  if (nonHoldActions.length === 0) {
+    // LLM cycle that decided to HOLD across the board. Capture Sonnet's
+    // reasoning for evaluator context, trimmed.
+    const r = (arr[0]?.reasoning ?? '').trim().slice(0, 200);
+    return `llm: HOLD — ${r || 'no action cleared this cycle'}`;
+  }
+
+  // LLM cycle that decided to execute trades. List each non-HOLD action.
+  const summary = nonHoldActions
+    .slice(0, 4)
+    .map((d) => `${d.action} $${d.amountUSD ?? 0} ${d.toToken ?? d.fromToken ?? 'NONE'}`)
+    .join(', ');
+  const more = nonHoldActions.length > 4 ? ` (+${nonHoldActions.length - 4} more)` : '';
+  // Include the first action's reasoning (truncated) to give the evaluator
+  // a why for the headline trade. Multi-trade reasons compress fast — one
+  // reason is enough signal for moveCloser judgment.
+  const firstWhy = (nonHoldActions[0].reasoning ?? '').trim().slice(0, 120);
+  return `llm: ${summary}${more}${firstWhy ? ` — ${firstWhy}` : ''}`;
+}
 // Per-token cooldown to prevent echo storms (e.g. publisher and subscriber bouncing same token)
 const nvrMirrorCooldown = new Map<string, number>();
 
@@ -1028,6 +1080,7 @@ import {
   clearPositionEntry,
 } from './src/core/services/position-attribution.js';
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
+import { updateGoalStateLastNextStep } from './src/goal-state/store.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
@@ -7760,7 +7813,12 @@ async function runTradingCycle() {
 
         const goalReasoning = await reasonAboutGoal({
           agentId: MASTER_AGENT_ID,
-          proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.2 write-only mode)`,
+          // v1 Stage 3: this is the PRE-decision placeholder. The reasoner
+          // runs before decisionStage so it can inject context into Sonnet's
+          // prompt. The ACTUAL outcome is recorded after decisionStage via
+          // updateGoalStateLastNextStep — the next cycle's evaluator judges
+          // moveCloser against what the bot really did, not this placeholder.
+          proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] in flight — actual decision recorded post-decisionStage`,
           snapshot: {
             portfolioValueUsd,
             usdcBalanceUsd,
@@ -8525,34 +8583,41 @@ async function runTradingCycle() {
     }
     let decisions = cycleCtx.decisions;
 
-    // NVR-SPEC-030 Stage 3 v1 — universal audit log. Fires on EVERY heavy
-    // cycle regardless of decision path (Sonnet, DETERMINISTIC_HOLD,
-    // NVR_SUBSCRIBER_ONLY mute, etc.). Pairs reasoner.nextStep + lastEval +
-    // active blockers with the bot's ACTUAL decisions for that cycle.
+    // NVR-SPEC-030 Stage 3 v1 — universal audit log + post-decision goal-
+    // state update. Fires on EVERY heavy cycle regardless of decision path
+    // (Sonnet, DETERMINISTIC_HOLD, NVR_SUBSCRIBER_ONLY mute, etc.).
     //
-    // This is the v2 design doc — written by the live system. After the soak
-    // window, classify each line into: aligned-and-profitable /
+    // The log line is the v2 design doc — written by the live system. After
+    // the soak window, classify each line into: aligned-and-profitable /
     // aligned-and-unprofitable / diverged-Sonnet-right / diverged-reasoner-
     // right / noise-HOLD. That distribution is what tells us whether to
     // promote to v2 (reasoner-as-source-of-truth) or iterate on the reasoner
     // first.
+    //
+    // Time-shift in the line: `lastDecided` = the PREVIOUS cycle's actual
+    // outcome (loaded fresh at cycle start), `lastEval` = the evaluator's
+    // verdict on it, `bot.actions` = THIS cycle's decisions. The reasoner
+    // saved a placeholder `nextStep` upstream; AFTER this log fires we
+    // overwrite it with the real outcome so the NEXT cycle's evaluator
+    // judges what the bot actually did, not the placeholder.
     //
     // Gated on GOAL_STATE_DRIVES_DECISIONS so the log volume only kicks in
     // when v1 is actively engaged. lastGoalReasoning is the module-level
     // cache populated at the reasoner call site upstream in this same cycle.
     if (process.env.GOAL_STATE_DRIVES_DECISIONS === 'true' && lastGoalReasoning) {
       const r = lastGoalReasoning;
-      const actions = (decisions ?? [])
-        .map((d) => `${d.action}:${d.toToken ?? d.fromToken ?? 'NONE'}@$${d.amountUSD ?? 0}`)
-        .join(',');
+      const actionsArr = (decisions ?? []).map(
+        (d) => `${d.action}:${d.toToken ?? d.fromToken ?? 'NONE'}@$${d.amountUSD ?? 0}`,
+      );
+      const actions = actionsArr.join(',');
       const evalVerdict = r.evaluation
         ? `${r.evaluation.moveCloser ? 'CLOSER' : 'noise'}`
         : 'none';
       const blockerCount = r.loadedState.blockers.length;
       const goal = r.loadedState.goal.replace(/\s+/g, ' ').slice(0, 80);
-      const reasonerNext = (r.savedState?.lastNextStep ?? r.loadedState.lastNextStep)
+      const lastDecided = r.loadedState.lastNextStep
         .replace(/\s+/g, ' ')
-        .slice(0, 120);
+        .slice(0, 140);
       // Path classification — readable at-a-glance when scanning logs.
       const firstReasoning = (decisions?.[0]?.reasoning ?? '').toLowerCase();
       const path = firstReasoning.startsWith('deterministic hold')
@@ -8561,8 +8626,29 @@ async function runTradingCycle() {
           ? 'subscriber-mute'
           : 'llm';
       console.log(
-        `[GoalState:audit] cycle=${state.totalCycles} path=${path} goal="${goal}" lastEval=${evalVerdict} blockers=${blockerCount} reasoner.nextStep="${reasonerNext}" bot.actions=[${actions}]`,
+        `[GoalState:audit] cycle=${state.totalCycles} path=${path} goal="${goal}" lastDecided="${lastDecided}" lastEval=${evalVerdict} blockers=${blockerCount} bot.actions=[${actions}]`,
       );
+
+      // Post-decision write — replace the pre-decision placeholder with the
+      // real outcome of THIS cycle. Next cycle's evaluator judges this.
+      //
+      // Format mirrors the audit log's bot.actions field, prefixed with the
+      // path so the evaluator (and humans skimming the goal-state KV) get
+      // structured context about HOW the cycle decided + WHAT it decided.
+      try {
+        const actualNextStep = buildActualNextStep(path, decisions, firstReasoning);
+        const writeResult = await updateGoalStateLastNextStep(
+          MASTER_AGENT_ID,
+          actualNextStep,
+        );
+        if (!writeResult) {
+          console.warn(
+            `[GoalState] post-decision update skipped (sha conflict or KV write fail) — next cycle's evaluator will see the placeholder; non-fatal`,
+          );
+        }
+      } catch (err: any) {
+        console.warn(`[GoalState] post-decision update error (non-fatal): ${err?.message ?? err}`);
+      }
     }
 
     // === NVR_SUBSCRIBER_ONLY mute mode ===

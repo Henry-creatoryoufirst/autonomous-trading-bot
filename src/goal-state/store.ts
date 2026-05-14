@@ -117,6 +117,39 @@ export async function saveGoalState(
   return trimmed;
 }
 
+/**
+ * NVR-SPEC-030 Stage 3 v1 — update only `lastNextStep` + `lastNextStepAt`
+ * on the current goal-state, leaving all other fields untouched.
+ *
+ * Used by the heavy-cycle entrypoint to overwrite the pre-decision
+ * placeholder with what the bot ACTUALLY decided this cycle (deterministic
+ * HOLD, Sonnet HOLD/BUY/SELL, subscriber-mute, etc.). The next cycle's
+ * evaluator then judges moveCloser against the real outcome instead of a
+ * pre-baked input string.
+ *
+ * Loads fresh, mutates the two fields, writes back with the live sha. On
+ * sha mismatch (another writer beat us), returns null — caller logs and
+ * moves on; the field is cosmetic-only for the evaluator's prompt, so a
+ * one-cycle stale value is acceptable.
+ */
+export async function updateGoalStateLastNextStep(
+  agentId: string,
+  nextStep: string,
+  now: Date = new Date(),
+): Promise<GoalState | null> {
+  const live = await loadGoalState(agentId);
+  if (!live) return null;
+  const updated: GoalState = {
+    ...live,
+    lastNextStep: nextStep,
+    lastNextStepAt: now.toISOString(),
+    lastNextStepOutcome: 'pending',
+    lastUpdatedAt: now.toISOString(),
+    contentSha256: live.contentSha256,
+  };
+  return saveGoalState(updated, live.contentSha256);
+}
+
 /** Read the last N history entries for audit / cockpit timeline. */
 export async function loadGoalHistory(
   agentId: string,
