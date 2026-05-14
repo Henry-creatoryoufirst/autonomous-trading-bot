@@ -21,7 +21,7 @@ export const SECTORS = {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA", "TIBBIR"],
+    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA", "TIBBIR", "CLAWNCH"],
   },
   MEME_COINS: {
     name: "Meme Coins",
@@ -462,6 +462,12 @@ export const TOKEN_REGISTRY: Record<string, {
     address: "0x5b2193fdc451c1f847be09ca9d13a4bf60f8c86b",
     symbol: "UP", name: "Superform", coingeckoId: "superform",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
+  },
+  // === AUTO-DISCOVERED (scout 2026-05-14) ===
+  CLAWNCH: {
+    address: "0xa1f72459dfa10bad200ac160ecd78c6b77a747be",
+    symbol: "CLAWNCH", name: "Clawnch", coingeckoId: "clawnch",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
   },
   // === AUTO-DISCOVERED (scout 2026-05-08) ===
   SYRUP: {
