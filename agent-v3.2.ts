@@ -4818,13 +4818,21 @@ function calculateSectorAllocations(
   balances: { symbol: string; balance: number; usdValue: number; sector?: string }[],
   totalValue: number
 ): SectorAllocation[] {
-  // v10.0: Dynamic sector targets based on altseason/BTC dominance signals
+  // v10.0: Dynamic sector targets based on altseason/BTC dominance signals.
+  // 2026-05-14: sector membership now derived from TOKEN_REGISTRY[symbol].sector
+  // (single source of truth) instead of the parallel SECTORS[*].tokens array.
+  // Auto-discovered tokens participate automatically; no more silent drift.
   const adjustedTargets = getAdjustedSectorTargets(currentAltseasonSignal);
   const allocations: SectorAllocation[] = [];
   for (const [sectorKey, sectorInfo] of Object.entries(SECTORS)) {
-    const sectorTokens = balances.filter(b =>
-      (sectorInfo.tokens as readonly string[]).includes(b.symbol) && b.usdValue > 0
-    );
+    const sectorTokens = balances.filter((b) => {
+      if (b.usdValue <= 0) return false;
+      // USDC is the cash leg — even though its registry entry tags it
+      // BLUE_CHIP for routing reasons, it should never count toward Blue Chip
+      // sector drift (it's the alpha-strike reserve, not an asset position).
+      if (b.symbol === 'USDC') return false;
+      return TOKEN_REGISTRY[b.symbol]?.sector === sectorKey;
+    });
     const sectorValue = sectorTokens.reduce((sum, t) => sum + t.usdValue, 0);
     const currentPercent = totalValue > 0 ? (sectorValue / totalValue) * 100 : 0;
     // v10.0: Use dynamically adjusted target if available, else static
@@ -4862,11 +4870,15 @@ function detectSectorRotation(
 ): SectorMomentum[] {
   const results: SectorMomentum[] = [];
 
-  for (const [, sectorInfo] of Object.entries(SECTORS)) {
-    const sectorSymbols = new Set<string>(sectorInfo.tokens as readonly string[]);
-
+  // 2026-05-14: sector membership derived from TOKEN_REGISTRY[symbol].sector
+  // (single source of truth). USDC is excluded — it's the cash leg, never
+  // a rotation signal even though its registry entry tags BLUE_CHIP for
+  // routing reasons.
+  for (const [sectorKey, sectorInfo] of Object.entries(SECTORS)) {
     // find tokens in this sector that have price data
-    const sectorTokens = marketTokens.filter(t => sectorSymbols.has(t.symbol));
+    const sectorTokens = marketTokens.filter(
+      (t) => t.symbol !== 'USDC' && TOKEN_REGISTRY[t.symbol]?.sector === sectorKey,
+    );
     if (sectorTokens.length === 0) continue;
 
     const rising = sectorTokens.filter(t => t.priceChange24h > 5);

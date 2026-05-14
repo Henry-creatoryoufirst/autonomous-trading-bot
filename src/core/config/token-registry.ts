@@ -10,36 +10,39 @@
 // SECTOR DEFINITIONS — Portfolio allocation targets
 // ============================================================================
 
+// Sector membership is derived from TOKEN_REGISTRY[symbol].sector — a single
+// source of truth. Auto-discovered tokens (added by the scout cron with a
+// `sector` field) participate automatically in drift + rotation calculations.
+// Prior to 2026-05-14 this object held a parallel `tokens: [...]` array per
+// sector, which drifted out of sync as the registry grew — silently breaking
+// overweight detection for ~30 tokens including the dominant WETH position.
+// That dual-source-of-truth is now eliminated; see calculateSectorAllocations
+// and detectSectorRotation in agent-v3.2.ts for the consumer pattern.
 export const SECTORS = {
   BLUE_CHIP: {
     name: "Blue Chip",
     targetAllocation: 0.45,
     description: "Safe, liquid assets - ETH, BTC",
-    tokens: ["ETH", "cbBTC", "cbETH", "wstETH", "LINK", "cbLTC", "cbXRP", "cbADA", "ZRO", "AXL"],
   },
   AI_TOKENS: {
     name: "AI & Agents",
     targetAllocation: 0.20,
     description: "AI and agent tokens - high growth potential",
-    tokens: ["VIRTUAL", "AIXBT", "HIGHER", "VVV", "CLANKER", "WIRE", "ZORA", "TIBBIR"],
   },
   MEME_COINS: {
     name: "Meme Coins",
     targetAllocation: 0.15,
     description: "High risk/reward meme tokens",
-    tokens: ["BRETT", "DEGEN", "TOSHI", "PEEZY", "DOGINME", "MIGGLES"],
   },
   DEFI: {
     name: "DeFi Protocols",
     targetAllocation: 0.15,
     description: "Base DeFi ecosystem tokens",
-    tokens: ["AERO", "MORPHO", "RSR", "AAVE", "CRV", "ENA", "ETHFI", "WELL", "AVNT", "HYDX"],
   },
   TOKENIZED_STOCKS: {
     name: "Tokenized RWAs",
     targetAllocation: 0.05,
     description: "Tokenized equities and RWAs — S&P 500, stocks via Centrifuge/Backed on Base",
-    tokens: ["bCOIN", "deSPXA"],
   },
 } as const;
 
