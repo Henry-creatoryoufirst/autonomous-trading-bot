@@ -469,6 +469,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "SYRUP", name: "Maple Finance", coingeckoId: "maple-finance",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-05-14) ===
+  MOLT: {
+    address: "0xb695559b26bb2c9703ef1935c37aeae9526bab07",
+    symbol: "MOLT", name: "Moltbook", coingeckoId: "moltbook",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
@@ -535,7 +541,7 @@ export const ARBITRUM_TOKEN_REGISTRY: Record<string, {
   USDC: { address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", symbol: "USDC", name: "USD Coin", coingeckoId: "usd-coin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 1, decimals: 6 },
   ETH: { address: "native", symbol: "ETH", name: "Ethereum", coingeckoId: "ethereum", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
   WETH: { address: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1", symbol: "WETH", name: "Wrapped Ether", coingeckoId: "ethereum", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
-  WBTC: { address: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f", symbol: "WBTC", name: "Wrapped BTC", coingeckoId: "bitcoin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 8 },
+  WBTC: { address: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f", symbol: "WBTC", name: "Wrapped BTC", coingeckoId: "bitcoin", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
   LINK: { address: "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4", symbol: "LINK", name: "Chainlink", coingeckoId: "chainlink", sector: "BLUE_CHIP", riskLevel: "LOW", minTradeUSD: 15, decimals: 18 },
   ARB: { address: "0x912CE59144191C1204E64559FE8253a0e49E6548", symbol: "ARB", name: "Arbitrum", coingeckoId: "arbitrum", sector: "BLUE_CHIP", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
   GMX: { address: "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a", symbol: "GMX", name: "GMX", coingeckoId: "gmx", sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 15, decimals: 18 },
