@@ -7280,7 +7280,14 @@ async function shouldRunHeavyCycle(currentPrices: Map<string, number>): Promise<
 
   // 1. Forced interval: heavy cycle every 60s — always thinking (v10.3)
   if (now - lastHeavyCycleAt > HEAVY_CYCLE_FORCED_INTERVAL_MS) {
-    return { isHeavy: true, reason: `Forced interval (${((now - lastHeavyCycleAt) / 1000).toFixed(0)}s since last heavy)` };
+    // 2026-05-14: lastHeavyCycleAt initializes to 0, so the FIRST cycle after
+    // restart was computing `now - 0` and reporting absurd elapsed times
+    // (~1.78 billion seconds = ~56 years). The first dream artifact caught
+    // this as "cycle counter state corruption." Surface the truth instead.
+    const reason = lastHeavyCycleAt === 0
+      ? `First cycle after restart`
+      : `Forced interval (${((now - lastHeavyCycleAt) / 1000).toFixed(0)}s since last heavy)`;
+    return { isHeavy: true, reason };
   }
 
   // 2. v6.1: Force heavy if pricing is broken (all tokens $0 = only USDC counted)
