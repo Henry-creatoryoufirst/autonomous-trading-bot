@@ -13,6 +13,9 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { GoalEvidence, GoalState } from './types.js';
+import type {
+  PositionAttributionSummary,
+} from '../core/types/position-attribution.js';
 
 const EVALUATOR_MODEL = process.env.GOAL_STATE_EVALUATOR_MODEL ?? 'claude-haiku-4-5-20251001';
 const EVALUATOR_MAX_TOKENS = 250;
@@ -39,6 +42,20 @@ export interface EvaluationSnapshot {
   heavyCycleReason: string;
   /** Cycle counter for orientation. */
   cycleNumber: number;
+  /**
+   * NVR-SPEC-032 Phase 3 — per-path position attribution snapshot.
+   *
+   * When present, the evaluator reasons over WHERE capital sits (Core vs
+   * Alpha-Hunter-WD vs legacy-unknown) instead of treating open positions
+   * as a single undifferentiated count. Alpha-Hunter-WD entries are the
+   * milestone-relevant Path-D positions — the reasoner should track them
+   * separately from Core balance-sheet drift.
+   *
+   * Optional for back-compat with reasoner callers that don't pass it
+   * (no Phase-1 wire-in yet, or cycleCtx.positionAttribution undefined on
+   * the first heavy cycle of a process).
+   */
+  positionAttribution?: PositionAttributionSummary;
 }
 
 export interface EvaluationContext {
@@ -134,6 +151,36 @@ function buildEvaluatorPrompt(state: GoalState, ctx: EvaluationContext): string 
         : `${s.hoursSinceLastLiveExecution.toFixed(1)}h`
     }`,
   );
+
+  if (s.positionAttribution) {
+    const pa = s.positionAttribution;
+    const fmtBucket = (label: string, b: { count: number; usdValue: number }) =>
+      `${label}=${b.count} ($${b.usdValue.toFixed(0)})`;
+    lines.push('');
+    lines.push(`### POSITION ATTRIBUTION (snapshot of how capital is allocated)`);
+    lines.push(`- Total non-USDC positions: ${pa.totalPositions}`);
+    lines.push(`- Total non-USDC value: $${pa.totalNonUsdcValueUsd.toFixed(2)}`);
+    lines.push(
+      `- By entry path: ${fmtBucket('core', pa.byEnteredBy.core)}, ` +
+      `${fmtBucket('alpha-hunter-wd', pa.byEnteredBy['alpha-hunter-wd'])}, ` +
+      `${fmtBucket('alpha-rotation', pa.byEnteredBy['alpha-rotation'])}, ` +
+      `${fmtBucket('fast-strike-liberation', pa.byEnteredBy['fast-strike-liberation'])}, ` +
+      `${fmtBucket('weth-rebalance', pa.byEnteredBy['weth-rebalance'])}, ` +
+      `${fmtBucket('manual', pa.byEnteredBy.manual)}, ` +
+      `${fmtBucket('legacy-unknown', pa.byEnteredBy['legacy-unknown'])}`,
+    );
+    lines.push(
+      `- By role: ${fmtBucket('core', pa.byRole.core)}, ` +
+      `${fmtBucket('alpha', pa.byRole.alpha)}, ` +
+      `${fmtBucket('dry-powder', pa.byRole['dry-powder'])}`,
+    );
+    lines.push(`- LEGACY_UNKNOWN_COUNT: ${pa.legacyUnknownCount}  // open-positions-unexplained blocker resolves at 0`);
+    lines.push(`- PHASE_2_ATTRIBUTED_COUNT: ${pa.phase2AttributedCount}  // positions captured at entry (not backfilled)`);
+    lines.push('');
+    lines.push(
+      `Reasoning guidance: alpha-hunter-wd entries ARE the milestone-relevant Path-D entries — track whether any closed profitably this cycle. Legacy-unknown > 0 means we still have uncategorized capital that the goal-state can't reason over. Core entries are balance-sheet drift, not Path-D progress.`,
+    );
+  }
 
   if (ctx.cycleObservation) {
     lines.push('');

@@ -7723,6 +7723,18 @@ async function runTradingCycle() {
           ? (Date.now() - lastSuccessfulTradeAt) / 3_600_000
           : null;
 
+        // NVR-SPEC-032 Phase 3: feed per-path attribution into the reasoner.
+        // cycleCtx.positionAttribution is populated later in this same heavy
+        // cycle (synthesizePositionAttributions runs after the reasoner call),
+        // so on the FIRST heavy cycle of a process this is undefined. Fall
+        // back to the module-level `lastPositionAttribution` cache so the
+        // reasoner gets the freshest available summary — on cycle N it sees
+        // cycle N-1's attribution, which is the right snapshot of "where
+        // capital sits as of this cycle's start."
+        const attributionForReasoner =
+          cycleCtx.positionAttribution?.summary ??
+          lastPositionAttribution?.summary;
+
         const goalReasoning = await reasonAboutGoal({
           agentId: MASTER_AGENT_ID,
           proposedNextStep: `Cycle #${state.totalCycles} [${heavyReason}] — existing decision path drives this cycle (reasoner in v0.2 write-only mode)`,
@@ -7734,6 +7746,7 @@ async function runTradingCycle() {
             hoursSinceLastLiveExecution,
             heavyCycleReason: heavyReason,
             cycleNumber: state.totalCycles,
+            positionAttribution: attributionForReasoner,
           },
         });
         if (goalReasoning) {

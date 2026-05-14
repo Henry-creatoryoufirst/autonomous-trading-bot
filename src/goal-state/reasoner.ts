@@ -109,9 +109,29 @@ export async function reasonAboutGoal(
   // 2. REPLAY — build the system-prompt block from the loaded state.
   const systemPromptBlock = renderReplayBlock(state);
 
-  // 3. PRUNE — stubbed. Resolution-criterion DSL is a v0.3 task; today the
-  //    criteria are human-prose. Reasoner reads them through; manual prune.
-  const survivingBlockers = state.blockers;
+  // 3. PRUNE — first real implementation (NVR-SPEC-032 Phase 3). The general
+  //    resolution-criterion DSL is still a future spec, but the specific
+  //    `open-positions-unexplained` blocker has a machine-checkable trigger:
+  //    when Phase 1's PositionAttributionSummary reports legacyUnknownCount===0,
+  //    every open position has been attributed to a decision path, which is
+  //    exactly what the blocker's resolutionCriterion describes. Auto-drop it.
+  //
+  //    Other blockers still pass through untouched — DSL work is a separate
+  //    spec.
+  let survivingBlockers = state.blockers;
+  const attrSummary = input.snapshot?.positionAttribution;
+  if (
+    attrSummary &&
+    attrSummary.legacyUnknownCount === 0 &&
+    survivingBlockers.some((b) => b.id === 'open-positions-unexplained')
+  ) {
+    survivingBlockers = survivingBlockers.filter(
+      (b) => b.id !== 'open-positions-unexplained',
+    );
+    console.log(
+      `[GoalState] auto-pruned blocker: open-positions-unexplained (legacyUnknownCount=0)`,
+    );
+  }
 
   // 4. EVALUATE — v0.2.1: separate Haiku evaluator running over a STRUCTURED
   //    snapshot (named fields, not prose). Only fires when caller provides
