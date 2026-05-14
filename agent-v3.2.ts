@@ -1006,6 +1006,7 @@ import type { GemmaMode } from './src/core/services/model-client.js';
 import { loadPolicy, renderPolicyPromptBlock } from './src/core/services/policy.js';
 import { loadCriticMemory } from './src/core/services/critic-memory.js';
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
+import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -3188,7 +3189,13 @@ function buildIntelligenceDeps(): IntelligenceDeps {
       setLastFearGreedValue:    (v) => { lastFearGreedValue = v; },
       getConsecutiveBearChecks: () => consecutiveBearChecks,
       setConsecutiveBearChecks: (v) => { consecutiveBearChecks = v; },
-      setCurrentMacroRegime:    (v) => { currentMacroRegime = v; },
+      setCurrentMacroRegime:    (v) => {
+        currentMacroRegime = v;
+        // 2026-05-14: propagate regime to the Reviewer so its confluence
+        // bar scales with macro state. Without this, the Reviewer rejects
+        // valid micro signals during macro downtrends without context.
+        try { alphaReviewer.setRegime(v.regime, v.score); } catch { /* non-fatal */ }
+      },
       getBtcDominanceBuffer:    () => btcDominanceBuffer,
       pushBtcDominance:         (v) => {
         btcDominanceBuffer.push(v);

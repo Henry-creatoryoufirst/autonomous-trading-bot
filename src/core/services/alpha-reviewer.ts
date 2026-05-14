@@ -69,6 +69,8 @@ export interface TriggerReview {
 // REVIEWER CLASS
 // ============================================================================
 
+export type MacroRegime = 'BULL' | 'RANGING' | 'BEAR';
+
 export class AlphaReviewer {
   private client: Anthropic | null = null;
   private model: string = AI_MODEL_ROUTINE;
@@ -77,6 +79,21 @@ export class AlphaReviewer {
   private callErrors = 0;
   private cumulativeInputTokens = 0;
   private cumulativeOutputTokens = 0;
+  /**
+   * 2026-05-14 (max-out-current-system): macro regime context for the
+   * Reviewer prompt. signal-service computes this every 5min; agent-v3.2.ts
+   * pushes it via setRegime() whenever currentMacroRegime updates.
+   *
+   * Why this matters: the Reviewer was rejecting valid micro signals
+   * (BNKR/BUY_PRESSURE conf 0.62, AIXBT/VOLUME_SPIKE conf 0.62) because
+   * the 1h price action was DOWN on those tokens. Without macro context,
+   * the Reviewer can't distinguish "buy-the-dip in a bull market"
+   * (actionable) from "catching a falling knife in a bear" (correctly WAIT).
+   * Feeding regime in lets the Reviewer calibrate its confluence bar.
+   */
+  private currentRegime: MacroRegime = 'RANGING';
+  private regimeScore: number = 0;
+  private regimeUpdatedAt: string = new Date().toISOString();
 
   /**
    * Initialize with the bot's Anthropic client. Called at startup from
@@ -92,6 +109,17 @@ export class AlphaReviewer {
     return this.enabled && this.client !== null;
   }
 
+  /**
+   * Push the latest macro regime into the Reviewer's context. Called from
+   * agent-v3.2.ts whenever signal-service refreshes intel (every ~5min).
+   * Cheap (just sets fields); call as often as needed.
+   */
+  setRegime(regime: MacroRegime, score: number = 0): void {
+    this.currentRegime = regime;
+    this.regimeScore = score;
+    this.regimeUpdatedAt = new Date().toISOString();
+  }
+
   getStats() {
     return {
       enabled: this.enabled,
@@ -100,6 +128,9 @@ export class AlphaReviewer {
       callErrors: this.callErrors,
       cumulativeInputTokens: this.cumulativeInputTokens,
       cumulativeOutputTokens: this.cumulativeOutputTokens,
+      currentRegime: this.currentRegime,
+      regimeScore: this.regimeScore,
+      regimeUpdatedAt: this.regimeUpdatedAt,
     };
   }
 
@@ -145,11 +176,19 @@ export class AlphaReviewer {
       : t.type === 'LIQUIDITY_VACUUM' ? 'POSSIBLY-EXIT signal'
       : 'LONG-side signal';
 
+    // 2026-05-14: regime-aware calibration. The Reviewer was rejecting
+    // every micro signal because the 1h price action contradicted (proper
+    // behavior in BEAR, over-conservative in BULL). Inject macro regime so
+    // the model can scale its confluence bar to what the market is doing.
+    const regimeBlock = this.buildRegimeBlock();
+
     return `You are reviewing a real-time trading signal on Base (Coinbase L2). Decide whether to BUY, WAIT, or PASS.
 
 CONTEXT:
 The bot's Alpha Watcher fired a ${t.type} trigger on ${t.symbol} (${direction}).
 We are looking for setups likely to reach +5% within 30 minutes; stop is -3%.
+
+${regimeBlock}
 
 TRIGGER:
 - Type: ${t.type}
@@ -169,12 +208,30 @@ MICROSTRUCTURE (current state):
 - Pool TVL: $${s.liquidityUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })}
 
 CRITERIA:
-- BUY: Strong directional setup. Multiple signals align. Microstructure is flowing in the trigger's direction. Likely to reach +5% within 30 min.
+- BUY: Strong directional setup. Multiple signals align. Microstructure is flowing in the trigger's direction. Likely to reach +5% within 30 min. CALIBRATE THE BAR TO REGIME: in BULL, 2 of 3 confluence factors aligning is enough; in RANGING, 3 of 3; in BEAR, only call BUY when ALL signals scream and the 1h is also rising.
 - WAIT: Setup is real but unclear. Counter-indicators present (e.g., 5-min momentum already extended, or volume spiking but buy ratio mixed). Check again next cycle.
 - PASS: Trigger fired but the broader microstructure contradicts (e.g., VOLUME_SPIKE on a token with 30% buy ratio = sellers exiting). Or single-signal trigger with no confluence (VOLUME_SPIKE alone has historically zero precision — needs another signal to be actionable).
 
 Respond with JSON only, no other text:
 {"verdict": "BUY" | "WAIT" | "PASS", "confidence": 0.0-1.0, "reasoning": "<one short sentence, max 20 words>"}`;
+  }
+
+  /**
+   * The MACRO REGIME block injected into the Reviewer prompt. Specific
+   * guidance per regime so the model knows when to be aggressive vs
+   * defensive. Without this, Reviewer treats every signal identically
+   * regardless of whether the broader market is rallying or falling.
+   */
+  private buildRegimeBlock(): string {
+    const guidance =
+      this.currentRegime === 'BULL'
+        ? 'BULL — broader market is risk-on. A LONG-side trigger that has 2 of 3 confluence factors aligning is actionable. Buy-the-dip is in play; a -1% 1h on a token can be a buying opportunity if microstructure confirms (rising buy ratio + volume spike).'
+        : this.currentRegime === 'BEAR'
+          ? "BEAR — broader market is risk-off. Be DEFENSIVE. Only call BUY when every confluence factor screams AND 1h is positive AND volume is multi-x baseline. Buy-the-dip rallies in bear markets are typically traps. When in doubt, WAIT or PASS."
+          : 'RANGING — no clear macro direction. Stay near baseline — require 3 of 3 confluence factors. Slight 1h pullbacks are OK if 5-min momentum is clearly turning back up. Do not chase parabolic moves in either direction.';
+    return `MACRO REGIME (from signal-service, refreshed every ~5min):
+- Regime: ${this.currentRegime} (score ${this.regimeScore.toFixed(0)})
+- ${guidance}`;
   }
 
   // --------------------------------------------------------------------------
