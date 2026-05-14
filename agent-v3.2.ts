@@ -1014,7 +1014,12 @@ import { callModelWithShadow, logModelTelemetry } from './src/core/services/mode
 import type { GemmaMode } from './src/core/services/model-client.js';
 import { loadPolicy, renderPolicyPromptBlock } from './src/core/services/policy.js';
 import { loadCriticMemory } from './src/core/services/critic-memory.js';
-import { synthesizePositionAttributions } from './src/core/services/position-attribution.js';
+import {
+  synthesizePositionAttributions,
+  buildEntryRowFromDecision,
+  recordPositionEntry,
+  clearPositionEntry,
+} from './src/core/services/position-attribution.js';
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
@@ -5849,6 +5854,8 @@ async function executeTrade(
       if (twapResult.success) {
         state.tradeDedupLog![dedupKey] = new Date().toISOString();
       }
+      // NVR-SPEC-032 Phase 2: capture / clear position attribution for TWAP path.
+      capturePositionAttribution(decision, twapResult.success);
       return {
         success: twapResult.success,
         txHash: twapResult.txHash,
@@ -5862,9 +5869,56 @@ async function executeTrade(
     if (swapResult.success) {
       state.tradeDedupLog![dedupKey] = new Date().toISOString();
     }
+    // NVR-SPEC-032 Phase 2: capture / clear position attribution.
+    capturePositionAttribution(decision, swapResult.success);
     return swapResult;
   } finally {
     tradeInFlight.delete(dedupKey);
+  }
+}
+
+/**
+ * NVR-SPEC-032 Phase 2 — entry-capture wrapper called from executeTrade.
+ *
+ * On successful BUY: synthesizes a PositionEntryRow from the decision and
+ * writes it to state.trading.positionEntries[symbol] so the next
+ * synthesizePositionAttributions() call prefers it over backfill.
+ *
+ * On successful SELL: removes the row for the sold symbol — that position
+ * is no longer on the books, so the attribution row goes with it.
+ *
+ * Side-effect-only. Wrapped in try/catch so a malformed decision never
+ * blocks trade bookkeeping. Real-money behavior is unchanged.
+ */
+function capturePositionAttribution(decision: TradeDecision, success: boolean): void {
+  if (!success || !decision) return;
+  try {
+    if (!state.trading) return;
+    // Lazy-init for back-compat with pre-Phase-2 serialized state.
+    if (!state.trading.positionEntries) state.trading.positionEntries = {};
+
+    if (decision.action === 'BUY' && decision.toToken && decision.toToken !== 'USDC') {
+      const row = buildEntryRowFromDecision({
+        decision,
+        macroRegime: currentMacroRegime?.regime,
+      });
+      if (row) {
+        recordPositionEntry(state.trading.positionEntries, decision.toToken, row);
+        markStateDirty();
+        console.log(
+          `  📍 POS-ATTR: captured ${decision.toToken} entry via ${row.enteredBy}` +
+          (row.entryContext?.regimeAtEntry ? ` (regime ${row.entryContext.regimeAtEntry})` : ''),
+        );
+      }
+    } else if (decision.action === 'SELL' && decision.fromToken && decision.fromToken !== 'USDC') {
+      const removed = clearPositionEntry(state.trading.positionEntries, decision.fromToken);
+      if (removed) {
+        markStateDirty();
+        console.log(`  📍 POS-ATTR: cleared ${decision.fromToken} entry on SELL`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`  ⚠️ POS-ATTR capture failed (non-fatal): ${err?.message ?? err}`);
   }
 }
 
@@ -7787,6 +7841,9 @@ async function runTradingCycle() {
         tradeHistory: state.tradeHistory ?? [],
         sleeveOwnership: state.sleeveOwnership,
         tokenRegistry: TOKEN_REGISTRY,
+        // NVR-SPEC-032 Phase 2: pass per-symbol entry rows so the synthesizer
+        // prefers live attribution (backfilled: false) over trade-history.
+        positionEntries: state.trading.positionEntries ?? {},
       });
       lastPositionAttribution = attribution;
       lastPositionAttributionAt = Date.now();
