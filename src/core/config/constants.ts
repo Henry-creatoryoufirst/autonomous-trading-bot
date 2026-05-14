@@ -998,7 +998,7 @@ export const POSITION_CONCENTRATED_STOP_PCT = -7;
 export const DECEL_HISTORY_LENGTH = 5;
 
 /** Min drop from peak buy ratio before trim activates (percentage points) */
-export const DECEL_MIN_DROP_FROM_PEAK = 6; // Bear-adjusted May-2026: 8→6 — 55-day bear; buy ratio peaks are lower, smaller drops signal distribution earlier; activates Smart Trim faster to protect profitable positions before they fade
+export const DECEL_MIN_DROP_FROM_PEAK = 7; // Recovery-signal May-2026: 6→7 — AERO +11%/+98%vol + $865M Base daily DEX vol confirms ecosystem recovery; 6pp threshold fires on noise during buy-ratio oscillations common in early recovery; 7pp (vs original 8pp) reduces premature smart-trim exits on genuine winners without fully reverting bear caution
 
 /** Consecutive deceleration cycles before first trim */
 export const DECEL_MIN_CYCLES = 2;
