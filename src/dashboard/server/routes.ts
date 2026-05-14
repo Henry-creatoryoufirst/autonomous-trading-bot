@@ -22,6 +22,7 @@ import { alphaReflex } from '../../core/services/alpha-reflex.js';
 import { alphaLearning } from '../../core/services/alpha-learning.js';
 import { alphaPromoter } from '../../core/services/alpha-promoter.js';
 import { outcomeTracker } from '../../core/services/outcome-tracker.js';
+import { synthesizePositionAttributions } from '../../core/services/position-attribution.js';
 
 // ============================================================================
 // Signal-service specialist bridge — outcomeTracker is a module singleton with
@@ -1545,6 +1546,47 @@ export function handleAlphaCohortPublic(
       generatedAt: new Date().toISOString(),
     });
   })();
+}
+
+// ============================================================================
+// Route handler: /api/positions/attribution  (PUBLIC — no auth)
+//   NVR-SPEC-032 Phase 1: per-position attribution + summary synthesized from
+//   the bot's existing state (balances, costBasis, sleeveOwnership,
+//   tradeHistory). The 4-phase ship lives off this endpoint:
+//     - Phase 3 goal-state reasoner consumes summary.byEnteredBy
+//     - Phase 4 stc-website cockpit renders per-position role pills + exits
+//   Match the public/no-auth pattern of /api/alpha-cohort — non-sensitive,
+//   read-only, derived from already-public balance/trade data.
+// ============================================================================
+
+export function handlePositionAttribution(
+  res: http.ServerResponse,
+  ctx: ServerContext,
+): void {
+  try {
+    // Prefer the live-enriched balances surface (apiBalances) so usdValue is
+    // populated from the current price snapshot. Falls back to the raw state
+    // array if the API helper isn't available.
+    const balancesPayload = (() => {
+      try { return ctx.apiBalances(); } catch { return null; }
+    })();
+    const enrichedBalances = Array.isArray(balancesPayload?.balances)
+      ? balancesPayload.balances
+      : (ctx.state?.trading?.balances ?? []);
+
+    const response = synthesizePositionAttributions({
+      balances: enrichedBalances,
+      costBasis: ctx.state?.costBasis ?? {},
+      tradeHistory: ctx.state?.tradeHistory ?? [],
+      sleeveOwnership: ctx.state?.sleeveOwnership,
+      tokenRegistry: ctx.TOKEN_REGISTRY,
+    });
+    ctx.sendJSON(res, 200, response);
+  } catch (err: any) {
+    ctx.sendJSON(res, 500, {
+      error: `Position attribution synthesis failed: ${err?.message ?? 'unknown'}`,
+    });
+  }
 }
 
 // ============================================================================

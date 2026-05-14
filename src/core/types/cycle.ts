@@ -161,6 +161,13 @@ export interface CycleContext {
   balances: AgentState['trading']['balances'];
   currentPrices: Record<string, number>;
 
+  // ---- NVR-SPEC-032 Phase 1: position attribution snapshot ----
+  // Synthesized post-balance-enrichment in heavy cycle. Optional — light
+  // cycles and stages that run before synthesis will see undefined. Phase 3
+  // goal-state reasoner reads `summary.byEnteredBy` here so it doesn't need
+  // its own per-cycle traversal of trade history.
+  positionAttribution?: import('./position-attribution.js').PositionAttributionResponse;
+
   // ---- DEPLOYMENT_CTX stage outputs (consumed by AI_DECISION) ----
   /** Computed by DEPLOYMENT_CTX stage; optional until that stage runs. */
   sectorAllocations?: SectorAllocation[];

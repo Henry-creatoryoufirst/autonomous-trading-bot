@@ -52,6 +52,9 @@ export {
   handleAlphaWatcher,
   handleAlphaCohortPublic,
 
+  // NVR-SPEC-032 Phase 1: position attribution synthesis
+  handlePositionAttribution,
+
   // Chat + Directives
   handleChat,
   handleDirectives,

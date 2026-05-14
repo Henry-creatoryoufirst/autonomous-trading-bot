@@ -123,6 +123,14 @@ const NVR_HEARTBEAT_EVERY_N_POLLS = 30; // ≈ once every 30 min at 60s poll cad
 // Cache of latest computed marketData — set by runTradingCycle, used by NVR subscriber for execution
 let lastMarketData: any = null;
 let lastMarketDataAt = 0;
+// NVR-SPEC-032 Phase 1: latest synthesized position attribution snapshot.
+// Refreshed each heavy cycle (cheap, no I/O), surfaced via cycleCtx so
+// downstream stages + the goal-state reasoner can read a fresh per-cycle view
+// without re-walking trade history. The /api/positions/attribution endpoint
+// re-synthesizes on demand from live state (state may have changed since the
+// last cycle), so this cache is a fast-path hint, not authoritative.
+let lastPositionAttribution: import('./src/core/types/position-attribution.js').PositionAttributionResponse | null = null;
+let lastPositionAttributionAt = 0;
 // Per-token cooldown to prevent echo storms (e.g. publisher and subscriber bouncing same token)
 const nvrMirrorCooldown = new Map<string, number>();
 
@@ -616,6 +624,7 @@ import {
   handleYield, handleYieldRates, handleDexIntelligence,
   handleFamily, handleFamilyMembers, handleFamilyProfiles, handleFamilyWallets,
   handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis, handleAlphaWatcher, handleAlphaCohortPublic,
+  handlePositionAttribution,
   handleChat, handleDirectives, handleDeleteDirective,
   handleSimulate, handleStrategyVersions, handlePaperPortfolios, handlePaperPortfolioById,
   handleExportResults, handleVersionBacktest,
@@ -1005,6 +1014,7 @@ import { callModelWithShadow, logModelTelemetry } from './src/core/services/mode
 import type { GemmaMode } from './src/core/services/model-client.js';
 import { loadPolicy, renderPolicyPromptBlock } from './src/core/services/policy.js';
 import { loadCriticMemory } from './src/core/services/critic-memory.js';
+import { synthesizePositionAttributions } from './src/core/services/position-attribution.js';
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
@@ -7764,6 +7774,34 @@ async function runTradingCycle() {
       console.warn(`  ⚠️ UNPRICED TOKENS (excluded from portfolio total): ${unpricedTokens.map(b => b.symbol).join(', ')}`);
     }
     state.trading.balances = balances;
+
+    // === NVR-SPEC-032 Phase 1: synthesize position attribution snapshot ===
+    // Cheap (no I/O, no LLM), runs every heavy cycle so cycleCtx + the cached
+    // module-level snapshot stay fresh for downstream readers (goal-state
+    // reasoner / cockpit). Does not gate cycle progress — wrapped in try/catch
+    // because synthesis is non-essential to trading.
+    try {
+      const attribution = synthesizePositionAttributions({
+        balances,
+        costBasis: state.costBasis ?? {},
+        tradeHistory: state.tradeHistory ?? [],
+        sleeveOwnership: state.sleeveOwnership,
+        tokenRegistry: TOKEN_REGISTRY,
+      });
+      lastPositionAttribution = attribution;
+      lastPositionAttributionAt = Date.now();
+      cycleCtx.positionAttribution = attribution;
+      const s = attribution.summary;
+      console.log(
+        `[POS-ATTR] ${s.totalPositions} positions ` +
+        `(core=${s.byEnteredBy.core.count}, alpha-wd=${s.byEnteredBy['alpha-hunter-wd'].count}, ` +
+        `alpha-rot=${s.byEnteredBy['alpha-rotation'].count}, legacy=${s.legacyUnknownCount}) · ` +
+        `roles core/alpha/dry=${s.byRole.core.count}/${s.byRole.alpha.count}/${s.byRole['dry-powder'].count}`,
+      );
+    } catch (err: any) {
+      console.warn(`[POS-ATTR] synthesis failed (non-fatal): ${err?.message ?? err}`);
+    }
+
     const newPortfolioValue = balances
       .filter(b => b.symbol === 'USDC' || b.price || b.usdValue > 0)
       .reduce((sum, b) => sum + b.usdValue, 0);
@@ -11266,6 +11304,13 @@ const healthServer = http.createServer(async (req, res) => {
         // 24h trigger stats. Consumed by website's snapshot fan-out so the
         // master agent fleet can reason about cohort state without admin auth.
         handleAlphaCohortPublic(res, serverCtx);
+        break;
+      case '/api/positions/attribution':
+        // NVR-SPEC-032 Phase 1: per-position attribution synthesis (PUBLIC,
+        // read-only). Consumed by the goal-state reasoner (Phase 3) and the
+        // stc-website cockpit (Phase 4). Backfilled from existing state —
+        // entryContext populates going forward as Phase 2 lands.
+        handlePositionAttribution(res, serverCtx);
         break;
       case '/api/chat':
         if (handleChat(req, res, serverCtx)) return;
