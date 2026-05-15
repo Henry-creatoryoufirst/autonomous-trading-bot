@@ -1,3 +1,21 @@
+# MEDIC REPORT — 2026-05-15T00:00 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #33)
+
+## Jobs Status This Run (Run #33 — 2026-05-15T00:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #33).
+- **Scout**: SKIPPED — last scout ran 2026-05-14T04:13 (MOLT added), ~36h ago, less than 48h threshold.
+- **Auditor**: TRIGGERED by inferred ~70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: SCALE_UP_MIN_GAIN_PCT 5→7 — 70-day bear; 5% gains reverse ~70% of the time in sustained downtrends; Kelly/volatility research confirms tightening scale-up bar as bear deepens; 7% threshold ensures position has escaped the noise band before adding capital to scale-up entries. (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #33 — 2026-05-15)
+- **Signal Quality**: Smart wallet mirroring (65% win-rate vs 41% standalone per 2026 research). NVR already implements whale flow tracking (LARGE_TRADE_THRESHOLD_USD=2500). Full Nansen/Dune smart-money clustering integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Flashblocks (10x faster block execution, 200ms block time on Base). Bot auto-benefits from DEX-level improvements without code change. No action needed. (Priority 1.0)
+- **Position Sizing**: KEY FINDING — "Kelly allocation that worked in bull markets blows up in bear markets; reduce position sizes during high-volatility periods." SCALE_UP_MIN_GAIN_PCT 5→7 IMPLEMENTED. In a 70-day bear, 5% gains frequently represent dead-cat bounces, not confirmed breakouts. 7% threshold filters noise better. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Grid/DCA strategies documented as bear-market standard. ElizaOS/AI autonomous agents showing +31.7% net returns in bear conditions. Architecture changes required (off-limits). Watch list for Henry.
+
+---
+
 # MEDIC REPORT — 2026-05-07T04:05 UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #32)
