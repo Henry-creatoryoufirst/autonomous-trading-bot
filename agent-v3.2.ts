@@ -11583,8 +11583,16 @@ const healthServer = http.createServer(async (req, res) => {
         sendJSON(res, 200, apiSectors());
         break;
       case '/api/trades':
+        // 2026-05-15: limit default raised 50 → 2500 to match state retention
+        // cap (saveTradeHistory keeps the last 2500 trades). The dashboard's
+        // equity curve component supports 1W/1M/3M/ALL time-range toggles
+        // but was effectively pinned to ~1 week because 50 trades ≈ 1 week of
+        // bot activity. Now the chart receives the full retained history and
+        // the time-range toggles work correctly. Callers that want a smaller
+        // window can still pass ?limit=N. Payload size: 2500 trades ≈ 1-2 MB
+        // gzipped, acceptable for an admin dashboard polling on a 30s cadence.
         sendJSON(res, 200, apiTrades(
-          parseInt(url.searchParams.get('limit') || '50'),
+          parseInt(url.searchParams.get('limit') || '2500'),
           url.searchParams.get('include_failures') === 'true'
         ));
         break;
