@@ -113,25 +113,23 @@ interface UniverseToken {
   address: string;
 }
 
+// === 2026-05-15 STRATEGIC PIVOT (Option B) ===
+// Swapped from the 15-token speculative meme/AI cohort to a 7-token quality
+// cohort. The previous cohort generated -65% to -98% unrealized losses on
+// every Alpha-WD entry. New thesis: tactical timing in QUALITY crypto.
+// Must stay in sync with stc-website/src/lib/specialist-cohort.ts
+// COHORT_TOKENS (single-source-of-truth pattern is a future spec; for
+// now, hand-synced with that file).
 const SMART_WALLET_UNIVERSE: UniverseToken[] = [
-  // AI-agent narrative (7) — Henry's alpha thesis bucket
-  { symbol: 'VVV',     address: '0xacfE6019Ed1A7Dc6f7B508C02d1b04ec88cC21bf' },
-  { symbol: 'BNKR',    address: '0x22aF33FE49fD1Fa80c7149773dDe5890D3c76F3B' },
-  { symbol: 'AIXBT',   address: '0x4F9Fd6Be4a90f2620860d680c0d4d5Fb53d1A825' },
-  { symbol: 'CLANKER', address: '0x1bc0c42215582d5A085795f4baDbaC3ff36d1Bcb' },
-  { symbol: 'FAI',     address: '0xb33Ff54b9F7242EF1593d2C9Bcd8f9df46c77935' },
-  { symbol: 'GAME',    address: '0x1C4CcA7C5DB003824208ADDA61Bd749e55F463a3' },
-  { symbol: 'COOKIE',  address: '0xC0041EF357B183448B235a8Ea73Ce4E4eC8c265F' },
-  // Memes with real Base-native volume (4)
-  { symbol: 'SPX',     address: '0x50dA645f148798F68EF2d7dB7C1CB22A6819bb2C' },
-  { symbol: 'DEGEN',   address: '0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed' },
-  { symbol: 'doginme', address: '0x6921B130D297cc43754AfbA22e5EAc0FBf8Db75b' },
-  { symbol: 'MIGGLES', address: '0xB1a03EdA10342529bBF8EB700a06C60441fEf25d' },
-  // DeFi / infra / attention (4)
-  { symbol: 'MORPHO',  address: '0xBAa5CC21fd487B8Fcc2F632f3F4E8D37262a0842' },
-  { symbol: 'KAITO',   address: '0x98d0baa52b2D063E780DE12F615f963Fe8537553' },
-  { symbol: 'ZORA',    address: '0x1111111111166b7FE7bd91427724B487980aFc69' },
-  { symbol: 'TOSHI',   address: '0xAC1Bd2486aAf3B5C0fc3Fd868558b082a531B2B4' },
+  // Tier 1 — always-on, dominant weight
+  { symbol: 'cbBTC',  address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf' },
+  { symbol: 'WETH',   address: '0x4200000000000000000000000000000000000006' },
+  // Tier 2 — rotational quality
+  { symbol: 'cbXRP',  address: '0xcb585250f852C6c6bf90434AB21A00f02833a4af' },
+  { symbol: 'cbLTC',  address: '0xcb17C9Db87B595717C857a08468793f5bAb6445F' },
+  { symbol: 'LINK',   address: '0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196' },
+  { symbol: 'cbADA',  address: '0xcbada732173e39521cdbe8bf59a6dc85a9fc7b8c' },
+  { symbol: 'cbSOL',  address: '0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c' },
 ];
 
 /** Cadence for the universe scan. Outcome tracker dedupes by 1h, so 15min
