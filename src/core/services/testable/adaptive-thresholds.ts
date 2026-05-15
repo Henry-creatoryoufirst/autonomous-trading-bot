@@ -16,7 +16,9 @@ export const THRESHOLD_BOUNDS: Record<string, ThresholdBound> = {
   confluenceSell:        { min: -30, max: -5, maxStep: 2 },
   confluenceStrongBuy:   { min: 25, max: 38, maxStep: 3 },
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
+  // 2026-05-15 NVR-SPEC-033: min 10→5 — mirrors constants.ts to keep the
+  // restore-time clamp boundaries aligned with the live engine.
+  profitTakeTarget:      { min: 5, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
   stopLossPercent:       { min: -25, max: -12, maxStep: 2 },
   trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },
@@ -47,8 +49,9 @@ export const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   confluenceSell: -8,
   confluenceStrongBuy: 30,
   confluenceStrongSell: -30,
-  profitTakeTarget: 15,  // v21.6: Lowered from 30%
-  profitTakeSellPercent: 30,
+  // 2026-05-15 NVR-SPEC-033: 15→6, 30→25 — mirrors engine.ts.
+  profitTakeTarget: 6,
+  profitTakeSellPercent: 25,
   stopLossPercent: -15,
   trailingStopPercent: -12,
   atrStopMultiplier: 2.5,

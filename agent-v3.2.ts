@@ -1005,18 +1005,19 @@ const CONFIG = {
     // V5.1.1: Tiered Profit Harvesting — scale out in tranches, bank small wins consistently
     profitTaking: {
       enabled: true,
-      targetPercent: 30,        // Let winners run to 30% before harvesting
-      sellPercent: 30,          // Legacy: original sell amount
+      targetPercent: 12,        // Mid-tier reference (legacy field, surfaced in some logs)
+      sellPercent: 25,          // Legacy: original sell amount — aligned with EARLY tier
       minHoldingUSD: 5,         // Don't trigger if holding < $5
       cooldownHours: 8,         // v11.4.13: 24h → 8h — need harvests to happen for payouts. 24h was too restrictive
-      // Tiered harvesting: sell progressively more as gains increase
-      // v11.4.13: Lowered first tier from 25% → 12% to harvest sooner and feed the payout system.
-      // With zero payouts in 3 days, the harvest thresholds were too high for current market conditions.
+      // 2026-05-15 NVR-SPEC-033 (Option B): quality-cohort cascade. First tier
+      // at +6% / sell 25% — bot recycles single-digit quality moves a human can't
+      // watch all day. Three tiers (dropped the +150% MAJOR — doesn't fit a 5-7d
+      // rotation rhythm; the ATR_PROFIT_TIERS path covers high-gain edge cases
+      // via 18×ATR). KEEP IN SYNC with DEFAULT_PROFIT_TIERS in constants.ts.
       tiers: [
-        { gainPercent: 12,  sellPercent: 12, label: "EARLY_HARVEST" },   // v11.4.13: 25→12% — harvest sooner
-        { gainPercent: 30,  sellPercent: 18, label: "MID_HARVEST" },     // v11.4.13: 50→30% — don't wait for 50%
-        { gainPercent: 75,  sellPercent: 25, label: "STRONG_HARVEST" },  // v11.4.13: 100→75%
-        { gainPercent: 150, sellPercent: 35, label: "MAJOR_HARVEST" },   // v11.4.13: 200→150%
+        { gainPercent: 6,  sellPercent: 25, label: "EARLY_HARVEST" },
+        { gainPercent: 12, sellPercent: 30, label: "MID_HARVEST" },
+        { gainPercent: 25, sellPercent: 35, label: "STRONG_HARVEST" },
       ],
     },
     // V3.5: Stop-Loss

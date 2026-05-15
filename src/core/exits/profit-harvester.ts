@@ -69,11 +69,16 @@ export function checkProfitTaking(
   if (!config.profitTaking.enabled) return null;
 
   const cfg = config.profitTaking;
+  // Internal fallback if cfg.tiers is undefined. In practice agent-v3.2.ts
+  // always sets cfg.tiers, so this is defensive — kept in sync with
+  // DEFAULT_PROFIT_TIERS / agent-v3.2.ts under NVR-SPEC-033.
+  // NOTE: ATR_PROFIT_TIERS (constants.ts) override flatTiers whenever ATR is
+  // available, which is the dominant path for the quality cohort. The flat
+  // cascade is the volatility-blind floor; the two are intentionally distinct.
   const flatTiers = cfg.tiers || [
-    { gainPercent: 10,  sellPercent: 15, label: "EARLY_HARVEST" },
-    { gainPercent: 20,  sellPercent: 20, label: "MID_HARVEST" },
-    { gainPercent: 40,  sellPercent: 25, label: "STRONG_HARVEST" },
-    { gainPercent: 80,  sellPercent: 35, label: "MAJOR_HARVEST" },
+    { gainPercent: 6,  sellPercent: 25, label: "EARLY_HARVEST" },
+    { gainPercent: 12, sellPercent: 30, label: "MID_HARVEST" },
+    { gainPercent: 25, sellPercent: 35, label: "STRONG_HARVEST" },
   ];
   const now = new Date();
 

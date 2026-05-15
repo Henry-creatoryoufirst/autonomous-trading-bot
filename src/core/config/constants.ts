@@ -331,7 +331,9 @@ export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxSte
   confluenceSell:        { min: -30, max: -5, maxStep: 2 },
   confluenceStrongBuy:   { min: 25, max: 60, maxStep: 3 },
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  profitTakeTarget:      { min: 10, max: 40, maxStep: 2 },
+  // 2026-05-15 Option B / NVR-SPEC-033: min lowered 10→5 so the quality-cohort
+  // first tier (default profitTakeTarget=6) doesn't get clamped up on state restore.
+  profitTakeTarget:      { min: 5, max: 40, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
   stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds
   trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds
@@ -383,14 +385,18 @@ export const BTC_DOMINANCE_SECTOR_BOOST = {
 // PROFIT HARVESTING DEFAULTS
 // ============================================================================
 
-/** v18.0: Widened profit tiers — let winners run longer before first harvest.
- *  Old tiers (8/15/25/40%) harvested too early, creating small wins and big losses.
- *  New tiers start at 25% to give trades room to develop. */
+/** 2026-05-15 NVR-SPEC-033: Option B quality-cohort cascade.
+ *  Bot's edge under quality cohort is fast recycling of single-digit moves on
+ *  cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL — something a human can't physically do.
+ *  First tier at +6% (was 25%) captures the daily/weekly quality swings; cascade
+ *  caps at +25% — beyond that the ATR_PROFIT_TIERS path (below) covers high-gain
+ *  edge cases via 18×ATR. NOTE: this constant is consumed at the live config
+ *  in agent-v3.2.ts (profitTaking.tiers) and as the harvester fallback —
+ *  keep all three sites aligned. */
 export const DEFAULT_PROFIT_TIERS = [
-  { gainPercent: 25,  sellPercent: 15, label: "EARLY_HARVEST" },
-  { gainPercent: 50,  sellPercent: 20, label: "MID_HARVEST" },
-  { gainPercent: 100, sellPercent: 25, label: "STRONG_HARVEST" },
-  { gainPercent: 200, sellPercent: 35, label: "MAJOR_HARVEST" },
+  { gainPercent: 6,  sellPercent: 25, label: "EARLY_HARVEST" },
+  { gainPercent: 12, sellPercent: 30, label: "MID_HARVEST" },
+  { gainPercent: 25, sellPercent: 35, label: "STRONG_HARVEST" },
 ] as const;
 
 // ============================================================================

@@ -246,7 +246,9 @@ export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxSte
   confluenceSell:        { min: -30, max: -5, maxStep: 2 },
   confluenceStrongBuy:   { min: 20, max: 38, maxStep: 3 },  // v21.6: lowered (was 25-45) — compressed score range from weight rebalance
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  profitTakeTarget:      { min: 8, max: 25, maxStep: 2 },  // v21.6: capped at 25 (was 40) — keep dry powder, don't let it drift to 30%+
+  // 2026-05-15 NVR-SPEC-033: min 8→5 to accommodate Option B default of 6.
+  // Max kept at 25 (v21.6 dry-powder discipline still applies).
+  profitTakeTarget:      { min: 5, max: 25, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
   stopLossPercent:       { min: -25, max: -12, maxStep: 2 },    // v12.2.2: widened from -6% ceiling — was causing churn
   trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },   // v12.2.2: widened from -5% ceiling — too tight for altcoins
@@ -261,8 +263,11 @@ export const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   confluenceSell: -8,     // v11.4.22: Symmetrical with buy threshold
   confluenceStrongBuy: 30, // v11.4.22: Lowered from 40 — more achievable for conviction trades
   confluenceStrongSell: -30, // v11.4.22: Symmetrical
-  profitTakeTarget: 15,    // v21.6: Lowered from 30% — harvest earlier, maintain dry powder
-  profitTakeSellPercent: 30,
+  // 2026-05-15 NVR-SPEC-033 (Option B): 15→6, 30→25 to match the quality-cohort
+  // EARLY_HARVEST tier. This value feeds the AI prompt (formatSelfImprovementPrompt
+  // ~L856) and the dashboard — the deterministic harvester reads tier arrays, not this.
+  profitTakeTarget: 6,
+  profitTakeSellPercent: 25,
   stopLossPercent: -15,       // v6.2: tightened from -25%
   trailingStopPercent: -12,   // v6.2: tightened from -20%
   atrStopMultiplier: ATR_STOP_LOSS_MULTIPLIER,     // v9.0: 2.5x ATR default
