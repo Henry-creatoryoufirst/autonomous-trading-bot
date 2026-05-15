@@ -1622,7 +1622,7 @@ function maybeRebalanceWeth(
  *
  * Tunables (all env-driven):
  *   ALPHA_HUNTER_FAST_STRIKE_ENABLED   — kill switch (default off)
- *   FAST_STRIKE_MIN_CONF               — min reviewer conf (default 0.75)
+ *   FAST_STRIKE_MIN_CONF               — min reviewer conf (default 0.55 post-2026-05-15 Option B pivot)
  *   FAST_STRIKE_USDC_FLOOR             — fire below this USDC (default 25)
  *   FAST_STRIKE_MAX_LIBERATE_USD       — sell at most this (default 150)
  *   FAST_STRIKE_COOLDOWN_HOURS         — min hours between fires (default 24)
@@ -1637,7 +1637,13 @@ async function maybeAlphaLiberation(
   if (process.env.ALPHA_HUNTER_FAST_STRIKE_ENABLED !== 'true') return null;
 
   // Tunables (read fresh each call — match maybeRebalanceWeth's style).
-  const minConf = parseFloat(process.env.FAST_STRIKE_MIN_CONF ?? '0.75');
+  // 2026-05-15 Option B pivot: default lowered 0.75 → 0.55. The 0.75 was
+  // calibrated for meme/AI tokens where high noise required a high
+  // confidence bar. Quality-asset cohort (cbBTC/WETH/cbXRP/cbLTC/LINK/
+  // cbADA/cbSOL) has better signal-to-noise on technicals — Reviewer
+  // can act on 0.55+ conviction without the meme-cohort false-positive
+  // rate. Pairs with relaxed RANGING regime prompt in alpha-reviewer.ts.
+  const minConf = parseFloat(process.env.FAST_STRIKE_MIN_CONF ?? '0.55');
   const usdcFloor = parseFloat(process.env.FAST_STRIKE_USDC_FLOOR ?? '25');
   const maxLiberateUSD = parseFloat(process.env.FAST_STRIKE_MAX_LIBERATE_USD ?? '150');
   const cooldownHours = parseFloat(process.env.FAST_STRIKE_COOLDOWN_HOURS ?? '24');

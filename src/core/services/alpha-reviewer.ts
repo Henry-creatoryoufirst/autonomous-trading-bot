@@ -208,7 +208,7 @@ MICROSTRUCTURE (current state):
 - Pool TVL: $${s.liquidityUSD.toLocaleString(undefined, { maximumFractionDigits: 0 })}
 
 CRITERIA:
-- BUY: Strong directional setup. Multiple signals align. Microstructure is flowing in the trigger's direction. Likely to reach +5% within 30 min. CALIBRATE THE BAR TO REGIME: in BULL, 2 of 3 confluence factors aligning is enough; in RANGING, 3 of 3; in BEAR, only call BUY when ALL signals scream and the 1h is also rising.
+- BUY: Strong directional setup. Multiple signals align. Microstructure is flowing in the trigger's direction. Likely to reach +5% within 30 min. CALIBRATE THE BAR TO REGIME (recalibrated 2026-05-15 for the quality-asset cohort — BTC/ETH/XRP/LTC/LINK/ADA/SOL have higher signal-to-noise on TA than meme/AI tokens): in BULL, 2 of 3 confluence factors aligning is enough; in RANGING, 2 of 3 with macro alignment (1h matching trigger direction); in BEAR, only call BUY when most signals scream and 1h is also positive.
 - WAIT: Setup is real but unclear. Counter-indicators present (e.g., 5-min momentum already extended, or volume spiking but buy ratio mixed). Check again next cycle.
 - PASS: Trigger fired but the broader microstructure contradicts (e.g., VOLUME_SPIKE on a token with 30% buy ratio = sellers exiting). Or single-signal trigger with no confluence (VOLUME_SPIKE alone has historically zero precision — needs another signal to be actionable).
 
@@ -227,8 +227,13 @@ Respond with JSON only, no other text:
       this.currentRegime === 'BULL'
         ? 'BULL — broader market is risk-on. A LONG-side trigger that has 2 of 3 confluence factors aligning is actionable. Buy-the-dip is in play; a -1% 1h on a token can be a buying opportunity if microstructure confirms (rising buy ratio + volume spike).'
         : this.currentRegime === 'BEAR'
-          ? "BEAR — broader market is risk-off. Be DEFENSIVE. Only call BUY when every confluence factor screams AND 1h is positive AND volume is multi-x baseline. Buy-the-dip rallies in bear markets are typically traps. When in doubt, WAIT or PASS."
-          : 'RANGING — no clear macro direction. Stay near baseline — require 3 of 3 confluence factors. Slight 1h pullbacks are OK if 5-min momentum is clearly turning back up. Do not chase parabolic moves in either direction.';
+          ? "BEAR — broader market is risk-off. Be DEFENSIVE. Only call BUY when most confluence factors align AND 1h is positive AND volume is multi-x baseline. Buy-the-dip rallies in bear markets are typically traps. When in doubt, WAIT or PASS."
+          // 2026-05-15: relaxed RANGING from "3 of 3 confluence" → "2 of 3 with
+          // macro alignment" for the quality-asset pivot. Quality coins range
+          // most of the time; demanding 3-of-3 in RANGING produced near-zero
+          // entries. The macro-alignment constraint (1h matching trigger
+          // direction) replaces strict 3-of-3 as the false-positive guard.
+          : 'RANGING — no clear macro direction. Quality cohort spends most time here. Require 2 of 3 confluence factors AND macro alignment: the 1h price move must match the trigger direction (rising for BUY triggers, falling for SELL triggers). Slight 1h pullbacks are OK if 5-min momentum is clearly turning back up. Do not chase parabolic moves in either direction.';
     return `MACRO REGIME (from signal-service, refreshed every ~5min):
 - Regime: ${this.currentRegime} (score ${this.regimeScore.toFixed(0)})
 - ${guidance}`;

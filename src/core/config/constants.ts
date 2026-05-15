@@ -472,7 +472,13 @@ export const SECTOR_STOP_LOSS_OVERRIDES: Record<string, { maxLoss: number; maxTr
   MEME_COINS:       { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 15 },
   AI_TOKENS:        { maxLoss: -4,  maxTrailing: -3,  maxPositionPercent: 20 },
   DEFI:             { maxLoss: -5,  maxTrailing: -4,  maxPositionPercent: 25 },
-  BLUE_CHIP:        { maxLoss: -6,  maxTrailing: -5,  maxPositionPercent: 30 },
+  // 2026-05-15 Option B pivot: BLUE_CHIP maxLoss -6 → -7 (Henry approved).
+  // Pairs with SECTOR_ATR_MULTIPLIERS.BLUE_CHIP 3.0→2.0 below so BTC/ETH stop
+  // at ~4-6% (ATR-driven, tighter than -7 cap) and Tier-2 quality (XRP/LTC/
+  // LINK/ADA/SOL) stops at the -7 cap rather than wider ATR-computed values.
+  // -5 was considered but rejected: routine LINK/XRP intraday wicks of 4-6%
+  // would whipsaw stops; -7 honors fast-exit philosophy without false-positives.
+  BLUE_CHIP:        { maxLoss: -7,  maxTrailing: -5,  maxPositionPercent: 30 },
   TOKENIZED_STOCKS: { maxLoss: -5,  maxTrailing: -4,  maxPositionPercent: 10 }, // v20.3.1: Conservative — thin liquidity
 } as const;
 
@@ -506,7 +512,14 @@ export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
   MEME_COINS: 2.0,        // Meme coins: volatile, use 2× ATR
   AI_TOKENS: 2.5,          // AI tokens: moderate vol, use 2.5× ATR
   DEFI: 2.5,               // DeFi: moderate vol, use 2.5× ATR
-  BLUE_CHIP: 3.0,          // Blue chips: low vol, wider multiple needed
+  // 2026-05-15 Option B pivot: BLUE_CHIP 3.0 → 2.0. Quality cohort has
+  // lower realized ATR than meme/AI; a 3.0× multiplier produced stops
+  // that gave back 8-12% on reversals. 2.0× gives BTC ~4%, ETH ~6%
+  // dynamic stops — the "fast recycling" thesis implemented at the
+  // per-coin volatility level. Tier-2 quality (XRP/LINK/SOL) computes
+  // wider ATR stops that the -7% hard cap (SECTOR_STOP_LOSS_OVERRIDES)
+  // binds — by design.
+  BLUE_CHIP: 2.0,
   TOKENIZED_STOCKS: 3.0,   // v20.3.1: Similar to blue chips — tracks TradFi equity vol
 };
 
@@ -536,7 +549,14 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
 export const KELLY_FRACTION = 0.25;           // Bear-adjusted May-2026: 0.30→0.25 — 54-day bear; true Quarter-Kelly (0.25×); effective max 4.2%→3.5% portfolio per trade; research: Quarter-Kelly optimal for sustained bear regimes (crypto fat tails + bear drawdown control)
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
-export const KELLY_POSITION_FLOOR_USD = 3;    // v19.0: Lowered from $15 to $3 — allow scout micro-positions
+// 2026-05-15 Option B pivot: floor raised $3 → $25 for the quality-asset
+// strategy. $3 in BTC was a fee-loss before the first tick (gas + 0.3%
+// DEX fee + 0.5-1% slippage on a small swap = $0.20-0.40 round-trip on
+// a $3 position, which is 7-13% of the position value). The $3 floor was
+// a v19.0 scout-mode artifact; for tactical quality timing the entry must
+// be large enough that the P&L move dominates the fee drag. $25 gives
+// 0.5-1% fee-cost ratio on a +6% first-tier take-profit — recoverable.
+export const KELLY_POSITION_FLOOR_USD = 25;
 export const KELLY_POSITION_CEILING_PCT = 12;  // Bear-adjusted May-2026: 14→12 — 59-day bear; with TRENDING_DOWN ×0.75 → 9% effective max; research (Institutional Kelly-VAPS, adaptive Kelly criterion): sustained bear regimes require tighter per-trade ceiling beyond Quarter-Kelly fraction alone
 export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
