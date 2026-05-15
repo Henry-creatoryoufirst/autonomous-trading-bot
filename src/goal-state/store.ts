@@ -117,6 +117,83 @@ export async function saveGoalState(
   return trimmed;
 }
 
+// ============================================================================
+// Audit-log persistence — NVR-SPEC-030 Stage 3 v1 audit-window substrate
+// ============================================================================
+//
+// Railway's log buffer retains ~500 lines per call (~2 heavy cycles of
+// activity). The 7-day v1→v2 audit window we scoped cannot be reconstructed
+// from Railway logs alone. Persisting each audit line to a KV ring buffer
+// closes the gap with zero new infrastructure — same Upstash KV the goal-state
+// reasoner already uses, same authentication, single new key family.
+//
+// Capacity:
+//   - Heavy cycle interval: ~15 minutes
+//   - Ring size: AUDIT_LOG_RING_BUFFER_SIZE (default 1000)
+//   - Coverage at default: 1000 × 15 min ≈ 10.4 days
+//   - Well above the 7-day audit window scope.
+
+const AUDIT_LOG_RING_BUFFER_SIZE = 1000;
+
+function auditLogKey(agentId: string): string {
+  return `audit-log:${agentId}:tail`;
+}
+
+/** Structured representation of a [GoalState:audit] log line. */
+export interface AuditLogEntry {
+  ts: string;                                       // ISO timestamp
+  cycle: number;                                    // state.totalCycles
+  path: 'llm' | 'deterministic' | 'subscriber-mute';
+  goal: string;                                     // master goal (truncated)
+  lastDecided: string;                              // previous cycle's outcome (truncated)
+  lastEval: 'CLOSER' | 'noise' | 'none';            // evaluator's verdict on the previous cycle
+  blockers: number;                                 // active blocker count
+  botActions: string[];                             // each action as "ACTION:TOKEN@$AMT"
+}
+
+/**
+ * Append an audit-log entry to the KV ring buffer.
+ *
+ * Fire-and-forget. Returns true on confirmed write, false on KV error or
+ * unconfigured environment. Caller should NOT branch trading behavior on
+ * the return — the audit log is observability, not control flow.
+ */
+export async function appendAuditLogEntry(
+  agentId: string,
+  entry: AuditLogEntry,
+): Promise<boolean> {
+  if (!kvConfigured()) return false;
+  const payload = JSON.stringify(entry);
+  // LPUSH new entry to head of list
+  const pushed = await kvCommand<number>(['LPUSH', auditLogKey(agentId), payload]);
+  if (pushed === null) return false;
+  // LTRIM to keep at most AUDIT_LOG_RING_BUFFER_SIZE — bounded growth.
+  await kvCommand(['LTRIM', auditLogKey(agentId), 0, AUDIT_LOG_RING_BUFFER_SIZE - 1]);
+  return true;
+}
+
+/**
+ * Read the most recent N audit-log entries (newest first). Used by the
+ * /api/audit-log/recent endpoint for the v1→v2 audit-window review.
+ */
+export async function readRecentAuditLog(
+  agentId: string,
+  limit: number = 50,
+): Promise<AuditLogEntry[]> {
+  const n = Math.max(1, Math.min(limit, AUDIT_LOG_RING_BUFFER_SIZE));
+  const raw = await kvCommand<string[]>(['LRANGE', auditLogKey(agentId), 0, n - 1]);
+  if (!raw) return [];
+  const out: AuditLogEntry[] = [];
+  for (const s of raw) {
+    try {
+      out.push(JSON.parse(s) as AuditLogEntry);
+    } catch {
+      // skip malformed
+    }
+  }
+  return out;
+}
+
 /**
  * NVR-SPEC-030 Stage 3 v1 — update only `lastNextStep` + `lastNextStepAt`
  * on the current goal-state, leaving all other fields untouched.

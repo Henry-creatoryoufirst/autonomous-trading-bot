@@ -132,6 +132,15 @@ export function loadTradeHistory(): void {
       state.profitTakeCooldowns = parsed.profitTakeCooldowns || {};
       state.stopLossCooldowns = parsed.stopLossCooldowns || {};
       state.tradeFailures = parsed.tradeFailures || {};
+      // NVR-SPEC-032 Phase 2 — restore positionEntries (per-symbol entry rows
+      // written by capturePositionAttribution at executeTrade success). The
+      // 2026-05-14 schema change shipped without persistence wiring, so
+      // entries were silently lost on every Railway pod restart. Caught by
+      // Dream #2 pattern detection 2026-05-15: PHASE_2_ATTRIBUTED_COUNT
+      // oscillated between 1 (fresh) and 0 (post-restart) for the MORPHO
+      // position, forcing the attribution synthesizer to fall back to
+      // backfill from stale costBasis.
+      state.trading.positionEntries = parsed.positionEntries || {};
 
       // Expire stale trade failures on startup
       if (Object.keys(state.tradeFailures).length > 0) {
@@ -397,6 +406,10 @@ export function saveTradeHistory(): void {
       profitTakeCooldowns: state.profitTakeCooldowns,
       stopLossCooldowns: state.stopLossCooldowns,
       tradeFailures: state.tradeFailures,
+      // NVR-SPEC-032 Phase 2 — persist positionEntries so per-symbol entry
+      // attribution survives Railway pod restarts. Companion to the loader
+      // change above. Both ship in the same commit (Ship 2 of 2026-05-15).
+      positionEntries: state.trading.positionEntries || {},
       harvestedProfits: state.harvestedProfits,
       autoHarvestTransfers: state.autoHarvestTransfers,
       totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,

@@ -1080,7 +1080,7 @@ import {
   clearPositionEntry,
 } from './src/core/services/position-attribution.js';
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
-import { updateGoalStateLastNextStep } from './src/goal-state/store.js';
+import { updateGoalStateLastNextStep, appendAuditLogEntry, readRecentAuditLog } from './src/goal-state/store.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
@@ -8536,6 +8536,14 @@ async function runTradingCycle() {
           console.log(`  ✅ CIRCUIT BREAKER: Emergency exit successful for ${symbol} | TX: ${emergencyResult.txHash || 'n/a'}`);
           clearTradeFailures(symbol);
           markStateDirty(true);
+          // NVR-SPEC-032 Phase 2: emergency-exit path bypasses executeTrade
+          // (goes direct to executeSingleSwap above), so capturePositionAttribution
+          // is never auto-fired here. Manually clear the positionEntries row
+          // for the sold symbol — same effect as the SELL branch inside
+          // capturePositionAttribution. Without this, a Phase-2-captured
+          // position that hits the -50% circuit breaker would leave a stale
+          // entry row haunting future attribution synthesis.
+          capturePositionAttribution(emergencyDecision, true);
         }
       }
 
@@ -8656,6 +8664,27 @@ async function runTradingCycle() {
       console.log(
         `[GoalState:audit] cycle=${state.totalCycles} path=${path} goal="${goal}" lastDecided="${lastDecided}" lastEval=${evalVerdict} blockers=${blockerCount} bot.actions=[${actions}]`,
       );
+
+      // 2026-05-15 Ship 3 — persist the audit entry to KV so the 7-day audit
+      // window is reconstructable. Railway's log buffer only retains ~500
+      // lines (~2 heavy cycles), making the soak audit impossible from
+      // Railway alone. Fire-and-forget — KV write failure logs a warn but
+      // does not break the cycle. See src/goal-state/store.ts for ring
+      // buffer details (1000 entries ≈ 10 days at 15-min cycles).
+      appendAuditLogEntry(MASTER_AGENT_ID, {
+        ts: new Date().toISOString(),
+        cycle: state.totalCycles,
+        path,
+        goal,
+        lastDecided,
+        lastEval: evalVerdict as 'CLOSER' | 'noise' | 'none',
+        blockers: blockerCount,
+        botActions: actionsArr,
+      }).then((ok) => {
+        if (!ok) console.warn('[GoalState:audit] KV append failed (non-fatal)');
+      }).catch((err) => {
+        console.warn(`[GoalState:audit] KV append threw (non-fatal): ${err?.message ?? err}`);
+      });
 
       // Post-decision write — replace the pre-decision placeholder with the
       // real outcome of THIS cycle. Next cycle's evaluator judges this.
@@ -11565,6 +11594,19 @@ const healthServer = http.createServer(async (req, res) => {
         // entryContext populates going forward as Phase 2 lands.
         handlePositionAttribution(res, serverCtx);
         break;
+      case '/api/audit-log/recent': {
+        // 2026-05-15 Ship 3 — read recent audit-log entries from KV.
+        // Persisted at the heavy-cycle entrypoint after decisionStage, so
+        // the 7-day v1→v2 audit window is reconstructable from KV even
+        // though Railway logs only retain ~500 lines. Query: ?n=N (default
+        // 50, capped at 1000 ring size). PUBLIC read-only.
+        const url = new URL(req.url ?? '/api/audit-log/recent', 'http://x');
+        const n = Math.max(1, Math.min(parseInt(url.searchParams.get('n') ?? '50', 10) || 50, 1000));
+        readRecentAuditLog(MASTER_AGENT_ID, n)
+          .then((entries) => sendJSON(res, 200, { entries, count: entries.length, ringSize: 1000 }))
+          .catch((err) => sendJSON(res, 500, { error: err?.message ?? 'failed' }));
+        break;
+      }
       case '/api/chat':
         if (handleChat(req, res, serverCtx)) return;
         break;
