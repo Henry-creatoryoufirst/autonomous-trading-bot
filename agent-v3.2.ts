@@ -8611,11 +8611,123 @@ async function runTradingCycle() {
     const fgValue = marketData.fearGreed.value; // kept for display/logging
     const regime = marketData.marketRegime;
 
+    // === 2026-05-15 STRATEGIC LIQUIDATION PATH ===
+    //
+    // Operator-controlled emergency-exit for arbitrary token list via env var.
+    // Created during the Option B pivot from speculative meme/AI cohort to
+    // quality-asset tactical trading. Speculative bag (~$190 across ~13
+    // positions) needed to be liquidated to USDC in one move so the new
+    // strategy could start from a clean book.
+    //
+    // Usage: set `LIQUIDATION_LIST=SYM1,SYM2,...` on Railway. The next
+    // heavy cycle iterates the list, sells each at market via the same
+    // executeTrade() path used by every other sell. executeTrade does NOT
+    // gate on isTokenBlocked() (per yesterday's investigation), so this
+    // path bypasses the failure-cooldown lockout that prevents culled
+    // positions from being re-sold.
+    //
+    // SAFETY:
+    //  - Self-cleaning: each successful sell zeros the balance; the next
+    //    cycle's iteration finds nothing to do for that symbol. Once the
+    //    list is processed, the env var can be unset.
+    //  - Skips decisionStage in the same cycle so freed USDC isn't
+    //    immediately redeployed under the OLD strategy. Next cycle decides
+    //    under the NEW strategy (which the operator updates separately).
+    //  - Wraps each sell in try/catch; one failure doesn't block the rest.
+    //
+    // The state captured by post-decision goal-state write reflects what
+    // ACTUALLY happened ("llm: strategic-liquidation N sells executed"),
+    // so the reasoner's next-cycle evaluator can judge the pivot.
+    let liquidationsRanThisCycle = false;
+    const liquidationListEnv = (process.env.LIQUIDATION_LIST ?? '').trim();
+    if (liquidationListEnv.length > 0) {
+      const targetSymbols = liquidationListEnv.split(',').map((s) => s.trim()).filter(Boolean);
+      const executed: Array<{ symbol: string; usd: number; tx?: string; error?: string }> = [];
+      console.log(`\n💼 STRATEGIC LIQUIDATION: processing ${targetSymbols.length} symbols from LIQUIDATION_LIST env`);
+      for (const symbol of targetSymbols) {
+        const balance = balances.find((b) => b.symbol === symbol);
+        if (!balance || !balance.balance || balance.balance <= 0) {
+          console.log(`  ⏭️  Skipping ${symbol}: no balance to sell`);
+          continue;
+        }
+        const usd = balance.usdValue || 0;
+        if (usd < 1) {
+          console.log(`  ⏭️  Skipping ${symbol}: dust ($${usd.toFixed(2)})`);
+          continue;
+        }
+        const liquidationDecision: TradeDecision = {
+          action: 'SELL',
+          fromToken: symbol,
+          toToken: 'USDC',
+          amountUSD: usd,
+          reasoning: `STRATEGIC_LIQUIDATION: Option B pivot 2026-05-15 — exiting speculative cohort to USDC for quality-asset rebuild.`,
+          sector: TOKEN_REGISTRY[symbol]?.sector,
+        };
+        try {
+          const result = await executeTrade(liquidationDecision, marketData);
+          if (result.success) {
+            console.log(`  ✅ LIQUIDATED ${symbol} ($${usd.toFixed(2)}) | TX: ${result.txHash || 'n/a'}`);
+            executed.push({ symbol, usd, tx: result.txHash });
+            // NVR-SPEC-032 Phase 2: SELL via direct call — capturePositionAttribution
+            // is already invoked inside executeTrade for SELL paths, so the
+            // positionEntries row clears automatically.
+          } else {
+            console.warn(`  ⚠️  LIQUIDATION FAILED ${symbol}: ${result.error?.slice(0, 120)}`);
+            executed.push({ symbol, usd, error: result.error });
+          }
+        } catch (err: any) {
+          console.error(`  ❌ LIQUIDATION THREW ${symbol}: ${err?.message?.slice(0, 120)}`);
+          executed.push({ symbol, usd, error: err?.message });
+        }
+      }
+      const successCount = executed.filter((e) => !e.error).length;
+      console.log(`\n💼 STRATEGIC LIQUIDATION COMPLETE: ${successCount}/${executed.length} sells succeeded`);
+      if (successCount > 0) {
+        // Refresh balances so downstream stages see the freed USDC.
+        try {
+          const refreshed = await getBalances();
+          if (refreshed && refreshed.length > 0) {
+            balances = refreshed;
+            cycleCtx.balances = refreshed;
+          }
+        } catch (err: any) {
+          console.warn(`  ⚠️  Balance refresh post-liquidation failed: ${err?.message?.slice(0, 120)}`);
+        }
+        liquidationsRanThisCycle = true;
+        markStateDirty(true);
+        // Alert Henry on Telegram so the pivot moment is visible.
+        await telegramService.sendAlert({
+          severity: 'HIGH',
+          title: `STRATEGIC LIQUIDATION: ${successCount} sells executed`,
+          message: `Option B pivot liquidation processed. Sold: ${executed.filter((e) => !e.error).map((e) => `${e.symbol} $${e.usd.toFixed(0)}`).join(', ')}. Freed USDC for quality-asset rebuild. UNSET LIQUIDATION_LIST env when satisfied.`,
+          data: {
+            successCount,
+            totalAttempted: executed.length,
+            totalUsdFreed: executed.filter((e) => !e.error).reduce((a, b) => a + b.usd, 0).toFixed(2),
+          },
+        }).catch((e) => console.warn('[Telegram] alert failed:', e?.message?.slice(0, 80)));
+      }
+    }
+
     // === Phase 5h: decisionStage — AI trade decisions (Claude / central signals) ===
-    cycleCtx = await decisionStage(cycleCtx, buildDecisionDeps(heavyReason));
-    if (cycleCtx.halted) {
-      console.error(`  ❌ Decision stage halted: ${cycleCtx.haltReason}`);
-      return;
+    // Skip when strategic liquidation just ran — we don't want the same cycle
+    // that liquidated the speculative bag to also re-deploy the freed USDC
+    // under the same old strategy. Next cycle decides under updated state.
+    if (liquidationsRanThisCycle) {
+      console.log(`  🔕 [LIQUIDATION] Skipping decisionStage this cycle — freed USDC will be evaluated next cycle under updated strategy`);
+      cycleCtx.decisions = [{
+        action: 'HOLD',
+        fromToken: 'NONE',
+        toToken: 'NONE',
+        amountUSD: 0,
+        reasoning: 'STRATEGIC_LIQUIDATION just executed this cycle — deferring next trade decision to next cycle so freed USDC is evaluated under fresh state.',
+      }];
+    } else {
+      cycleCtx = await decisionStage(cycleCtx, buildDecisionDeps(heavyReason));
+      if (cycleCtx.halted) {
+        console.error(`  ❌ Decision stage halted: ${cycleCtx.haltReason}`);
+        return;
+      }
     }
     let decisions = cycleCtx.decisions;
 
