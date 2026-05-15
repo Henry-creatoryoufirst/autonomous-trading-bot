@@ -1,12 +1,23 @@
-// NVR-SPEC-030 Goal-State Reasoner — v0.1
+// NVR-SPEC-030 Goal-State Reasoner — seed (v2 post-Option-B-pivot)
 //
 // One-time seeder. Called by the reasoner when loadGoalState() returns null
 // for the master agent. Produces the initial GoalState document with Henry's
 // canonical goal and the current known-gaps list as blockers.
 //
-// Open-ended phrasing per DECISIONS_2026-05-13 Q1: "First confirmed Path-D
-// round-trip-for-profit" — no date. We re-evaluate cadence once we observe
-// the first round-trip and know what realistic timing looks like.
+// === 2026-05-15 OPTION B PIVOT UPDATE ===
+// The v0.1 seed targeted "First confirmed Path-D round-trip-for-profit" — a
+// metric that never fired in months of operation. After the 2026-05-15 pivot,
+// the master goal is now benchmark-anchored: outperform a passive BTC/ETH
+// 60/40 hold by 5%+ annualized over rolling 30-day windows. Live KV state
+// was migrated directly (KV write w/ proper sha) but this seed function was
+// left stale — meaning if KV ever resets (cold start, restore from backup,
+// manual purge), the bot would re-seed the OLD goal. This edit fixes that
+// edge case so the seed-of-record matches the migrated live state.
+//
+// See project_nvr_option_b_pivot.md memory entry for full context. The
+// blocker IDs and resolution criteria mirror what's currently in live KV
+// (sha 7927cb6a...). Future blocker schema changes should update both the
+// live KV (via store.ts) and this seed in lockstep.
 
 import { GoalState } from './types.js';
 import { computeContentSha } from './store.js';
@@ -22,48 +33,34 @@ export function seedMasterGoalState(now: Date = new Date()): GoalState {
   const iso = now.toISOString();
   const seed: GoalState = {
     agentId: MASTER_AGENT_ID,
-    goal: 'First confirmed Path-D round-trip-for-profit',
+    goal: 'Achieve >=5% annualized alpha over a passive cbBTC/WETH 60/40 benchmark, measured over a rolling 30-day window of daily UTC portfolio snapshots.',
     goalSetAt: iso,
     goalSetBy: 'henry',
     evidenceOfProgress: [],
     blockers: [
-      // 2026-05-14: usdc-pool-thin DROPPED per the first Dream artifact's
-      // proposal — USDC is now $169.62 > $100 threshold; keeping it was
-      // training the evaluator to ignore its own conclusions ("stale-blocker
-      // drift is corrosive"). See GOAL_STATE_DREAM_2026-05-14_the-nvr-bot.md.
+      // 2026-05-15 Option B pivot: replaced 4 legacy Path-D blockers with 3
+      // benchmark-anchored ones. Resolution criteria are machine-checkable
+      // (benchmark snapshot count, alpha number, cohort membership).
       {
-        id: 'specialist-data-cold-start',
-        description: 'Specialist wallet data for new cohort tokens still cold — universe scan needs cycles to populate',
-        resolutionCriterion: 'sum(specialistCounts) >= 5 across cohort',
+        id: 'benchmark-cold-start',
+        description: 'Fewer than 30 daily benchmark snapshots accumulated; cannot yet compute rolling-30d alpha vs cbBTC/WETH 60/40. Resolves naturally as the 00:00 UTC snapshot cron runs.',
+        resolutionCriterion: 'state.trading.benchmarkSnapshots.length >= 30',
         addedAt: iso,
       },
       {
-        id: 'no-wd-candidate-above-threshold',
-        description: 'No Watcher-Direct candidate has crossed Reviewer confidence >= 0.75 yet',
-        resolutionCriterion: 'mostRecentWdCandidate.reviewerConfidence >= 0.75',
+        id: 'benchmark-underperforming',
+        description: 'Rolling-30d annualized alpha is below the +5% target vs cbBTC/WETH 60/40 benchmark. Live blocker — re-evaluated each cycle once cold-start resolves; auto-clears when /api/benchmark trackingState is "outperforming".',
+        resolutionCriterion: 'alpha30dAnnualized >= 0.05',
         addedAt: iso,
       },
-      // 2026-05-14: ADDED per the first Dream's proposal — Open positions
-      // (15-17) appeared after a cycle-counter reset with no Path-D attribution.
-      // Their capital + risk profile is opaque inside this goal-state.
       {
-        id: 'open-positions-unexplained',
-        description: 'OPEN_POSITION_COUNT (15-17) without Path-D attribution — capital allocation + P&L of these positions are untracked, may be consuming the USDC headroom needed for Path-D entries',
-        resolutionCriterion: 'each open position attributed to a decision path (Core / Alpha-WD / liberation) in evidenceOfProgress',
-        addedAt: iso,
-      },
-      // 2026-05-14: ADDED per the first Dream's proposal — a cycle-counter
-      // reset (#163 → #1) was observed with elapsed time ~1.78 billion sec,
-      // suggesting state-persistence failure. Needs diagnostic before
-      // trusting accumulated scan state.
-      {
-        id: 'cycle-counter-state-corruption',
-        description: 'Cycle counter reset #163 → #1 with elapsed time of ~1.78 billion seconds (~56 years) — indicates restart or state-persistence failure that may have wiped specialist wallet data + reviewer confidence history',
-        resolutionCriterion: 'restart event diagnosed + accumulated scan state verified intact OR explicitly re-seeded',
+        id: 'quality-universe-enforced',
+        description: 'Active cohort narrowed to 7-quality universe (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL); old speculative cohort retired (no remaining positions in CLANKER/MIGGLES/MORPHO/TIBBIR/ENA/cbDOGE/GAME/DOGINME/WELL/VADER/LUNA/FAI beyond dust).',
+        resolutionCriterion: 'no positions remain in speculative cohort (CLANKER/MIGGLES/MORPHO/TIBBIR/ENA/cbDOGE/GAME/DOGINME/WELL/VADER/LUNA/FAI)',
         addedAt: iso,
       },
     ],
-    lastNextStep: 'Observe — watch for the first WD candidate at conf >= 0.75; FAST_STRIKE will auto-liberate USDC if pool is starved',
+    lastNextStep: 'Observe — accumulate daily benchmark snapshots (00:00 UTC cron). LLM cycles read this goal in their system prompt and reason against it. First meaningful alpha verdict at day 30.',
     lastNextStepAt: iso,
     lastNextStepOutcome: 'pending',
     lastUpdatedAt: iso,

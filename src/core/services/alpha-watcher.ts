@@ -68,24 +68,23 @@ import { rpcCall } from '../execution/rpc.js';
  * correlated bloc, and stable enough contracts not to rug. Excludes WETH/cbBTC —
  * Core handles those; AlphaHunter focuses on the volatile mid-cap layer.
  *
- * 2026-05-10 expansion (4 → 15): per Henry's call, pure-meme breadth dialed
- * down in favor of "real alts with macro narratives" — wrapped majors
- * (cbXRP/cbLTC/cbADA/cbSOL/cbDOGE) are alpha plays in this frame, not blue
- * chip. Memory: feedback_specialist_depth_beats_breadth (10-20 sweet spot).
+ * 2026-05-10 expansion (4 → 15): wrapped majors + AI/narrative + memes.
  *
- * Override via env: ALPHA_WATCHER_COHORT="AERO,VIRTUAL,AIXBT,CLANKER"
+ * 2026-05-15 Option B pivot: narrowed 15 → 7-quality cohort. The previous
+ * speculative cohort (VVV/AIXBT/CLANKER/MIGGLES/MORPHO/etc.) generated
+ * -65% to -98% unrealized losses on every Alpha-WD entry. New thesis:
+ * 24/7 tactical timing in proven quality crypto, not selection of
+ * speculative trash. ALPHA_WATCHER_COHORT env on Railway must also be
+ * updated for the override to match — otherwise env wins and the Watcher
+ * keeps fishing in the poisoned pond. See project_nvr_option_b_pivot.md.
+ *
+ * Override via env: ALPHA_WATCHER_COHORT="cbBTC,WETH,cbXRP,cbLTC,LINK,cbADA,cbSOL"
  */
 const DEFAULT_COHORT = [
-  // Wrapped-major alpha (macro narrative + volatility)
-  'cbXRP', 'cbLTC', 'cbADA', 'cbSOL', 'cbDOGE',
-  // Existing watched (working)
-  'AERO', 'VIRTUAL', 'AIXBT', 'CLANKER',
-  // AI / narrative
-  'HIGHER', 'KAITO',
-  // DeFi mid-cap
-  'MORPHO', 'PENDLE',
-  // Memes (dialed down from full breadth)
-  'BRETT', 'DEGEN',
+  // Tier 1 — always-on, dominant weight
+  'cbBTC', 'WETH',
+  // Tier 2 — rotational quality (5+ year survival probability)
+  'cbXRP', 'cbLTC', 'LINK', 'cbADA', 'cbSOL',
 ];
 
 /**
