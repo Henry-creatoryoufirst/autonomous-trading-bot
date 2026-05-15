@@ -47,9 +47,12 @@ export interface EvaluationSnapshot {
    *
    * When present, the evaluator reasons over WHERE capital sits (Core vs
    * Alpha-Hunter-WD vs legacy-unknown) instead of treating open positions
-   * as a single undifferentiated count. Alpha-Hunter-WD entries are the
-   * milestone-relevant Path-D positions — the reasoner should track them
-   * separately from Core balance-sheet drift.
+   * as a single undifferentiated count.
+   *
+   * 2026-05-15 Option B pivot update: under the new master goal (outperform
+   * cbBTC/WETH 60/40 by 5%+), the attribution buckets matter for capital
+   * accounting clarity, not as "Path-D milestone" tracking. The strategy
+   * is benchmark-anchored, not entry-path-anchored.
    *
    * Optional for back-compat with reasoner callers that don't pass it
    * (no Phase-1 wire-in yet, or cycleCtx.positionAttribution undefined on
@@ -178,7 +181,14 @@ function buildEvaluatorPrompt(state: GoalState, ctx: EvaluationContext): string 
     lines.push(`- PHASE_2_ATTRIBUTED_COUNT: ${pa.phase2AttributedCount}  // positions captured at entry (not backfilled)`);
     lines.push('');
     lines.push(
-      `Reasoning guidance: alpha-hunter-wd entries ARE the milestone-relevant Path-D entries — track whether any closed profitably this cycle. Legacy-unknown > 0 means we still have uncategorized capital that the goal-state can't reason over. Core entries are balance-sheet drift, not Path-D progress.`,
+      // 2026-05-15 Option B pivot: reasoning guidance updated for the
+      // benchmark-anchored strategy. Old guidance framed alpha-hunter-wd
+      // entries as "milestone-relevant Path-D entries" — but the new
+      // master goal is "outperform cbBTC/WETH 60/40 by 5%+ annualized",
+      // not "first Path-D round-trip-for-profit." The reasoning frame
+      // must match the goal, or Haiku evaluates against contradictory
+      // criteria.
+      `Reasoning guidance: this bot follows a quality-asset tactical-timing strategy. Cycles that show CORE positions (cbBTC, WETH, cbXRP, cbLTC, LINK, cbADA, cbSOL) appreciating in line with or faster than the cbBTC/WETH 60/40 benchmark are "closer to goal." Cycles that show USDC reserve refilled toward the 25% target via profit-takes are "closer to goal." Cycles that show speculative leftovers (CLANKER/MIGGLES/MORPHO/etc., now mostly liquidated as of 2026-05-15) dragging are "noise" but expected — they should naturally exit via stops/dust pruning. Legacy-unknown > 0 indicates uncategorized capital; the new strategy treats this as a tracking concern, not a milestone blocker.`,
     );
   }
 
