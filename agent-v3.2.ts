@@ -443,6 +443,7 @@ import {
   KELLY_POSITION_CEILING_PCT,
   KELLY_SMALL_PORTFOLIO_CEILING_PCT,
   KELLY_SMALL_PORTFOLIO_THRESHOLD,
+  SECTOR_KELLY_CEILING_OVERRIDES,
   VOL_TARGET_DAILY_PCT,
   VOL_HIGH_THRESHOLD,
   VOL_HIGH_REDUCTION,
@@ -3709,25 +3710,27 @@ const _kellyConstants = {
   KELLY_FRACTION, KELLY_MIN_TRADES, KELLY_ROLLING_WINDOW,
   KELLY_POSITION_FLOOR_USD, KELLY_POSITION_CEILING_PCT,
   KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_SMALL_PORTFOLIO_THRESHOLD,
+  SECTOR_KELLY_CEILING_OVERRIDES,
 };
 const _volConstants = {
   VOL_TARGET_DAILY_PCT, VOL_HIGH_THRESHOLD, VOL_HIGH_REDUCTION,
   VOL_LOW_THRESHOLD, VOL_LOW_BOOST,
 };
 
-function getEffectiveKellyCeiling(portfolioValue: number): number {
-  return _getEffectiveKellyCeiling(portfolioValue, KELLY_SMALL_PORTFOLIO_THRESHOLD, KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_CEILING_PCT);
+function getEffectiveKellyCeiling(portfolioValue: number, sector?: string): number {
+  const sectorOverride = sector ? SECTOR_KELLY_CEILING_OVERRIDES[sector] : undefined;
+  return _getEffectiveKellyCeiling(portfolioValue, KELLY_SMALL_PORTFOLIO_THRESHOLD, KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_CEILING_PCT, sectorOverride);
 }
 
-function calculateKellyPositionSize(portfolioValue: number) {
-  return _calculateKellyPositionSize(portfolioValue, state, _kellyConstants);
+function calculateKellyPositionSize(portfolioValue: number, sector?: string) {
+  return _calculateKellyPositionSize(portfolioValue, state, _kellyConstants, sector);
 }
 
 function calculateVolatilityMultiplier() {
   return _calculateVolatilityMultiplier(state, _volConstants);
 }
 
-function calculateInstitutionalPositionSize(portfolioValue: number) {
+function calculateInstitutionalPositionSize(portfolioValue: number, sector?: string) {
   // v9.2: Market momentum overlay
   const momentum = calculateMarketMomentum();
   lastMomentumSignal = momentum;
@@ -3735,6 +3738,7 @@ function calculateInstitutionalPositionSize(portfolioValue: number) {
   return _calculateInstitutionalPositionSize(
     portfolioValue, state, _kellyConstants, _volConstants,
     momentum, breakerState, cashDeploymentMode, BREAKER_SIZE_REDUCTION,
+    sector,
   );
 }
 
@@ -5616,7 +5620,17 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
           }
 
           if (decision.action === "BUY" || decision.action === "REBALANCE") {
-            decision.amountUSD = Math.min(decision.amountUSD, maxBuyAmount);
+            // 2026-05-16 Option B follow-up: sector-aware max-buy cap. The
+            // cycle-level maxBuyAmount is computed without a target token so
+            // it uses the global 12% Kelly ceiling. For BLUE_CHIP entries
+            // recompute the cap with the 18% sector override so quality
+            // entries can size up to spec. Non-overridden sectors stay at
+            // the global default.
+            const decisionSector = decision.toToken ? TOKEN_REGISTRY[decision.toToken]?.sector : undefined;
+            const sectorMaxBuy = decisionSector && SECTOR_KELLY_CEILING_OVERRIDES[decisionSector] !== undefined
+              ? Math.min(calculateInstitutionalPositionSize(state.trading.totalPortfolioValue, decisionSector).sizeUSD, availableUSDC)
+              : maxBuyAmount;
+            decision.amountUSD = Math.min(decision.amountUSD, sectorMaxBuy);
             if (decision.amountUSD < 5.00) {
               console.log(`   ⚠️ Trade amount ($${decision.amountUSD.toFixed(2)}) too small — skipping`);
               continue;
@@ -8970,7 +8984,12 @@ async function runTradingCycle() {
         decision.amountUSD = Math.min(SCOUT_POSITION_USD, remainingUSDC);
         console.log(`   🔭 SCOUT SIZING: $${decision.amountUSD.toFixed(2)} (exempt from deployment/Kelly sizing)`);
       } else if (decision.action === "BUY" && decision.amountUSD > 0) {
-        const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue);
+        // 2026-05-16 Option B follow-up: sector-aware Kelly ceiling. The buy
+        // target's sector raises the ceiling for BLUE_CHIP (18%) so BTC/ETH
+        // entries can be sized for meaningful tactical-timing P&L. Falls
+        // through to global 12% when sector is unknown or unmapped.
+        const buyTargetSector = decision.toToken ? TOKEN_REGISTRY[decision.toToken]?.sector : undefined;
+        const instSizeCycle = calculateInstitutionalPositionSize(state.trading.totalPortfolioValue, buyTargetSector);
 
         if (deploymentCheck.active) {
           // DEPLOYMENT MODE: Use generous sizing — the whole point is to get capital deployed.
@@ -11474,6 +11493,7 @@ const serverCtx: ServerContext = {
   BREAKER_CONSECUTIVE_LOSSES, BREAKER_PAUSE_HOURS,
   KELLY_FRACTION, KELLY_MIN_TRADES, KELLY_POSITION_CEILING_PCT,
   KELLY_SMALL_PORTFOLIO_CEILING_PCT, KELLY_POSITION_FLOOR_USD,
+  SECTOR_KELLY_CEILING_OVERRIDES,
   GAS_REFUEL_THRESHOLD_ETH: GAS_MIN_ETH_FOR_TRADE, ADAPTIVE_MIN_INTERVAL_SEC, ADAPTIVE_MAX_INTERVAL_SEC,
   EMERGENCY_INTERVAL_SEC, EMERGENCY_DROP_THRESHOLD, PORTFOLIO_SENSITIVITY_TIERS,
   SIGNAL_ENGINE,

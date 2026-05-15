@@ -49,6 +49,22 @@ describe('getEffectiveKellyCeiling', () => {
   it('returns normal ceiling at exact threshold', () => {
     expect(getEffectiveKellyCeiling(500, 500, 25, 15)).toBe(15);
   });
+
+  // 2026-05-16 Option B follow-up: per-sector override binds regardless
+  // of small-vs-normal portfolio path. BLUE_CHIP wants 18% on a $3.2K
+  // portfolio even though the small-portfolio boost would otherwise
+  // return 30%.
+  it('sector override replaces small ceiling for small portfolios', () => {
+    expect(getEffectiveKellyCeiling(200, 500, 25, 15, 18)).toBe(18);
+  });
+
+  it('sector override replaces normal ceiling for large portfolios', () => {
+    expect(getEffectiveKellyCeiling(1000, 500, 25, 15, 18)).toBe(18);
+  });
+
+  it('falls through when sectorOverride is undefined', () => {
+    expect(getEffectiveKellyCeiling(1000, 500, 25, 15, undefined)).toBe(15);
+  });
 });
 
 // ===========================================================================

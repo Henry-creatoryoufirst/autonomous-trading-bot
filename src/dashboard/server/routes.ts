@@ -100,6 +100,7 @@ export interface ServerContext {
   KELLY_POSITION_CEILING_PCT: number;
   KELLY_SMALL_PORTFOLIO_CEILING_PCT: number;
   KELLY_POSITION_FLOOR_USD: number;
+  SECTOR_KELLY_CEILING_OVERRIDES: Record<string, number>;
   GAS_REFUEL_THRESHOLD_ETH: number;
   ADAPTIVE_MIN_INTERVAL_SEC: number;
   ADAPTIVE_MAX_INTERVAL_SEC: number;
@@ -842,6 +843,7 @@ export function handleAdaptive(
       ceilingPct: ctx.getEffectiveKellyCeiling(ctx.state.trading.totalPortfolioValue || 0),
       baseCeilingPct: ctx.KELLY_POSITION_CEILING_PCT,
       smallPortfolioCeilingPct: ctx.KELLY_SMALL_PORTFOLIO_CEILING_PCT,
+      sectorCeilingOverrides: ctx.SECTOR_KELLY_CEILING_OVERRIDES,
       floorUSD: ctx.KELLY_POSITION_FLOOR_USD,
     },
     signalHealth: ctx.lastSignalHealth,

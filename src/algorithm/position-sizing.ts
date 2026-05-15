@@ -59,6 +59,14 @@ export interface KellyConstants {
   KELLY_POSITION_CEILING_PCT: number;
   KELLY_SMALL_PORTFOLIO_CEILING_PCT: number;
   KELLY_SMALL_PORTFOLIO_THRESHOLD: number;
+  /**
+   * Optional per-sector overrides for the normal-portfolio Kelly ceiling.
+   * If the caller passes a `sector` to `getEffectiveKellyCeiling` (or the
+   * sizing functions below) and the sector has an entry here, that value
+   * replaces KELLY_POSITION_CEILING_PCT. Small-portfolio ceiling is not
+   * overridden — under $10K, capital floor concerns dominate sector tilt.
+   */
+  SECTOR_KELLY_CEILING_OVERRIDES?: Record<string, number>;
 }
 
 /** Constants needed for volatility sizing */
@@ -76,13 +84,22 @@ export interface VolatilityConstants {
 
 /**
  * v10.3: Effective Kelly ceiling — scales up for small portfolios.
+ * 2026-05-16: optional `sectorOverride` is a hard replacement for the
+ * normal-portfolio ceiling AND the small-portfolio boost — when a sector
+ * declares its own Kelly ceiling, that is the cap, regardless of portfolio
+ * size. Rationale: the small-portfolio boost (e.g. 30%) was a general
+ * "size up to overcome fees on tiny accounts" heuristic; a sector override
+ * is a deliberate per-strategy choice (Option B: BLUE_CHIP wants 18% for
+ * tactical quality-asset timing) and should bind.
  */
 export function getEffectiveKellyCeiling(
   portfolioValue: number,
   threshold: number,
   smallCeiling: number,
   normalCeiling: number,
+  sectorOverride?: number,
 ): number {
+  if (sectorOverride !== undefined) return sectorOverride;
   return portfolioValue < threshold ? smallCeiling : normalCeiling;
 }
 
@@ -98,10 +115,13 @@ export function calculateKellyPositionSize(
   portfolioValue: number,
   state: PositionSizingState,
   kc: KellyConstants,
+  sector?: string,
 ): KellyResult {
+  const sectorOverride = sector ? kc.SECTOR_KELLY_CEILING_OVERRIDES?.[sector] : undefined;
   const effectiveCeiling = getEffectiveKellyCeiling(
     portfolioValue, kc.KELLY_SMALL_PORTFOLIO_THRESHOLD,
     kc.KELLY_SMALL_PORTFOLIO_CEILING_PCT, kc.KELLY_POSITION_CEILING_PCT,
+    sectorOverride,
   );
   const recentTrades = state.tradeHistory.slice(-kc.KELLY_ROLLING_WINDOW);
   const sells = recentTrades.filter(t => {
@@ -220,8 +240,9 @@ export function calculateInstitutionalPositionSize(
   breakerState: BreakerSizeState,
   cashDeploymentMode: boolean,
   breakerSizeReduction: number,
+  sector?: string,
 ): InstitutionalSizeResult {
-  const kelly = calculateKellyPositionSize(portfolioValue, state, kc);
+  const kelly = calculateKellyPositionSize(portfolioValue, state, kc, sector);
   const vol = calculateVolatilityMultiplier(state, vc);
 
   let sizeUSD = kelly.kellyUSD * vol.multiplier * momentumSignal.positionMultiplier;
@@ -239,9 +260,11 @@ export function calculateInstitutionalPositionSize(
     }
   }
 
+  const sectorOverride = sector ? kc.SECTOR_KELLY_CEILING_OVERRIDES?.[sector] : undefined;
   const effectiveCeiling = getEffectiveKellyCeiling(
     portfolioValue, kc.KELLY_SMALL_PORTFOLIO_THRESHOLD,
     kc.KELLY_SMALL_PORTFOLIO_CEILING_PCT, kc.KELLY_POSITION_CEILING_PCT,
+    sectorOverride,
   );
   sizeUSD = Math.max(kc.KELLY_POSITION_FLOOR_USD, Math.min(sizeUSD, portfolioValue * (effectiveCeiling / 100)));
 

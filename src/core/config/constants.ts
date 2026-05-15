@@ -568,6 +568,23 @@ export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfoli
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
 /**
+ * 2026-05-16 Option B pivot follow-up (Ship 5 deferred piece): per-sector
+ * Kelly ceiling overrides. Lets BLUE_CHIP (the quality cohort home under
+ * Option B) size larger than the global 12% cap so BTC/ETH entries are
+ * P&L-meaningful — quality moves 1-5% routinely and a 12% ceiling on a
+ * $3.2K portfolio caps single BTC entries at $384, too small for tactical
+ * timing gains. Other sectors stay at the global default unless explicitly
+ * overridden. Read at the trade-sizing call site; falls through to
+ * KELLY_POSITION_CEILING_PCT when sector is undefined or missing here.
+ * Coexists with SECTOR_STOP_LOSS_OVERRIDES.maxPositionPercent (the harder
+ * 30% per-position cap) — sizer uses the stricter of the two.
+ */
+export const SECTOR_KELLY_CEILING_OVERRIDES: Record<string, number> = {
+  BLUE_CHIP: 18,
+  // MEME_COINS, AI_TOKENS, DEFI, TOKENIZED_STOCKS — use global default (12)
+};
+
+/**
  * Volatility-Adjusted Sizing
  * Size = BaseSize × (TargetVol / CurrentVol)
  */
