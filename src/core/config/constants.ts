@@ -638,7 +638,7 @@ export const HOT_MOVER_COOLDOWN_MS = 25 * 60 * 1000;
 export const HOT_MOVER_URGENT_CYCLE_MS = 90_000;
 
 /** Hot mover quality gate: minimum FDV ($500K — reject micro-cap rugs) */
-export const HOT_MOVER_MIN_FDV_USD = 500_000;
+export const HOT_MOVER_MIN_FDV_USD = 1_000_000; // Bear-adjusted May-2026: 500K→1M — 70-day bear; MEV bots dominate micro-cap pumps on Base in sustained bear regimes (MEXC 2026 research); $500K-$1M FDV hot movers are overwhelmingly MEV-coordinated; $1M floor completes quality-gate set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓)
 
 /** Hot mover quality gate: maximum FDV ($300M — not already fully mooned) */
 export const HOT_MOVER_MAX_FDV_USD = 300_000_000;
