@@ -78,6 +78,20 @@ export interface AgentState {
      * backfill in that case. Keyed by canonical (state-balance) symbol.
      */
     positionEntries?: Record<string, PositionEntryRow>;
+    /**
+     * 2026-05-15 Ship 4: per-failure-mode counters. The pre-existing
+     * totalTrades / successfulTrades pair told us the rate (~6.9%) but
+     * not the shape — were failures liquidity, CDP routing, balance
+     * cache, RPC outages, or genuine swap rejects? Without the shape,
+     * we can't tell whether to invest in better routing, better balance
+     * sync, or RPC redundancy. Optional for back-compat.
+     *
+     * Mode keys are stable: 'balance-cache' (CDP SDK sync), 'rpc-system'
+     * (all RPC endpoints failed), 'liquidity' ('swap routes failed' /
+     * 'pool reverted'), 'cdp-routing' (CDP unsupported routes), 'twap'
+     * ('TWAP slices failed'), 'timeout', 'unknown' (anything else).
+     */
+    failedTradesByMode?: Record<string, number>;
   };
   tradeHistory: TradeRecord[];
   costBasis: Record<string, TokenCostBasis>;

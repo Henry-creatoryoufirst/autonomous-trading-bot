@@ -9117,6 +9117,23 @@ async function runTradingCycle() {
         // public RPCs are.
         const isRpcSystemFailure = errMsg.includes("rpc endpoints failed") ||
                                    errMsg.includes("all rpc endpoints");
+        // 2026-05-15 Ship 4: categorize failures by mode for telemetry. The
+        // pre-existing totalTrades/successfulTrades pair told us the rate
+        // but not the shape. Categories are stable (see AgentState comment)
+        // so we can grep `[failure-mode]` for trend analysis later.
+        if (!tradeResult.success) {
+          if (!state.trading.failedTradesByMode) state.trading.failedTradesByMode = {};
+          let mode: string;
+          if (isBalanceError) mode = 'balance-cache';
+          else if (isRpcSystemFailure) mode = 'rpc-system';
+          else if (errMsg.includes('swap routes failed') || errMsg.includes('pool reverted')) mode = 'liquidity';
+          else if (errMsg.includes('twap slices failed')) mode = 'twap';
+          else if (errMsg.includes('timeout') || errMsg.includes('etimedout')) mode = 'timeout';
+          else if (errMsg.includes('cdp') || errMsg.includes('routing')) mode = 'cdp-routing';
+          else mode = 'unknown';
+          state.trading.failedTradesByMode[mode] = (state.trading.failedTradesByMode[mode] || 0) + 1;
+          console.log(`  [failure-mode] ${mode} for ${decision.action} ${decision.fromToken}→${decision.toToken}: ${errMsg.slice(0, 80)}`);
+        }
         if (!tradeResult.success && !isBalanceError && !isRpcSystemFailure) {
           recordTradeFailure(tradeToken);
           // Self-Healing Intelligence — route trade failures for diagnosis
@@ -10913,7 +10930,17 @@ async function main() {
     const lastTradeMinutes = lastTrade ? (Date.now() - new Date(lastTrade.timestamp).getTime()) / 60000 : Infinity;
     const breakerActive = breakerState.lastBreakerTriggered ? Date.now() < new Date(breakerState.lastBreakerTriggered).getTime() + (BREAKER_PAUSE_HOURS * 3600000) : false;
     const healthScore = breakerActive ? '🔴 RED' : (blockedTokens.length >= 3 || lastTradeMinutes > 360) ? '🟡 YELLOW' : '🟢 GREEN';
-    console.log(`💓 Heartbeat | ${new Date().toISOString()} | ${healthScore} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | Last trade: ${lastTradeAge} | Blocked: ${blockedTokens.length > 0 ? blockedTokens.join(',') : 'none'} | Portfolio: $${(state.trading.totalPortfolioValue || 0).toFixed(0)}`);
+    // 2026-05-15 Ship 4 — surface WHY the heartbeat is non-GREEN. The score
+    // alone hid which condition was active, so an operator scanning logs
+    // couldn't tell whether the bot was held up by blocked tokens, stale
+    // trades, an active circuit breaker, or some combination. Each trigger
+    // gets a short tag; tags join with `|`. GREEN omits the field.
+    const heartbeatReasons: string[] = [];
+    if (breakerActive) heartbeatReasons.push('breaker-active');
+    if (blockedTokens.length >= 3) heartbeatReasons.push(`blocked:${blockedTokens.length}`);
+    if (lastTradeMinutes > 360) heartbeatReasons.push(`stale-trades:${Math.round(lastTradeMinutes)}m`);
+    const reasonsTag = heartbeatReasons.length > 0 ? ` | Reason: ${heartbeatReasons.join('|')}` : '';
+    console.log(`💓 Heartbeat | ${new Date().toISOString()} | ${healthScore} | Cycles: ${state.totalCycles} | Trades: ${state.trading.successfulTrades}/${state.trading.totalTrades} | Last trade: ${lastTradeAge} | Blocked: ${blockedTokens.length > 0 ? blockedTokens.join(',') : 'none'} | Portfolio: $${(state.trading.totalPortfolioValue || 0).toFixed(0)}${reasonsTag}`);
     // v20.5: Heartbeat now flushes only if state is dirty (was: unconditional save every 5min)
     flushStateIfDirty('heartbeat');
   }, 5 * 60 * 1000);
@@ -11594,6 +11621,25 @@ const healthServer = http.createServer(async (req, res) => {
         // entryContext populates going forward as Phase 2 lands.
         handlePositionAttribution(res, serverCtx);
         break;
+      case '/api/trade-failures/by-mode': {
+        // 2026-05-15 Ship 4 — categorized failure counters. Lets an operator
+        // (or future audit script) see the SHAPE of the failure rate, not
+        // just the rate. Pre-existing totalTrades/successfulTrades counters
+        // gave us "~7% fail rate" but couldn't tell us if those were
+        // liquidity, balance cache, RPC, or genuine routing failures.
+        const byMode = state.trading.failedTradesByMode || {};
+        const totalFailures = Object.values(byMode).reduce((a, b) => a + b, 0);
+        sendJSON(res, 200, {
+          byMode,
+          totalFailures,
+          totalTrades: state.trading.totalTrades,
+          successfulTrades: state.trading.successfulTrades,
+          failureRate: state.trading.totalTrades > 0
+            ? (state.trading.totalTrades - state.trading.successfulTrades) / state.trading.totalTrades
+            : 0,
+        });
+        break;
+      }
       case '/api/audit-log/recent': {
         // 2026-05-15 Ship 3 — read recent audit-log entries from KV.
         // Persisted at the heavy-cycle entrypoint after decisionStage, so

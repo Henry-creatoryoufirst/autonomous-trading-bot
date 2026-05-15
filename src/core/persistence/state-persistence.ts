@@ -141,6 +141,9 @@ export function loadTradeHistory(): void {
       // position, forcing the attribution synthesizer to fall back to
       // backfill from stale costBasis.
       state.trading.positionEntries = parsed.positionEntries || {};
+      // 2026-05-15 Ship 4 — per-failure-mode counters survive restarts so
+      // the failure-shape trend is meaningful across the bot's lifetime.
+      state.trading.failedTradesByMode = parsed.failedTradesByMode || {};
 
       // Expire stale trade failures on startup
       if (Object.keys(state.tradeFailures).length > 0) {
@@ -410,6 +413,8 @@ export function saveTradeHistory(): void {
       // attribution survives Railway pod restarts. Companion to the loader
       // change above. Both ship in the same commit (Ship 2 of 2026-05-15).
       positionEntries: state.trading.positionEntries || {},
+      // 2026-05-15 Ship 4 — per-failure-mode counters.
+      failedTradesByMode: state.trading.failedTradesByMode || {},
       harvestedProfits: state.harvestedProfits,
       autoHarvestTransfers: state.autoHarvestTransfers,
       totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,
