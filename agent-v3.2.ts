@@ -5329,9 +5329,25 @@ async function makeTradeDecision(
   const fleetObservationsBlock = formatFleetObservationsBlock(fleetData);
 
   // v20.6: Build dynamic data sections (always included regardless of prompt tier)
+  // 2026-05-15: Dream #2 surfaced a systemic decision bug — the LLM was seeing
+  // "USDC Available: $0.00" for 30+ cycles and correctly refusing to trade,
+  // while the evaluator saw the raw $166 wallet balance. The "Available"
+  // label was unwittingly post-subtracted (alpha-sleeve-isolation reservation
+  // pulled it to 0 when reserve target > raw balance). The LLM didn't know
+  // it could SELL or REBALANCE to free more USDC because the prompt only
+  // showed the deployable residue. This block now exposes the full picture:
+  //   1. Wallet USDC (truth)
+  //   2. Reserved (pending fee + alpha-sleeve isolation, with breakdown)
+  //   3. Deployable for NEW entries (the previous "Available" figure)
+  //   4. Explicit note that SELL/REBALANCE are not capped by deployable
+  const usdcRawBalance = usdcBalance?.balance || 0;
+  const usdcReservedTotal = pendingFee + alphaReservedHeavy;
   const dynamicData = `
 ═══ PORTFOLIO ═══
-- USDC Available: $${availableUSDC.toFixed(2)}${cashDeployment?.active ? ` ⚠️ CASH OVERWEIGHT (${cashDeployment.cashPercent.toFixed(1)}% of portfolio)` : ''}
+- USDC in wallet: $${usdcRawBalance.toFixed(2)}
+- USDC reserved: $${usdcReservedTotal.toFixed(2)} (pending fee $${pendingFee.toFixed(2)}, alpha-sleeve isolation $${alphaReservedHeavy.toFixed(2)})
+- USDC deployable for NEW entries: $${availableUSDC.toFixed(2)}${cashDeployment?.active ? ` ⚠️ CASH OVERWEIGHT (${cashDeployment.cashPercent.toFixed(1)}% of portfolio)` : ''}
+- NOTE: SELL and REBALANCE actions are NOT capped by deployable USDC. Trimming an overweight sector to USDC is always available — it grows the wallet balance and replenishes the reserve.
 - Token Holdings: $${totalTokenValue.toFixed(2)}
 - Total: $${totalPortfolioValue.toFixed(2)}
 - Today's P&L: ${breakerState.dailyBaseline.value > 0 ? `${((totalPortfolioValue - breakerState.dailyBaseline.value) / breakerState.dailyBaseline.value * 100).toFixed(2)}% ($${(totalPortfolioValue - breakerState.dailyBaseline.value).toFixed(2)})` : 'Calculating...'}
