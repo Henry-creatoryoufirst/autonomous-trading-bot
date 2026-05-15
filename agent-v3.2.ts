@@ -10864,6 +10864,54 @@ async function main() {
     }
   });
 
+  // 2026-05-15 Ship 4 (Option B pivot) — Daily benchmark snapshot cron.
+  //
+  // Captures cbBTC/WETH/portfolio at 00:00 UTC daily for rolling-30d alpha
+  // measurement against the new master goal ("Outperform BTC+ETH 60/40
+  // by 5%+ annualized"). Dedicated cron — NOT piggybacked on Daily Payout
+  // because:
+  //   - Payout is gated behind autoHarvest.enabled; family bots without
+  //     payout config would silently stop tracking benchmark.
+  //   - Payout fires at 08:00 UTC, moves capital out, then we'd be
+  //     benchmarking post-distribution portfolio against pre-distribution
+  //     closes — alpha math would drift.
+  //   - Snapshot must be cheap + always-on; payout has retry/failure paths.
+  //
+  // Idempotent: skip if today's snapshot already exists. Self-cleans by
+  // slicing to last 90 entries on each capture.
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      const todayUtc = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+      if (state.trading.lastBenchmarkSnapshotDate === todayUtc) {
+        console.log(`[Benchmark] Snapshot for ${todayUtc} already captured — skipping`);
+        return;
+      }
+      const balances = state.trading.balances || [];
+      const btcBal = balances.find((b) => b.symbol === 'cbBTC');
+      const ethBal = balances.find((b) => b.symbol === 'WETH' || b.symbol === 'ETH');
+      const btcPrice = btcBal?.price ?? (lastKnownPrices['cbBTC']?.price ?? 0);
+      const ethPrice = ethBal?.price ?? (lastKnownPrices['WETH']?.price ?? lastKnownPrices['ETH']?.price ?? 0);
+      if (btcPrice <= 0 || ethPrice <= 0) {
+        console.warn(`[Benchmark] Skipping snapshot — missing prices (cbBTC=$${btcPrice}, ETH=$${ethPrice})`);
+        return;
+      }
+      const portfolioValue = state.trading.totalPortfolioValue || 0;
+      const totalDeposited = (state as any).totalDeposited || 0;
+      const onChainWithdrawn = (state as any).onChainWithdrawn || 0;
+      const cumulativeNetDeposits = Math.max(0, totalDeposited - onChainWithdrawn);
+      const snapshot = { date: todayUtc, btcPrice, ethPrice, portfolioValue, cumulativeNetDeposits };
+      if (!state.trading.benchmarkSnapshots) state.trading.benchmarkSnapshots = [];
+      state.trading.benchmarkSnapshots.push(snapshot);
+      state.trading.benchmarkSnapshots = state.trading.benchmarkSnapshots.slice(-90);
+      state.trading.lastBenchmarkSnapshotDate = todayUtc;
+      markStateDirty(true);
+      console.log(`[Benchmark] Snapshot ${todayUtc}: BTC=$${btcPrice.toFixed(2)} ETH=$${ethPrice.toFixed(2)} portfolio=$${portfolioValue.toFixed(2)} netDeposits=$${cumulativeNetDeposits.toFixed(2)} (history: ${state.trading.benchmarkSnapshots.length} snapshots)`);
+    } catch (err: any) {
+      console.error(`[Benchmark] Cron error: ${err?.message?.substring(0, 300) || err}`);
+    }
+  }, { timezone: 'UTC' });
+  console.log(`  📊 Benchmark snapshot cron registered: 0 0 * * * (00:00 UTC daily)`);
+
   // v9.3: Daily Payout cron — runs at 8 AM UTC every day
   if (CONFIG.autoHarvest.enabled && CONFIG.autoHarvest.recipients.length > 0) {
     cron.schedule(DAILY_PAYOUT_CRON, async () => {
@@ -11733,6 +11781,78 @@ const healthServer = http.createServer(async (req, res) => {
         // entryContext populates going forward as Phase 2 lands.
         handlePositionAttribution(res, serverCtx);
         break;
+      case '/api/benchmark': {
+        // 2026-05-15 Ship 4 (Option B pivot) — Rolling alpha vs cbBTC/WETH
+        // 60/40 benchmark. Reads the daily snapshot ring, computes 30-day
+        // returns for bot/BTC/ETH, derives alpha. PUBLIC read-only.
+        //
+        // Deposit-adjusted return formula (critical — raw value-delta is
+        // distorted by deposits Henry adds and payouts the bot makes):
+        //   botReturn = (P_now - P_then - (deposits_now - deposits_then))
+        //               / (P_then + max(0, deposits_now - deposits_then))
+        // BTC and ETH returns are unadjusted (passive holds have no
+        // deposits/withdrawals).
+        //
+        // trackingState enum:
+        //   "insufficient-data"  — fewer than 30 snapshots
+        //   "underperforming"    — alpha annualized < 0
+        //   "tracking"           — 0 <= alpha annualized < 0.05
+        //   "outperforming"      — alpha annualized >= 0.05 (goal met)
+        const snapshots = state.trading.benchmarkSnapshots || [];
+        if (snapshots.length < 2) {
+          sendJSON(res, 200, {
+            snapshots,
+            count: snapshots.length,
+            trackingState: 'insufficient-data',
+            reason: `Need at least 2 snapshots for any return calc; have ${snapshots.length}.`,
+          });
+          break;
+        }
+        // Find the snapshot closest to 30 days ago, fall back to oldest available.
+        const now = snapshots[snapshots.length - 1];
+        const targetDate = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+        const thirtyAgoIdx = snapshots.findIndex((s) => s.date >= targetDate);
+        const then = thirtyAgoIdx > 0
+          ? snapshots[thirtyAgoIdx - 1]
+          : snapshots[0]; // less than 30 days of data — use oldest
+        const windowDays = Math.max(1, (new Date(now.date).getTime() - new Date(then.date).getTime()) / 86_400_000);
+        const btcReturn = then.btcPrice > 0 ? (now.btcPrice - then.btcPrice) / then.btcPrice : 0;
+        const ethReturn = then.ethPrice > 0 ? (now.ethPrice - then.ethPrice) / then.ethPrice : 0;
+        const benchmarkReturn = 0.6 * btcReturn + 0.4 * ethReturn;
+        const netDepositDelta = Math.max(0, now.cumulativeNetDeposits - then.cumulativeNetDeposits);
+        const botReturnDenominator = then.portfolioValue + netDepositDelta;
+        const botReturn = botReturnDenominator > 0
+          ? (now.portfolioValue - then.portfolioValue - netDepositDelta) / botReturnDenominator
+          : 0;
+        const alphaWindow = botReturn - benchmarkReturn;
+        const annualizationFactor = 365 / windowDays;
+        const alphaAnnualized = alphaWindow * annualizationFactor;
+        let trackingState: 'insufficient-data' | 'underperforming' | 'tracking' | 'outperforming';
+        if (snapshots.length < 30) trackingState = 'insufficient-data';
+        else if (alphaAnnualized >= 0.05) trackingState = 'outperforming';
+        else if (alphaAnnualized >= 0) trackingState = 'tracking';
+        else trackingState = 'underperforming';
+        sendJSON(res, 200, {
+          windowDays: Math.round(windowDays * 10) / 10,
+          snapshotsAvailable: snapshots.length,
+          windowStart: then.date,
+          windowEnd: now.date,
+          returns: {
+            bot: botReturn,
+            btc: btcReturn,
+            eth: ethReturn,
+            benchmark6040: benchmarkReturn,
+          },
+          alphaWindow,
+          alphaAnnualized,
+          target: 0.05,
+          trackingState,
+          netDepositDelta,
+          windowStartSnapshot: then,
+          windowEndSnapshot: now,
+        });
+        break;
+      }
       case '/api/trade-failures/by-mode': {
         // 2026-05-15 Ship 4 — categorized failure counters. Lets an operator
         // (or future audit script) see the SHAPE of the failure rate, not

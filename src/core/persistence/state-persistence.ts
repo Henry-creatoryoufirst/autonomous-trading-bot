@@ -144,6 +144,13 @@ export function loadTradeHistory(): void {
       // 2026-05-15 Ship 4 — per-failure-mode counters survive restarts so
       // the failure-shape trend is meaningful across the bot's lifetime.
       state.trading.failedTradesByMode = parsed.failedTradesByMode || {};
+      // 2026-05-15 Ship 4 (Option B pivot) — benchmark snapshots persist
+      // so rolling-30d alpha is computable across pod restarts. Without
+      // this, the cron's accumulated daily-snapshot ring would reset
+      // every redeploy and `benchmark-cold-start` blocker would never
+      // resolve. Companion to the saveTradeHistory line below.
+      state.trading.benchmarkSnapshots = parsed.benchmarkSnapshots || [];
+      state.trading.lastBenchmarkSnapshotDate = parsed.lastBenchmarkSnapshotDate || undefined;
 
       // Expire stale trade failures on startup
       if (Object.keys(state.tradeFailures).length > 0) {
@@ -415,6 +422,11 @@ export function saveTradeHistory(): void {
       positionEntries: state.trading.positionEntries || {},
       // 2026-05-15 Ship 4 — per-failure-mode counters.
       failedTradesByMode: state.trading.failedTradesByMode || {},
+      // 2026-05-15 Ship 4 (Option B pivot) — benchmark snapshots + idempotency
+      // marker. Capped at 90 entries via the cron itself (slice -90) so the
+      // serialized state stays bounded.
+      benchmarkSnapshots: (state.trading.benchmarkSnapshots || []).slice(-90),
+      lastBenchmarkSnapshotDate: state.trading.lastBenchmarkSnapshotDate || null,
       harvestedProfits: state.harvestedProfits,
       autoHarvestTransfers: state.autoHarvestTransfers,
       totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,

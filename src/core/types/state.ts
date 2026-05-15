@@ -92,6 +92,36 @@ export interface AgentState {
      * ('TWAP slices failed'), 'timeout', 'unknown' (anything else).
      */
     failedTradesByMode?: Record<string, number>;
+    /**
+     * 2026-05-15 Ship 4 (Option B pivot): daily benchmark snapshots for
+     * measuring alpha vs a passive cbBTC/WETH 60/40 hold. Captured by
+     * the dedicated 00:00 UTC cron in agent-v3.2.ts. Ring buffer capped
+     * at 90 entries (matches dailyPayouts cap) — covers a rolling 3-month
+     * window which is well above the goal's 30-day rolling alpha metric.
+     *
+     * Rolling-window returns + alpha are DERIVED at read time from this
+     * buffer; not stored, never get stale. The /api/benchmark endpoint
+     * does the math. State is the source-of-truth fact set; computation
+     * is the synthesizer.
+     *
+     * The cumulativeNetDeposits field is critical: raw portfolio-delta
+     * over a window is distorted by deposits (Henry adding capital
+     * grows portfolioValue but isn't bot performance) AND payouts (the
+     * bot paying Henry shrinks portfolioValue but isn't bot loss). Alpha
+     * math subtracts the change in net deposits to isolate bot return.
+     */
+    benchmarkSnapshots?: Array<{
+      date: string;                  // ISO date "YYYY-MM-DD" UTC — idempotency key
+      btcPrice: number;              // cbBTC price USD at capture moment
+      ethPrice: number;              // WETH price USD at capture moment
+      portfolioValue: number;        // state.trading.totalPortfolioValue at capture
+      cumulativeNetDeposits: number; // state.totalDeposited - state.onChainWithdrawn (or 0 fallback)
+    }>;
+    /**
+     * 2026-05-15 Ship 4: tracks the last successful benchmark snapshot
+     * date so the cron is idempotent (skip if today's already captured).
+     */
+    lastBenchmarkSnapshotDate?: string;
   };
   tradeHistory: TradeRecord[];
   costBasis: Record<string, TokenCostBasis>;
