@@ -14,6 +14,7 @@ import type { TechnicalIndicators } from '../../algorithm/indicators.js';
 import {
   ATR_STOP_LOSS_MULTIPLIER, ATR_TRAILING_STOP_MULTIPLIER,
   THRESHOLD_BOUNDS, BASE_THRESHOLD_VALUES,
+  DEFAULT_REGIME_MULTIPLIERS,
 } from '../config/constants.js';
 
 // Re-exported for back-compat with callers that import via this module
@@ -264,13 +265,12 @@ export const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
   // explicitly bind them here to keep the link to the named constants visible.
   atrStopMultiplier: ATR_STOP_LOSS_MULTIPLIER,
   atrTrailMultiplier: ATR_TRAILING_STOP_MULTIPLIER,
-  regimeMultipliers: {
-    TRENDING_UP: 1.3,       // v11.4.22: Aligned with constants.ts v9.4 values
-    TRENDING_DOWN: 0.85,    // v11.4.22: Was 0.6 — still trade, just more selective
-    RANGING: 0.9,           // v11.4.22: Was 0.8 — ranges are opportunity for a fast-cycling bot
-    VOLATILE: 0.7,          // v11.4.22: Was 0.5 — vol = opportunity
-    UNKNOWN: 0.8,           // v11.4.22: Was 0.7
-  },
+  // Canonical regime multipliers live in src/core/config/constants.ts →
+  // DEFAULT_REGIME_MULTIPLIERS. 2026-05-16 audit found this object had drifted
+  // (TRENDING_DOWN = 0.85 here, 0.75 in constants since the Apr-2026 auditor
+  // tightening). Engine value was winning at runtime, masking the auditor's
+  // intent. Now imported — single source.
+  regimeMultipliers: { ...DEFAULT_REGIME_MULTIPLIERS },
   history: [],
   lastAdapted: null,
   adaptationCount: 0,

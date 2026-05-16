@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   checkEscalation,
   resetOllamaCache,
@@ -116,11 +116,22 @@ describe('resolveModelRouting', () => {
   });
 
   it('falls back to HAIKU when Ollama is unreachable', async () => {
-    // Ollama is not running in test env, so it should fall back
-    const result = await resolveModelRouting({ needsSonnet: false }, 'production');
-    expect(result.tier).toBe('HAIKU');
-    expect(result.backend).toBe('anthropic');
-    expect(result.reason).toContain('unreachable');
+    // Force the Ollama health check to fail regardless of whether Ollama is
+    // actually running on the developer's machine. Without this stub the test
+    // resolved to GEMMA on dev boxes with a live Ollama instance.
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+    try {
+      resetOllamaCache();
+      const result = await resolveModelRouting({ needsSonnet: false }, 'production');
+      expect(result.tier).toBe('HAIKU');
+      expect(result.backend).toBe('anthropic');
+      // Reason string was renamed to "No cheap backend available → Haiku fallback"
+      // when the Cerebras/Groq paths were added (see model-client.ts:619).
+      expect(result.reason).toContain('Haiku fallback');
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });
 

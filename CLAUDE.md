@@ -1,5 +1,15 @@
 # autonomous-trading-bot — NVR Capital Trading Engine
 
+## ⛔ STRATEGIC FREEZE — COHORT IS LOCKED (Option B, 2026-05-15+)
+
+**If you are an automated agent (medic / scout / auditor / any scheduled job): do NOT commit `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` or any other automatic edit to the cohort under any circumstance.**
+
+The bot's strategic anchor is now alpha vs cbBTC/WETH 60/40 over a 30-day rolling window (Option B pivot). The cohort is the 7 quality tokens in `src/core/config/token-registry.ts` → `COHORT_QUALITY_7`. **No additions, no removals, no auto-discovery.** Cohort changes happen only via explicit human PR after the 30-day benchmark window completes (around 2026-06-15).
+
+Three scout-driven auto-adds since the pivot (MOLT 2026-05-14, OPENX + VEIL 2026-05-16) all had to be reverted because they break Option B's measurement window. Stop adding. If you are confident a new token belongs in the cohort, write a `COHORT_PROPOSAL_<YYYY-MM-DD>.md` to the Cathedral vault instead. A human will decide.
+
+Memory references: `project_nvr_option_b_pivot`, `feedback_continuous_strategy_critique`.
+
 ## Overview
 Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycles analyzing market conditions via technical indicators, confluence scoring, and adversarial risk review.
 

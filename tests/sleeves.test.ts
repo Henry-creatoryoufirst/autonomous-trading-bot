@@ -117,13 +117,18 @@ describe('StaticAllocator', () => {
 });
 
 describe('SleeveRegistry', () => {
-  it('buildDefaultRegistry installs CoreSleeve at 100%', () => {
+  it('buildDefaultRegistry installs CoreSleeve at 100% (Alpha sleeves at 0% paper)', () => {
     const reg = buildDefaultRegistry();
     const sleeves = reg.sleeves();
-    expect(sleeves.map((s) => s.id)).toEqual(['core']);
+    // Default registry now ships Core (live) + AlphaHunter + AlphaRotation
+    // (paper at 0% until graduated per NVR-SPEC-016).
+    expect(sleeves.map((s) => s.id)).toEqual(['core', 'alpha-hunter', 'alpha-rotation']);
 
     const weights = reg.allocator().computeWeights([...sleeves]);
-    expect(weights).toEqual({ core: 1.0 });
+    // Core still gets 100% by default; alpha sleeves get 0% until
+    // ALPHA_HUNTER_ALLOCATION_PCT is set. computeWeights returns all
+    // registered sleeve ids with their effective weights.
+    expect(weights).toEqual({ core: 1.0, 'alpha-hunter': 0, 'alpha-rotation': 0 });
   });
 
   it('get(id) returns the sleeve or undefined', () => {

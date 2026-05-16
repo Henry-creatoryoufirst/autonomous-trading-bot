@@ -103,6 +103,9 @@ describe('Parameter Sweep', () => {
     expect(sweep.results).toHaveLength(4);
   });
 
+  // PRESET_SWEEPS.confluence is 7×8 = 56 backtests on 300-candle synthetic
+  // data. Plenty fast in isolation but flakes the default 5s timeout when
+  // the full test suite is competing for CPU. Bump to 30s.
   it('identifies best by return, Sharpe, and win rate', () => {
     const ds = generateSyntheticData({
       symbol: 'ETH', startPrice: 2000, candles: 300,
@@ -121,7 +124,7 @@ describe('Parameter Sweep', () => {
     expect(sweep.bestBySharpe).toBeDefined();
     expect(sweep.bestByWinRate).toBeDefined();
     expect(sweep.durationMs).toBeGreaterThanOrEqual(0);
-  });
+  }, 30_000);
 
   it('handles single parameter sweep', () => {
     const ds = generateSyntheticData({

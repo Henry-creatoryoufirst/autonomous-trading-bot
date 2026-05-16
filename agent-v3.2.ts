@@ -1087,6 +1087,7 @@ import {
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
 import { updateGoalStateLastNextStep, appendAuditLogEntry, readRecentAuditLog } from './src/goal-state/store.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
+import { computeBenchmark, formatBenchmarkPromptBlock } from './src/core/benchmark/compute.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -5323,7 +5324,16 @@ async function makeTradeDecision(
   const hoursUntilPayout = utcHour < 8 ? 8 - utcHour : 32 - utcHour; // hours until next 8 AM UTC
   const payoutUrgency = hoursUntilPayout <= 4; // within 4 hours of payout
 
-  // V4.0: Performance stats for self-awareness
+  // 2026-05-16 Option B reframe — the LLM's primary performance frame is
+  // now alpha-vs-benchmark from the rolling 30-day cbBTC/WETH 60/40 window
+  // (the actual master goal). Win rate / avg return / profit factor stay
+  // in the prompt as DIAGNOSTICS but no longer carry the "this is how we
+  // judge ourselves" framing. See feedback_continuous_strategy_critique
+  // and the post-pivot session note.
+  const benchmarkResult = computeBenchmark(state.trading.benchmarkSnapshots ?? []);
+  const benchmarkPromptBlock = formatBenchmarkPromptBlock(benchmarkResult);
+
+  // V4.0 (legacy framing, now diagnostic only): per-trade performance stats.
   const perfStats = calculateTradePerformance();
   const perfSummary = perfStats.totalTrades > 0
     ? `Win Rate: ${perfStats.winRate.toFixed(0)}% | Avg Return: ${perfStats.avgReturnPercent >= 0 ? "+" : ""}${perfStats.avgReturnPercent.toFixed(1)}% | Profit Factor: ${perfStats.profitFactor === Infinity ? "∞" : perfStats.profitFactor.toFixed(2)}${perfStats.bestTrade ? ` | Best: ${perfStats.bestTrade.symbol} +${perfStats.bestTrade.returnPercent.toFixed(1)}%` : ""}${perfStats.worstTrade ? ` | Worst: ${perfStats.worstTrade.symbol} ${perfStats.worstTrade.returnPercent.toFixed(1)}%` : ""}`
@@ -5370,7 +5380,15 @@ async function makeTradeDecision(
 - Today's Realized P&L (from sells): $${todayRealizedPnL.toFixed(2)} (${todaySells.length} sells) | Next payout: ${hoursUntilPayout}h${cashDeployment?.active ? `
 - DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
-═══ YOUR TRADE PERFORMANCE ═══
+═══ STRATEGIC PERFORMANCE — Option B benchmark (THE GOAL) ═══
+${benchmarkPromptBlock}
+
+═══ TRADE DIAGNOSTICS — informational, NOT the goal ═══
+Win rate, avg return, profit factor are diagnostics for understanding HOW the
+strategy is working — they are not the success metric. Under Option B, the
+ONLY measure of success is alpha vs the cbBTC/WETH 60/40 benchmark above.
+Low win rate during TRENDING_DOWN with quality holds is expected and does
+NOT signal "systematic mismatch". Reason about benchmark alpha first.
 ${perfSummary}
 
 ═══ SECTOR ALLOCATIONS ═══
@@ -11822,74 +11840,15 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/benchmark': {
         // 2026-05-15 Ship 4 (Option B pivot) — Rolling alpha vs cbBTC/WETH
-        // 60/40 benchmark. Reads the daily snapshot ring, computes 30-day
-        // returns for bot/BTC/ETH, derives alpha. PUBLIC read-only.
+        // 60/40 benchmark. PUBLIC read-only.
         //
-        // Deposit-adjusted return formula (critical — raw value-delta is
-        // distorted by deposits Henry adds and payouts the bot makes):
-        //   botReturn = (P_now - P_then - (deposits_now - deposits_then))
-        //               / (P_then + max(0, deposits_now - deposits_then))
-        // BTC and ETH returns are unadjusted (passive holds have no
-        // deposits/withdrawals).
-        //
-        // trackingState enum:
-        //   "insufficient-data"  — fewer than 30 snapshots
-        //   "underperforming"    — alpha annualized < 0
-        //   "tracking"           — 0 <= alpha annualized < 0.05
-        //   "outperforming"      — alpha annualized >= 0.05 (goal met)
-        const snapshots = state.trading.benchmarkSnapshots || [];
-        if (snapshots.length < 2) {
-          sendJSON(res, 200, {
-            snapshots,
-            count: snapshots.length,
-            trackingState: 'insufficient-data',
-            reason: `Need at least 2 snapshots for any return calc; have ${snapshots.length}.`,
-          });
-          break;
-        }
-        // Find the snapshot closest to 30 days ago, fall back to oldest available.
-        const now = snapshots[snapshots.length - 1];
-        const targetDate = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-        const thirtyAgoIdx = snapshots.findIndex((s) => s.date >= targetDate);
-        const then = thirtyAgoIdx > 0
-          ? snapshots[thirtyAgoIdx - 1]
-          : snapshots[0]; // less than 30 days of data — use oldest
-        const windowDays = Math.max(1, (new Date(now.date).getTime() - new Date(then.date).getTime()) / 86_400_000);
-        const btcReturn = then.btcPrice > 0 ? (now.btcPrice - then.btcPrice) / then.btcPrice : 0;
-        const ethReturn = then.ethPrice > 0 ? (now.ethPrice - then.ethPrice) / then.ethPrice : 0;
-        const benchmarkReturn = 0.6 * btcReturn + 0.4 * ethReturn;
-        const netDepositDelta = Math.max(0, now.cumulativeNetDeposits - then.cumulativeNetDeposits);
-        const botReturnDenominator = then.portfolioValue + netDepositDelta;
-        const botReturn = botReturnDenominator > 0
-          ? (now.portfolioValue - then.portfolioValue - netDepositDelta) / botReturnDenominator
-          : 0;
-        const alphaWindow = botReturn - benchmarkReturn;
-        const annualizationFactor = 365 / windowDays;
-        const alphaAnnualized = alphaWindow * annualizationFactor;
-        let trackingState: 'insufficient-data' | 'underperforming' | 'tracking' | 'outperforming';
-        if (snapshots.length < 30) trackingState = 'insufficient-data';
-        else if (alphaAnnualized >= 0.05) trackingState = 'outperforming';
-        else if (alphaAnnualized >= 0) trackingState = 'tracking';
-        else trackingState = 'underperforming';
-        sendJSON(res, 200, {
-          windowDays: Math.round(windowDays * 10) / 10,
-          snapshotsAvailable: snapshots.length,
-          windowStart: then.date,
-          windowEnd: now.date,
-          returns: {
-            bot: botReturn,
-            btc: btcReturn,
-            eth: ethReturn,
-            benchmark6040: benchmarkReturn,
-          },
-          alphaWindow,
-          alphaAnnualized,
-          target: 0.05,
-          trackingState,
-          netDepositDelta,
-          windowStartSnapshot: then,
-          windowEndSnapshot: now,
-        });
+        // Compute lives in src/core/benchmark/compute.ts so the same logic
+        // also lands in the heavy-cycle Sonnet prompt (kind === 'populated'
+        // → formatBenchmarkPromptBlock). The route strips the discriminator
+        // tag to keep the over-the-wire shape stable for the website card.
+        const result = computeBenchmark(state.trading.benchmarkSnapshots ?? []);
+        const { kind: _kind, ...payload } = result;
+        sendJSON(res, 200, payload);
         break;
       }
       case '/api/trade-failures/by-mode': {
