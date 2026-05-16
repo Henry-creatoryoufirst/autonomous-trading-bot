@@ -484,11 +484,6 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "OPENX", name: "OpenxAI", coingeckoId: "openxai",
     sector: "AI_TOKENS", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
-  VEIL: {
-    address: "0x767a739d1a152639e9ea1d8c1bd55fdc5b217d7f",
-    symbol: "VEIL", name: "Veil Cash", coingeckoId: "veil-token",
-    sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
-  },
   // === TOKENIZED STOCKS (5%) ===
   bCOIN: {
     address: "0xbbcb0356bb9e6b3faa5cbf9e5f36185d53403ac9",
