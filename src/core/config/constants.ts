@@ -865,7 +865,7 @@ export const SCALE_UP_BUY_RATIO_MIN = 60; // Bear-adjusted May-2026: 55→60 —
 export const SCALE_UP_SIZE_PCT = 3; // Bear-adjusted May-2026: 4→3 — 59-day bear; Kelly-VAPS research confirms scale-up entries in sustained bear are higher-probability false breakouts; 25% smaller scale-up reduces over-concentration risk on bear-market dead-cat bounces while still allowing meaningful adds to genuine winners
 
 /** Exit when buy ratio drops below this % on a profitable position */
-export const MOMENTUM_EXIT_BUY_RATIO = 45;
+export const MOMENTUM_EXIT_BUY_RATIO = 47; // Bear-adjusted May-2026: 45→47 — 71-day bear; buy ratio baselines compressed to 45-50% (vs 55-60% in bull); waiting for ratio <45% means distribution already well underway before exit fires on profitable positions; 47% exits 2pp earlier when flow first weakens, capturing more gain before wave reverses
 
 /** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
