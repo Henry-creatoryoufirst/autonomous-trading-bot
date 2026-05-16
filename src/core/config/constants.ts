@@ -322,23 +322,60 @@ export const SCOUT_STOP_EXEMPT_THRESHOLD_USD = 15;
 
 // ============================================================================
 // THRESHOLD BOUNDS — limits for adaptive threshold changes
+//
+// CANONICAL source-of-truth for all adaptive-threshold bounds and base default
+// values. Consumers (engine, state-persistence, dashboard, testable harness)
+// MUST import from here — do NOT redeclare these tables anywhere else.
+//
+// Prior to 2026-05-15 these tables existed in 4 files with three different
+// value sets, causing the engine to clamp to tight bounds at runtime while
+// state-persistence restored from disk against looser bounds (e.g. saving
+// stopLossPercent=-25 then snapping it to -20 on every restart). The unified
+// values below match what the live adaptive engine has been enforcing.
+//
+// NOTE: src/simulation/adaptive-thresholds.ts intentionally keeps its own
+// table — simulation runs a different threshold regime. Leave it.
 // ============================================================================
 
 export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: number }> = {
   rsiOversold:           { min: 20, max: 40, maxStep: 2 },
   rsiOverbought:         { min: 60, max: 80, maxStep: 2 },
-  confluenceBuy:         { min: 5,  max: 30, maxStep: 2 },
+  confluenceBuy:         { min: 5,  max: 22, maxStep: 2 },  // v21.6: capped at 22 — RSI/BB weight reduction compressed score range
   confluenceSell:        { min: -30, max: -5, maxStep: 2 },
-  confluenceStrongBuy:   { min: 25, max: 60, maxStep: 3 },
+  confluenceStrongBuy:   { min: 20, max: 38, maxStep: 3 },  // v21.6: lowered — compressed score range from weight rebalance
   confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  // 2026-05-15 Option B / NVR-SPEC-033: min lowered 10→5 so the quality-cohort
-  // first tier (default profitTakeTarget=6) doesn't get clamped up on state restore.
-  profitTakeTarget:      { min: 5, max: 40, maxStep: 2 },
+  // 2026-05-15 NVR-SPEC-033 (Option B): min 8→5 to accommodate quality-cohort
+  // default of 6. Max 25 (v21.6 dry-powder discipline) — was 40 in pre-collapse
+  // constants.ts, but the engine has clamped to 25 since v21.6 regardless.
+  profitTakeTarget:      { min: 5, max: 25, maxStep: 2 },
   profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -20, max: -6, maxStep: 2 },    // v6.2: tighter bounds
-  trailingStopPercent:   { min: -15, max: -5, maxStep: 2 },   // v6.2: tighter bounds
+  stopLossPercent:       { min: -25, max: -12, maxStep: 2 },   // v12.2.2: widened from -6% ceiling — was causing churn
+  trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },   // v12.2.2: widened from -5% ceiling — too tight for altcoins
   atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR stop multiplier tuning
   atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR trail multiplier tuning
+};
+
+/**
+ * Base numeric default values for adaptive thresholds. Engine builds the full
+ * AdaptiveThresholds object (with regimeMultipliers, history, etc) by spreading
+ * this. Testable harness uses these values directly. Single source of numeric
+ * truth — eliminates the "same defaults in three files" drift hazard.
+ */
+export const BASE_THRESHOLD_VALUES: Record<string, number> = {
+  rsiOversold: 30,
+  rsiOverbought: 70,
+  confluenceBuy: 8,
+  confluenceSell: -8,
+  confluenceStrongBuy: 30,
+  confluenceStrongSell: -30,
+  // 2026-05-15 NVR-SPEC-033 (Option B): 15→6, 30→25 to match the quality-cohort
+  // EARLY_HARVEST tier. This value feeds the AI prompt + dashboard.
+  profitTakeTarget: 6,
+  profitTakeSellPercent: 25,
+  stopLossPercent: -15,        // v6.2: tightened from -25%
+  trailingStopPercent: -12,    // v6.2: tightened from -20%
+  atrStopMultiplier: 2.5,      // v9.0: ATR stop multiplier default
+  atrTrailMultiplier: 2.0,     // v9.0: ATR trail multiplier default
 };
 
 // ============================================================================
@@ -1069,6 +1106,20 @@ export const DECEL_MIN_PROFIT_PCT = 2; // Bear-adjusted May-2026: 3→2 — 55-d
 
 /** Dedup window in minutes for decel trim sells */
 export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
+
+/**
+ * Bundle of all dedup-window constants. Single source of truth for downstream
+ * modules (notably the testable dedup-guard). Destructure from here rather
+ * than re-declaring per file. Added 2026-05-15 dual-source cleanup.
+ */
+export const DEDUP_WINDOWS = {
+  SCALE_UP: SCALE_UP_DEDUP_WINDOW_MINUTES,
+  SURGE: SURGE_DEDUP_WINDOW_MINUTES,
+  FORCED_DEPLOY: FORCED_DEPLOY_DEDUP_WINDOW_MINUTES,
+  MOMENTUM_EXIT: MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES,
+  NORMAL: NORMAL_DEDUP_WINDOW_MINUTES,
+  DECEL_TRIM: DECEL_TRIM_DEDUP_WINDOW_MINUTES,
+} as const;
 
 // ============================================================================
 // v15.0: MULTI-AGENT SWARM ARCHITECTURE

@@ -70,6 +70,13 @@ export interface PerformanceReviewForAdaptation {
 
 // ============================================================================
 // CONSTANTS
+//
+// INTENTIONALLY DIVERGENT from the production canonical bounds in
+// src/core/config/constants.ts. Simulation runs a different threshold regime
+// (notably profitTakeTarget min=10 vs production min=5) so the simulator can
+// stress-test wider envelopes than the live bot is permitted to operate at.
+// Do NOT collapse this into the production source — see the 2026-05-15
+// dual-source-of-truth cleanup commit message for full rationale.
 // ============================================================================
 
 export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: number }> = {

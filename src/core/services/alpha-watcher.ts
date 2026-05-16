@@ -27,7 +27,7 @@
 
 import { geckoTerminalService } from './gecko-terminal.js';
 import type { DexPoolData } from './gecko-terminal.js';
-import { TOKEN_REGISTRY } from '../config/token-registry.js';
+import { TOKEN_REGISTRY, COHORT_QUALITY_7_SYMBOLS } from '../config/token-registry.js';
 import { alphaReviewer, type TriggerReview } from './alpha-reviewer.js';
 import { alphaReflex } from './alpha-reflex.js';
 // v21.40 (Stream R): on-chain prices as PRIMARY source for cohort tokens.
@@ -80,12 +80,9 @@ import { rpcCall } from '../execution/rpc.js';
  *
  * Override via env: ALPHA_WATCHER_COHORT="cbBTC,WETH,cbXRP,cbLTC,LINK,cbADA,cbSOL"
  */
-const DEFAULT_COHORT = [
-  // Tier 1 — always-on, dominant weight
-  'cbBTC', 'WETH',
-  // Tier 2 — rotational quality (5+ year survival probability)
-  'cbXRP', 'cbLTC', 'LINK', 'cbADA', 'cbSOL',
-];
+// Single source: src/core/config/token-registry.ts → COHORT_QUALITY_7.
+// signal-service.ts SMART_WALLET_UNIVERSE pulls from the same export.
+const DEFAULT_COHORT = COHORT_QUALITY_7_SYMBOLS;
 
 /**
  * Adaptive polling: 30s for tight cohorts, 60s when cohort > 8. Keeps us

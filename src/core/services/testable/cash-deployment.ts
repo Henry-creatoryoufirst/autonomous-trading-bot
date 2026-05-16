@@ -1,7 +1,13 @@
 /**
  * Extracted cash deployment / fear gate logic from agent-v3.2.ts
- * for unit testing. Faithfully replicates the monolith's behavior.
+ * for unit testing. Tier table + reserve constant imported from the canonical
+ * source in src/core/config/constants.ts (2026-05-15 dual-source cleanup).
  */
+
+import {
+  CASH_DEPLOYMENT_TIERS,
+  CASH_DEPLOYMENT_MIN_RESERVE_USD,
+} from '../../config/constants.js';
 
 export interface CashDeploymentTier {
   cashPct: number;
@@ -21,17 +27,11 @@ export interface CashDeploymentResult {
   maxEntries: number;
 }
 
-/**
- * Default tiers from config/constants.ts
- */
-export const DEFAULT_TIERS: CashDeploymentTier[] = [
-  { cashPct: 20, deployPct: 30, confluenceDiscount: 0, maxEntries: 2, label: 'LIGHT' },
-  { cashPct: 35, deployPct: 50, confluenceDiscount: 0, maxEntries: 3, label: 'MODERATE' },
-  { cashPct: 50, deployPct: 70, confluenceDiscount: 0, maxEntries: 4, label: 'AGGRESSIVE' },
-  { cashPct: 65, deployPct: 80, confluenceDiscount: 0, maxEntries: 5, label: 'URGENT' },
-];
+/** Canonical tier table — re-exported under the legacy name used by tests. */
+export const DEFAULT_TIERS: CashDeploymentTier[] = CASH_DEPLOYMENT_TIERS;
 
-export const DEFAULT_MIN_RESERVE_USD = 150;
+/** Canonical reserve floor — re-exported under the legacy name used by tests. */
+export const DEFAULT_MIN_RESERVE_USD: number = CASH_DEPLOYMENT_MIN_RESERVE_USD;
 
 /**
  * Replicates checkCashDeploymentMode from agent-v3.2.ts (v21.2 with F&G restored).
