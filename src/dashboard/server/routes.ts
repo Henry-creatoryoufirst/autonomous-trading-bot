@@ -242,8 +242,19 @@ export function handleHealth(
   const healthBlockers: string[] = [];
   if (!ctx.CONFIG.trading.enabled) healthBlockers.push("TRADING_ENABLED is not 'true' — dry run mode");
   if (!ctx.cdpClient) healthBlockers.push("CDP client not initialized");
-  const healthDrawdown = ctx.state.trading.peakValue > 0 ? ((ctx.state.trading.peakValue - ctx.state.trading.totalPortfolioValue) / ctx.state.trading.peakValue) * 100 : 0;
-  if (healthDrawdown >= 20) healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown`);
+  // 2026-05-16: distinguish "no drawdown" from "state not yet loaded".
+  // During the first ~10s of a redeploy peakValue=0 and portfolioValue
+  // reflects only the USDC leg (positions still being fetched from chain).
+  // Returning drawdownPercent=0 in that window falsely signaled "healthy
+  // — no drawdown" when in fact we just hadn't measured yet. Now we
+  // return null until peakValue is populated.
+  const stateLoaded = ctx.state.trading.peakValue > 0;
+  const healthDrawdown: number | null = stateLoaded
+    ? ((ctx.state.trading.peakValue - ctx.state.trading.totalPortfolioValue) / ctx.state.trading.peakValue) * 100
+    : null;
+  if (healthDrawdown !== null && healthDrawdown >= 20) {
+    healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown`);
+  }
   if (ctx.state.trading.totalPortfolioValue > 0 && ctx.state.trading.totalPortfolioValue < ctx.CAPITAL_FLOOR_ABSOLUTE_USD) healthBlockers.push(`Capital floor breach: $${ctx.state.trading.totalPortfolioValue.toFixed(2)}`);
   // v21.19-counters: derive "last live execution" from trade history directly so
   // the field reflects reality instead of a stale snapshot. The previous
@@ -296,7 +307,8 @@ export function handleHealth(
     totalTradesExecuted: tradesSinceRestart,
     hoursSinceLastTrade: hoursSinceLastLiveExecution,
     portfolioValue: Math.round(ctx.state.trading.totalPortfolioValue * 100) / 100,
-    drawdownPercent: Math.round(healthDrawdown * 10) / 10,
+    drawdownPercent: healthDrawdown === null ? null : Math.round(healthDrawdown * 10) / 10,
+    stateLoaded,
   });
 }
 

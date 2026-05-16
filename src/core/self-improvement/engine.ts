@@ -830,8 +830,15 @@ export function checkStagnation(
 }
 
 /**
- * Format self-improvement data for AI prompt injection
- * Replaces the generic "LEARN FROM HISTORY" instruction with structured analysis
+ * Format self-improvement data for AI prompt injection.
+ * Replaces the generic "LEARN FROM HISTORY" instruction with structured analysis.
+ *
+ * 2026-05-16 Option B reframe: this section used to carry the bot's primary
+ * "how am I doing" frame via win-rate-based pattern stats and regime-stratified
+ * insights. Under Option B, win-rate is a DIAGNOSTIC for WHAT to trade, not the
+ * success metric (alpha vs cbBTC/WETH 60/40 is). Header + closing framing now
+ * make that explicit so the LLM doesn't anchor on "win rate 25% = systematic
+ * mismatch" when alpha-vs-benchmark is the actual goal.
  */
 export function formatSelfImprovementPrompt(): string {
   const patterns = (Object.values(state.strategyPatterns) as StrategyPattern[])
@@ -847,7 +854,8 @@ export function formatSelfImprovementPrompt(): string {
 
   const t = state.adaptiveThresholds;
 
-  let prompt = `\n=== SELF-IMPROVEMENT ENGINE (Phase 3) ===\n`;
+  let prompt = `\n=== PATTERN DIAGNOSTICS — informational, NOT the goal ===\n`;
+  prompt += `Pattern + regime win-rate stats below are SIGNALS about WHICH setups historically worked, not whether you are succeeding. Under Option B the only success metric is alpha vs cbBTC/WETH 60/40 — see the STRATEGIC PERFORMANCE block above. Low pattern win-rate does NOT mean "systematic mismatch" or "stop trading"; it means "this specific setup historically loses, so prefer other setups."\n\n`;
   prompt += `Adaptive Thresholds: RSI oversold=${t.rsiOversold} overbought=${t.rsiOverbought} | `;
   prompt += `Confluence buy=${t.confluenceBuy} sell=${t.confluenceSell} strongBuy=${t.confluenceStrongBuy} strongSell=${t.confluenceStrongSell} | `;
   prompt += `Profit-take=${t.profitTakeTarget}% | Stop-loss=${t.stopLossPercent}% trailing=${t.trailingStopPercent}%\n`;
@@ -883,7 +891,7 @@ export function formatSelfImprovementPrompt(): string {
     prompt += `\n`;
   }
 
-  prompt += `USE THIS DATA: Favor proven patterns, avoid losing ones. Adjust position conviction by pattern confidence. The thresholds above are adaptive — they have been tuned by your performance history.\n`;
+  prompt += `USE THIS DATA: Favor setups that match proven patterns when sizing; avoid setups matching losing patterns. These are inputs to WHICH trade, not WHETHER to trade. Whether-to-trade is decided by the Option B benchmark frame above.\n`;
 
   return prompt;
 }
