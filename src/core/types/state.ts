@@ -69,6 +69,9 @@ export interface AgentState {
      *  ever showed?" — answers Henry's question. May be undefined on
      *  states that pre-date this field; bot fills it in lazily. */
     allTimePeakNominal?: number;
+    /** v21.4: Lifetime maximum drawdown observed (percent, positive number).
+     *  Updated whenever current drawdown from peak exceeds the prior max. */
+    maxDrawdownPercent?: number;
     sectorAllocations: SectorAllocation[];
     marketRegime?: string;
     /**

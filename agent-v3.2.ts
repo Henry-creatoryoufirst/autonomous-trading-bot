@@ -583,6 +583,8 @@ import {
   YIELD_MIN_DIFFERENTIAL_PCT,
   YIELD_MIN_IDLE_USD,
   // v16.0: Fear/Regime constants — v17.0: kept for reference but no longer used as gates
+  // v5.2: Dust consolidation threshold (canonical — was shadowed locally pre-2026-05-15)
+  DUST_THRESHOLD_USD,
   // v16.0: Dust Cleanup (NVR Audit P1-3)
   DUST_CLEANUP_THRESHOLD_USD,
   DUST_CLEANUP_MIN_AGE_HOURS,
@@ -998,6 +1000,7 @@ const CONFIG = {
     maxBuySize: parseFloat(process.env.MAX_BUY_SIZE_USDC || "250"), // v11.4.6: raised from $100 to $250 — deploy capital faster
     maxSellPercent: parseFloat(process.env.MAX_SELL_PERCENT || "50"),
     intervalMinutes: parseInt(process.env.TRADING_INTERVAL_MINUTES || String(DEFAULT_TRADING_INTERVAL_MINUTES)),
+    maxTradesPerCycle: parseInt(process.env.MAX_TRADES_PER_CYCLE || "5"),
     // V3.1: Risk-adjusted position sizing
     maxPositionPercent: 25,  // No single token > 25% of portfolio
     minPositionUSD: 15,      // Minimum position size — no dust trades
@@ -2512,9 +2515,10 @@ function computeAtrStopLevels(
 
 // ============================================================================
 // v5.2: DUST POSITION CONSOLIDATION
+// DUST_THRESHOLD_USD imported from src/core/config/constants.ts — the local
+// `const` shadow was deleted 2026-05-15 (dual-source-of-truth cleanup) so any
+// future tuning of the canonical value flows through here automatically.
 // ============================================================================
-
-const DUST_THRESHOLD_USD = 3.00;
 
 async function consolidateDustPositions(
   balances: { symbol: string; balance: number; usdValue: number; price?: number }[],
@@ -4664,7 +4668,7 @@ async function sendFleetHealthDigest(): Promise<void> {
     const icuActive = Array.from(icuPositions.values()).filter(p => p.mode === 'ICU');
 
     // Uptime
-    const uptimeHours = ((Date.now() - (state.startedAt ? new Date(state.startedAt).getTime() : Date.now())) / 3_600_000).toFixed(0);
+    const uptimeHours = ((Date.now() - (state.startTime ? new Date(state.startTime).getTime() : Date.now())) / 3_600_000).toFixed(0);
 
     const positionLines = positions.slice(0, 8).map(b => {
       const cb = state.costBasis[b.symbol];
@@ -4680,7 +4684,7 @@ async function sendFleetHealthDigest(): Promise<void> {
       `Positions (${positions.length}):`,
       positionLines || '  No active positions',
       ``,
-      `🤖 Cycles: ${state.totalCycles} | Trades: ${state.totalTrades || 0} | Uptime: ${uptimeHours}h`,
+      `🤖 Cycles: ${state.totalCycles} | Trades: ${state.trading.totalTrades || 0} | Uptime: ${uptimeHours}h`,
       blocked.length > 0 ? `⛔ Blocked: ${blocked.join(', ')}` : `✅ No blocked tokens`,
       icuActive.length > 0 ? `🏥 ICU: ${icuActive.map(p => p.symbol).join(', ')}` : ``,
       `💰 Lifetime payouts: $${(state.totalDailyPayoutsUSD || 0).toFixed(2)} over ${state.dailyPayoutCount || 0} days`,
@@ -7743,7 +7747,7 @@ async function runTradingCycle() {
       cacheStats:     cacheManager.getStats(),
       lightInterval,
       currentPrices,
-      costBasis:     state.costBasis as Record<string, { currentPrice?: number; [key: string]: unknown }>,
+      costBasis:     state.costBasis,
       cycleStats,
       adaptiveCycle,
     });

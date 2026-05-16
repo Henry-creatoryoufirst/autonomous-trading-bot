@@ -10,13 +10,30 @@
 // TYPES
 // ============================================================================
 
+/**
+ * CDP SDK network identifier — structurally identical to the SDK's
+ * `SendEvmTransactionBodyNetwork` literal union. Declared locally because the
+ * SDK doesn't re-export that type from its public barrel.
+ *
+ * Keep in sync with @coinbase/cdp-sdk if the SDK adds chains.
+ */
+export type CdpEvmNetwork =
+  | 'base'
+  | 'base-sepolia'
+  | 'ethereum'
+  | 'ethereum-sepolia'
+  | 'avalanche'
+  | 'polygon'
+  | 'optimism'
+  | 'arbitrum';
+
 export interface ChainConfig {
   /** Human-readable chain name */
   name: string;
   /** EVM chain ID */
   chainId: number;
-  /** CDP SDK network identifier */
-  cdpNetwork: string;
+  /** CDP SDK network identifier — must be a literal accepted by the CDP SDK. */
+  cdpNetwork: CdpEvmNetwork;
   /** RPC endpoints in priority order (first = preferred) */
   rpcEndpoints: readonly string[];
   /** Native token symbol */

@@ -16,6 +16,8 @@
  *   return; // early exit from runTradingCycle()
  */
 
+import type { TokenCostBasis } from '../types/index.js';
+
 // ============================================================================
 // INPUT TYPES
 // ============================================================================
@@ -72,7 +74,7 @@ export interface LightCycleInput {
    * Live costBasis map reference (state.costBasis).
    * Mutations here update costBasis.currentPrice for dashboard freshness.
    */
-  costBasis: Record<string, { currentPrice?: number; [key: string]: unknown }>;
+  costBasis: Record<string, TokenCostBasis>;
   /** Mutable cycle stats (passed by reference — mutations observed by monolith). */
   cycleStats: LightCycleCycleStats;
   /** Mutable adaptive cycle state (passed by reference). */
@@ -121,7 +123,7 @@ export function runLightCycle(input: LightCycleInput): void {
   // v9.2: Sync costBasis.currentPrice on light cycles so dashboard stays fresh
   for (const [symbol, price] of currentPrices) {
     if (costBasis[symbol] && price > 0) {
-      (costBasis[symbol] as Record<string, unknown>).currentPrice = price;
+      costBasis[symbol].currentPrice = price;
     }
   }
 

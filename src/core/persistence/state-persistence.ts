@@ -113,7 +113,7 @@ export function loadTradeHistory(): void {
       state.tradeHistory = parsed.trades || [];
       state.trading.initialValue = parsed.initialValue || 0;
       state.trading.peakValue = parsed.peakValue || 0;
-      (state.trading as any).maxDrawdownPercent = parsed.maxDrawdownPercent || 0;
+      state.trading.maxDrawdownPercent = parsed.maxDrawdownPercent || 0;
       state.trading.totalTrades = parsed.totalTrades || 0;
       state.trading.successfulTrades = parsed.successfulTrades || 0;
 
@@ -404,7 +404,7 @@ export function saveTradeHistory(): void {
       lastUpdated: new Date().toISOString(),
       initialValue: state.trading.initialValue,
       peakValue: state.trading.peakValue,
-      maxDrawdownPercent: (state.trading as any).maxDrawdownPercent || 0,
+      maxDrawdownPercent: state.trading.maxDrawdownPercent || 0,
       currentValue: state.trading.totalPortfolioValue,
       totalTrades: state.trading.totalTrades,
       successfulTrades: state.trading.successfulTrades,

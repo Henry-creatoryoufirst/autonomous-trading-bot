@@ -14,6 +14,7 @@
 import type { AgentState, BreakerState, CashDeploymentResult } from './state.js';
 import type { MarketData, TradeDecision } from './market-data.js';
 import type { TradeRecord, SectorAllocation } from './index.js';
+import type { IncidentType } from '../services/self-healing/types.js';
 
 // ============================================================================
 // CYCLE STAGE ENUM — identifies each step in the heavy cycle pipeline
@@ -134,7 +135,7 @@ export interface CooldownHandle {
 
 /** SHI handle — minimal surface for cycle stages to report incidents. */
 export interface SelfHealingHandle {
-  processIncident(type: string, context: Record<string, unknown>): Promise<void>;
+  processIncident(type: IncidentType, context: Record<string, unknown>): Promise<void>;
 }
 
 /**

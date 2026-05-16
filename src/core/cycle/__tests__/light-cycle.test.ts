@@ -12,6 +12,29 @@ import {
   type LightCycleCycleStats,
   type LightCycleAdaptiveState,
 } from '../light-cycle.js';
+import type { TokenCostBasis } from '../../types/index.js';
+
+function makeCostBasis(overrides: Partial<TokenCostBasis> = {}): TokenCostBasis {
+  return {
+    symbol: overrides.symbol ?? 'UNK',
+    totalInvestedUSD: 0,
+    totalTokensAcquired: 0,
+    averageCostBasis: 0,
+    currentHolding: 0,
+    realizedPnL: 0,
+    unrealizedPnL: 0,
+    peakPrice: 0,
+    peakPriceDate: '',
+    firstBuyDate: '',
+    lastTradeDate: '',
+    atrStopPercent: null,
+    atrTrailPercent: null,
+    atrAtEntry: null,
+    trailActivated: false,
+    lastAtrUpdate: null,
+    ...overrides,
+  };
+}
 
 // Silence console.log during tests and reset between each test
 beforeEach(() => {
@@ -50,8 +73,8 @@ function makeInput(overrides: Partial<LightCycleInput> = {}): LightCycleInput {
     },
     currentPrices: new Map([['ETH', 3000], ['BTC', 65000]]),
     costBasis: {
-      ETH: { currentPrice: 2900, averageCostBasis: 2800 },
-      BTC: { currentPrice: 64000 },
+      ETH: makeCostBasis({ symbol: 'ETH', currentPrice: 2900, averageCostBasis: 2800 }),
+      BTC: makeCostBasis({ symbol: 'BTC', currentPrice: 64000 }),
     },
     cycleStats,
     adaptiveCycle,
@@ -138,7 +161,7 @@ describe('costBasis.currentPrice sync', () => {
   it('skips symbols where price is 0', () => {
     const input = makeInput();
     input.currentPrices.set('ETH', 0);
-    input.costBasis['ETH'] = { currentPrice: 2900 };
+    input.costBasis['ETH'] = makeCostBasis({ symbol: 'ETH', currentPrice: 2900 });
     runLightCycle(input);
     // price === 0 → skipped, old value preserved
     expect(input.costBasis['ETH']?.currentPrice).toBe(2900);
