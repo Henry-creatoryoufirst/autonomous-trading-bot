@@ -49,6 +49,7 @@ import type {
 import { TokenDiscoveryEngine } from './src/core/services/token-discovery.js';
 import { outcomeTracker } from './src/core/services/outcome-tracker.js';
 import { updateWalletWeight, checkSmartWalletActivity } from './src/core/services/smart-wallet-tracker.js';
+import { COHORT_QUALITY_7 } from './src/core/config/token-registry.js';
 
 // ============================================================================
 // CONFIGURATION
@@ -114,23 +115,14 @@ interface UniverseToken {
 }
 
 // === 2026-05-15 STRATEGIC PIVOT (Option B) ===
-// Swapped from the 15-token speculative meme/AI cohort to a 7-token quality
-// cohort. The previous cohort generated -65% to -98% unrealized losses on
-// every Alpha-WD entry. New thesis: tactical timing in QUALITY crypto.
-// Must stay in sync with stc-website/src/lib/specialist-cohort.ts
-// COHORT_TOKENS (single-source-of-truth pattern is a future spec; for
-// now, hand-synced with that file).
-const SMART_WALLET_UNIVERSE: UniverseToken[] = [
-  // Tier 1 — always-on, dominant weight
-  { symbol: 'cbBTC',  address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf' },
-  { symbol: 'WETH',   address: '0x4200000000000000000000000000000000000006' },
-  // Tier 2 — rotational quality
-  { symbol: 'cbXRP',  address: '0xcb585250f852C6c6bf90434AB21A00f02833a4af' },
-  { symbol: 'cbLTC',  address: '0xcb17C9Db87B595717C857a08468793f5bAb6445F' },
-  { symbol: 'LINK',   address: '0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196' },
-  { symbol: 'cbADA',  address: '0xcbada732173e39521cdbe8bf59a6dc85a9fc7b8c' },
-  { symbol: 'cbSOL',  address: '0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c' },
-];
+// Single source: src/core/config/token-registry.ts → COHORT_QUALITY_7.
+// alpha-watcher.ts pulls the same canonical export. Cross-repo cohort sync
+// with stc-website/src/lib/specialist-cohort.ts COHORT_TOKENS is still
+// hand-maintained (different repo).
+const SMART_WALLET_UNIVERSE: UniverseToken[] = COHORT_QUALITY_7.map(t => ({
+  symbol: t.symbol,
+  address: t.address,
+}));
 
 /** Cadence for the universe scan. Outcome tracker dedupes by 1h, so 15min
  *  effectively means each token gets recorded at most ~once per hour. */

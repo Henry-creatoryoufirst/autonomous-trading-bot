@@ -18,10 +18,11 @@ import {
 import { mockThresholds } from './setup.js';
 
 describe('confluenceBuy max bound', () => {
-  it('should cap confluenceBuy at 20 (max bound)', () => {
+  it('should cap confluenceBuy at 22 (max bound)', () => {
+    // v21.6 canonical: confluenceBuy max = 22 (single-source from constants.ts).
     const t = mockThresholds({ confluenceBuy: 28 });
     clampAllThresholds(t);
-    expect(t.confluenceBuy).toBe(20);
+    expect(t.confluenceBuy).toBe(22);
   });
 
   it('should not lower confluenceBuy if already within bounds', () => {
@@ -50,7 +51,7 @@ describe('confluenceBuy max bound', () => {
       trailingStopPercent: -3,  // above max of -10
     });
     clampAllThresholds(t);
-    expect(t.confluenceBuy).toBe(20);
+    expect(t.confluenceBuy).toBe(22);
     expect(t.confluenceStrongBuy).toBe(38);
     expect(t.stopLossPercent).toBe(-12);
     expect(t.trailingStopPercent).toBe(-10);

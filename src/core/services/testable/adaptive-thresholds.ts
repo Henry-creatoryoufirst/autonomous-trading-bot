@@ -1,7 +1,14 @@
 /**
  * Extracted adaptive threshold logic from agent-v3.2.ts for unit testing.
- * Faithfully replicates the monolith's THRESHOLD_BOUNDS, defaults, decay, and clamping.
+ * THRESHOLD_BOUNDS + DEFAULT_ADAPTIVE_THRESHOLDS imported from the canonical
+ * source in src/core/config/constants.ts. Local re-declarations were collapsed
+ * 2026-05-15 — see constants.ts for rationale.
  */
+
+import {
+  THRESHOLD_BOUNDS as CANONICAL_THRESHOLD_BOUNDS,
+  BASE_THRESHOLD_VALUES,
+} from '../../config/constants.js';
 
 export interface ThresholdBound {
   min: number;
@@ -9,22 +16,7 @@ export interface ThresholdBound {
   maxStep: number;
 }
 
-export const THRESHOLD_BOUNDS: Record<string, ThresholdBound> = {
-  rsiOversold:           { min: 20, max: 40, maxStep: 2 },
-  rsiOverbought:         { min: 60, max: 80, maxStep: 2 },
-  confluenceBuy:         { min: 5,  max: 20, maxStep: 2 },
-  confluenceSell:        { min: -30, max: -5, maxStep: 2 },
-  confluenceStrongBuy:   { min: 25, max: 38, maxStep: 3 },
-  confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  // 2026-05-15 NVR-SPEC-033: min 10→5 — mirrors constants.ts to keep the
-  // restore-time clamp boundaries aligned with the live engine.
-  profitTakeTarget:      { min: 5, max: 40, maxStep: 2 },
-  profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -25, max: -12, maxStep: 2 },
-  trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },
-  atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 },
-  atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 },
-};
+export const THRESHOLD_BOUNDS: Record<string, ThresholdBound> = CANONICAL_THRESHOLD_BOUNDS;
 
 export interface AdaptiveThresholds {
   rsiOversold: number;
@@ -42,20 +34,20 @@ export interface AdaptiveThresholds {
   [key: string]: number;
 }
 
+// Canonical values come from constants.BASE_THRESHOLD_VALUES — single source.
 export const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
-  rsiOversold: 30,
-  rsiOverbought: 70,
-  confluenceBuy: 8,
-  confluenceSell: -8,
-  confluenceStrongBuy: 30,
-  confluenceStrongSell: -30,
-  // 2026-05-15 NVR-SPEC-033: 15→6, 30→25 — mirrors engine.ts.
-  profitTakeTarget: 6,
-  profitTakeSellPercent: 25,
-  stopLossPercent: -15,
-  trailingStopPercent: -12,
-  atrStopMultiplier: 2.5,
-  atrTrailMultiplier: 2.0,
+  rsiOversold: BASE_THRESHOLD_VALUES.rsiOversold,
+  rsiOverbought: BASE_THRESHOLD_VALUES.rsiOverbought,
+  confluenceBuy: BASE_THRESHOLD_VALUES.confluenceBuy,
+  confluenceSell: BASE_THRESHOLD_VALUES.confluenceSell,
+  confluenceStrongBuy: BASE_THRESHOLD_VALUES.confluenceStrongBuy,
+  confluenceStrongSell: BASE_THRESHOLD_VALUES.confluenceStrongSell,
+  profitTakeTarget: BASE_THRESHOLD_VALUES.profitTakeTarget,
+  profitTakeSellPercent: BASE_THRESHOLD_VALUES.profitTakeSellPercent,
+  stopLossPercent: BASE_THRESHOLD_VALUES.stopLossPercent,
+  trailingStopPercent: BASE_THRESHOLD_VALUES.trailingStopPercent,
+  atrStopMultiplier: BASE_THRESHOLD_VALUES.atrStopMultiplier,
+  atrTrailMultiplier: BASE_THRESHOLD_VALUES.atrTrailMultiplier,
 };
 
 /**
