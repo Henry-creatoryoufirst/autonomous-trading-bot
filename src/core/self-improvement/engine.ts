@@ -13,7 +13,13 @@ import type { RoundTripTrade, WinRateTruthData, AgentState, UserDirective } from
 import type { TechnicalIndicators } from '../../algorithm/indicators.js';
 import {
   ATR_STOP_LOSS_MULTIPLIER, ATR_TRAILING_STOP_MULTIPLIER,
+  THRESHOLD_BOUNDS, BASE_THRESHOLD_VALUES,
 } from '../config/constants.js';
+
+// Re-exported for back-compat with callers that import via this module
+// (agent-v3.2.ts → self-improvement/index.ts → engine.ts). The canonical
+// definition lives in src/core/config/constants.ts.
+export { THRESHOLD_BOUNDS };
 
 // Exploration constants (defined inline — not yet in constants.ts)
 const EXPLORATION_MIN_CONFLUENCE = 0;
@@ -239,39 +245,25 @@ export function calculateWinRateTruth(): WinRateTruthData {
 
 // StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState — imported from types/index.ts
 
-export const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; maxStep: number }> = {
-  rsiOversold:           { min: 20, max: 40, maxStep: 2 },
-  rsiOverbought:         { min: 60, max: 80, maxStep: 2 },
-  confluenceBuy:         { min: 5,  max: 22, maxStep: 2 },  // v21.6: capped at 22 (was 28) — RSI/BB weight reduction compressed score range
-  confluenceSell:        { min: -30, max: -5, maxStep: 2 },
-  confluenceStrongBuy:   { min: 20, max: 38, maxStep: 3 },  // v21.6: lowered (was 25-45) — compressed score range from weight rebalance
-  confluenceStrongSell:  { min: -60, max: -25, maxStep: 3 },
-  // 2026-05-15 NVR-SPEC-033: min 8→5 to accommodate Option B default of 6.
-  // Max kept at 25 (v21.6 dry-powder discipline still applies).
-  profitTakeTarget:      { min: 5, max: 25, maxStep: 2 },
-  profitTakeSellPercent: { min: 15, max: 50, maxStep: 3 },
-  stopLossPercent:       { min: -25, max: -12, maxStep: 2 },    // v12.2.2: widened from -6% ceiling — was causing churn
-  trailingStopPercent:   { min: -20, max: -10, maxStep: 2 },   // v12.2.2: widened from -5% ceiling — too tight for altcoins
-  atrStopMultiplier:     { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR stop multiplier
-  atrTrailMultiplier:    { min: 1.5, max: 4.0, maxStep: 0.25 }, // v9.0: ATR trail multiplier
-};
+// THRESHOLD_BOUNDS is imported + re-exported from constants.ts above. Single
+// source-of-truth — see constants.ts for the canonical table and rationale.
 
+// Numeric base values come from constants.BASE_THRESHOLD_VALUES (canonical).
+// We spread them here and add the engine-specific fields (regimeMultipliers,
+// history, lastAdapted, adaptationCount) that the testable subset doesn't carry.
 export const DEFAULT_ADAPTIVE_THRESHOLDS: AdaptiveThresholds = {
-  rsiOversold: 30,
-  rsiOverbought: 70,
-  confluenceBuy: 8,       // v11.4.22: Lowered from 15 — with no RSI/MACD history, scores stay near 0-8. Need lower bar to bootstrap trades.
-  confluenceSell: -8,     // v11.4.22: Symmetrical with buy threshold
-  confluenceStrongBuy: 30, // v11.4.22: Lowered from 40 — more achievable for conviction trades
-  confluenceStrongSell: -30, // v11.4.22: Symmetrical
-  // 2026-05-15 NVR-SPEC-033 (Option B): 15→6, 30→25 to match the quality-cohort
-  // EARLY_HARVEST tier. This value feeds the AI prompt (formatSelfImprovementPrompt
-  // ~L856) and the dashboard — the deterministic harvester reads tier arrays, not this.
-  profitTakeTarget: 6,
-  profitTakeSellPercent: 25,
-  stopLossPercent: -15,       // v6.2: tightened from -25%
-  trailingStopPercent: -12,   // v6.2: tightened from -20%
-  atrStopMultiplier: ATR_STOP_LOSS_MULTIPLIER,     // v9.0: 2.5x ATR default
-  atrTrailMultiplier: ATR_TRAILING_STOP_MULTIPLIER, // v9.0: 2.0x ATR default
+  ...(BASE_THRESHOLD_VALUES as Pick<AdaptiveThresholds,
+    'rsiOversold' | 'rsiOverbought' |
+    'confluenceBuy' | 'confluenceSell' |
+    'confluenceStrongBuy' | 'confluenceStrongSell' |
+    'profitTakeTarget' | 'profitTakeSellPercent' |
+    'stopLossPercent' | 'trailingStopPercent' |
+    'atrStopMultiplier' | 'atrTrailMultiplier'>),
+  // ATR multipliers in BASE_THRESHOLD_VALUES are 2.5/2.0 — match the
+  // ATR_STOP_LOSS_MULTIPLIER / ATR_TRAILING_STOP_MULTIPLIER constants. We
+  // explicitly bind them here to keep the link to the named constants visible.
+  atrStopMultiplier: ATR_STOP_LOSS_MULTIPLIER,
+  atrTrailMultiplier: ATR_TRAILING_STOP_MULTIPLIER,
   regimeMultipliers: {
     TRENDING_UP: 1.3,       // v11.4.22: Aligned with constants.ts v9.4 values
     TRENDING_DOWN: 0.85,    // v11.4.22: Was 0.6 — still trade, just more selective

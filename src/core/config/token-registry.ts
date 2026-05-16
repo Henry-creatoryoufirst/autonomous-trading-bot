@@ -59,6 +59,38 @@ export const CDP_UNSUPPORTED_TOKENS = new Set(['AIXBT', 'DEGEN', 'VIRTUAL']);
 export const DEX_SWAP_TOKENS = new Set(['MORPHO', 'cbLTC', 'deSPXA']);
 
 // ============================================================================
+// COHORT — 2026-05-15 Strategic Pivot (Option B)
+// ============================================================================
+//
+// Single source of truth (within this repo) for the 7-token quality cohort.
+// Replaces the pre-pivot 15-token speculative meme/AI cohort that generated
+// -65% to -98% unrealized losses on every Alpha-WD entry.
+//
+// Importers:
+//   - signal-service.ts  → builds SMART_WALLET_UNIVERSE from this
+//   - src/core/services/alpha-watcher.ts → uses as DEFAULT_COHORT fallback
+//   - Railway env ALPHA_WATCHER_COHORT must mirror the symbol list when set
+//   - stc-website/src/lib/specialist-cohort.ts (different repo — hand-synced;
+//     a cross-repo collapse is out of scope here)
+//
+// Order matters: tier-1 always-ons first, tier-2 rotational quality second.
+//
+export const COHORT_QUALITY_7 = [
+  // Tier 1 — always-on, dominant weight
+  { symbol: 'cbBTC',  address: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf' },
+  { symbol: 'WETH',   address: '0x4200000000000000000000000000000000000006' },
+  // Tier 2 — rotational quality (5+ year survival probability)
+  { symbol: 'cbXRP',  address: '0xcb585250f852C6c6bf90434AB21A00f02833a4af' },
+  { symbol: 'cbLTC',  address: '0xcb17C9Db87B595717C857a08468793f5bAb6445F' },
+  { symbol: 'LINK',   address: '0x88Fb150BDc53A65fe94Dea0c9BA0a6dAf8C6e196' },
+  { symbol: 'cbADA',  address: '0xcbada732173e39521cdbe8bf59a6dc85a9fc7b8c' },
+  { symbol: 'cbSOL',  address: '0x2f280d1b1c738d71a6e7adeb1a84c8f2f114594c' },
+] as const;
+
+/** Convenience: symbol-only view for callers that don't need addresses. */
+export const COHORT_QUALITY_7_SYMBOLS = COHORT_QUALITY_7.map(t => t.symbol);
+
+// ============================================================================
 // TOKEN REGISTRY — Complete token metadata
 // ============================================================================
 

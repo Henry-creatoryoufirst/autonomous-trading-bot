@@ -1,15 +1,29 @@
 /**
  * Extracted trade dedup guard logic from agent-v3.2.ts for unit testing.
- * Faithfully replicates the monolith's dedup window calculation and blocking.
+ * Window durations imported from the canonical DEDUP_WINDOWS bundle in
+ * src/core/config/constants.ts (2026-05-15 dual-source cleanup) — the
+ * previous local re-declarations risked silent drift on retunes.
  */
 
-// Window durations from config/constants.ts
-export const SCALE_UP_DEDUP_WINDOW_MINUTES = 15;
-export const SURGE_DEDUP_WINDOW_MINUTES = 3;
-export const FORCED_DEPLOY_DEDUP_WINDOW_MINUTES = 20;
-export const MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES = 15;
-export const NORMAL_DEDUP_WINDOW_MINUTES = 30;
-export const DECEL_TRIM_DEDUP_WINDOW_MINUTES = 3;
+import { DEDUP_WINDOWS } from '../../config/constants.js';
+
+const {
+  SCALE_UP: SCALE_UP_DEDUP_WINDOW_MINUTES,
+  SURGE: SURGE_DEDUP_WINDOW_MINUTES,
+  FORCED_DEPLOY: FORCED_DEPLOY_DEDUP_WINDOW_MINUTES,
+  MOMENTUM_EXIT: MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES,
+  NORMAL: NORMAL_DEDUP_WINDOW_MINUTES,
+  DECEL_TRIM: DECEL_TRIM_DEDUP_WINDOW_MINUTES,
+} = DEDUP_WINDOWS;
+
+export {
+  SCALE_UP_DEDUP_WINDOW_MINUTES,
+  SURGE_DEDUP_WINDOW_MINUTES,
+  FORCED_DEPLOY_DEDUP_WINDOW_MINUTES,
+  MOMENTUM_EXIT_DEDUP_WINDOW_MINUTES,
+  NORMAL_DEDUP_WINDOW_MINUTES,
+  DECEL_TRIM_DEDUP_WINDOW_MINUTES,
+};
 
 export interface TradeDecision {
   action: 'BUY' | 'SELL';
