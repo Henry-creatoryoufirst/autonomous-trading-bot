@@ -173,6 +173,13 @@ export function loadTradeHistory(): void {
       state.strategyPatterns = parsed.strategyPatterns || {};
       if (parsed.adaptiveThresholds) {
         state.adaptiveThresholds = { ...DEFAULT_ADAPTIVE_THRESHOLDS, ...parsed.adaptiveThresholds };
+        // regimeMultipliers is a fixed configuration constant — nothing in
+        // the self-improvement engine ever writes to it. Persisting the value
+        // means the runtime float lags constants.ts whenever the auditor
+        // tunes one (caught 2026-05-16: engine kept TRENDING_DOWN=0.85 from
+        // v11.4.22 while constants moved to 0.75 in Apr-2026 audit). Force
+        // re-hydrate from the canonical default on every load.
+        state.adaptiveThresholds.regimeMultipliers = { ...DEFAULT_ADAPTIVE_THRESHOLDS.regimeMultipliers };
       }
 
       // Clamp stop-loss thresholds — persisted state may have self-tightened causing churn
