@@ -171,10 +171,16 @@ function buildActualNextStep(
   }
 
   // path === 'llm'
+  // 2026-05-17 B1: bumped truncation 200→800 + 120→600 so the audit log
+  // shows the FULL reasoning shape, not just the first sentence. The
+  // 200/120 caps from v21.x predate the structured-physics prompt era; in
+  // 200 chars the LLM never reaches its composition / dispersion / mission
+  // reasoning, making behavior audits blind past the headline. KV ring is
+  // 1000 entries × ~1KB = 1MB, well within Vercel KV's per-key budget.
   if (nonHoldActions.length === 0) {
     // LLM cycle that decided to HOLD across the board. Capture Sonnet's
     // reasoning for evaluator context, trimmed.
-    const r = (arr[0]?.reasoning ?? '').trim().slice(0, 200);
+    const r = (arr[0]?.reasoning ?? '').trim().slice(0, 800);
     return `llm: HOLD — ${r || 'no action cleared this cycle'}`;
   }
 
@@ -184,10 +190,10 @@ function buildActualNextStep(
     .map((d) => `${d.action} $${d.amountUSD ?? 0} ${d.toToken ?? d.fromToken ?? 'NONE'}`)
     .join(', ');
   const more = nonHoldActions.length > 4 ? ` (+${nonHoldActions.length - 4} more)` : '';
-  // Include the first action's reasoning (truncated) to give the evaluator
-  // a why for the headline trade. Multi-trade reasons compress fast — one
-  // reason is enough signal for moveCloser judgment.
-  const firstWhy = (nonHoldActions[0].reasoning ?? '').trim().slice(0, 120);
+  // Include the first action's reasoning to give the evaluator a why for
+  // the headline trade. Multi-trade reasons compress fast — one reason is
+  // enough signal for moveCloser judgment.
+  const firstWhy = (nonHoldActions[0].reasoning ?? '').trim().slice(0, 600);
   return `llm: ${summary}${more}${firstWhy ? ` — ${firstWhy}` : ''}`;
 }
 // Per-token cooldown to prevent echo storms (e.g. publisher and subscriber bouncing same token)
@@ -8824,10 +8830,15 @@ async function runTradingCycle() {
         ? `${r.evaluation.moveCloser ? 'CLOSER' : 'noise'}`
         : 'none';
       const blockerCount = r.loadedState.blockers.length;
-      const goal = r.loadedState.goal.replace(/\s+/g, ' ').slice(0, 80);
+      const goal = r.loadedState.goal.replace(/\s+/g, ' ').slice(0, 200);
+      // 2026-05-17 B1: lastDecided truncation bumped 140→800 chars so audit
+      // log surfaces the full LLM reasoning shape (composition + cohort
+      // physics + dispersion read), not just the first sentence. The 140
+      // cap predates the structured-physics prompt era; behavior audits
+      // were going blind past the headline.
       const lastDecided = r.loadedState.lastNextStep
         .replace(/\s+/g, ' ')
-        .slice(0, 140);
+        .slice(0, 800);
       // Path classification — readable at-a-glance when scanning logs.
       const firstReasoning = (decisions?.[0]?.reasoning ?? '').toLowerCase();
       const path = firstReasoning.startsWith('deterministic hold')
