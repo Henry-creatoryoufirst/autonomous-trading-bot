@@ -154,6 +154,11 @@ export interface AuditLogEntry {
   // delta between rawLlmActions and botActions reveals which gate fired
   // on which proposal. Optional for back-compat — older entries lack it.
   rawLlmActions?: string[];
+  // 2026-05-17 B4 iter 2: whether main makeTradeDecision actually reached
+  // the LLM call this cycle. `false` means it short-circuited (e.g., the
+  // DETERMINISTIC_HOLD_GATE at line ~5108). Without this field, you can't
+  // tell whether Sonnet saw the prompt at all vs. saw it and returned HOLD.
+  mainCycleLlmFired?: boolean;
 }
 
 /**

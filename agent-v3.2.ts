@@ -143,8 +143,17 @@ let lastGoalReasoningAt = 0;
  * parse, BEFORE downstream gates (Bear Mode, reviewer, executor) transform
  * them. The audit log reads this and emits both rawLlmActions and botActions
  * so the delta reveals which gate fired.
+ *
+ * 2026-05-17 B4 iter 2: per-cycle staleness guard. `lastMainCycleLlmFiredCycle`
+ * stores the cycle number when the JSON-parse path last fired. The audit log
+ * compares this to the current cycle number to distinguish "LLM fired this
+ * cycle" from "LLM fired previously and we're seeing stale state." If they
+ * match, lastRawLlmActions is fresh and mainCycleLlmFired=true. If not,
+ * makeTradeDecision short-circuited before the LLM call (e.g., the
+ * DETERMINISTIC_HOLD_GATE at line ~5108).
  */
 let lastRawLlmActions: string[] = [];
+let lastMainCycleLlmFiredCycle: number | null = null;
 
 /**
  * NVR-SPEC-030 Stage 3 v1 — build the string that gets recorded as the
@@ -5648,9 +5657,12 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
         // 2026-05-17 B4: capture Sonnet's raw proposals BEFORE downstream
         // gates (Bear Mode conversion, validity filter, reviewer, executor).
         // Surfaces in the next audit log entry as `rawLlmActions`.
+        // 2026-05-17 B4 iter 2: also record THIS cycle's number so the audit
+        // log can verify freshness (mainCycleLlmFired = cycle-match).
         lastRawLlmActions = rawDecisions.map(
           (d: any) => `${d?.action ?? '?'}:${d?.toToken ?? d?.fromToken ?? 'NONE'}@$${d?.amountUSD ?? 0}`,
         );
+        lastMainCycleLlmFiredCycle = state.totalCycles;
 
         // v6.2: Include curated discovered tokens in validation (top 5 only, not full discovery pool)
         const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens, ...discoveredSymbols];
@@ -8865,6 +8877,11 @@ async function runTradingCycle() {
       // Railway alone. Fire-and-forget — KV write failure logs a warn but
       // does not break the cycle. See src/goal-state/store.ts for ring
       // buffer details (1000 entries ≈ 10 days at 15-min cycles).
+      // 2026-05-17 B4 iter 2: only surface rawLlmActions when they were
+      // captured THIS cycle (not a stale value from a prior cycle that did
+      // call the LLM). mainCycleLlmFired is the explicit flag for whether
+      // makeTradeDecision reached the LLM call this cycle.
+      const mainCycleLlmFired = lastMainCycleLlmFiredCycle === state.totalCycles;
       appendAuditLogEntry(MASTER_AGENT_ID, {
         ts: new Date().toISOString(),
         cycle: state.totalCycles,
@@ -8874,9 +8891,8 @@ async function runTradingCycle() {
         lastEval: evalVerdict as 'CLOSER' | 'noise' | 'none',
         blockers: blockerCount,
         botActions: actionsArr,
-        // 2026-05-17 B4: Sonnet's raw proposals BEFORE downstream gates.
-        // Delta between rawLlmActions and botActions reveals which gate fired.
-        rawLlmActions: lastRawLlmActions.length > 0 ? lastRawLlmActions : undefined,
+        rawLlmActions: mainCycleLlmFired && lastRawLlmActions.length > 0 ? lastRawLlmActions : undefined,
+        mainCycleLlmFired,
       }).then((ok) => {
         if (!ok) console.warn('[GoalState:audit] KV append failed (non-fatal)');
       }).catch((err) => {
