@@ -61,23 +61,52 @@ import { outcomeTracker } from '../services/outcome-tracker.js';
 // STRATEGY CONSTANTS
 // ============================================================================
 
+// 2026-05-17 — Henry's "Rotation Cycle" strategy: these four parameters
+// were hardcoded conservatively for the broad-discovery (meme/alt) era.
+// Under Option B + Watcher-Direct, the cohort is quality-scoped and the
+// per-trade conviction profile is different. Env-configurable so prod can
+// run the day-trading rotation cycle without changing defaults for
+// subscriber bots or other deployments.
+//
+// To activate the rotation cycle on a prod bot, set in Railway:
+//   ALPHA_HUNTER_LIVE=true
+//   ALPHA_HUNTER_ALLOCATION_PCT=0.10
+//   ALPHA_HUNTER_WATCHER_DIRECT=true
+//   ALPHA_HUNTER_MIN_CONVICTION=45
+//   ALPHA_HUNTER_POSITION_SIZE_PCT=0.50
+//   ALPHA_HUNTER_POSITION_CEILING_USD=300
+//   ALPHA_HUNTER_MAX_POSITIONS=1
+
+function envInt(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (!v) return fallback;
+  const parsed = parseInt(v, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+function envFloat(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (!v) return fallback;
+  const parsed = parseFloat(v);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 /** Discovery composite score floor. Below this, don't strike. */
-const ALPHA_MIN_CONVICTION = 65;
+const ALPHA_MIN_CONVICTION = envFloat('ALPHA_HUNTER_MIN_CONVICTION', 65);
 
 /** Max concurrent Alpha positions. Concentrate in highest conviction. */
-const ALPHA_MAX_POSITIONS = 3;
+const ALPHA_MAX_POSITIONS = envInt('ALPHA_HUNTER_MAX_POSITIONS', 3);
 
 /** Max new entries per cycle. One-shot per cycle even if 5 runners flash. */
 const ALPHA_MAX_NEW_ENTRIES_PER_CYCLE = 1;
 
 /** Fraction of the sleeve's capital budget for each new entry. */
-const ALPHA_POSITION_SIZE_PCT = 0.05;
+const ALPHA_POSITION_SIZE_PCT = envFloat('ALPHA_HUNTER_POSITION_SIZE_PCT', 0.05);
 
 /** Dollar floor — won't enter if sizing drops below this. */
 const ALPHA_POSITION_SIZE_FLOOR_USD = 10;
 
 /** Dollar ceiling — caps over-sizing when budget is large. */
-const ALPHA_POSITION_SIZE_CEILING_USD = 100;
+const ALPHA_POSITION_SIZE_CEILING_USD = envFloat('ALPHA_HUNTER_POSITION_CEILING_USD', 100);
 
 // v21.36: Specialist sizing — scale position size by per-token wallet
 // hit-rate data from the outcome tracker. When wallets that historically
