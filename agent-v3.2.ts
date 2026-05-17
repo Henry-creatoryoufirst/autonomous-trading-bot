@@ -5623,6 +5623,11 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
         gemmaMode,
       );
       logModelTelemetry(modelTelemetry);
+      // 2026-05-17 B4 iter 2: mark mainCycleLlmFired EARLY — the LLM call
+      // succeeded with a response, even if parsing fails downstream. This
+      // distinguishes "LLM never called" (gate short-circuit) from "LLM
+      // called and returned prose/HOLD" (parse failure or genuine HOLD).
+      lastMainCycleLlmFiredCycle = state.totalCycles;
 
       {
         let text = modelResponse.text.trim();
