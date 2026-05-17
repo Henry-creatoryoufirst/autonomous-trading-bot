@@ -149,6 +149,11 @@ export interface AuditLogEntry {
   lastEval: 'CLOSER' | 'noise' | 'none';            // evaluator's verdict on the previous cycle
   blockers: number;                                 // active blocker count
   botActions: string[];                             // each action as "ACTION:TOKEN@$AMT"
+  // 2026-05-17 B4: Sonnet's raw proposals BEFORE downstream gates
+  // (Bear Mode conversion, risk reviewer, executor) transformed them. The
+  // delta between rawLlmActions and botActions reveals which gate fired
+  // on which proposal. Optional for back-compat — older entries lack it.
+  rawLlmActions?: string[];
 }
 
 /**
