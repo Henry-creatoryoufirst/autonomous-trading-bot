@@ -5414,7 +5414,7 @@ async function makeTradeDecision(
 - DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
 ${formatCompositionGapBlock(
-  Object.values(positions).map((p: any) => ({ symbol: p.symbol, usdValue: p.usdValue ?? 0 })),
+  balances.map((b) => ({ symbol: b.symbol, usdValue: b.usdValue ?? 0 })),
   {
     totalPortfolioValue,
     usdcWalletBalance: usdcRawBalance,
