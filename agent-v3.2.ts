@@ -1089,6 +1089,7 @@ import { updateGoalStateLastNextStep, appendAuditLogEntry, readRecentAuditLog } 
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 import { computeBenchmark, formatBenchmarkPromptBlock } from './src/core/benchmark/compute.js';
 import { formatCohortPhysicsBlock } from './src/core/prompt/cohort-physics.js';
+import { formatCompositionGapBlock } from './src/core/prompt/composition-gap.js';
 import { COHORT_QUALITY_7_SYMBOLS } from './src/core/config/token-registry.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
@@ -5381,6 +5382,16 @@ async function makeTradeDecision(
 - Peak: $${state.trading.peakValue.toFixed(2)} | Drawdown: ${state.trading.peakValue > 0 ? ((state.trading.peakValue - totalPortfolioValue) / state.trading.peakValue * 100).toFixed(1) : "0.0"}%
 - Today's Realized P&L (from sells): $${todayRealizedPnL.toFixed(2)} (${todaySells.length} sells) | Next payout: ${hoursUntilPayout}h${cashDeployment?.active ? `
 - DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
+
+${formatCompositionGapBlock(
+  Object.values(positions).map((p: any) => ({ symbol: p.symbol, usdValue: p.usdValue ?? 0 })),
+  {
+    totalPortfolioValue,
+    usdcWalletBalance: usdcRawBalance,
+    totalHarvestedUsd: state.harvestedProfits?.totalHarvested ?? 0,
+    netCapitalInUsd: (state.totalDeposited ?? 0) - (state.onChainWithdrawn ?? 0),
+  },
+)}
 
 ${formatCohortPhysicsBlock(
   COHORT_QUALITY_7_SYMBOLS,
