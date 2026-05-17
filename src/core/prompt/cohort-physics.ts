@@ -104,19 +104,20 @@ export function formatCohortPhysicsBlock(
     const laggardTxt = laggard ? `${laggard.symbol} ${fmtPct(laggard.change)}` : 'n/a';
 
     if (d.shape === 'all-positive') {
-      interpretation = `READ: All ${rows.length} cohort tokens positive — coordinated recovery / capital flowing back into quality. F&G ${ctx.fearGreedValue} (${ctx.fearGreedClassification}) is LAGGING the tape here. This is a BUY-zone physics signature, not a HOLD signature, regardless of what F&G says.`;
+      interpretation = `READ: All ${rows.length} cohort tokens positive — coordinated recovery / capital flowing back into quality. F&G ${ctx.fearGreedValue} (${ctx.fearGreedClassification}) is LAGGING the tape. This is a BUY-zone physics signature. DO NOT default to HOLD on the basis of F&G — physics overrides aggregate sentiment when the dispersion shape disagrees. If you HOLD, you must explicitly explain why the BUY zone is wrong here.`;
     } else if (d.shape === 'all-negative') {
       interpretation = `READ: All ${rows.length} cohort tokens negative — coordinated capitulation / risk-off. F&G ${ctx.fearGreedValue} (${ctx.fearGreedClassification}) agrees. HOLD existing quality positions; do not catch falling knives. Re-evaluate when dispersion turns mixed (some recovering = rotation starting).`;
     } else {
-      interpretation = `READ: Mixed dispersion (${d.positives} up, ${d.negatives} down). Leader ${leaderTxt} vs laggard ${laggardTxt}. This is ROTATION shape — selective trades indicated: trim laggards if conviction degraded, add to leaders if conviction confirmed. F&G ${ctx.fearGreedValue} (${ctx.fearGreedClassification}) is too coarse to resolve which is which; reason from the per-token shape and conviction.`;
+      interpretation = `READ: Mixed dispersion (${d.positives} up, ${d.negatives} down). Leader ${leaderTxt} vs laggard ${laggardTxt}. This is ROTATION shape — selective trades indicated: trim laggards if conviction degraded, add to leaders if conviction confirmed. F&G ${ctx.fearGreedValue} (${ctx.fearGreedClassification}) is too coarse to resolve which is which; reason from the per-token shape and conviction. DO NOT collapse to HOLD by averaging across the cohort — that's exactly what F&G already does and it's losing signal.`;
     }
   }
 
   return [
-    '═══ COHORT PHYSICS (read this FIRST — the actual signal) ═══',
+    '═══ COHORT PHYSICS — read this FIRST. The dispersion shape across the 7-quality cohort is the leading market signal; F&G is a lagging aggregate that often disagrees with the tape. ═══',
     `24h price · ${priceLine}`,
     dispersionLine,
     `Context · regime=${ctx.regime} · F&G ${ctx.fearGreedValue} (${ctx.fearGreedClassification}, lagging aggregate)`,
     interpretation,
+    `REQUIRED in your decision reasoning: explicitly cite the dispersion shape (all-positive / all-negative / mixed) and either the leader OR laggard. Do not lead your reasoning with F&G or win-rate — those are diagnostics, not the signal. The cohort physics above is the signal.`,
   ].join('\n');
 }

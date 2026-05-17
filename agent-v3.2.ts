@@ -5382,6 +5382,12 @@ async function makeTradeDecision(
 - Today's Realized P&L (from sells): $${todayRealizedPnL.toFixed(2)} (${todaySells.length} sells) | Next payout: ${hoursUntilPayout}h${cashDeployment?.active ? `
 - DEPLOYMENT MODE: Excess cash $${cashDeployment.excessCash.toFixed(2)} | Budget this cycle: $${cashDeployment.deployBudget.toFixed(2)} | Confluence discount: -${cashDeployment.confluenceDiscount}pts` : ''}
 
+${formatCohortPhysicsBlock(
+  COHORT_QUALITY_7_SYMBOLS,
+  marketData.tokens.map(t => ({ symbol: t.symbol, priceChange24h: t.priceChange24h ?? null, volume24h: (t as any).volume24h ?? null })),
+  { fearGreedValue: marketData.fearGreed.value, fearGreedClassification: marketData.fearGreed.classification, regime: marketData.marketRegime },
+)}
+
 ═══ STRATEGIC PERFORMANCE — Option B benchmark (THE GOAL) ═══
 ${benchmarkPromptBlock}
 
@@ -5402,12 +5408,6 @@ ${sectorAllocations.map(s =>
 ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
   `${sector}: ${holdings.length > 0 ? holdings.join(" | ") : "Empty"}`
 ).join("\n")}
-
-${formatCohortPhysicsBlock(
-  COHORT_QUALITY_7_SYMBOLS,
-  marketData.tokens.map(t => ({ symbol: t.symbol, priceChange24h: t.priceChange24h ?? null, volume24h: (t as any).volume24h ?? null })),
-  { fearGreedValue: marketData.fearGreed.value, fearGreedClassification: marketData.fearGreed.classification, regime: marketData.marketRegime },
-)}
 
 ═══ MARKET SENTIMENT (broader context) ═══
 - Trending: ${marketData.trendingTokens.join(", ") || "None"}
