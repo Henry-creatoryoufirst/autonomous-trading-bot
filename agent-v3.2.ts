@@ -1088,6 +1088,8 @@ import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
 import { updateGoalStateLastNextStep, appendAuditLogEntry, readRecentAuditLog } from './src/goal-state/store.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
 import { computeBenchmark, formatBenchmarkPromptBlock } from './src/core/benchmark/compute.js';
+import { formatCohortPhysicsBlock } from './src/core/prompt/cohort-physics.js';
+import { COHORT_QUALITY_7_SYMBOLS } from './src/core/config/token-registry.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -5401,7 +5403,13 @@ ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
   `${sector}: ${holdings.length > 0 ? holdings.join(" | ") : "Empty"}`
 ).join("\n")}
 
-═══ MARKET SENTIMENT ═══
+${formatCohortPhysicsBlock(
+  COHORT_QUALITY_7_SYMBOLS,
+  marketData.tokens.map(t => ({ symbol: t.symbol, priceChange24h: t.priceChange24h ?? null, volume24h: (t as any).volume24h ?? null })),
+  { fearGreedValue: marketData.fearGreed.value, fearGreedClassification: marketData.fearGreed.classification, regime: marketData.marketRegime },
+)}
+
+═══ MARKET SENTIMENT (broader context) ═══
 - Trending: ${marketData.trendingTokens.join(", ") || "None"}
 - Momentum: score=${lastMomentumSignal.score} bias=${lastMomentumSignal.deploymentBias} | BTC 24h: ${lastMomentumSignal.btcChange24h >= 0 ? '+' : ''}${lastMomentumSignal.btcChange24h.toFixed(1)}% | ETH 24h: ${lastMomentumSignal.ethChange24h >= 0 ? '+' : ''}${lastMomentumSignal.ethChange24h.toFixed(1)}%
 
