@@ -5148,15 +5148,23 @@ async function makeTradeDecision(
   const allTradeableTokens = [...CONFIG.activeTokens, ...discoveredSymbols.filter(s => !CONFIG.activeTokens.includes(s))];
   const tradeableTokens = allTradeableTokens.join(", ");
 
+  // 2026-05-17 B3 audit: under the Option B cohort freeze, discovery-scanner
+  // output suggests LIGHT-tier entries on tokens OUTSIDE the locked 7-quality
+  // cohort — the bot cannot trade them, so the intel is prompt noise. Gated
+  // off until the cohort unlocks (~2026-06-15 Option B verdict).
+  // Set `COHORT_LOCKED=false` to restore pre-pivot behavior.
+  const _cohortLocked = process.env.COHORT_LOCKED !== 'false';
   // v6.2: Focused discovery intel — only top 5 curated opportunities, runners flagged
-  const discoveryIntel = topOpportunities.length > 0
-    ? `\n═══ EMERGING OPPORTUNITIES (Top ${topOpportunities.length} from Discovery Scanner) ═══\n${topOpportunities.map(t =>
+  const discoveryIntel = _cohortLocked || topOpportunities.length === 0
+    ? ""
+    : `\n═══ EMERGING OPPORTUNITIES (Top ${topOpportunities.length} from Discovery Scanner) ═══\n${topOpportunities.map(t =>
         `${t.isRunner ? '🚀 RUNNER: ' : ''}${t.symbol} ($${t.priceUSD.toFixed(4)}) | Vol24h: $${(t.volume24hUSD / 1000).toFixed(0)}K | Liq: $${(t.liquidityUSD / 1000).toFixed(0)}K | ${t.priceChange24h > 0 ? '+' : ''}${t.priceChange24h.toFixed(1)}% | Score: ${t.compositeScore}/100 | Sector: ${t.sector} | Risk: ${t.riskLevel}`
-      ).join("\n")}\nThese are curated from ${tokenDiscoveryEngine?.getTradableTokens().length || 0} scanned tokens. Size discovered tokens at 50-75% of normal. Runners (🚀) show exceptional momentum — evaluate carefully.\n`
-    : "";
+      ).join("\n")}\nThese are curated from ${tokenDiscoveryEngine?.getTradableTokens().length || 0} scanned tokens. Size discovered tokens at 50-75% of normal. Runners (🚀) show exceptional momentum — evaluate carefully.\n`;
 
-  // v21.12: Hot mover radar — breakout tokens detected in last scan cycle
-  const hotMoverIntel = hotMoverAlerts.length > 0
+  // v21.12: Hot mover radar — breakout tokens detected in last scan cycle.
+  // 2026-05-17 B3 audit: same gating as discoveryIntel — hot movers are by
+  // definition OFF-cohort under Option B. Gated when COHORT_LOCKED.
+  const hotMoverIntel = !_cohortLocked && hotMoverAlerts.length > 0
     ? `\n🔥🔥🔥 HOT MOVERS — BREAKING NOW ON BASE (detected this cycle) 🔥🔥🔥\n` +
       hotMoverAlerts.map(m =>
         `  ${m.symbol} | +${m.priceChangeH1.toFixed(1)}% in 1h | Vol $${(m.volumeH1USD / 1000).toFixed(0)}K | ` +
@@ -5416,22 +5424,10 @@ Low win rate during TRENDING_DOWN with quality holds is expected and does
 NOT signal "systematic mismatch". Reason about benchmark alpha first.
 ${perfSummary}
 
-═══ SECTOR ALLOCATIONS ═══
-${sectorAllocations.map(s =>
-  `${s.drift > 5 ? "⚠️OVER" : s.drift < -5 ? "⚠️UNDER" : "✅"} ${s.name}: ${s.currentPercent.toFixed(1)}% (target: ${s.targetPercent}%) drift: ${s.drift >= 0 ? "+" : ""}${s.drift.toFixed(1)}%`
-).join("\n")}
-
 ═══ HOLDINGS ═══
 ${Object.entries(holdingsBySector).map(([sector, holdings]) =>
   `${sector}: ${holdings.length > 0 ? holdings.join(" | ") : "Empty"}`
 ).join("\n")}
-
-═══ MARKET SENTIMENT (broader context) ═══
-- Trending: ${marketData.trendingTokens.join(", ") || "None"}
-- Momentum: score=${lastMomentumSignal.score} bias=${lastMomentumSignal.deploymentBias} | BTC 24h: ${lastMomentumSignal.btcChange24h >= 0 ? '+' : ''}${lastMomentumSignal.btcChange24h.toFixed(1)}% | ETH 24h: ${lastMomentumSignal.ethChange24h >= 0 ? '+' : ''}${lastMomentumSignal.ethChange24h.toFixed(1)}%
-
-═══ SECTOR ROTATION SIGNALS ═══
-${rotationSummary}
 
 ═══ TECHNICAL INDICATORS ═══
 ${indicatorsSummary || "  No indicator data available"}
