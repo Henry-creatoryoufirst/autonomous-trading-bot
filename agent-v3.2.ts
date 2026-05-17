@@ -138,6 +138,13 @@ let lastPositionAttributionAt = 0;
 // reasoner can run in pure-observer mode (v0.2) until we promote.
 let lastGoalReasoning: import('./src/goal-state/reasoner.js').ReasonerOutput | null = null;
 let lastGoalReasoningAt = 0;
+/**
+ * 2026-05-17 B4: capture Sonnet's RAW proposed actions immediately after JSON
+ * parse, BEFORE downstream gates (Bear Mode, reviewer, executor) transform
+ * them. The audit log reads this and emits both rawLlmActions and botActions
+ * so the delta reveals which gate fired.
+ */
+let lastRawLlmActions: string[] = [];
 
 /**
  * NVR-SPEC-030 Stage 3 v1 — build the string that gets recorded as the
@@ -5638,6 +5645,12 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
         if (Array.isArray(parsed)) {
           console.log(`   🚀 Multi-trade: AI returned ${rawDecisions.length} action(s)`);
         }
+        // 2026-05-17 B4: capture Sonnet's raw proposals BEFORE downstream
+        // gates (Bear Mode conversion, validity filter, reviewer, executor).
+        // Surfaces in the next audit log entry as `rawLlmActions`.
+        lastRawLlmActions = rawDecisions.map(
+          (d: any) => `${d?.action ?? '?'}:${d?.toToken ?? d?.fromToken ?? 'NONE'}@$${d?.amountUSD ?? 0}`,
+        );
 
         // v6.2: Include curated discovered tokens in validation (top 5 only, not full discovery pool)
         const validTokens = ["USDC", "NONE", ...CONFIG.activeTokens, ...discoveredSymbols];
@@ -8861,6 +8874,9 @@ async function runTradingCycle() {
         lastEval: evalVerdict as 'CLOSER' | 'noise' | 'none',
         blockers: blockerCount,
         botActions: actionsArr,
+        // 2026-05-17 B4: Sonnet's raw proposals BEFORE downstream gates.
+        // Delta between rawLlmActions and botActions reveals which gate fired.
+        rawLlmActions: lastRawLlmActions.length > 0 ? lastRawLlmActions : undefined,
       }).then((ok) => {
         if (!ok) console.warn('[GoalState:audit] KV append failed (non-fatal)');
       }).catch((err) => {
