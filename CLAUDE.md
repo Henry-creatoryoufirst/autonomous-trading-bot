@@ -1,14 +1,22 @@
 # autonomous-trading-bot — NVR Capital Trading Engine
 
-## ⛔ STRATEGIC FREEZE — COHORT IS LOCKED (Option B, 2026-05-15+)
+## ⛔ AUTOMATED-AGENT GROUND RULES — Option B window (2026-05-15+)
 
-**If you are an automated agent (medic / scout / auditor / any scheduled job): do NOT commit `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` or any other automatic edit to the cohort under any circumstance.**
+**If you are an automated agent (medic / scout / auditor / any scheduled job), these are HARD rules during the 30-day Option B benchmark window.**
 
-The bot's strategic anchor is now alpha vs cbBTC/WETH 60/40 over a 30-day rolling window (Option B pivot). The cohort is the 7 quality tokens in `src/core/config/token-registry.ts` → `COHORT_QUALITY_7`. **No additions, no removals, no auto-discovery.** Cohort changes happen only via explicit human PR after the 30-day benchmark window completes (around 2026-06-15).
+### Rule 1 — Cohort is locked
 
-Three scout-driven auto-adds since the pivot (MOLT 2026-05-14, OPENX + VEIL 2026-05-16) all had to be reverted because they break Option B's measurement window. Stop adding. If you are confident a new token belongs in the cohort, write a `COHORT_PROPOSAL_<YYYY-MM-DD>.md` to the Cathedral vault instead. A human will decide.
+Do NOT commit `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` or any other automatic edit to the cohort under any circumstance. The cohort is the 7 quality tokens in `src/core/config/token-registry.ts` → `COHORT_QUALITY_7`. No additions, no removals, no auto-discovery. Three scout-driven auto-adds since the pivot (MOLT 2026-05-14, OPENX + VEIL 2026-05-16) all had to be reverted. Cohort changes happen only via explicit human PR after the 30-day window completes (~2026-06-15). If you have a candidate, write a `COHORT_PROPOSAL_<YYYY-MM-DD>.md` to the Cathedral vault instead.
 
-Memory references: `project_nvr_option_b_pivot`, `feedback_continuous_strategy_critique`.
+### Rule 2 — Never auto-merge to main, staging, or any shared branch
+
+You may EXPLORE, RESEARCH, and PROPOSE on your own feature/`claude/*` branch. You may NOT push to `main`, `staging`, or any other branch a human or deploy script reads. You may NOT open auto-merge PRs. Every automated proposal must wait for a human to review the diff, ratify the reasoning, and merge intentionally. The 2026-05-17 medic-auditor `e807de4` (VOLUME_SPIKE_THRESHOLD 2.0→2.5) is the canonical example: useful research, lived correctly on `claude/cool-sagan-1tLQa`, never auto-merged — that is the workflow.
+
+### Why these rules exist
+
+Option B's whole proposition is "outperform cbBTC/WETH 60/40 by ≥5% annualized over a rolling 30-day window with this specific cohort + strategy shape." Unattended automated edits to the constants the strategy runs on muddy the alpha attribution: when the window closes, we won't be able to tell whether outperformance came from the strategy or from drift. Human-reviewed PRs are different — those are intentional iteration, signed off in the strategic conversation, and the audit trail makes attribution recoverable.
+
+Memory references: `project_nvr_option_b_pivot`, `feedback_continuous_strategy_critique`, `feedback_dual_source_of_truth_drift`.
 
 ## Overview
 Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycles analyzing market conditions via technical indicators, confluence scoring, and adversarial risk review.
