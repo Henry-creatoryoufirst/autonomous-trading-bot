@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-18T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-18T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-xIGu9
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-18T UTC | Scout blocked (CLAUDE.md Rule 1 cohort lock, Option B window 2026-05-15→2026-06-15); auditor lowered NORMAL_CONFLUENCE_BUY 27→25 — 73-day bear showing regime-transition signals (ETH whale +140K ETH/96h, Base TVL +17%, Glamsterdam upgrade June 2026); re-calibrating entry threshold to original design point as bear inflection approaches |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Current branch: claude/cool-sagan-xIGu9 (per CLAUDE.md Rule 2 — not pushing to staging).
+- **Scout**: BLOCKED — CLAUDE.md Rule 1 cohort lock in effect (Option B window 2026-05-15→~2026-06-15). OPENX+VEIL auto-adds (2026-05-16) were the last scout commits; both reverted as Rule 1 violations. GeckoTerminal API also blocked from sandbox. WebSearch found no specific new qualifying Base tokens not already in TOKEN_REGISTRY. NVR-HQ vault not in this checkout; no COHORT_PROPOSAL written.
+- **Auditor**: TRIGGERED by inferred 73-day BEAR market (48h+ threshold met). Research ran 4 searches. Key finding: regime-transition signals emerging (ETH whale accumulation 140K+ ETH in 96h, Base TVL +17% to $5.57B, Glamsterdam upgrade targeting June 2026, AERO up 11%). NORMAL_CONFLUENCE_BUY 27→25 — re-calibrating entry threshold toward original design point as 73-day bear approaches inflection. IMPLEMENTED in constants.ts on claude/cool-sagan-xIGu9. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-18)
+- **Signal Quality**: Mirroring smart-money on-chain wallets achieves 65% win rate vs 41% standalone (walletfinder.ai 2026). NVR already implements whale flow (LARGE_TRADE_THRESHOLD_USD=2500). Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V3 cross-chain (Q2 2026) + 34× capital efficiency in key pools. Bot auto-benefits without code change. Flashblocks (10× faster execution) already on Base infrastructure level. No new code action. (Priority 0)
+- **Position Sizing**: KEY FINDING — regime-transition signals (ETH whale accumulation 140K ETH/96h historically strong accumulation signal; Base TVL surge +17%; Glamsterdam upgrade June 2026 as hard catalyst; AERO up 98% volume). Quarter-Kelly (0.25) appropriate to keep through transition. NORMAL_CONFLUENCE_BUY 27→25 IMPLEMENTED — eases entry 2pts to capture genuine recovery momentum as regime inflects; re-entry premium (REENTRY_CONFLUENCE_BUY=27) preserved. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing (cryptollia.com 2026); private relay + sequencer-direct RPC already active. MEV protection via QuickNode Base bundle pattern confirmed as best-practice. HOT_MOVER_MIN_FDV_USD=1M already addresses micro-cap MEV sandwich risk. TEE-based autonomous trading (ElizaOS) — architecture change, complex (off-limits). No new action. (Priority 0)
+
+## Watch List (for Henry's review)
+- **Smart money wallet clustering** (Nansen/Dune-style) — Impact 4, Complexity 4, Risk medium. Multi-wallet same-token buys as confluence signal. Out of scope for auto-implementation.
+- **Intent-based execution** (CoW Swap/1inch Fusion) — 34%+ DEX aggregator market share. Requires touching executeDirectDexSwap (off-limits). High potential upside.
+- **NORMAL_CONFLUENCE_BUY revert context** — currently 25 (original design). If Glamsterdam June 2026 hard fork fails to materialise as catalyst and bear continues, consider reverting to 27.
+
+## Option B Window Note (Run #35)
+The Option B benchmark window opened 2026-05-15. This run is Day 3. The NORMAL_CONFLUENCE_BUY 27→25 change is staged on claude/cool-sagan-xIGu9 for Henry's intentional review — applying it starts the attribution clock on this specific parameter. If Henry merges, the change is signed off and traceable. If the window should remain clean, the PR can simply be held until ~2026-06-15.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
