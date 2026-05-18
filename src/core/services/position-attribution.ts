@@ -201,13 +201,25 @@ function buildPositionAttribution(args: RowInputs): PositionAttribution {
         : 0;
 
   // --- Cost basis + P&L ---
+  // 2026-05-18 bug fix: `invested` was being set to `costBasis.totalInvestedUSD`
+  // which is the LIFETIME cumulative buy volume — including all buys whose
+  // tokens were later sold. That made unrealizedPnL = currentValueUsd −
+  // lifetimeInvested, which is mathematically meaningless for the REMAINING
+  // position. E.g. cbXRP: lifetime $1,208 buys, mostly sold, 13.6 cbXRP held
+  // at $1.4458 avg cost = $19.65 actual remaining cost. Old math said
+  // "−98% / −$1,189". Real unrealized = $19 − $19.65 = −$0.88 (~breakeven).
+  //
+  // Type doc was correct ("USD invested at entry"); only implementation was
+  // wrong. Fix: invested = averageCostBasis × current balance — cost of the
+  // REMAINING position. The historical lifetime number is still available
+  // via state.costBasis[symbol].totalInvestedUSD for callers that need it.
   let invested: number | undefined;
   let entryPriceUsd: number | undefined;
   let unrealizedPnLUsd: number | undefined;
   let unrealizedPnLPct: number | undefined;
-  if (costBasis && costBasis.totalInvestedUSD > 0) {
-    invested = costBasis.totalInvestedUSD;
-    entryPriceUsd = costBasis.averageCostBasis > 0 ? costBasis.averageCostBasis : undefined;
+  if (costBasis && costBasis.averageCostBasis > 0 && bal > 0) {
+    entryPriceUsd = costBasis.averageCostBasis;
+    invested = entryPriceUsd * bal;
     unrealizedPnLUsd = currentValueUsd - invested;
     if (invested > 0) {
       unrealizedPnLPct = (unrealizedPnLUsd / invested) * 100;
