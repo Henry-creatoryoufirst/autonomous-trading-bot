@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-18T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-18T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-18T UTC | Scout: GeckoTerminal blocked (403) + CLAUDE.md Rule 1 Option B cohort lock → no tokens added; Auditor: 73-day bear trigger, no auto-implementation (CLAUDE.md Rule 2 + Option B alpha attribution), research documented for Henry — Aero Ignition scout data source + smart money clustering watch list |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the 35th consecutive run with this environmental constraint.
+- **Scout**: RAN (48h+ elapsed since last scout commit 2026-05-16). GeckoTerminal API blocked (403). All DeFi aggregators (CoinGecko, DexScreener, Aerodrome.finance) also blocked (403). Web search data insufficient — no verifiable addresses/liquidity/volume available to apply quality filter. Additionally: **CLAUDE.md Rule 1 (Option B cohort lock) prohibits all TOKEN_REGISTRY additions through ~2026-06-15.** No tokens added. Aerodrome Aero Ignition mechanism noted as future Scout data-source candidate (first-party on-chain pool creation events, does not depend on third-party API).
+- **Auditor**: TRIGGERED by inferred 73-day BEAR market (48h+ threshold met; Run #34 = 70-day, +3 days). Research ran 4 searches. **No auto-implementation — CLAUDE.md Rule 2 (Option B alpha attribution): automated constant changes during the benchmark window muddy outperformance attribution.** All findings documented for Henry's review below.
+
+## Auditor Research Summary (Run #35 — 2026-05-18)
+- **Signal Quality**: Smart money wallet clustering (Nansen/Dune-style multi-wallet co-buying within time window) — confirmed 65% win rate vs 41% for standalone bots (walletfinder.ai, 2026). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration remains complex (Impact 3/Complexity 4/Risk medium, Priority 0.75) → Watch list for Henry.
+- **Execution Efficiency**: Aerodrome MetaDEX03 + REV Engine (Q2 2026) — captures revenue from front-end swap fees, internal MEV auctions, cross-chain gas. Bot auto-benefits from DEX-level routing improvements without code change. Aerodrome Aero Ignition ($9.7M peak TVL, $5M+ AERO emissions) provides first-party pool creation data for future Scout (no GeckoTerminal dependency). No code change needed.
+- **Position Sizing**: Risk-constrained Kelly (drawdown > 25% → reduce position sizing) confirmed by crypto research (lbank.com, stratbase.ai 2026). TRENDING_DOWN×0.75 multiplier already provides regime-aware sizing. Current calibration (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, TRENDING_DOWN×0.75) yields effective max 3-4% per trade — already well within bear-optimal range. No new action. (Impact 2/Complexity 2, Priority 1.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing in 2026 (cryptollia.com) — sequencer-direct RPC already active in NVR. Intent-based routing (CoW Protocol, 34%+ DEX share) requires off-limits executeDirectDexSwap changes. TEE-based agent execution (Kraken/Binance/OKX native toolkits) emerging — architecture-level change, watch list for Henry.
+
+**Top finding this run**: No single finding reaches Priority ≥ 2.0. Previous runs (Run #32–#34) have already tightened the primary bear-market knobs (HOT_MOVER_MIN_FDV_USD=1M, KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, SCOUT_UPGRADE_BUY_RATIO=60). Bot is well-calibrated for 73-day bear. Additionally, CLAUDE.md Rule 2 prohibits auto-implementation during Option B window regardless.
+
+**Watch list for Henry (review before Option B window closes ~2026-06-15):**
+1. Smart money wallet clustering (Nansen/Dune) — Impact 3/Complexity 4 — best post-window upgrade candidate
+2. Aerodrome Aero Ignition as Scout data source — replaces broken GeckoTerminal API dependency
+3. Intent-based routing (CoW Protocol) — high-impact but touches off-limits execution path
+4. TEE-based agent execution — emerging 2026 infrastructure pattern
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +226,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
