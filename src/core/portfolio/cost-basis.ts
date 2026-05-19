@@ -9,6 +9,7 @@
 import type { TokenCostBasis, TradeRecord } from "../types/index.js";
 import { getState } from '../state/index.js';
 import { validateRealizedPnL } from './pnl-sanitizer.js';
+import { COHORT_QUALITY_7_SYMBOLS } from '../config/token-registry.js';
 
 type PriceMap = Record<string, { price: number; [key: string]: any }>;
 
@@ -511,4 +512,126 @@ export function auditAndRepairCostBasis(opts: {
   }
 
   return report;
+}
+
+// ============================================================================
+// DUST PRUNE — v21.28 (one-shot migration)
+//
+// Background: after the 2026-05-15 Option B pivot the bot kept dozens of
+// cost-basis entries from the abandoned meme/AI cohort. Each entry was
+// for a near-zero on-chain balance (sub-cent residue from past rebalances)
+// but still appeared in every prompt the LLM reasons over. The corruption
+// surfaced 2026-05-18 when the WETH-sell reasoning text contained
+// "+$2408.96 unrealized" against an actual unrealized of +$72 — the model
+// was averaging across 38 entries, most of them dead.
+//
+// This module deletes dust entries from state.costBasis without touching
+// the on-chain wallet. The tokens themselves stay where they are
+// (worthless, no slippage, no gas exposure); the bot just stops thinking
+// about them.
+//
+// Two safety belts:
+//   1. Symbols in COHORT_QUALITY_7 are NEVER pruned, even if their value
+//      is currently dust. The cohort is locked for the Option B window
+//      per CLAUDE.md Rule 1.
+//   2. A position is only considered dust if BOTH its cost-basis-residual
+//      AND its current market value are below threshold. This protects
+//      mooners — a tiny invested amount that's now worth $50 stays.
+// ============================================================================
+
+/**
+ * Default dust threshold in USD. Anything under this in BOTH invested
+ * residual and current market value is considered prunable (unless
+ * cohort-protected).
+ */
+export const DUST_PRUNE_THRESHOLD_USD = 1.0;
+
+/**
+ * Pure dust classifier — no side effects, fully testable.
+ *
+ * @param costBasis        the bot's `state.costBasis` map (not mutated).
+ * @param currentValueMap  symbol → current market USD value (from
+ *                          state.trading.balances, populated after the
+ *                          first wallet poll).
+ * @param thresholdUsd     dust ceiling in USD.
+ * @param protectedSymbols symbols that must never be pruned regardless of
+ *                          value. Defaults to COHORT_QUALITY_7_SYMBOLS.
+ *
+ * @returns the symbols whose entries SHOULD be pruned. Sorted for
+ *           deterministic logging.
+ */
+export function identifyDustCostBasisEntries(
+  costBasis: Record<string, TokenCostBasis>,
+  currentValueMap: Record<string, number>,
+  thresholdUsd: number = DUST_PRUNE_THRESHOLD_USD,
+  protectedSymbols: ReadonlyArray<string> = COHORT_QUALITY_7_SYMBOLS,
+): string[] {
+  const protectedSet = new Set(protectedSymbols);
+  const prunable: string[] = [];
+
+  for (const [symbol, cb] of Object.entries(costBasis)) {
+    if (protectedSet.has(symbol)) continue;
+    // Invested-residual proxy: how much we paid for what we still hold.
+    const investedResidualUsd = (cb.totalTokensAcquired ?? 0) * (cb.averageCostBasis ?? 0);
+    const currentValueUsd = currentValueMap[symbol] ?? 0;
+    // Require BOTH to be sub-threshold. A mooner with tiny cost basis but
+    // large current value (rare but possible) survives this check.
+    if (investedResidualUsd < thresholdUsd && currentValueUsd < thresholdUsd) {
+      prunable.push(symbol);
+    }
+  }
+
+  return prunable.sort();
+}
+
+/**
+ * One-shot migration runner. Idempotent — checks the persistence flag
+ * `_migrationDustPruneV21_28` and no-ops if already applied.
+ *
+ * Mutates `state.costBasis` by deleting prunable entries. Sets the flag
+ * on completion. Returns the symbols that were actually pruned (or null
+ * if the migration was already applied or balances aren't ready yet).
+ *
+ * Caller is responsible for calling `saveTradeHistory()` afterward to
+ * persist the cleaned-up state + the migration flag.
+ */
+export function runDustPruneMigrationOnce(
+  thresholdUsd: number = DUST_PRUNE_THRESHOLD_USD,
+): string[] | null {
+  const state = getState();
+  if ((state as any)._migrationDustPruneV21_28) {
+    return null; // already applied
+  }
+
+  const balances = state.trading?.balances ?? [];
+  if (balances.length === 0) {
+    // Wallet hasn't been polled yet — defer to a later call. Don't set the
+    // flag so we retry next cycle.
+    return null;
+  }
+
+  const valueMap: Record<string, number> = {};
+  for (const b of balances) {
+    if (b && typeof b.symbol === 'string') {
+      valueMap[b.symbol] = b.usdValue ?? 0;
+    }
+  }
+
+  const prunable = identifyDustCostBasisEntries(state.costBasis, valueMap, thresholdUsd);
+  for (const symbol of prunable) {
+    delete state.costBasis[symbol];
+  }
+
+  (state as any)._migrationDustPruneV21_28 = true;
+
+  if (prunable.length > 0) {
+    console.log(
+      `🔧 MIGRATION v21.28 (dust-prune): removed ${prunable.length} cost-basis entries ` +
+      `below $${thresholdUsd.toFixed(2)} (cohort tokens preserved). Symbols: ${prunable.join(', ')}`,
+    );
+  } else {
+    console.log(`🔧 MIGRATION v21.28 (dust-prune): no dust entries above the noise floor; nothing to remove.`);
+  }
+
+  return prunable;
 }

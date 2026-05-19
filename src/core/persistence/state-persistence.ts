@@ -302,6 +302,8 @@ export function loadTradeHistory(): void {
       if (parsed._migrationCostBasisV1145) (state as any)._migrationCostBasisV1145 = true;
       if (parsed._migrationCostBasisV1146) (state as any)._migrationCostBasisV1146 = true;
       if (parsed._migrationPnLResetV1950) (state as any)._migrationPnLResetV1950 = true;
+      // v21.28 — dust prune of dead cost-basis entries (Option B residue).
+      if (parsed._migrationDustPruneV21_28) (state as any)._migrationDustPruneV21_28 = true;
 
       // Safety guards
       state.sanityAlerts = (parsed.sanityAlerts || []).slice(-100);
@@ -472,6 +474,7 @@ export function saveTradeHistory(): void {
       _migrationCostBasisV1145: (state as any)._migrationCostBasisV1145 || false,
       _migrationCostBasisV1146: (state as any)._migrationCostBasisV1146 || false,
       _migrationPnLResetV1950: (state as any)._migrationPnLResetV1950 || false,
+      _migrationDustPruneV21_28: (state as any)._migrationDustPruneV21_28 || false,
       sanityAlerts: (state.sanityAlerts || []).slice(-50),
       tradeDedupLog: state.tradeDedupLog || {},
       userDirectives: (state.userDirectives || []).slice(-30),
