@@ -6,6 +6,14 @@
 
 export { getOrCreateCostBasis, updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from './cost-basis.js';
 
+// v21.28 — one-shot dust prune (removes cost-basis entries for dead
+// sub-$1 positions left over from the Option B pivot rebalance).
+export {
+  identifyDustCostBasisEntries,
+  runDustPruneMigrationOnce,
+  DUST_PRUNE_THRESHOLD_USD,
+} from './cost-basis.js';
+
 // Phase 4: harvest manager + pure valuation utilities
 export { HarvestManager } from './harvest-manager.js';
 export type { HarvestManagerDeps } from './harvest-manager.js';

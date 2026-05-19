@@ -789,7 +789,7 @@ import { computeMacroRegime } from "./src/algorithm/macro-regime.js";
 // Phase 9: Extracted reporting/formatting module
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
-import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades } from "./src/core/portfolio/index.js";
+import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades, runDustPruneMigrationOnce } from "./src/core/portfolio/index.js";
 import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
 import { maybeResyncCumulativePnL, findSuspectTrades, resyncPhantomPerToken } from "./src/core/portfolio/pnl-sanitizer.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
@@ -10847,6 +10847,24 @@ async function main() {
     }
   } catch (err: any) {
     console.error(`⚠️ per-token phantom cleanup failed: ${err?.message || err}`);
+  }
+
+  // v21.28: One-shot dust prune (Option B residue cleanup).
+  // After the 2026-05-15 quality-cohort pivot the bot kept 30+ cost-basis
+  // entries for sub-$1 leftover positions. Every heavy-cycle prompt
+  // serialized all of them, polluting the LLM's reasoning (e.g. 2026-05-18
+  // WETH-sell text contained "+$2408.96 unrealized" vs. real +$72 — the
+  // model averaged across dead bags). This deletes registry entries
+  // (NOT on-chain tokens) for non-cohort positions whose invested-residual
+  // AND current market value are both < $1. Idempotent via
+  // _migrationDustPruneV21_28; defers if startup balances aren't ready yet.
+  try {
+    const dustPruned = runDustPruneMigrationOnce();
+    if (dustPruned && dustPruned.length > 0) {
+      saveTradeHistory();
+    }
+  } catch (err: any) {
+    console.error(`⚠️ dust-prune migration failed: ${err?.message || err}`);
   }
 
   // Restore discovery state if available

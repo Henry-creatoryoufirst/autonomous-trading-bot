@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setState } from '../../state/index.js';
+import { setState, getState } from '../../state/index.js';
 import {
   getOrCreateCostBasis,
   updateCostBasisAfterBuy,
   updateCostBasisAfterSell,
   updateUnrealizedPnL,
+  identifyDustCostBasisEntries,
+  runDustPruneMigrationOnce,
 } from '../cost-basis.js';
 
 import type { TokenCostBasis } from '../../types/index.js';
@@ -208,5 +210,201 @@ describe('updateUnrealizedPnL', () => {
     ];
     updateUnrealizedPnL(balances);
     expect(map['USDC']).toBeUndefined();
+  });
+});
+
+// ===========================================================================
+// identifyDustCostBasisEntries — pure function (v21.28 dust prune)
+// ===========================================================================
+
+/**
+ * Helper — build a TokenCostBasis with the minimum fields the dust
+ * classifier reads (totalTokensAcquired, averageCostBasis).
+ */
+function cb(totalTokensAcquired: number, averageCostBasis: number): TokenCostBasis {
+  return {
+    symbol: 'TEST',
+    totalInvestedUSD: totalTokensAcquired * averageCostBasis,
+    totalTokensAcquired,
+    averageCostBasis,
+    realizedPnL: 0,
+    unrealizedPnL: 0,
+    currentHolding: totalTokensAcquired,
+    firstBuyDate: '2026-01-01T00:00:00Z',
+    lastTradeDate: '2026-01-01T00:00:00Z',
+    peakPrice: averageCostBasis,
+    peakPriceDate: '2026-01-01T00:00:00Z',
+    atrStopPercent: null,
+    atrTrailPercent: null,
+    atrAtEntry: null,
+    trailActivated: false,
+    lastAtrUpdate: null,
+  } as TokenCostBasis;
+}
+
+describe('identifyDustCostBasisEntries', () => {
+  it('flags a non-cohort position with sub-$1 invested AND market value as dust', () => {
+    const costBasis = { TOSHI: cb(38, 0.00017) }; // residual ~$0.0065, market ~$0.0064
+    const valueMap = { TOSHI: 0.0065 };
+    const prunable = identifyDustCostBasisEntries(costBasis, valueMap, 1.0);
+    expect(prunable).toEqual(['TOSHI']);
+  });
+
+  it('PRESERVES a cohort token even when its current value is dust', () => {
+    // The CLAUDE.md Option B Rule 1: cohort is locked. LINK at $0.27 in
+    // yesterday's balances should NEVER get pruned.
+    const costBasis = { LINK: cb(0.028, 9.17) }; // residual ~$0.26
+    const valueMap = { LINK: 0.27 };
+    const prunable = identifyDustCostBasisEntries(costBasis, valueMap, 1.0);
+    expect(prunable).toEqual([]);
+  });
+
+  it('PRESERVES a mooner: tiny invested residual but large current market value', () => {
+    // The safety belt: BOTH checks must trip. A pre-acquired tiny stake
+    // whose price 1000x'd should keep its cost-basis entry.
+    const costBasis = { MOONER: cb(0.001, 0.10) }; // invested residual = $0.0001
+    const valueMap = { MOONER: 250 }; // but the position is worth $250 now
+    const prunable = identifyDustCostBasisEntries(costBasis, valueMap, 1.0);
+    expect(prunable).toEqual([]);
+  });
+
+  it('PRESERVES a position whose invested residual is dust but market value is above threshold', () => {
+    const costBasis = { X: cb(100, 0.005) }; // residual $0.50
+    const valueMap = { X: 5.0 };              // current $5.00 — keep
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0)).toEqual([]);
+  });
+
+  it('PRESERVES a position whose market value is dust but invested residual is above threshold', () => {
+    // This is the truly painful case — a real $500 loser. We do NOT
+    // want to silently drop it from the registry: the cost-basis entry
+    // is the only memory we have of that capital outflow. The user can
+    // explicitly clean these up in a separate operation.
+    const costBasis = { LOSER: cb(100, 5.0) }; // residual $500
+    const valueMap = { LOSER: 0.10 };
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0)).toEqual([]);
+  });
+
+  it('handles a missing valueMap entry as 0', () => {
+    const costBasis = { GHOST: cb(0.0001, 0.001) }; // residual ~$0
+    const valueMap = {}; // no entry — treat as 0
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0)).toEqual(['GHOST']);
+  });
+
+  it('returns the prunable list sorted alphabetically', () => {
+    const costBasis = {
+      ZZZ: cb(0.001, 0.001),
+      AAA: cb(0.001, 0.001),
+      MMM: cb(0.001, 0.001),
+    };
+    const valueMap = { ZZZ: 0.01, AAA: 0.01, MMM: 0.01 };
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0)).toEqual(['AAA', 'MMM', 'ZZZ']);
+  });
+
+  it('respects a custom threshold', () => {
+    const costBasis = { X: cb(10, 0.3) }; // residual $3
+    const valueMap = { X: 2.8 };
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0)).toEqual([]); // not dust at $1
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 5.0)).toEqual(['X']); // dust at $5
+  });
+
+  it('respects a custom protected-symbols list', () => {
+    const costBasis = { FOO: cb(0.001, 0.001) };
+    const valueMap = { FOO: 0 };
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0, ['FOO'])).toEqual([]);
+    expect(identifyDustCostBasisEntries(costBasis, valueMap, 1.0, [])).toEqual(['FOO']);
+  });
+});
+
+// ===========================================================================
+// runDustPruneMigrationOnce — orchestrator (flag-gated, mutates state)
+// ===========================================================================
+
+describe('runDustPruneMigrationOnce', () => {
+  /** Seed a complete-enough AgentState for the orchestrator. */
+  function seedState(opts: {
+    costBasis: Record<string, TokenCostBasis>;
+    balances: Array<{ symbol: string; balance: number; usdValue: number; price?: number }>;
+    migrationFlagAlreadySet?: boolean;
+  }): AgentState {
+    const stateStub = {
+      costBasis: opts.costBasis,
+      errorLog: [],
+      tradeFailures: {},
+      trading: {
+        balances: opts.balances,
+      },
+    } as unknown as AgentState;
+    if (opts.migrationFlagAlreadySet) {
+      (stateStub as any)._migrationDustPruneV21_28 = true;
+    }
+    setState(stateStub);
+    return stateStub;
+  }
+
+  it('prunes the expected dust entries and leaves the rest', () => {
+    const state = seedState({
+      costBasis: {
+        WETH: cb(0.948, 2057.67),
+        cbLTC: cb(3.7, 54.13),
+        TOSHI: cb(38, 0.00017),
+        VADER: cb(143, 0.00316),
+        LUNA: cb(53, 0.00771),
+        LINK: cb(0.028, 9.17),
+      },
+      balances: [
+        { symbol: 'USDC', balance: 600, usdValue: 600 },
+        { symbol: 'WETH', balance: 0.948, usdValue: 2021 },
+        { symbol: 'cbLTC', balance: 3.7, usdValue: 201 },
+        { symbol: 'TOSHI', balance: 38, usdValue: 0.0065 },
+        { symbol: 'VADER', balance: 143, usdValue: 0.37 },
+        { symbol: 'LUNA', balance: 53, usdValue: 0.31 },
+        { symbol: 'LINK', balance: 0.028, usdValue: 0.27 },
+      ],
+    });
+    const pruned = runDustPruneMigrationOnce(1.0);
+    expect(pruned).toEqual(['LUNA', 'TOSHI', 'VADER']);
+    expect(state.costBasis.WETH).toBeDefined();
+    expect(state.costBasis.cbLTC).toBeDefined();
+    expect(state.costBasis.LINK).toBeDefined(); // cohort-protected
+    expect(state.costBasis.TOSHI).toBeUndefined();
+    expect(state.costBasis.VADER).toBeUndefined();
+    expect(state.costBasis.LUNA).toBeUndefined();
+    expect((state as any)._migrationDustPruneV21_28).toBe(true);
+  });
+
+  it('is idempotent — second call no-ops and returns null', () => {
+    seedState({
+      costBasis: { GHOST: cb(0.001, 0.001) },
+      balances: [{ symbol: 'GHOST', balance: 0.001, usdValue: 0 }],
+    });
+    runDustPruneMigrationOnce(1.0);
+    expect(getState().costBasis.GHOST).toBeUndefined();
+    // Re-create a dust entry; second run should not touch it because flag is set.
+    getState().costBasis.NEW_DUST = cb(0.001, 0.001);
+    const second = runDustPruneMigrationOnce(1.0);
+    expect(second).toBeNull();
+    expect(getState().costBasis.NEW_DUST).toBeDefined();
+  });
+
+  it('defers (returns null) when balances are empty — flag NOT set', () => {
+    const state = seedState({
+      costBasis: { GHOST: cb(0.001, 0.001) },
+      balances: [], // wallet not polled yet
+    });
+    const result = runDustPruneMigrationOnce(1.0);
+    expect(result).toBeNull();
+    expect(state.costBasis.GHOST).toBeDefined(); // unchanged
+    expect((state as any)._migrationDustPruneV21_28).toBeFalsy(); // can retry next cycle
+  });
+
+  it('no-ops cleanly when nothing in the registry is dust', () => {
+    const state = seedState({
+      costBasis: { WETH: cb(0.948, 2057.67) },
+      balances: [{ symbol: 'WETH', balance: 0.948, usdValue: 2021 }],
+    });
+    const pruned = runDustPruneMigrationOnce(1.0);
+    expect(pruned).toEqual([]);
+    expect(state.costBasis.WETH).toBeDefined();
+    expect((state as any)._migrationDustPruneV21_28).toBe(true);
   });
 });
