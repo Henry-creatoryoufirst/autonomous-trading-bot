@@ -1,12 +1,20 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-19T (UTC)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-7UJUm
+
+## Jobs Status This Run (Run #35 — 2026-05-19 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: `claude/cool-sagan-7UJUm` (CLAUDE.md Rule 2 prohibits pushing to staging during Option B window).
+- **Scout**: RAN (last scout was 2026-05-16, 72h+ elapsed). All data APIs blocked (GeckoTerminal 403, DexScreener 403). Web search research only. One candidate found via search: **$EAT (WYDE: End Hunger)** — address `0x680bc6ed5c7222e2f29bdbc87f8e8f3400d8ce04`, Base chain, $2.82M liquidity ✅, $57k 24h vol (borderline ✅), Dec 2025 launch ✅, not in registry ✅ — but scores **5/10** (heavy 80% vesting overhang, charity-meme category, borderline volume, unverified consistency) → **does not meet 6+ threshold. No addition made.** CLAUDE.md Rule 1 also prohibits TOKEN_REGISTRY writes during Option B window regardless.
+- **Auditor**: TRIGGERED by inferred ~73-day BEAR market (48h+ threshold met, consistent with prior runs). **NOT IMPLEMENTED** — Option B benchmark window active (2026-05-15 → 2026-06-15). Automated constant changes would muddy alpha attribution per CLAUDE.md. Watch list findings from this run: (a) continued bear validates KELLY_POSITION_CEILING_PCT=12 already set; no lower change recommended without human review. (b) Aerodrome MetaDEX03 (Q2 2026 launch) may improve routing — auto-benefit, no code change needed. All findings deferred to Henry for post-window review.
+
+---
 
 ## Problem
 
@@ -66,6 +74,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-19T UTC | Scout ran (72h elapsed since OPENX/VEIL reverts 2026-05-16) — data APIs 403-blocked; web search found $EAT (WYDE) with borderline 5/10 score; no addition. Auditor TRIGGERED (inferred 73-day BEAR) — NOT IMPLEMENTED per CLAUDE.md Option B attribution constraint (window 2026-05-15→2026-06-15). All changes deferred to Henry post-window. |
 
 ## Bot Health Evidence (from git history)
 
