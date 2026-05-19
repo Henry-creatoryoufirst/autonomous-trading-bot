@@ -967,8 +967,8 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // This is the middle tier between dust cleanup (<$5) and meaningful holds (>$100).
 // ============================================================================
 
-/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear) */
-export const CULL_MIN_AGE_HOURS = 72; // Bear-adjusted May-2026: 120→72 — 65-day bear; dead sub-$100 research positions recycle 40% faster; Kelly criterion research confirms sustained bear regimes require accelerated capital rotation out of non-performing positions to reduce portfolio drag; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards prevent culling genuine winners
+/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear → 2 days in 74-day bear) */
+export const CULL_MIN_AGE_HOURS = 48; // Bear-adjusted May-2026: 72→48 — 74-day bear; Kelly criterion research (altrady.com, stratbase.ai) confirms accelerated capital rotation continues to be optimal in sustained bear regimes; 33% faster cleanup of non-performing sub-$100 positions; CULL_MAX_USD=100, CULL_MIN_PNL_PCT=-5, CULL_MAX_MOMENTUM=3 guards unchanged — only genuinely dead positions exit
 
 /** Only cull positions under this USD value — don't touch meaningful holds */
 export const CULL_MAX_USD = 100;
