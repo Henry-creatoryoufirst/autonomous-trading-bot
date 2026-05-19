@@ -17,7 +17,11 @@ function report(cycle: number, durationMs = 5): AuditReport {
   };
 }
 
-function makeCtx(cycle: number, previousReport: AuditReport | null): InvariantContext {
+function makeCtx(
+  cycle: number,
+  previousReport: AuditReport | null,
+  auditorCyclesRun = 0,
+): InvariantContext {
   return {
     balances: [],
     totalPortfolioValue: 3000,
@@ -26,35 +30,40 @@ function makeCtx(cycle: number, previousReport: AuditReport | null): InvariantCo
     capturedPrompt: null,
     cycle,
     previousReport,
+    auditorCyclesRun,
   };
 }
 
 describe('INV-9 auditor self-test', () => {
-  it('returns null on first run (no prior report yet, within grace)', () => {
-    expect(auditorSelfTest(makeCtx(1, null))).toBeNull();
+  it('returns null on the auditor\'s genuinely-first run (auditorCyclesRun=0, no prev)', () => {
+    // Bot may be at any cycle (totalCycles persists across restarts); what
+    // matters is that the AUDITOR itself hasn\'t completed a cycle yet.
+    expect(auditorSelfTest(makeCtx(1, null, 0))).toBeNull();
+    expect(auditorSelfTest(makeCtx(5000, null, 0))).toBeNull(); // high bot-cycle on fresh deploy
   });
 
-  it('fires SEVERE if no previous report after grace cycles', () => {
-    const v = auditorSelfTest(makeCtx(5, null));
+  it('fires SEVERE if previousReport is null but the auditor has run before (state corruption)', () => {
+    const v = auditorSelfTest(makeCtx(5, null, 3)); // ran 3 times but no prev report
     expect(v).not.toBeNull();
     expect(v!.severity).toBe('SEVERE');
     expect(v!.invariantId).toBe('INV-9');
     expect(v!.pauseScope).toBe('none');
+    expect((v!.observed as any).auditorCyclesRun).toBe(3);
   });
 
   it('returns null when previous report matches expected cycle and ran successfully', () => {
-    expect(auditorSelfTest(makeCtx(11, report(10, 7)))).toBeNull();
+    expect(auditorSelfTest(makeCtx(11, report(10, 7), 1))).toBeNull();
   });
 
   it('fires SEVERE if previous report was from a skipped cycle', () => {
-    const v = auditorSelfTest(makeCtx(15, report(10))); // skipped 4 cycles
+    const v = auditorSelfTest(makeCtx(15, report(10), 1)); // skipped 4 cycles
     expect(v).not.toBeNull();
     expect(v!.severity).toBe('SEVERE');
     expect((v!.observed as any).previousReportCycle).toBe(10);
   });
 
   it('fires SEVERE if previous report ran in 0ms (auditor did not actually execute)', () => {
-    const v = auditorSelfTest(makeCtx(11, report(10, 0)));
+    const v = auditorSelfTest(makeCtx(11, report(10, 0), 1));
     expect(v).not.toBeNull();
     expect((v!.observed as any).previousReportDurationMs).toBe(0);
   });

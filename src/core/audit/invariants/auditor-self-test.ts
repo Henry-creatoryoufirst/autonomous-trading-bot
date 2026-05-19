@@ -6,50 +6,57 @@
  * crashing or being silently disabled.
  *
  * Rules:
- *   - previousReport must exist (unless this is cycle 1 of a fresh boot)
+ *   - previousReport must exist (unless this is the auditor's own first
+ *     ever cycle on this process — `auditorCyclesRun === 0`)
  *   - previousReport.cycle must be == ctx.cycle - 1 (no skipped cycles)
  *   - previousReport.durationMs must be > 0 (it actually ran)
- *   - previousReport must contain at least the SEVERE invariants in
- *     its violation-check set (we can infer this from auditorRanInvariants
- *     count > 0; the orchestrator records this)
  *
  * SEVERE on violation. Pause scope: none (we don't pause trading just
  * because the auditor is unhealthy — we log loudly so the alert mode
  * picks it up). The rationale: a broken auditor is a visibility problem,
  * not a safety problem, and pausing trades because of a meta-layer
  * failure would be over-correction.
+ *
+ * 2026-05-19 polish: fresh-boot grace now uses the auditor's own
+ * `auditorCyclesRun` counter instead of the bot's `state.totalCycles`.
+ * On a fresh Railway deploy the bot's totalCycles is whatever was
+ * persisted (high), but the auditor's own counter is 0 — that's the
+ * only reliable signal that the auditor itself is on its first ever
+ * cycle. Previous logic produced spurious SEVERE on first cycle after
+ * every redeploy.
  */
 
 import type { Invariant, Violation } from '../types.js';
 
-// On the very first run after a boot/restart, previousReport is null
-// because nothing has run yet. That's allowed for ONE cycle. After that,
-// every cycle should have a predecessor.
-const FRESH_BOOT_GRACE_CYCLES = 1;
-
 export const auditorSelfTest: Invariant = (ctx) => {
   const prev = ctx.previousReport;
 
-  // Fresh boot grace
   if (!prev) {
-    if (ctx.cycle <= FRESH_BOOT_GRACE_CYCLES) return null;
+    // Genuine first run? Grace.
+    if (ctx.auditorCyclesRun === 0) return null;
+    // No previous report but the auditor claims to have run before — that
+    // means the report file got corrupted or wiped mid-run. Real signal.
     return {
       invariantId: 'INV-9',
       invariantName: 'auditor-self-test',
       severity: 'SEVERE',
-      message: `Auditor has no previous report at cycle ${ctx.cycle}; expected one by now`,
-      observed: { cycle: ctx.cycle, previousReport: null },
-      expected: { rule: `previousReport non-null after cycle ${FRESH_BOOT_GRACE_CYCLES}` },
+      message: `Auditor has run ${ctx.auditorCyclesRun} cycle(s) before but previousReport is null — persisted state may have been wiped or corrupted`,
+      observed: { auditorCyclesRun: ctx.auditorCyclesRun, botCycle: ctx.cycle, previousReport: null },
+      expected: { rule: 'previousReport non-null when auditorCyclesRun > 0' },
       pauseScope: 'none',
       detectedAt: new Date().toISOString(),
     };
   }
 
   const issues: string[] = [];
-  const expectedPrevCycle = ctx.cycle - 1;
 
+  // The bot's cycle counter (state.totalCycles) is what we expect to
+  // advance by exactly 1 between auditor runs. The auditor's own counter
+  // tracks its own runs, but the bot may cycle without the auditor running
+  // (e.g., auditor disabled mid-day) — so we compare bot-cycles instead.
+  const expectedPrevCycle = ctx.cycle - 1;
   if (prev.cycle !== expectedPrevCycle) {
-    issues.push(`previous report was from cycle ${prev.cycle}, expected ${expectedPrevCycle} (skipped ${expectedPrevCycle - prev.cycle} cycle(s))`);
+    issues.push(`previous report was from bot-cycle ${prev.cycle}, expected ${expectedPrevCycle} (skipped ${expectedPrevCycle - prev.cycle} cycle(s))`);
   }
 
   if (prev.durationMs <= 0) {
@@ -64,7 +71,8 @@ export const auditorSelfTest: Invariant = (ctx) => {
     severity: 'SEVERE',
     message: `Auditor self-test failed: ${issues.join('; ')}`,
     observed: {
-      currentCycle: ctx.cycle,
+      currentBotCycle: ctx.cycle,
+      auditorCyclesRun: ctx.auditorCyclesRun,
       previousReportCycle: prev.cycle,
       previousReportDurationMs: prev.durationMs,
       previousReportRanAt: prev.ranAt,

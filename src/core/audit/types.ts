@@ -170,10 +170,18 @@ export interface InvariantContext {
   lastKnownPrices: Record<string, { price: number }>;
   /** The most recent captured prompt (or null if none captured this cycle). */
   capturedPrompt: CapturedPrompt | null;
-  /** Current cycle number. */
+  /** The BOT's current cycle counter (state.totalCycles — persists across restarts). */
   cycle: number;
   /** Most recent auditor report (or null on first run); used by INV-9. */
   previousReport: AuditReport | null;
+  /**
+   * The AUDITOR's own cycle count — how many times runSystemAuditor() has
+   * completed since this module was loaded. Critical for INV-9: a fresh
+   * boot has auditorCyclesRun=0 but the bot's `cycle` may be any value
+   * (totalCycles persists across restarts), so this is the only reliable
+   * signal that the auditor itself is on its first run.
+   */
+  auditorCyclesRun: number;
 }
 
 export type Invariant = (ctx: InvariantContext) => Violation | null;

@@ -30,6 +30,7 @@ function makeCtx(opts: Partial<InvariantContext> & { capturedPrompt?: CapturedPr
     capturedPrompt: opts.capturedPrompt ?? null,
     cycle: 100,
     previousReport: null,
+    auditorCyclesRun: 5,
     ...opts,
   };
 }
