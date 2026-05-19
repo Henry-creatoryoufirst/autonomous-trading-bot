@@ -24,6 +24,8 @@ import type { Invariant, Violation, InvariantContext } from '../types.js';
 
 const TOLERANCE_PCT = 0.02; // 2% — accommodates price-tick drift between sources
 const MIN_PORTFOLIO_USD = 50; // below this, all three sources can legitimately be 0/noisy
+const POSITION_MIN_USD = 1; // sub-$1 dust positions don't count toward the price-readiness check
+const PRICE_READINESS_MIN_COVERAGE = 0.80; // ≥80% of non-trivial positions must have live prices for INV-1 to run
 
 function makeViolation(observed: Record<string, unknown>, message: string): Violation {
   return {
@@ -86,6 +88,30 @@ export const dimensionalHonesty: Invariant = (ctx) => {
   // Below the minimum portfolio threshold, all sources can legitimately read
   // near-zero (fresh wallet, mid-recovery, etc). Don't fire false alarms.
   if (ctx.totalPortfolioValue < MIN_PORTFOLIO_USD) return null;
+
+  // 2026-05-19 polish: skip the check when `lastKnownPrices` hasn't fully
+  // populated yet. On a fresh Railway boot, the price stream takes a few
+  // cycles to warm up — meanwhile non-trivial positions fall back to
+  // `averageCostBasis` for source A which produces wildly wrong values for
+  // any token whose historical cost basis is stored in different decimals
+  // than current market (e.g., SPX with averageCostBasis = $3.77B from a
+  // past unit-conversion bug). Returning null here lets INV-1 stay quiet
+  // during warmup; once prices populate, the check runs cleanly.
+  let nonTrivialPositions = 0;
+  let positionsWithPrice = 0;
+  for (const b of ctx.balances) {
+    if (b.symbol === 'USDC') continue; // cash leg always priced at 1
+    if ((b.usdValue ?? 0) < POSITION_MIN_USD) continue;
+    nonTrivialPositions += 1;
+    if ((ctx.lastKnownPrices[b.symbol]?.price ?? 0) > 0) positionsWithPrice += 1;
+  }
+  if (nonTrivialPositions > 0) {
+    const coverage = positionsWithPrice / nonTrivialPositions;
+    if (coverage < PRICE_READINESS_MIN_COVERAGE) {
+      console.log(`[SystemAudit:warmup] INV-1 skipped — price coverage ${(coverage * 100).toFixed(0)}% (${positionsWithPrice}/${nonTrivialPositions}) below ${(PRICE_READINESS_MIN_COVERAGE * 100).toFixed(0)}% threshold`);
+      return null;
+    }
+  }
 
   const sourceA = sumCostBasisPositions(ctx);
   const sourceB = sumBalancesUsd(ctx);

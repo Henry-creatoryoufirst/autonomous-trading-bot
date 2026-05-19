@@ -420,6 +420,11 @@ export async function runSystemAuditor(deps: AuditorDeps): Promise<AuditReport |
     capturedPrompt: _state.capturedPrompt,
     cycle: deps.cycle,
     previousReport: _state.lastReport,
+    // Auditor's own first-run signal — independent of the bot's
+    // state.totalCycles (which persists across restarts and would
+    // never be 0 on a fresh Railway boot). INV-9 uses this for the
+    // fresh-boot grace.
+    auditorCyclesRun: _state.stats.cyclesRun,
   };
 
   // Run every invariant; isolate failures so one buggy invariant doesn't
