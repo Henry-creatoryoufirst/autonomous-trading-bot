@@ -790,6 +790,9 @@ import { computeMacroRegime } from "./src/algorithm/macro-regime.js";
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades, runDustPruneMigrationOnce } from "./src/core/portfolio/index.js";
+// NVR-SPEC-035 Phase A — system auditor (audit-of-audits layer).
+// Default-off via SYSTEM_AUDITOR_ENABLED env; importing alone has zero side effects.
+import { runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt, canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram } from "./src/core/audit/index.js";
 import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
 import { maybeResyncCumulativePnL, findSuspectTrades, resyncPhantomPerToken } from "./src/core/portfolio/pnl-sanitizer.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
@@ -2085,6 +2088,22 @@ function scheduleNextCycle() {
       cycleInProgress = false;
       // v20.5: Flush any dirty state at end of cycle (batched I/O)
       flushStateIfDirty('end-of-cycle');
+
+      // NVR-SPEC-035 Phase A — system auditor runs at the highest stable
+      // point after the cycle is materialized (per feedback_audit_log_complete_coverage).
+      // No-op when SYSTEM_AUDITOR_ENABLED unset. Wrapped in try/catch so a
+      // bug in the auditor itself can never crash the trading loop.
+      try {
+        await runSystemAuditor({
+          balances: state.trading.balances,
+          totalPortfolioValue: state.trading.totalPortfolioValue,
+          costBasis: state.costBasis,
+          lastKnownPrices,
+          cycle: state.totalCycles,
+        });
+      } catch (err: any) {
+        console.error(`[SystemAudit] runner threw: ${err?.message || err}`);
+      }
 
       // v21.3: TRADE DROUGHT DETECTOR — alert if no trades for 2+ hours
       const timeSinceLastTrade = Date.now() - lastSuccessfulTradeAt;
@@ -5609,6 +5628,17 @@ If the market is dead, HOLD is the best trade. Protect capital for when opportun
   // Retry up to 3 times with exponential backoff for rate limits
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
+      // NVR-SPEC-035 INV-3: capture the about-to-be-sent prompt for next
+      // cycle's auditor coherence check. No-op when SYSTEM_AUDITOR_ENABLED
+      // is unset. Captured pre-call so a model failure still leaves the
+      // prompt visible to the next auditor run.
+      auditorCaptureLastPrompt({
+        text: cacheablePrefixText + dynamicBlock,
+        portfolioValueClaimed: totalPortfolioValue,
+        modelLabel,
+        cycle: state.totalCycles,
+      });
+
       // v21.2: Model routing — Gemma for routine, Claude for difficult markets
       // v21.20 SPEC-018: OSS primary = full-context, 2k output budget for multi-trade decisions
       const { response: modelResponse, telemetry: modelTelemetry } = await callModelWithShadow(
@@ -5764,6 +5794,20 @@ async function executeTrade(
   if ((state as any).withdrawPaused) {
     console.log(`  ⏸️ Trade blocked — withdrawal in progress`);
     return { success: false, error: 'Trading paused during withdrawal' };
+  }
+
+  // NVR-SPEC-035 Phase A — system-auditor gate. Path-specific pause per
+  // Henry's 2026-05-19 ratification: INV-1 pauses new buys, INV-2 pauses
+  // new buys for affected tokens only, INV-3 pauses the next LLM call.
+  // SELLs and HOLDs are never blocked. No-op when SYSTEM_AUDITOR_ENABLED unset.
+  const auditGate = auditorCanExecuteAction({
+    action: decision.action as 'BUY' | 'SELL' | 'HOLD' | 'REBALANCE',
+    symbol: decision.action === 'SELL' ? decision.fromToken : decision.toToken,
+    source: 'llm',
+  });
+  if (!auditGate.allowed) {
+    console.log(`  ⏸️ Trade blocked — ${auditGate.reason}`);
+    return { success: false, error: auditGate.reason ?? 'SystemAuditor blocker active' };
   }
 
   // v21.11: Raptor 3 — gas check is invisible inside every trade, no external gas service
@@ -10132,6 +10176,21 @@ async function main() {
   // Phase 3c: Wire module-level state into the centralized store
   _storeSetState(state);
   _storeSetBreakerState(breakerState);
+
+  // NVR-SPEC-035 Phase A — wire the auditor's Telegram alert sender so
+  // SEVERE violations can escalate once the alert-mode auto-flip fires
+  // (24h after first runtime). No-op when SYSTEM_AUDITOR_ENABLED is unset.
+  auditorWireTelegram(async (msg: string) => {
+    try {
+      await telegramService.sendAlert({
+        severity: 'HIGH',
+        title: '🚨 NVR SYSTEM AUDITOR — SEVERE invariant violation',
+        message: msg,
+      });
+    } catch (err: unknown) {
+      console.warn(`[SystemAudit] telegram send failed: ${(err as Error).message}`);
+    }
+  });
 
   // (HWM startup hygiene moved to AFTER loadTradeHistory — pendingFeeUSDC
   // value isn't loaded from disk until then.)
