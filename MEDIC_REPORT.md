@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-19T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-S2WBl (CLAUDE.md Rule 2: no staging pushes during Option B window)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-19T UTC | Scout SKIPPED — CLAUDE.md Rule 1: cohort locked for Option B benchmark window (~2026-06-15); GeckoTerminal also unreachable. Auditor: STALE_POSITION_MIN_AGE_HOURS 36→48 — Option-B quality cohort pivot; blue-chip tokens consolidate 48-72h; bear-era 36h was calibrated for speculative meme tokens; hybrid VIX+Kelly research supports less aggressive exits for quality assets. Pushed to claude/cool-sagan-S2WBl per CLAUDE.md Rule 2 (no staging pushes during benchmark window). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). ⚠️ NOTE: Pushing to `claude/cool-sagan-S2WBl` per CLAUDE.md Rule 2 (no staging pushes during Option B benchmark window).
+- **Scout**: SKIPPED — CLAUDE.md Rule 1: cohort locked for Option B benchmark window (through ~2026-06-15). Last scout commits (OPENX+VEIL 2026-05-16) were reverted; 3 total auto-adds reverted. GeckoTerminal also unreachable. No COHORT_PROPOSAL written (no pool data available). Scout 48h threshold met (72h since last scout), but cohort lock overrides.
+- **Auditor**: TRIGGERED by inferred 74-day BEAR market (48h+ threshold met). API unreachable for exact metrics, bear context confirmed by history. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MIN_AGE_HOURS 36→48 — Option-B cohort pivot; quality tokens (cbBTC/WETH/LINK/cbXRP/cbLTC/cbADA/cbSOL) consolidate 48-72h before resuming; 36h was calibrated for speculative meme tokens; hybrid VIX+Kelly research (arxiv 2508.16598) confirms less aggressive exits suit blue-chip quality assets. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0). Pushed to claude/cool-sagan-S2WBl for Henry's review.
+
+## Auditor Research Summary (Run #35 — 2026-05-19)
+- **Signal Quality**: On-chain wallet mirroring achieves 65% win rate vs 41% standalone bots (2026 research). NVR partially implements via alpha-watcher pipeline and LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration: Impact 3/Complexity 4/Risk med → Watch list. No new action.
+- **Execution Efficiency**: Aerodrome Slipstream "Aero" upgrade (November 2025, METADEX03) — embedded MEV auctions now internalize extractable value to LPs/veAERO holders. Flashblocks deliver 10x faster execution. NVR auto-benefits without code change. No action needed.
+- **Position Sizing**: KEY FINDING — arxiv 2508.16598 "Sizing the Risk: Kelly, VIX, and Hybrid Approaches" — hybrid VIX+Kelly consistently outperforms both independently. NVR at Quarter-Kelly (KELLY_FRACTION=0.25). Option-B quality cohort pivot means stale-exit thresholds need recalibration; 36h too aggressive for blue-chips. STALE_POSITION_MIN_AGE_HOURS 36→48 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Cross-DEX aggregation (OpenOcean) for optimal swap paths on Base — requires touching executeDirectDexSwap (off-limits). MEV protection via private mempool essential in 2026 — NVR uses Aerodrome Slipstream (embedded MEV auctions per Aero upgrade, no code change needed). Watch list: intent-based routing (CoW Protocol / 1inch), Sigma-style reorg protection. No new action.
+
+## Henry Watch List (Option B window — do not auto-implement)
+1. **Constant recalibration for quality cohort** — Many bear-market constants (HOT_MOVER_MIN_BUY_RATIO, FLOW_REVERSAL_EXIT_BUY_RATIO, SCALE_UP_MIN_GAIN_PCT) were calibrated for speculative meme/AI tokens. Option B quality cohort has fundamentally different behavior. Full recalibration review should happen ~day 10 of Option B window with actual performance data.
+2. **On-chain wallet mirroring** — 65% vs 41% win rate gap (2026 research). Significant alpha if NVR can integrate smart-money wallet flow signals. Complexity: high (requires on-chain RPC subscription + Nansen-style clustering). Post-window project.
+3. **Hybrid VIX+Kelly regime sizing** — arxiv 2508.16598. Beyond STALE_POSITION fix, the full hybrid approach could improve sizing in regime transitions. Medium complexity (5-10 lines, touches Kelly sizing logic). Needs human review before implementation.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
