@@ -1,0 +1,179 @@
+/**
+ * NVR-SPEC-035 System Auditor — shared types
+ *
+ * The audit-of-audits layer. Runs at the end of every heavy cycle, asserts
+ * a set of pure-function invariants over the bot's materialized state +
+ * the LLM prompt that was about to be sent, and surfaces disagreements
+ * between independent sources of truth.
+ *
+ * Phase A ships four SEVERE invariants:
+ *   INV-1 dimensional honesty   — sum of positions ≈ totalPortfolioValue
+ *   INV-2 no fictional per-token PnL — caps |realizedPnL| per token
+ *   INV-3 prompt coherence       — the prompt's stated numbers agree with state
+ *   INV-9 auditor self-test      — the auditor itself ran last cycle
+ *
+ * Phase B adds the WARN tier (INV-4 through INV-8). Phase C adds opt-in
+ * auto-correction. Phase D adds the admin cockpit surface.
+ *
+ * Severity routing per Henry's 2026-05-19 ratification: path-specific
+ * pause on SEVERE (INV-1 → pause new buys, INV-2 → pause new buys for
+ * affected tokens only, INV-3 → pause next LLM-driven decision only).
+ */
+
+// ============================================================================
+// SEVERITY + SCOPE
+// ============================================================================
+
+export type Severity = 'INFO' | 'WARN' | 'SEVERE';
+
+/**
+ * The granularity of a pause when a SEVERE invariant trips.
+ *
+ * - `none`        — no pause; for INFO/WARN
+ * - `all-buys`    — every BUY decision pauses; rebalances + sells allowed
+ * - `per-token-buys` — BUYs of `affectedTokens` pause; everything else allowed
+ * - `next-llm`    — the next LLM-driven decision is short-circuited to HOLD;
+ *                    deterministic gates (force-sells, breaker exits) keep working
+ */
+export type PauseScope = 'none' | 'all-buys' | 'per-token-buys' | 'next-llm';
+
+// ============================================================================
+// THE LLM PROMPT CAPTURE
+//
+// Stashed by callers right before they hit the Anthropic API; consumed by
+// INV-3 the next time the auditor runs. Living on `state.audit.lastPrompt`
+// keeps it queryable + persistable without growing the trade-history blob.
+// ============================================================================
+
+export interface CapturedPrompt {
+  /** ISO timestamp of when the prompt was captured (pre-send). */
+  capturedAt: string;
+  /** Cycle the capture happened in. */
+  cycle: number;
+  /** The full prompt text the model was about to receive. */
+  text: string;
+  /** Portfolio value the caller believed at capture time. INV-3 checks this against state. */
+  portfolioValueClaimed: number;
+  /** Model that was about to be called (haiku|sonnet|gemma|...). */
+  modelLabel: string;
+  /** Approximate token count of the captured text. */
+  approxTokens: number;
+}
+
+// ============================================================================
+// VIOLATION + REPORT
+// ============================================================================
+
+export interface Violation {
+  /** Stable invariant identifier — e.g. "INV-1". */
+  invariantId: string;
+  /** Short human-readable invariant name. */
+  invariantName: string;
+  severity: Severity;
+  /** One-sentence description of what failed. */
+  message: string;
+  /** What the auditor observed, as a structured payload. */
+  observed: Record<string, unknown>;
+  /** What the auditor expected, as a structured payload. */
+  expected: Record<string, unknown>;
+  /** The pause scope this violation should trigger if severity is SEVERE. */
+  pauseScope: PauseScope;
+  /** For per-token pauses: which tokens are affected. */
+  affectedTokens?: string[];
+  /** ISO timestamp of when the violation was detected. */
+  detectedAt: string;
+}
+
+export interface AuditReport {
+  cycle: number;
+  ranAt: string;
+  durationMs: number;
+  violations: Violation[];
+  /** True if this report or its predecessor flipped systemHealthBlocker active. */
+  blockerActive: boolean;
+  /** The auditor's current alert mode at this run. */
+  alertMode: AuditorMode;
+}
+
+// ============================================================================
+// SYSTEM HEALTH BLOCKER
+//
+// Persisted on AgentState. Read by the trade-execution gate to refuse
+// affected decisions. Cleared by either:
+//   (a) a subsequent clean auditor cycle on the same invariant, OR
+//   (b) explicit human/operator action (admin endpoint).
+//
+// Per Henry's ratification (2026-05-19): pause is PATH-SPECIFIC — the
+// blocker carries `pauseScope` + `affectedTokens` so deterministic gates
+// and rebalances stay alive even while LLM-driven new entries pause.
+// ============================================================================
+
+export interface SystemHealthBlocker {
+  /** True when at least one SEVERE violation is active and unresolved. */
+  active: boolean;
+  /** The invariant that set the most recent active blocker. */
+  invariantId: string;
+  /** The scope of the pause. */
+  pauseScope: PauseScope;
+  /** For per-token-buys scope: which tokens are blocked. */
+  affectedTokens?: string[];
+  /** Short reason for surfacing to logs + Telegram. */
+  reason: string;
+  /** When the blocker was first set. */
+  setAt: string;
+  /** When the blocker was last refreshed (most recent SEVERE detection). */
+  lastObservedAt: string;
+  /** How many consecutive cycles the blocker has been active. */
+  consecutiveCycles: number;
+  /** ISO timestamp the auditor's alert mode will flip from log-only → alert. */
+  alertModeFlipAt?: string;
+}
+
+// ============================================================================
+// AUDITOR MODE
+//
+// `log-only` is the first-run default per Henry's ratification: Phase A
+// will fire SEVERE immediately on TOSHI's -$2.3M, and we want 24h of clean
+// signal before Telegram starts firing.
+// ============================================================================
+
+export type AuditorMode = 'log-only' | 'alert' | 'disabled';
+
+// ============================================================================
+// INVARIANT INTERFACE
+//
+// Every invariant is a pure function: given the audit context, return
+// either a violation or null. No side effects. No state mutations.
+// The orchestrator collects results + routes severity.
+// ============================================================================
+
+export interface InvariantContext {
+  /** The most recent populated balances (from state.trading.balances). */
+  balances: Array<{
+    symbol: string;
+    balance: number;
+    usdValue: number;
+    price?: number;
+  }>;
+  /** The scalar totalPortfolioValue from state.trading.totalPortfolioValue. */
+  totalPortfolioValue: number;
+  /** The bot's in-state cost-basis registry. */
+  costBasis: Record<string, {
+    symbol: string;
+    realizedPnL: number;
+    totalInvestedUSD: number;
+    totalTokensAcquired: number;
+    averageCostBasis: number;
+    currentHolding: number;
+  }>;
+  /** Last-known prices indexed by symbol (used for cross-source position-value sum). */
+  lastKnownPrices: Record<string, { price: number }>;
+  /** The most recent captured prompt (or null if none captured this cycle). */
+  capturedPrompt: CapturedPrompt | null;
+  /** Current cycle number. */
+  cycle: number;
+  /** Most recent auditor report (or null on first run); used by INV-9. */
+  previousReport: AuditReport | null;
+}
+
+export type Invariant = (ctx: InvariantContext) => Violation | null;
