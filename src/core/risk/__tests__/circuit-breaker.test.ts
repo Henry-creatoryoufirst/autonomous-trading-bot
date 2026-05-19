@@ -317,4 +317,103 @@ describe('CircuitBreaker', () => {
       expect(breakerState.breakerSizeReductionUntil).toBeTruthy();
     });
   });
+
+  // ==========================================================================
+  // BASELINE SANITY — v21.28 two-sided gates + 3-cycle confirmation
+  //
+  // These tests cover the symmetrized sanity logic introduced after the
+  // 2026-05-18 phantom -$215 incident, where a stale/transient mark at UTC
+  // midnight committed a baseline ~8% above the real book and the previous
+  // one-sided self-heal had no path to correct it.
+  // ==========================================================================
+
+  describe('baseline rollover — two-sided sanity', () => {
+    /** Seed yesterday's baseline so today's call is treated as a rollover. */
+    function seedYesterdayBaseline(value: number): void {
+      breakerState.dailyBaseline = { date: '2026-05-17', value };
+      breakerState.dailyBaselineValidated = true;
+    }
+
+    it('captures the candidate when the rollover delta is within tolerance', () => {
+      seedYesterdayBaseline(1000);
+      cb.evaluate(1050); // +5% — fine
+      expect(breakerState.dailyBaseline.value).toBe(1050);
+      expect(breakerState.dailyBaselineValidated).toBe(true);
+    });
+
+    it('DEFERS a phantom-LOW rollover capture (>35% below previous)', () => {
+      seedYesterdayBaseline(1000);
+      cb.evaluate(500); // -50% — phantom
+      // Date stays yesterday + validated flips false so the dashboard shows "Calibrating"
+      expect(breakerState.dailyBaseline.value).toBe(1000);
+      expect(breakerState.dailyBaseline.date).toBe('2026-05-17');
+      expect(breakerState.dailyBaselineValidated).toBe(false);
+    });
+
+    it('DEFERS a phantom-HIGH rollover capture (>35% above previous) — the 2026-05-18 case', () => {
+      seedYesterdayBaseline(2000);
+      cb.evaluate(3100); // +55% — phantom on the high side
+      // Old code would have accepted this and stuck a high baseline for the whole day.
+      expect(breakerState.dailyBaseline.value).toBe(2000);
+      expect(breakerState.dailyBaseline.date).toBe('2026-05-17');
+      expect(breakerState.dailyBaselineValidated).toBe(false);
+    });
+
+    it('accepts a high rollover that is just under the sanity threshold', () => {
+      seedYesterdayBaseline(1000);
+      cb.evaluate(1340); // +34% — just inside the 35% gate
+      expect(breakerState.dailyBaseline.value).toBe(1340);
+      expect(breakerState.dailyBaselineValidated).toBe(true);
+    });
+  });
+
+  describe('intraday baseline self-heal — two-sided', () => {
+    /** Seed an intraday baseline that has already committed today. */
+    function seedTodayBaseline(value: number): void {
+      const today = new Date().toISOString().split('T')[0];
+      breakerState.dailyBaseline = { date: today, value };
+      breakerState.dailyBaselineValidated = true;
+    }
+
+    it('self-heals UP immediately when stored baseline is stuck low', () => {
+      seedTodayBaseline(800);
+      cb.evaluate(1100); // +37.5% — over the 25% stuck threshold
+      expect(breakerState.dailyBaseline.value).toBe(1100);
+      expect(breakerState.dailyBaselineValidated).toBe(true);
+    });
+
+    it('does NOT self-heal DOWN on the first stuck-high cycle (preserves crash signal)', () => {
+      seedTodayBaseline(1000);
+      cb.evaluate(700); // -30% — a real flash-crash candidate
+      // Baseline stays at 1000 so the daily-drawdown trigger can fire as intended.
+      expect(breakerState.dailyBaseline.value).toBe(1000);
+    });
+
+    it('self-heals DOWN only after 3 consecutive stuck-high cycles', () => {
+      seedTodayBaseline(1000);
+      cb.evaluate(700); // cycle 1 — watching
+      expect(breakerState.dailyBaseline.value).toBe(1000);
+      cb.evaluate(710); // cycle 2 — still watching
+      expect(breakerState.dailyBaseline.value).toBe(1000);
+      cb.evaluate(720); // cycle 3 — confirms, self-heals
+      expect(breakerState.dailyBaseline.value).toBe(720);
+      expect(breakerState.dailyBaselineValidated).toBe(true);
+    });
+
+    it('resets the stuck-high counter if portfolio returns to tolerance mid-watch', () => {
+      seedTodayBaseline(1000);
+      cb.evaluate(700); // cycle 1 — watching (count=1)
+      cb.evaluate(950); // cycle 2 — within 25% tolerance, counter resets
+      cb.evaluate(700); // cycle 3 — watching again (count=1, not 3)
+      // Baseline must NOT have self-healed since we never hit 3 consecutive.
+      expect(breakerState.dailyBaseline.value).toBe(1000);
+    });
+
+    it('does NOT trigger self-heal when delta is within tolerance either way', () => {
+      seedTodayBaseline(1000);
+      cb.evaluate(1100); // +10% — fine
+      cb.evaluate(900);  // -10% — fine
+      expect(breakerState.dailyBaseline.value).toBe(1000);
+    });
+  });
 });
