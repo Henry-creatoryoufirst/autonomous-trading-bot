@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-19T UTC | Scout BLOCKED — Option B cohort lock in effect (CLAUDE.md Rule 1); auditor raised HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K — 74-day bear; MEXC/QuickNode 2026 research confirms MEV bots dominating DeFi; $200K/h now includes more MEV-sandwich setups; pushed to claude/cool-sagan-WjLqj per CLAUDE.md Rule 2 |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — CLAUDE.md Rule 1 (Option B cohort lock) overrides 48h threshold. Last qualifying scout was 2026-05-14 (MOLT, >48h ago) but cohort is locked until ~2026-06-15. No TOKEN_REGISTRY changes.
+- **Auditor**: TRIGGERED by inferred 74-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K — 74-day bear; MEXC/QuickNode 2026 research confirms MEV bots dominating Base DeFi; $200K/h threshold now includes more MEV-sandwich setups vs 65-day calibration; $250K floor requires genuine participation. PROPOSED on claude/cool-sagan-WjLqj (per CLAUDE.md Rule 2 — not pushed to staging). (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-19)
+- **Signal Quality**: On-chain analytics (smart money wallet clustering, 65% win rate via top-wallet mirroring per BingX/WalletFinder 2026 research). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Permit2 batch approvals confirmed optimal for gas savings (eco.com/Cyfrin 2026). Already implemented in NVR. No new action. (Priority 0)
+- **Position Sizing**: ATR-based Kelly volatility adjustment — "integrating volatility measures such as ATR enhances accuracy"; multi-agent Kelly yields 20-30% better Sharpe (GPTrader 2026). Quarter-Kelly already at KELLY_FRACTION=0.25. ATR integration requires new code beyond constants change (Impact 2/Complexity 3/Risk medium) → Watch list. (Priority 0.67)
+- **Competitive Intel**: KEY FINDING — MEV bots dominating DeFi in 2026 (MEXC News, QuickNode 2026). "Leading MEV Bots Dominating DeFi Trading In 2026" — Base micro-cap signals increasingly MEV-coordinated even at $200K/h. HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K filters residual thin-volume noise at 74-day bear depth. (Impact 3, Complexity 1, Risk low, Priority 3.0) PROPOSED on claude/cool-sagan-WjLqj.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

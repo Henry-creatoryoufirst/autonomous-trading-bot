@@ -703,7 +703,7 @@ export const GAS_RESERVOIR_DAILY_USD = 0.50;
 export const HOT_MOVER_MIN_CHANGE_H1_PCT = 7; // Bear-adjusted Apr-2026: 5→7 — 46-day bear; 5% h1 pumps reverse ~70% of the time in bear markets; require stronger conviction
 
 /** Min 1h volume to confirm the move is real (not illiquid pump) */
-export const HOT_MOVER_MIN_VOLUME_H1_USD = 200_000; // Bear-adjusted May-2026: 150K→200K — 65-day bear; total Base DEX vol suppressed (~$673M/day vs bull peaks); $150K/h threshold no longer filters thin MEV-sandwich pumps; $200K floor requires broader market participation
+export const HOT_MOVER_MIN_VOLUME_H1_USD = 250_000; // Bear-adjusted May-2026: 200K→250K — 74-day bear; MEV bots dominating DeFi in 2026 (MEXC/QuickNode research); Base DEX vol still suppressed; $200K/h now includes more MEV-sandwich setups vs bull calibration; $250K floor requires broader real participation
 
 /** Min pool liquidity — below this is a rug risk, skip it */
 export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
