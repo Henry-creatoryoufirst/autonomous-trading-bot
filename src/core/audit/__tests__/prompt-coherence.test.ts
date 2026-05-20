@@ -32,6 +32,8 @@ function makeCtx(opts: Partial<InvariantContext> & { capturedPrompt?: CapturedPr
     previousReport: null,
     auditorCyclesRun: 5,
     liveOnChainSnapshot: null,
+    chainDepositHistory: null,
+    botTotalDeposited: null,
     ...opts,
   };
 }

@@ -40,7 +40,9 @@ import { fictionalPnl } from './invariants/fictional-pnl.js';
 import { promptCoherence } from './invariants/prompt-coherence.js';
 import { auditorSelfTest } from './invariants/auditor-self-test.js';
 import { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
+import { chainDepositReconciliation } from './invariants/chain-deposit-reconciliation.js';
 import type { LiveOnChainSnapshot } from './sources/live-onchain.js';
+import type { ChainDepositHistory } from './sources/chain-deposit-history.js';
 
 // ============================================================================
 // CONFIG
@@ -162,6 +164,10 @@ const PHASE_A_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
   // with no shared blind spot vs in-state cache. Would have caught the
   // May-20 aUSDC drift on the cycle it appeared.
   { id: 'INV-10', fn: chainTruthReconciliation },
+  // Phase A.1 (2026-05-20): chain-deposit reconciliation — catches Zack-
+  // class wallet-rotation amnesia where the bot's totalDeposited resets
+  // when the wallet rotates and loses sight of pre-rotation deposits.
+  { id: 'INV-11', fn: chainDepositReconciliation },
 ];
 
 // ============================================================================
@@ -411,6 +417,15 @@ export interface AuditorDeps {
    * compares against in-state and fires SEVERE on >5% disagreement.
    */
   liveOnChainSnapshot?: LiveOnChainSnapshot | null;
+  /**
+   * Phase A.1 — optional chain-deposit history for INV-11. The agent
+   * refreshes this once per day (deposits are rare events). When null,
+   * INV-11 stays silent. When set, INV-11 compares against
+   * botTotalDeposited and fires SEVERE if the gap exceeds tolerance.
+   */
+  chainDepositHistory?: ChainDepositHistory | null;
+  /** Phase A.1 — INV-11 input. From state.totalDeposited. */
+  botTotalDeposited?: number | null;
 }
 
 /**
@@ -443,6 +458,10 @@ export async function runSystemAuditor(deps: AuditorDeps): Promise<AuditReport |
     // when this is null (caller didn't refresh this cycle); the absence
     // is not a failure, the noise-floor is lower.
     liveOnChainSnapshot: deps.liveOnChainSnapshot ?? null,
+    // Phase A.1 — chain-deposit history. Optional. INV-11 returns null
+    // when either history or botTotalDeposited is null.
+    chainDepositHistory: deps.chainDepositHistory ?? null,
+    botTotalDeposited: deps.botTotalDeposited ?? null,
   };
 
   // Run every invariant; isolate failures so one buggy invariant doesn't
