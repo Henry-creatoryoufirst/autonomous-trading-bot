@@ -39,6 +39,8 @@ import { dimensionalHonesty } from './invariants/dimensional-honesty.js';
 import { fictionalPnl } from './invariants/fictional-pnl.js';
 import { promptCoherence } from './invariants/prompt-coherence.js';
 import { auditorSelfTest } from './invariants/auditor-self-test.js';
+import { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
+import type { LiveOnChainSnapshot } from './sources/live-onchain.js';
 
 // ============================================================================
 // CONFIG
@@ -156,6 +158,10 @@ const PHASE_A_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
   { id: 'INV-2', fn: fictionalPnl },
   { id: 'INV-3', fn: promptCoherence },
   { id: 'INV-9', fn: auditorSelfTest },
+  // Phase A.1 (2026-05-20): live on-chain reconciliation — the only source
+  // with no shared blind spot vs in-state cache. Would have caught the
+  // May-20 aUSDC drift on the cycle it appeared.
+  { id: 'INV-10', fn: chainTruthReconciliation },
 ];
 
 // ============================================================================
@@ -381,7 +387,7 @@ export function clearBlocker(reason: string): void {
 
 export interface AuditorDeps {
   /** From state.trading.balances */
-  balances: Array<{ symbol: string; balance: number; usdValue: number; price?: number }>;
+  balances: Array<{ symbol: string; balance: number; usdValue: number; price?: number; sector?: string }>;
   /** From state.trading.totalPortfolioValue */
   totalPortfolioValue: number;
   /** From state.costBasis */
@@ -397,6 +403,14 @@ export interface AuditorDeps {
   lastKnownPrices: Record<string, { price: number }>;
   /** Current cycle counter from state.totalCycles. */
   cycle: number;
+  /**
+   * Phase A.1 — optional live on-chain snapshot for INV-10. The agent
+   * polls this every N cycles (not every cycle — too RPC-expensive)
+   * via `captureLiveOnChainSnapshot()` from `./sources/live-onchain.js`.
+   * When null, INV-10 stays silent for the cycle. When set, INV-10
+   * compares against in-state and fires SEVERE on >5% disagreement.
+   */
+  liveOnChainSnapshot?: LiveOnChainSnapshot | null;
 }
 
 /**
@@ -425,6 +439,10 @@ export async function runSystemAuditor(deps: AuditorDeps): Promise<AuditReport |
     // never be 0 on a fresh Railway boot). INV-9 uses this for the
     // fresh-boot grace.
     auditorCyclesRun: _state.stats.cyclesRun,
+    // Phase A.1 — chain-truth snapshot. Optional. INV-10 returns null
+    // when this is null (caller didn't refresh this cycle); the absence
+    // is not a failure, the noise-floor is lower.
+    liveOnChainSnapshot: deps.liveOnChainSnapshot ?? null,
   };
 
   // Run every invariant; isolate failures so one buggy invariant doesn't

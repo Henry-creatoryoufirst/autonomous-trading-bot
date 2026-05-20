@@ -31,6 +31,7 @@ function makeCtx(
     cycle,
     previousReport,
     auditorCyclesRun,
+    liveOnChainSnapshot: null,
   };
 }
 

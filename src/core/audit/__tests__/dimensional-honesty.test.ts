@@ -16,6 +16,7 @@ function makeCtx(overrides: Partial<InvariantContext> = {}): InvariantContext {
     cycle: 100,
     previousReport: null,
     auditorCyclesRun: 5,
+    liveOnChainSnapshot: null,
     ...overrides,
   };
 }
