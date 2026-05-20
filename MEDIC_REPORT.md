@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-20T UTC | Scout ran (>48h since MOLT on 2026-05-14); no qualifying tokens found — GeckoTerminal blocked from sandbox + CLAUDE.md Option-B cohort lock prevents TOKEN_REGISTRY additions until ~2026-06-15; auditor TRIGGERED by inferred 75-day BEAR; SWARM_AGENT_WEIGHTS flow 0.35→0.40, momentum 0.20→0.15 — research confirms flow-dominant bots achieve 65% win rate vs 41% for technical-dominant; weight shift amplifies the most reliable bear-market signal |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints + Bash egress block). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last add was MOLT on 2026-05-14, >48h ago). GeckoTerminal blocked from sandbox (403). WebSearch returned general L2 overviews with no verifiable pool-level data (liquidity/volume/age). CLAUDE.md Rule 1 (Option B cohort lock) prevents TOKEN_REGISTRY additions until ~2026-06-15; NVR-HQ vault not in checkout. Result: no qualifying tokens added — standards maintained.
+- **Auditor**: TRIGGERED by inferred 75-day BEAR market (48h+ threshold met; confirmed via git history pattern). Research ran 4 searches. Top finding: on-chain flow signals (DEX buy/sell ratio) yield 65% win rate vs 41% for pure technical-indicator bots (WunderTrading / Phemex 2026 research). SWARM_AGENT_WEIGHTS: flow 0.35→0.40, momentum 0.20→0.15. (Impact 4, Complexity 1, Risk low, Priority 4.0) IMPLEMENTED in src/core/config/constants.ts. Pushed to claude/cool-sagan-Y2LVl for Henry's review.
+
+## Auditor Research Summary (Run #35 — 2026-05-20)
+- **Signal Quality**: KEY FINDING — On-chain wallet flow tracking achieves 65% win rate vs 41% for standalone technical bots (WunderTrading 2026; Phemex 2026 bot stats). NVR's flow weight (0.35) is already dominant; boosting to 0.40 and trimming lagging momentum weight (0.20→0.15) amplifies the highest-alpha signal in a 75-day bear where RSI/MACD produce false oversold readings. Sum still 1.0. IMPLEMENTED. (Impact 4, Complexity 1, Risk low, Priority 4.0)
+- **Execution Efficiency**: Aerodrome Slipstream already primary router. Flashblocks (10x faster block production) is RPC-layer benefit — no constants change needed. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal by multiple 2026 sources. NVR already calibrated correctly. Regime-adaptive fraction already implemented via DEFAULT_REGIME_MULTIPLIERS (TRENDING_DOWN 0.75 → effective 3.5% max). No new action. (Priority 0)
+- **Competitive Intelligence**: MEV protection via private relays mainstream in 2026. On Base L2, centralized sequencer already reduces sandwich risk vs mainnet. BASE_RPC_ENDPOINTS sequencer-direct already first. Aerodrome cross-chain Q2-2026 expansion noted for watch list. (Priority 0.4)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

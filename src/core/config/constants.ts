@@ -1133,8 +1133,8 @@ export const SIGNAL_ENGINE: 'swarm' | 'classic' = (process.env.SIGNAL_ENGINE as 
  *  Flow is the dominant signal — where money moves, price follows.
  *  Momentum confirms flow, doesn't lead. Sentiment near-zero. */
 export const SWARM_AGENT_WEIGHTS = {
-  momentum:  0.20,  // RSI, MACD, Bollinger — confirms flow direction
-  flow:      0.35,  // DEX buy/sell ratio, volume — THE core signal
+  momentum:  0.15,  // RSI, MACD, Bollinger — lags on-chain flow; Bear-adjusted 2026-05-20: 0.20→0.15 (75-day bear; lagging indicators produce false oversold readings in sustained downtrends)
+  flow:      0.40,  // DEX buy/sell ratio, volume — THE core signal; Bear-adjusted 2026-05-20: 0.35→0.40 (flow-dominant bots: 65% win-rate vs 41% technical-only — WunderTrading/Phemex 2026 research)
   risk:      0.25,  // Position sizing, portfolio exposure, drawdown
   sentiment: 0.05,  // BTC/ETH trend, market regime — minor context only
   trend:     0.15,  // ADX, price direction — structural trend confirmation
