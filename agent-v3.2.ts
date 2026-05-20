@@ -456,6 +456,8 @@ import {
   TOKEN_HEAVY_ANALYSIS_INTERVAL_MS, // v7.0
   CAPITAL_FLOOR_PERCENT,
   CAPITAL_FLOOR_ABSOLUTE_USD,
+  LIFETIME_DRAWDOWN_BUY_BLOCK_PCT,
+  LIFETIME_DRAWDOWN_CAUTION_PCT,
   SECTOR_STOP_LOSS_OVERRIDES,
   // v8.0: Phase 1 — Institutional Position Sizing & Capital Protection
   KELLY_FRACTION,
@@ -2114,7 +2116,7 @@ function scheduleNextCycle() {
         if (!CONFIG.trading.enabled) blockers.push("Trading is DISABLED (dry run)");
         if (!cdpClient) blockers.push("CDP client not initialized");
         const drawdown = state.trading.peakValue > 0 ? ((state.trading.peakValue - state.trading.totalPortfolioValue) / state.trading.peakValue) * 100 : 0;
-        if (drawdown >= 20) blockers.push(`Circuit breaker: ${drawdown.toFixed(1)}% drawdown`);
+        if (drawdown >= LIFETIME_DRAWDOWN_BUY_BLOCK_PCT) blockers.push(`Circuit breaker: ${drawdown.toFixed(1)}% drawdown (BUY-blocked; sells/rebalances allowed)`);
         if (state.trading.totalPortfolioValue < CAPITAL_FLOOR_ABSOLUTE_USD && state.trading.totalPortfolioValue > 0) blockers.push(`Capital floor: $${state.trading.totalPortfolioValue.toFixed(2)} < $${CAPITAL_FLOOR_ABSOLUTE_USD}`);
         if (blockers.length === 0) blockers.push("No obvious blockers — AI may be choosing HOLD for all tokens");
 
@@ -8324,15 +8326,32 @@ async function runTradingCycle() {
 
     // === CIRCUIT BREAKERS ===
     // v10.3: Skip breakers when portfolio is $0 — cold-start artifact, not real drawdown
-    // Hard halt: if drawdown exceeds 20% from peak, stop all trading this cycle
-    if (!isPhantomMove && drawdown >= 20 && !belowCapitalFloor && state.trading.totalPortfolioValue > 0) {
-      console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% exceeds 20% threshold. Halting trading this cycle.`);
+    //
+    // v21.29 (2026-05-20): SCOPE-AWARE refactor. Prior versions did `return;`
+    // here, halting the entire cycle — including SELLs, trims, and rebalances
+    // that would have been the right move during a drawdown. The 40+ hour
+    // trading silence observed 2026-05-18..05-20 was correct in OUTCOME
+    // (don't buy into capitulation) but enforced by a blunt cap, not by a
+    // Reviewer judgment — exactly the "stuck-trade dressed as conviction"
+    // pattern from the 2026-05-19 audit. New shape mirrors the existing
+    // belowCapitalFloor + institutionalBreakerActive pattern: set a flag,
+    // let the cycle proceed, convert BUYs to HOLDs at the decision-loop
+    // site (line ~9050). Sells/rebalances flow normally. The LLM still
+    // reasons + Reviewer still reviews + sleeves still render decisions —
+    // so we can see WHAT the bot would do, not just have it sit silent.
+    const lifetimeDrawdownBreakerActive =
+      !isPhantomMove
+      && drawdown >= LIFETIME_DRAWDOWN_BUY_BLOCK_PCT
+      && !belowCapitalFloor
+      && state.trading.totalPortfolioValue > 0;
+    if (lifetimeDrawdownBreakerActive) {
+      console.log(`\n🚨 CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% ≥ ${LIFETIME_DRAWDOWN_BUY_BLOCK_PCT}% threshold — BUY-blocked, sells/rebalances/trims still flow.`);
       console.log(`   Peak: $${state.trading.peakValue.toFixed(2)} | Current: $${state.trading.totalPortfolioValue.toFixed(2)}`);
       state.trading.lastCheck = new Date();
-      return;
+      // intentionally NOT returning — cycle proceeds with BUYs gated downstream
     }
     // Caution zone: if drawdown exceeds 12%, reduce max position size by 50%
-    const circuitBreakerActive = state.trading.totalPortfolioValue > 0 && drawdown >= 12;
+    const circuitBreakerActive = state.trading.totalPortfolioValue > 0 && drawdown >= LIFETIME_DRAWDOWN_CAUTION_PCT;
     if (circuitBreakerActive) {
       console.log(`\n⚠️ CIRCUIT BREAKER: Drawdown ${drawdown.toFixed(1)}% — caution mode active, position sizes halved`);
     }
@@ -9042,6 +9061,17 @@ async function runTradingCycle() {
         console.log(`   🚫 CAPITAL FLOOR: Blocking BUY — portfolio $${state.trading.totalPortfolioValue.toFixed(2)} below floor $${capitalFloorValue.toFixed(2)}. Only sells allowed.`);
         decision.action = "HOLD";
         decision.reasoning = `Capital floor active: portfolio at $${state.trading.totalPortfolioValue.toFixed(2)} is below ${CAPITAL_FLOOR_PERCENT}% of peak ($${capitalFloorValue.toFixed(2)}). Holding until recovery or funding.`;
+      }
+
+      // === v21.29: LIFETIME DRAWDOWN BREAKER — BLOCK NEW BUYS ONLY ===
+      // Was a full-cycle halt prior to v21.29 (returned at the breaker check
+      // before any decision ran). Now scope-aware: cycle proceeds, LLM
+      // reasons, sleeves decide; only fresh BUY actions get converted to
+      // HOLD. SELLs, trims, and rebalances flow through unchanged.
+      if (lifetimeDrawdownBreakerActive && decision.action === "BUY") {
+        console.log(`   🚫 LIFETIME DRAWDOWN BREAKER: Blocking BUY — drawdown ${drawdown.toFixed(1)}% ≥ ${LIFETIME_DRAWDOWN_BUY_BLOCK_PCT}%. Sells/trims allowed.`);
+        decision.action = "HOLD";
+        decision.reasoning = `Lifetime drawdown breaker active: drawdown ${drawdown.toFixed(1)}% (peak $${state.trading.peakValue.toFixed(2)} → current $${state.trading.totalPortfolioValue.toFixed(2)}) ≥ ${LIFETIME_DRAWDOWN_BUY_BLOCK_PCT}% threshold. New BUYs blocked; rebalances/sells/trims still flow.`;
       }
 
       // === v8.0: INSTITUTIONAL BREAKER — BLOCK NEW BUYS ===
@@ -10957,7 +10987,7 @@ async function main() {
   const portfolioVal = state.trading.totalPortfolioValue || 0;
   if (portfolioVal > 0 && portfolioVal < CAPITAL_FLOOR_ABSOLUTE_USD) startupBlockers.push(`Portfolio $${portfolioVal.toFixed(2)} below $${CAPITAL_FLOOR_ABSOLUTE_USD} capital floor`);
   const startupDrawdown = state.trading.peakValue > 0 ? ((state.trading.peakValue - portfolioVal) / state.trading.peakValue) * 100 : 0;
-  if (startupDrawdown >= 20) startupBlockers.push(`Drawdown ${startupDrawdown.toFixed(1)}% exceeds 20% circuit breaker`);
+  if (startupDrawdown >= LIFETIME_DRAWDOWN_BUY_BLOCK_PCT) startupBlockers.push(`Drawdown ${startupDrawdown.toFixed(1)}% ≥ ${LIFETIME_DRAWDOWN_BUY_BLOCK_PCT}% — v21.29 scope-aware: NEW BUYs blocked, sells/rebalances/trims allowed`);
 
   if (startupBlockers.length > 0) {
     console.error(`\n🚨 STARTUP: Trading is BLOCKED by ${startupBlockers.length} issue(s):`);

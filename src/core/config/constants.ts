@@ -502,6 +502,38 @@ export const CAPITAL_FLOOR_PERCENT = 40; // Hold-only if portfolio < 40% of peak
 export const CAPITAL_FLOOR_ABSOLUTE_USD = 50; // $50 absolute minimum
 
 // ============================================================================
+// LIFETIME DRAWDOWN CIRCUIT BREAKER — v21.29 (2026-05-20)
+//
+// Two-tier scope-aware drawdown gate from the peak-to-current portfolio
+// percentage. Prior to v21.29 the >=20% gate did `return;` mid-cycle,
+// halting EVERY trade type — even rebalances and sells that would have been
+// the right move during a drawdown. This violated `feedback_audit_log_complete_coverage`
+// ("audit/measurement layers need complete decision-path coverage") and
+// produced the 40+ hour trading silence observed 2026-05-18..05-20. The
+// silence was correct in outcome (don't buy into capitulation) but enforced
+// by a blunt cap, not by a Reviewer judgment — exactly the "stuck-trade
+// dressed as conviction" pattern from yesterday's audit.
+//
+// v21.29 scope-aware shape (parallel to CAPITAL_FLOOR_PERCENT pattern):
+//   - At drawdown >= LIFETIME_DRAWDOWN_BUY_BLOCK_PCT (20%): the breaker
+//     is "active" — new BUYs are converted to HOLDs in the decision loop
+//     (line ~9050) but the cycle proceeds, SELLs/REBALANCEs/trims flow,
+//     LLM still reasons, sleeves still render decisions.
+//   - At drawdown >= LIFETIME_DRAWDOWN_CAUTION_PCT (12%): position sizes
+//     halved (pre-existing behavior, unchanged).
+//
+// The institutional breaker (consecutive losses / daily DD / weekly DD)
+// has been scope-aware since v8.0 — this brings the lifetime breaker into
+// alignment with that same pattern.
+// ============================================================================
+
+/** Lifetime drawdown threshold at which NEW BUYs are blocked. Cycle still runs. */
+export const LIFETIME_DRAWDOWN_BUY_BLOCK_PCT = 20;
+
+/** Lifetime drawdown threshold at which position sizes are halved. */
+export const LIFETIME_DRAWDOWN_CAUTION_PCT = 12;
+
+// ============================================================================
 // SECTOR RISK LIMITS — v6.2 Per-Sector Stop-Loss Overrides
 // ============================================================================
 
