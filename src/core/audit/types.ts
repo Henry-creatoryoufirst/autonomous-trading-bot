@@ -154,6 +154,8 @@ export interface InvariantContext {
     balance: number;
     usdValue: number;
     price?: number;
+    /** Sector tag from TOKEN_REGISTRY ('BLUE_CHIP'/'AI_TOKENS'/'YIELD'/etc.). */
+    sector?: string;
   }>;
   /** The scalar totalPortfolioValue from state.trading.totalPortfolioValue. */
   totalPortfolioValue: number;

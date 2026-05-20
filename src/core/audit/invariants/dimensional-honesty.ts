@@ -44,21 +44,27 @@ function makeViolation(observed: Record<string, unknown>, message: string): Viol
 }
 
 /**
- * The bot's quote-currency holdings (USDC, ETH-as-gas) live in
- * `state.trading.balances` but never in `state.costBasis` — they're cash,
- * not positions. To compare the cost-basis-derived total against the
- * balances total apples-to-apples, the cost-basis sum must add back the
- * cash legs from the balances array.
+ * Three categories live in `state.trading.balances` but never appear in
+ * `state.costBasis` (so the cost-basis-derived sum naturally excludes
+ * them). To compare apples-to-apples, INV-1 must add them back to
+ * source A from the balances array:
  *
- * ETH (native gas) is also excluded from costBasis but is treated as
- * inventory by some paths. We include both.
+ *   1. Cash-and-gas: USDC, native ETH — bot's quote currency + gas reserve
+ *   2. YIELD-sector positions: aBasUSDC, mUSDC (Morpho vault shares),
+ *      future Aave/Morpho/Compound receipt tokens — added 2026-05-20 after
+ *      the silent under-reporting bug surfaced ($430 of value invisible to
+ *      portfolio total for weeks because yield receipt tokens weren't read
+ *      into balances)
  */
 const CASH_AND_GAS_SYMBOLS = new Set(['USDC', 'ETH']);
+const YIELD_SECTOR = 'YIELD';
 
-function sumCashAndGasFromBalances(ctx: InvariantContext): number {
+function sumCashGasAndYieldFromBalances(ctx: InvariantContext): number {
   let sum = 0;
   for (const b of ctx.balances) {
-    if (CASH_AND_GAS_SYMBOLS.has(b.symbol)) sum += b.usdValue ?? 0;
+    const isCashGas = CASH_AND_GAS_SYMBOLS.has(b.symbol);
+    const isYield = (b as { sector?: string }).sector === YIELD_SECTOR;
+    if (isCashGas || isYield) sum += b.usdValue ?? 0;
   }
   return sum;
 }
@@ -76,8 +82,9 @@ function sumCostBasisPositions(ctx: InvariantContext): number {
     if (price <= 0) continue;
     sum += holding * price;
   }
-  // Add cash + gas from balances so source A spans the same scope as B + C
-  return sum + sumCashAndGasFromBalances(ctx);
+  // Add cash + gas + yield receipt tokens from balances so source A spans
+  // the same scope as B + C (all three valuations represent the same total)
+  return sum + sumCashGasAndYieldFromBalances(ctx);
 }
 
 function sumBalancesUsd(ctx: InvariantContext): number {

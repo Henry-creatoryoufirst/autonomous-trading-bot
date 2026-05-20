@@ -4864,10 +4864,68 @@ async function getBalances(): Promise<{ symbol: string; balance: number; usdValu
     }
   }
 
+  // v21.30 (2026-05-20): YIELD-PROTOCOL RECEIPT TOKENS.
+  //
+  // Root-cause fix for the "−$200" diagnostic 2026-05-20: the bot's
+  // yield-optimizer deposits USDC into Aave + Morpho but the receipt
+  // tokens (aBasUSDC, Morpho vault shares) were never read into
+  // state.trading.balances. Result: ~$430 of value was silently invisible
+  // to /api/portfolio, /api/balances, totalPortfolioValue, the breaker
+  // logic, the daily P&L math, and every downstream consumer.
+  //
+  // This pass calls the existing yield-service balance readers (which
+  // already know how to talk to the receipt-token contracts on-chain)
+  // and appends them as pseudo-balances with USD value pre-computed
+  // (1:1 for aUSDC, convertSharesToUSDC for Morpho). Tagged with
+  // sector='YIELD' so the downstream pricing loop (line ~8043) skips
+  // them and the cohort/sector engines don't treat them as positions
+  // to trade. Failures are non-fatal — wrapped in try/catch so a
+  // yield-service hiccup never blocks the main balance read.
+  //
+  // Architectural note: this is the second source SPEC-035 INV-1 needed
+  // (live RPC of the full wallet). Adding it here closes the silent-drift
+  // gap that INV-1's three in-state sources couldn't catch (they all
+  // agreed on the wrong number because they all read from the same
+  // truncated state.trading.balances).
+  try {
+    const aaveUsd = await aaveYieldService.getATokenBalance(walletAddress);
+    if (aaveUsd > 0) {
+      balances.push({
+        symbol: 'aBasUSDC',
+        balance: aaveUsd,        // 1:1 with USDC (aToken rebases to USD)
+        usdValue: aaveUsd,       // PRE-COMPUTED — pricing loop must skip
+        price: 1,
+        sector: 'YIELD',
+      });
+      console.log(`  💰 YIELD: Aave aBasUSDC = $${aaveUsd.toFixed(2)}`);
+    }
+  } catch (err: any) {
+    console.warn(`  ⚠️ Aave aToken balance read failed (non-fatal): ${err?.message?.slice(0, 100) || err}`);
+  }
+
+  try {
+    const morphoShares = await morphoYieldService.getShareBalance(walletAddress);
+    if (morphoShares > 0) {
+      const morphoUsd = await morphoYieldService.convertSharesToUSDC(morphoShares);
+      if (morphoUsd > 0) {
+        balances.push({
+          symbol: 'mUSDC',          // Morpho vault shares, USDC underlying
+          balance: morphoShares,
+          usdValue: morphoUsd,
+          price: morphoShares > 0 ? morphoUsd / morphoShares : 1,
+          sector: 'YIELD',
+        });
+        console.log(`  💰 YIELD: Morpho mUSDC = $${morphoUsd.toFixed(2)} (${morphoShares.toFixed(6)} shares)`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`  ⚠️ Morpho share balance read failed (non-fatal): ${err?.message?.slice(0, 100) || err}`);
+  }
+
   const nonZero = balances.filter(b => b.balance > 0);
   console.log(`  ✅ Found ${nonZero.length} tokens with balances`);
   for (const b of nonZero) {
-    console.log(`     ${b.symbol}: ${b.balance < 0.001 ? b.balance.toFixed(8) : b.balance.toFixed(4)} (${b.symbol === "USDC" ? `$${b.usdValue.toFixed(2)}` : "pending price"})`);
+    console.log(`     ${b.symbol}: ${b.balance < 0.001 ? b.balance.toFixed(8) : b.balance.toFixed(4)} (${b.symbol === "USDC" || b.sector === 'YIELD' ? `$${b.usdValue.toFixed(2)}` : "pending price"})`);
   }
   return balances;
 }
@@ -8041,6 +8099,14 @@ async function runTradingCycle() {
 
     // Update USD values
     for (const balance of balances) {
+      // v21.30 (2026-05-20): YIELD receipt tokens (aBasUSDC, mUSDC, etc.) have
+      // their usdValue pre-computed in getBalances() via on-chain yield-service
+      // reads — there's no market price for these (aUSDC is 1:1 USD, Morpho
+      // shares need convertSharesToUSDC). Running them through marketData
+      // lookup would overwrite with $0 because they aren't in TOKEN_REGISTRY
+      // or marketData.tokens, which is exactly the silent under-reporting bug
+      // we just fixed. Skip them.
+      if (balance.sector === 'YIELD') continue;
       if (balance.symbol !== "USDC") {
         let tokenData = marketData.tokens.find(t => t.symbol === balance.symbol);
         // WETH uses same price as ETH (1 WETH = 1 ETH)

@@ -160,6 +160,64 @@ describe('INV-1 dimensional honesty', () => {
     expect(dimensionalHonesty(ctx)).toBeNull(); // all sources agree
   });
 
+  // ==========================================================================
+  // 2026-05-20 regression: YIELD-sector receipt tokens (aUSDC, Morpho shares)
+  // live in balances but not in costBasis. INV-1 must include them when
+  // building source A or it will fire SEVERE every cycle when the bot has
+  // ANY active yield deposit. This case caught the $430 silent under-
+  // reporting that prompted PR #32.
+  // ==========================================================================
+  it('correctly accounts for YIELD-sector tokens (aUSDC, Morpho shares) in source A', () => {
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 500, usdValue: 500 },
+        // Yield receipt tokens — pre-priced in getBalances() at chain truth
+        { symbol: 'aBasUSDC', balance: 300, usdValue: 300, price: 1, sector: 'YIELD' },
+        { symbol: 'mUSDC', balance: 150, usdValue: 200, price: 1.33, sector: 'YIELD' },
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+        // Critical: aUSDC + mUSDC are NOT in costBasis — yield is not a tracked position
+      },
+      lastKnownPrices: { WETH: { price: 2000 } },
+    });
+    // Source A = sum(costBasis × prices) + cash + yield
+    //         = (1 × 2000) + 500 USDC + 300 aUSDC + 200 mUSDC = 3000
+    // Source B = sum(balances.usdValue) = 2000 + 500 + 300 + 200 = 3000
+    // Source C = totalPortfolioValue = 3000
+    // All three agree → null
+    expect(dimensionalHonesty(ctx)).toBeNull();
+  });
+
+  it('fires SEVERE when YIELD-token usdValue is missing (the bug we just fixed)', () => {
+    // Simulates the pre-PR-32 broken state: yield deposit exists on-chain
+    // but isn't in balances. Sources A + B + C all "agree" on the wrong
+    // (low) number, so this is actually the failure mode INV-1 alone
+    // CAN'T catch from in-state sources — it's the case that justifies
+    // Phase A.1's live-RPC source. For the test, we model "wrong balances"
+    // vs "right totalPortfolioValue" to confirm INV-1 still fires when
+    // the disagreement is visible.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000, // truth (would include yield)
+      balances: [
+        // YIELD position deliberately omitted — pre-fix state
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 500, usdValue: 500 },
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 } },
+    });
+    // Source A + B = 2500, Source C = 3000 → 16.7% disagreement → SEVERE
+    const v = dimensionalHonesty(ctx);
+    expect(v).not.toBeNull();
+    expect(v!.severity).toBe('SEVERE');
+    expect(v!.observed.outlier).toBe('C'); // totalPortfolioValue is the odd one out
+  });
+
   it('does not consider sub-$1 dust positions in the readiness check', () => {
     // 1 real position priced + 50 dust positions unpriced → check still runs.
     // Real positions are 100% covered (1/1) so we don't defer for warmup;
