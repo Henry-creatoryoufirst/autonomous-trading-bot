@@ -184,6 +184,14 @@ export interface InvariantContext {
    * signal that the auditor itself is on its first run.
    */
   auditorCyclesRun: number;
+  /**
+   * Phase A.1 — Source D for INV-10. Direct on-chain wallet poll, fresh
+   * within ~30 minutes. Null if the caller didn't refresh this cycle (the
+   * poll is RPC-expensive so it's run every N cycles, not every cycle).
+   * INV-10 returns null when this is null — the orchestrator's per-cycle
+   * proof-of-life line still fires so silence is detectable via INV-9.
+   */
+  liveOnChainSnapshot: import('./sources/live-onchain.js').LiveOnChainSnapshot | null;
 }
 
 export type Invariant = (ctx: InvariantContext) => Violation | null;

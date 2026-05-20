@@ -794,7 +794,13 @@ import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt,
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades, runDustPruneMigrationOnce } from "./src/core/portfolio/index.js";
 // NVR-SPEC-035 Phase A — system auditor (audit-of-audits layer).
 // Default-off via SYSTEM_AUDITOR_ENABLED env; importing alone has zero side effects.
-import { runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt, canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram } from "./src/core/audit/index.js";
+import { runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt, canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram, captureLiveOnChainSnapshot, type LiveOnChainSnapshot, type LiveOnChainTokenSpec, type YieldReceiptSpec } from "./src/core/audit/index.js";
+
+// Phase A.1: cached live-chain snapshot for INV-10. Refreshed every N cycles
+// (default 6 ≈ 1 hour) — RPC-expensive (~28 calls per snapshot) so we don't
+// re-poll every cycle. INV-10 ages the snapshot out at 30 min internally.
+let _cachedChainSnapshot: LiveOnChainSnapshot | null = null;
+let _cachedChainSnapshotCycle = -Infinity;
 import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
 import { maybeResyncCumulativePnL, findSuspectTrades, resyncPhantomPerToken } from "./src/core/portfolio/pnl-sanitizer.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
@@ -2095,6 +2101,55 @@ function scheduleNextCycle() {
       // point after the cycle is materialized (per feedback_audit_log_complete_coverage).
       // No-op when SYSTEM_AUDITOR_ENABLED unset. Wrapped in try/catch so a
       // bug in the auditor itself can never crash the trading loop.
+      //
+      // 2026-05-20 Phase A.1: capture a live on-chain snapshot every
+      // CHAIN_SNAPSHOT_EVERY_N_CYCLES cycles (default 6 ≈ 1 hour at
+      // 10-min cycles). Source D for INV-10 — the only source with no
+      // shared blind spot vs in-state. Caching avoids the ~28 RPC calls
+      // every single cycle (would be ~165 RPC calls/hr just for the
+      // auditor). The snapshot ages out at 30 min inside INV-10 itself,
+      // so missing it for a few cycles is recoverable without false alarm.
+      let liveOnChainSnapshot: LiveOnChainSnapshot | null = _cachedChainSnapshot;
+      const CHAIN_SNAPSHOT_EVERY_N_CYCLES = Number(process.env.SYSTEM_AUDITOR_CHAIN_SNAPSHOT_EVERY_N_CYCLES) || 6;
+      const cyclesSinceLastSnap = _cachedChainSnapshot
+        ? state.totalCycles - _cachedChainSnapshotCycle
+        : Infinity;
+      if (process.env.SYSTEM_AUDITOR_ENABLED === 'true' && cyclesSinceLastSnap >= CHAIN_SNAPSHOT_EVERY_N_CYCLES) {
+        try {
+          const snap = await captureLiveOnChainSnapshot({
+            walletAddress: CONFIG.walletAddress,
+            tokens: Object.entries(TOKEN_REGISTRY).map(([symbol, t]) => ({
+              symbol,
+              address: t.address,
+              decimals: t.decimals,
+            })) as LiveOnChainTokenSpec[],
+            yieldReceiptTokens: [
+              {
+                symbol: 'aBasUSDC',
+                address: '0x4e65fE4DBa92790696d040ac24Aa414708F5c0AB',
+                decimals: 6,
+                toUsd: async (b: number) => b, // aToken is 1:1 USD (rebases)
+              },
+              {
+                symbol: 'mUSDC',
+                address: '0xc1256Ae5FF1cf2719D4937adb3bbCCab2E00A2Ca',
+                decimals: 18,
+                toUsd: async (b: number) => morphoYieldService.convertSharesToUSDC(b),
+              },
+            ] as YieldReceiptSpec[],
+            prices: Object.fromEntries(
+              Object.entries(lastKnownPrices).map(([s, p]) => [s, { price: p.price }]),
+            ),
+          });
+          _cachedChainSnapshot = snap;
+          _cachedChainSnapshotCycle = state.totalCycles;
+          liveOnChainSnapshot = snap;
+          console.log(`[SystemAudit:chain] snapshot captured | ${snap.balances.filter(b => b.balance > 0).length} positions | total=$${snap.totalUsd.toFixed(2)} | complete=${snap.complete}`);
+        } catch (err: any) {
+          console.warn(`[SystemAudit:chain] snapshot failed (non-fatal): ${err?.message?.slice(0, 120) || err}`);
+        }
+      }
+
       try {
         await runSystemAuditor({
           balances: state.trading.balances,
@@ -2102,6 +2157,7 @@ function scheduleNextCycle() {
           costBasis: state.costBasis,
           lastKnownPrices,
           cycle: state.totalCycles,
+          liveOnChainSnapshot,
         });
       } catch (err: any) {
         console.error(`[SystemAudit] runner threw: ${err?.message || err}`);

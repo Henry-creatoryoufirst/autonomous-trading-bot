@@ -39,3 +39,8 @@ export { dimensionalHonesty } from './invariants/dimensional-honesty.js';
 export { fictionalPnl } from './invariants/fictional-pnl.js';
 export { promptCoherence } from './invariants/prompt-coherence.js';
 export { auditorSelfTest } from './invariants/auditor-self-test.js';
+export { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
+
+// Phase A.1 — live-RPC source for INV-10
+export { captureLiveOnChainSnapshot } from './sources/live-onchain.js';
+export type { LiveOnChainSnapshot, LiveOnChainBalance, LiveOnChainTokenSpec, YieldReceiptSpec } from './sources/live-onchain.js';
