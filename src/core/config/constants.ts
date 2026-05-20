@@ -135,7 +135,7 @@ export const GUARDIAN_RISKY_PCT_DEFAULT = 0.05;
 export const GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT = 72; // Bear-adjusted May-2026: 48→72 — 57-day bear; Kelly criterion research confirms novel token entry risk elevated in sustained bear regimes; extra 24h GUARDIAN oversight reduces bad entries on untested tokens
 
 /** OSS confidence below this triggers GUARDIAN review */
-export const GUARDIAN_MIN_CONFIDENCE_DEFAULT = 0.55;
+export const GUARDIAN_MIN_CONFIDENCE_DEFAULT = 0.60; // Bear-adjusted May-2026: 0.55→0.60 — 75-day bear; strategy degradation research confirms indicators lose effectiveness in prolonged bear regimes; raising confidence floor routes more marginal decisions through GUARDIAN (Claude) review, reducing automated entries on weak bear-market signals
 
 // ============================================================================
 // TRADING CYCLE TIMING

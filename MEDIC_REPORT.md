@@ -1,3 +1,21 @@
+# MEDIC REPORT — 2026-05-20T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-05-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 forbids feat(scout): add <SYMBOL> to TOKEN_REGISTRY during Option B window (~2026-06-15). GeckoTerminal API also unreachable (403 on WebFetch, network policy blocks curl). No candidates evaluated, no proposals written.
+- **Auditor**: TRIGGERED by inferred 75-day BEAR market (48h+ threshold met; Run #34 logged 70-day bear on 2026-05-15, +5 days). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60 — strategy degradation research confirms indicators lose effectiveness in prolonged bear regimes (ventureburn.com 2026); raising OSS auto-trade confidence floor routes more marginal bear-signal decisions through GUARDIAN (Claude) review, reducing automated entries on weak signals. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-20)
+- **Signal Quality**: Smart money wallet clustering and on-chain intelligence (Nansen AI) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. Bear market oversold bounces are predictable and tradeable — NVR's DECEL + Smart Trim already exploits this. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V3 with MEV auctions (Nov-2025 Aero upgrade) + upcoming Aerodrome/Velodrome Aero platform Q2-2026 merge — bot auto-benefits from DEX-level improvements without code change. No action needed. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear markets. NVR already at KELLY_FRACTION=0.25 + KELLY_ROLLING_WINDOW=30 (focused on recent data as research recommends). No new sizing action needed. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — "Strategy degradation is a real concern — indicators and signals tend to lose their effectiveness as markets morph from bull runs to bear plunges" (ventureburn.com 2026). At 75 days of BEAR, OSS confidence of 0.55 is well within the noise band. IMPLEMENTED: GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60. Trades with 55-60% confidence (marginal) now route through GUARDIAN (Claude) review instead of auto-executing. Reduces false-positive entries in late-stage bear regime. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
@@ -65,6 +83,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-05-20T UTC | Scout skipped (CLAUDE.md Rule 1 + GeckoTerminal blocked); auditor raised GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60 — 75-day bear; strategy degradation research confirms OSS confidence floor too low for sustained bear; more marginal decisions now route through GUARDIAN (Claude) review |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
