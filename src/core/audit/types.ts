@@ -192,6 +192,20 @@ export interface InvariantContext {
    * proof-of-life line still fires so silence is detectable via INV-9.
    */
   liveOnChainSnapshot: import('./sources/live-onchain.js').LiveOnChainSnapshot | null;
+  /**
+   * Phase A.1 — chain-deposit history for INV-11. Sum of all non-router
+   * USDC inflows to the bot wallet across full chain history. Refreshed
+   * once per day (deposit events are rare). Null when not yet captured
+   * or when the caller deliberately skipped a refresh.
+   */
+  chainDepositHistory: import('./sources/chain-deposit-history.js').ChainDepositHistory | null;
+  /**
+   * Phase A.1 — INV-11 input. The bot's reported lifetime deposit total
+   * (from state.totalDeposited). INV-11 compares this against
+   * chainDepositHistory.totalDepositedUsd to catch wallet-rotation-amnesia
+   * and other deposit-tracking drift.
+   */
+  botTotalDeposited: number | null;
 }
 
 export type Invariant = (ctx: InvariantContext) => Violation | null;

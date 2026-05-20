@@ -33,6 +33,8 @@ function makeCtx(costBasisMap: Record<string, ReturnType<typeof cb>>, portfolioV
     previousReport: null,
     auditorCyclesRun: 5,
     liveOnChainSnapshot: null,
+    chainDepositHistory: null,
+    botTotalDeposited: null,
   };
 }
 

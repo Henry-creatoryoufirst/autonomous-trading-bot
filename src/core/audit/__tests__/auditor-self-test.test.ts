@@ -32,6 +32,8 @@ function makeCtx(
     previousReport,
     auditorCyclesRun,
     liveOnChainSnapshot: null,
+    chainDepositHistory: null,
+    botTotalDeposited: null,
   };
 }
 

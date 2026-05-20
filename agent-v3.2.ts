@@ -794,13 +794,26 @@ import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt,
 import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades, runDustPruneMigrationOnce } from "./src/core/portfolio/index.js";
 // NVR-SPEC-035 Phase A — system auditor (audit-of-audits layer).
 // Default-off via SYSTEM_AUDITOR_ENABLED env; importing alone has zero side effects.
-import { runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt, canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram, captureLiveOnChainSnapshot, type LiveOnChainSnapshot, type LiveOnChainTokenSpec, type YieldReceiptSpec } from "./src/core/audit/index.js";
+import {
+  runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt,
+  canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram,
+  captureLiveOnChainSnapshot, fetchChainDepositHistory,
+  type LiveOnChainSnapshot, type LiveOnChainTokenSpec, type YieldReceiptSpec,
+  type ChainDepositHistory,
+} from "./src/core/audit/index.js";
 
 // Phase A.1: cached live-chain snapshot for INV-10. Refreshed every N cycles
 // (default 6 ≈ 1 hour) — RPC-expensive (~28 calls per snapshot) so we don't
 // re-poll every cycle. INV-10 ages the snapshot out at 30 min internally.
 let _cachedChainSnapshot: LiveOnChainSnapshot | null = null;
 let _cachedChainSnapshotCycle = -Infinity;
+
+// Phase A.1: cached chain-deposit history for INV-11. Refreshed every 24h
+// (deposit events are rare — usually 1 per bot in its entire lifetime).
+// Initial scan is ~50-100 RPC calls; incremental updates are cheaper.
+let _cachedChainDepositHistory: ChainDepositHistory | null = null;
+let _cachedChainDepositRefreshedAt = 0;
+const CHAIN_DEPOSIT_REFRESH_MS = 24 * 60 * 60 * 1000;
 import { runMigrationV2118InMonolith } from "./src/core/portfolio/migration-v21-18.js";
 import { maybeResyncCumulativePnL, findSuspectTrades, resyncPhantomPerToken } from "./src/core/portfolio/pnl-sanitizer.js";
 // Phase 11: Extracted diagnostics module — error-tracking now imports state directly
@@ -2150,6 +2163,41 @@ function scheduleNextCycle() {
         }
       }
 
+      // Phase A.1: chain-deposit history (for INV-11). Refresh once per
+      // 24h. Initial scan is ~50-100 RPC calls; we accept that cost once
+      // per day to catch wallet-rotation amnesia + missed-deposit class
+      // bugs that the bot's in-state totalDeposited field can't detect.
+      let chainDepositHistory: ChainDepositHistory | null = _cachedChainDepositHistory;
+      if (process.env.SYSTEM_AUDITOR_ENABLED === 'true' && Date.now() - _cachedChainDepositRefreshedAt > CHAIN_DEPOSIT_REFRESH_MS) {
+        try {
+          const fromBlock = _cachedChainDepositHistory?.lastScannedBlock
+            ? _cachedChainDepositHistory.lastScannedBlock + 1
+            : 0;
+          const hist = await fetchChainDepositHistory({
+            walletAddress: CONFIG.walletAddress,
+            fromBlock,
+          });
+          // If we had a prior cache, merge: keep the prior total + add the new
+          // chunk's deposits. fetchChainDepositHistory returned only the
+          // incremental window when fromBlock > 0.
+          if (_cachedChainDepositHistory && fromBlock > 0) {
+            const mergedDeposits = [...hist.deposits, ..._cachedChainDepositHistory.deposits].slice(0, 50);
+            chainDepositHistory = {
+              ...hist,
+              totalDepositedUsd: _cachedChainDepositHistory.totalDepositedUsd + hist.totalDepositedUsd,
+              deposits: mergedDeposits,
+            };
+          } else {
+            chainDepositHistory = hist;
+          }
+          _cachedChainDepositHistory = chainDepositHistory;
+          _cachedChainDepositRefreshedAt = Date.now();
+          console.log(`[SystemAudit:deposits] history refreshed | total=$${chainDepositHistory.totalDepositedUsd.toFixed(2)} | ${chainDepositHistory.deposits.length} recent deposits | complete=${chainDepositHistory.complete}`);
+        } catch (err: any) {
+          console.warn(`[SystemAudit:deposits] history scan failed (non-fatal): ${err?.message?.slice(0, 120) || err}`);
+        }
+      }
+
       try {
         await runSystemAuditor({
           balances: state.trading.balances,
@@ -2158,6 +2206,8 @@ function scheduleNextCycle() {
           lastKnownPrices,
           cycle: state.totalCycles,
           liveOnChainSnapshot,
+          chainDepositHistory,
+          botTotalDeposited: state.totalDeposited ?? null,
         });
       } catch (err: any) {
         console.error(`[SystemAudit] runner threw: ${err?.message || err}`);
