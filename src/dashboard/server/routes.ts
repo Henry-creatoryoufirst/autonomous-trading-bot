@@ -10,7 +10,7 @@ import http from 'http';
 import fs from 'fs';
 import type { HarvestRecipient } from '../../core/types/state.js';
 import type { ConfigDirective } from '../../simulation/strategy-config.js';
-import { BOT_VERSION } from '../../core/config/constants.js';
+import { BOT_VERSION, LIFETIME_DRAWDOWN_BUY_BLOCK_PCT } from '../../core/config/constants.js';
 import type { ConfidenceScore } from '../../simulation/types.js';
 import { runConfidenceGate } from '../../../scripts/confidence-gate.js';
 import { getModelTelemetry, getAgreementRate, type ModelTelemetry, type GemmaMode } from '../../core/services/model-client.js';
@@ -252,8 +252,11 @@ export function handleHealth(
   const healthDrawdown: number | null = stateLoaded
     ? ((ctx.state.trading.peakValue - ctx.state.trading.totalPortfolioValue) / ctx.state.trading.peakValue) * 100
     : null;
-  if (healthDrawdown !== null && healthDrawdown >= 20) {
-    healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown`);
+  // v21.29 (2026-05-20): scope-aware breaker — surface honest text so the
+  // dashboard tile + alerting reflect that this is a BUY-block, not a full
+  // trading halt. Mirrors the agent-v3.2.ts trade-drought blocker message.
+  if (healthDrawdown !== null && healthDrawdown >= LIFETIME_DRAWDOWN_BUY_BLOCK_PCT) {
+    healthBlockers.push(`Circuit breaker: ${healthDrawdown.toFixed(1)}% drawdown (BUY-blocked; sells/rebalances allowed)`);
   }
   if (ctx.state.trading.totalPortfolioValue > 0 && ctx.state.trading.totalPortfolioValue < ctx.CAPITAL_FLOOR_ABSOLUTE_USD) healthBlockers.push(`Capital floor breach: $${ctx.state.trading.totalPortfolioValue.toFixed(2)}`);
   // v21.19-counters: derive "last live execution" from trade history directly so
