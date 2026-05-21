@@ -1,6 +1,6 @@
 {
   "name": "henry-autonomous-trading-agent",
-  "version": "21.28.0",
+  "version": "21.29.0",
   "description": "Autonomous Trading Agent - Live CDP SDK Execution + Sector Allocation + Risk Management",
   "type": "module",
   "main": "agent-v3.2.ts",
@@ -18,7 +18,7 @@
     "critic": "tsx scripts/critic.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.97.1",
     "@coinbase/cdp-sdk": "^1.44.1",
     "@langchain/anthropic": "^0.3.14",
     "@langchain/core": "^0.3.19",

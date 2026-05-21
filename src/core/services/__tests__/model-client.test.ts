@@ -4,8 +4,10 @@ import {
   resetOllamaCache,
   resolveModelRouting,
   getAgreementRate,
+  callAnthropic,
 } from '../model-client.js';
 import type { GemmaMode } from '../model-client.js';
+import type Anthropic from '@anthropic-ai/sdk';
 
 // ============================================================================
 // ESCALATION TESTS (pure function, no I/O)
@@ -144,5 +146,191 @@ describe('getAgreementRate', () => {
     const rate = getAgreementRate();
     expect(rate.total).toBe(0);
     expect(rate.rate).toBe(0);
+  });
+});
+
+// ============================================================================
+// ANTHROPIC PROMPT-CACHING REGRESSION TESTS
+//
+// These guard the heavy-cycle cost optimization (v21.29 SDK 0.97 upgrade).
+// If `cache_control` blocks ever stop reaching the API, the cached input
+// tokens stop reading and Sonnet input cost goes from ~$0.30/MTok back to
+// $3.00/MTok per cycle. Fleet-wide that's the difference between ~$30/mo
+// and ~$130/mo today (and scales linearly with bot count). These tests
+// pin the request payload shape and the response telemetry surface.
+// ============================================================================
+
+describe('callAnthropic (prompt caching wiring)', () => {
+  function makeMockClient(
+    capture: { body?: unknown; headers?: Record<string, string> },
+  ): Anthropic {
+    return {
+      messages: {
+        create: vi.fn(async (body: unknown, options?: { headers?: Record<string, string> }) => {
+          capture.body = body;
+          capture.headers = options?.headers;
+          return {
+            content: [{ type: 'text', text: '[]' }],
+            usage: {
+              input_tokens: 100,
+              output_tokens: 20,
+              cache_creation_input_tokens: 4500,
+              cache_read_input_tokens: 0,
+            },
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+  }
+
+  it('forwards content-block messages with cache_control on stable prefix', async () => {
+    const capture: { body?: unknown; headers?: Record<string, string> } = {};
+    const client = makeMockClient(capture);
+
+    const cacheablePrefix = 'a'.repeat(8000); // simulate ~2k tokens of stable prefix
+    const dynamicSuffix = 'live market data: BTC $103,500';
+
+    await callAnthropic(
+      {
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: cacheablePrefix, cache_control: { type: 'ephemeral', ttl: '1h' } },
+              { type: 'text', text: dynamicSuffix },
+            ],
+          },
+        ],
+        maxTokens: 500,
+      },
+      client,
+      'claude-sonnet-4-5',
+    );
+
+    const body = capture.body as {
+      model: string;
+      messages: Array<{ role: string; content: unknown }>;
+    };
+
+    // Payload shape — content MUST be a content-block array, not a flat string.
+    expect(Array.isArray(body.messages)).toBe(true);
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].role).toBe('user');
+    expect(Array.isArray(body.messages[0].content)).toBe(true);
+
+    const blocks = body.messages[0].content as Array<{
+      type: string;
+      text: string;
+      cache_control?: { type: string; ttl?: string };
+    }>;
+
+    // Two blocks: cacheable prefix + dynamic suffix.
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].text).toBe(cacheablePrefix);
+    expect(blocks[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+
+    // Critical invariant: the dynamic block has NO cache_control. If it ever
+    // gains one, every call writes a fresh per-cycle cache entry that expires
+    // before the next call reads it — billed 1.25× base, zero hits.
+    expect(blocks[1].text).toBe(dynamicSuffix);
+    expect(blocks[1].cache_control).toBeUndefined();
+  });
+
+  it('sends extended-cache-ttl beta header so 1h TTL is honored', async () => {
+    const capture: { body?: unknown; headers?: Record<string, string> } = {};
+    const client = makeMockClient(capture);
+
+    await callAnthropic(
+      {
+        messages: [{ role: 'user', content: 'hi' }],
+        maxTokens: 100,
+      },
+      client,
+      'claude-haiku-4-5',
+    );
+
+    // The 1h TTL on cache_control requires this beta header; without it the
+    // server silently falls back to 5m and our 15-min cycle cadence guarantees
+    // cache expiry before the next read.
+    expect(capture.headers?.['anthropic-beta']).toBe('extended-cache-ttl-2025-04-11');
+  });
+
+  it('surfaces cache_read_input_tokens and cache_creation_input_tokens in telemetry', async () => {
+    // Mock returns 4500 create tokens + 0 read tokens (cache-miss / first call).
+    const capture: { body?: unknown; headers?: Record<string, string> } = {};
+    const client = makeMockClient(capture);
+
+    const response = await callAnthropic(
+      {
+        messages: [{ role: 'user', content: 'first call' }],
+        maxTokens: 100,
+      },
+      client,
+      'claude-sonnet-4-5',
+    );
+
+    expect(response.usage.cacheCreationInputTokens).toBe(4500);
+    expect(response.usage.cacheReadInputTokens).toBe(0);
+    expect(response.usage.inputTokens).toBe(100);
+    expect(response.usage.outputTokens).toBe(20);
+  });
+
+  it('lifts system-role messages into the top-level `system` parameter', async () => {
+    const capture: { body?: unknown; headers?: Record<string, string> } = {};
+    const client = makeMockClient(capture);
+
+    await callAnthropic(
+      {
+        messages: [
+          { role: 'system', content: 'you are a careful trader' },
+          { role: 'user', content: 'what do you think?' },
+        ],
+        maxTokens: 100,
+      },
+      client,
+      'claude-sonnet-4-5',
+    );
+
+    const body = capture.body as {
+      system?: string | Array<{ type: string; text: string }>;
+      messages: Array<{ role: string }>;
+    };
+
+    // System content MUST reach the top-level `system` param — the SDK rejects
+    // (or silently drops) 'system' inside the messages array.
+    expect(body.system).toBe('you are a careful trader');
+    // Only the user message remains in `messages`.
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].role).toBe('user');
+  });
+
+  it('preserves cache_control on system blocks when system content is structured', async () => {
+    const capture: { body?: unknown; headers?: Record<string, string> } = {};
+    const client = makeMockClient(capture);
+
+    const systemPrefix = 'b'.repeat(8000);
+    await callAnthropic(
+      {
+        messages: [
+          {
+            role: 'system',
+            content: [
+              { type: 'text', text: systemPrefix, cache_control: { type: 'ephemeral', ttl: '1h' } },
+            ],
+          },
+          { role: 'user', content: 'go' },
+        ],
+        maxTokens: 100,
+      },
+      client,
+      'claude-sonnet-4-5',
+    );
+
+    const body = capture.body as {
+      system?: Array<{ type: string; text: string; cache_control?: { type: string; ttl?: string } }>;
+    };
+
+    expect(Array.isArray(body.system)).toBe(true);
+    expect(body.system?.[0].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
   });
 });

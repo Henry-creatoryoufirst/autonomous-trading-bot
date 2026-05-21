@@ -516,6 +516,13 @@ export async function callDeepInfra(options: ModelRequestOptions): Promise<Model
 
 /**
  * Call Anthropic Claude API and normalize to ModelResponse.
+ *
+ * `system`-role messages are lifted out of the messages array and passed as
+ * Anthropic's top-level `system` parameter (the SDK requires this — there's no
+ * "system" role inside `messages`). When multiple system messages are present
+ * they're concatenated into a TextBlockParam array, preserving any
+ * `cache_control` on each block so the cacheable prefix can live in `system`
+ * (canonical Anthropic pattern) instead of stuffed into a user message.
  */
 export async function callAnthropic(
   options: ModelRequestOptions,
@@ -534,19 +541,56 @@ export async function callAnthropic(
       content: m.content as string | TextBlock[],
     }));
 
+  // Lift any 'system'-role messages into Anthropic's top-level `system` parameter
+  // (the SDK requires this — system content can't live inside `messages`).
+  // If all system messages are plain strings, concat to a single string;
+  // otherwise collect into a TextBlock array so per-block cache_control is preserved.
+  const systemMessages = options.messages.filter(m => m.role === 'system');
+  let systemParam: string | TextBlock[] | undefined;
+  if (systemMessages.length > 0) {
+    const allStrings = systemMessages.every(m => typeof m.content === 'string');
+    if (allStrings) {
+      systemParam = systemMessages.map(m => m.content as string).join('\n\n');
+    } else {
+      // Flatten any mix of string + TextBlock[] into a single TextBlock array.
+      systemParam = systemMessages.flatMap(m =>
+        typeof m.content === 'string'
+          ? [{ type: 'text' as const, text: m.content }]
+          : m.content,
+      );
+    }
+  }
+
   // Beta header unlocks `cache_control.ttl: '1h'` on Sonnet/Haiku. 1h TTL is required
   // for our cycle cadence (15+ min between heavy cycles) — with the default 5-min TTL,
   // the cache would expire between calls and writes (billed 1.25× base) would never be read.
-  const response = await client.messages.create(
-    {
-      model,
-      max_tokens: options.maxTokens,
-      messages: messages as Parameters<typeof client.messages.create>[0]['messages'],
-    },
-    {
-      headers: { 'anthropic-beta': 'extended-cache-ttl-2025-04-11' },
-    },
-  );
+  //
+  // We pass the body inline so TypeScript can pick the non-streaming overload
+  // of `client.messages.create` (it's overloaded on `stream: true/false`).
+  // Extracting the body into a variable falls back to the union base, which
+  // widens the return type to `Message | Stream<...>` and breaks `.content`.
+  const response = systemParam !== undefined
+    ? await client.messages.create(
+        {
+          model,
+          max_tokens: options.maxTokens,
+          messages: messages as Parameters<typeof client.messages.create>[0]['messages'],
+          system: systemParam as Parameters<typeof client.messages.create>[0]['system'],
+        },
+        {
+          headers: { 'anthropic-beta': 'extended-cache-ttl-2025-04-11' },
+        },
+      )
+    : await client.messages.create(
+        {
+          model,
+          max_tokens: options.maxTokens,
+          messages: messages as Parameters<typeof client.messages.create>[0]['messages'],
+        },
+        {
+          headers: { 'anthropic-beta': 'extended-cache-ttl-2025-04-11' },
+        },
+      );
 
   const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
   const latencyMs = Date.now() - startMs;
