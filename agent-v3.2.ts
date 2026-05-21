@@ -797,6 +797,10 @@ import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterB
 import {
   runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt,
   canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram,
+  getCurrentBlocker as auditorGetCurrentBlocker,
+  getMonitorStats as auditorGetMonitorStats,
+  getLastReport as auditorGetLastReport,
+  getStartedAt as auditorGetStartedAt,
   captureLiveOnChainSnapshot, fetchChainDepositHistory,
   type LiveOnChainSnapshot, type LiveOnChainTokenSpec, type YieldReceiptSpec,
   type ChainDepositHistory,
@@ -12223,6 +12227,34 @@ const healthServer = http.createServer(async (req, res) => {
         readRecentAuditLog(MASTER_AGENT_ID, n)
           .then((entries) => sendJSON(res, 200, { entries, count: entries.length, ringSize: 1000 }))
           .catch((err) => sendJSON(res, 500, { error: err?.message ?? 'failed' }));
+        break;
+      }
+      case '/api/system-audit': {
+        // NVR-SPEC-035 — read-only surface for the SystemAuditor's live state.
+        // Closes the verification gap: without Railway log access, INV-10/INV-11
+        // firings (and the auto-flip from log-only → alert at 24h) were invisible.
+        try {
+          const stats = auditorGetMonitorStats();
+          const startedAt = auditorGetStartedAt();
+          sendJSON(res, 200, {
+            enabled: stats.enabled,
+            alertMode: stats.alertMode,
+            startedAt,
+            ageMs: Date.now() - new Date(startedAt).getTime(),
+            stats: {
+              cyclesRun: stats.cyclesRun,
+              cyclesSkipped: stats.cyclesSkipped,
+              totalViolations: stats.totalViolations,
+              perInvariantViolations: stats.perInvariantViolations,
+              lastFlipFromLogOnly: stats.lastFlipFromLogOnly,
+              capturedPromptCount: stats.capturedPromptCount,
+            },
+            currentBlocker: auditorGetCurrentBlocker(),
+            lastReport: auditorGetLastReport(),
+          });
+        } catch (err: unknown) {
+          sendJSON(res, 500, { error: `system-audit failed: ${(err as Error).message}` });
+        }
         break;
       }
       case '/api/chat':

@@ -41,6 +41,7 @@ import { promptCoherence } from './invariants/prompt-coherence.js';
 import { auditorSelfTest } from './invariants/auditor-self-test.js';
 import { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
 import { chainDepositReconciliation } from './invariants/chain-deposit-reconciliation.js';
+import { cohortCoverage } from './invariants/cohort-coverage.js';
 import type { LiveOnChainSnapshot } from './sources/live-onchain.js';
 import type { ChainDepositHistory } from './sources/chain-deposit-history.js';
 
@@ -168,6 +169,24 @@ const PHASE_A_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
   // class wallet-rotation amnesia where the bot's totalDeposited resets
   // when the wallet rotates and loses sight of pre-rotation deposits.
   { id: 'INV-11', fn: chainDepositReconciliation },
+];
+
+/**
+ * Phase B — WARN-tier invariants. Don't pause anything; surface that the
+ * bot's strategy intent and its actual positions are out of alignment.
+ * Run alongside Phase A every heavy cycle.
+ */
+const PHASE_B_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
+  // Phase B (2026-05-21): cohort coverage. WARN every cycle until the
+  // 7-quality Option B cohort is actually held in non-dust size. Forcing
+  // function for Ship 2 (cohort completion) — bot logs name the missing
+  // symbols on every cycle, so they can't get lost in the noise.
+  { id: 'INV-5', fn: cohortCoverage },
+];
+
+const ALL_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
+  ...PHASE_A_INVARIANTS,
+  ...PHASE_B_INVARIANTS,
 ];
 
 // ============================================================================
@@ -379,6 +398,24 @@ export function getMonitorStats(): AuditorStats & { enabled: boolean; alertMode:
   };
 }
 
+/**
+ * Most recent AuditReport (or null if the auditor has never run).
+ * Returned by deep clone so callers can't mutate persisted state.
+ * Exposed via /api/system-audit so operators + the website can confirm
+ * INV-10/INV-11 firing without Railway log access.
+ */
+export function getLastReport(): AuditReport | null {
+  return _state.lastReport ? (JSON.parse(JSON.stringify(_state.lastReport)) as AuditReport) : null;
+}
+
+/**
+ * Auditor's wall-clock start time (ISO) — used to compute age and
+ * confirm the log-only → alert auto-flip has fired.
+ */
+export function getStartedAt(): string {
+  return _state.startedAt;
+}
+
 /** Test/operator escape hatch — clear the active blocker manually. */
 export function clearBlocker(reason: string): void {
   if (!_state.currentBlocker) return;
@@ -467,7 +504,7 @@ export async function runSystemAuditor(deps: AuditorDeps): Promise<AuditReport |
   // Run every invariant; isolate failures so one buggy invariant doesn't
   // take the rest down. A thrown invariant is itself a SEVERE.
   const violations: Violation[] = [];
-  for (const inv of PHASE_A_INVARIANTS) {
+  for (const inv of ALL_INVARIANTS) {
     try {
       const v = inv.fn(ctx);
       if (v) violations.push(v);
@@ -565,7 +602,9 @@ export const _internals = {
   getStateForTest(): PersistedAuditorState {
     return _state;
   },
-  invariants: PHASE_A_INVARIANTS,
+  invariants: ALL_INVARIANTS,
+  phaseAInvariants: PHASE_A_INVARIANTS,
+  phaseBInvariants: PHASE_B_INVARIANTS,
   REPORT_FILE,
   LOG_ONLY_AUTO_FLIP_MS,
 };
