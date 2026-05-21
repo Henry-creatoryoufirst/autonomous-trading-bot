@@ -601,9 +601,13 @@ export const SECTOR_ATR_MULTIPLIERS: Record<string, number> = {
 /** ATR-relative profit harvest tiers: [atrMultiple, sellPercent]
  *  v21.6: Lowered from 8/12/18/25x to 4/7/12/18x — bot was sitting fully deployed
  *  with no dry powder for days. First harvest now triggers at ~4x ATR (~8-12% gain).
- *  The let-winners-run filter still prevents harvesting during strong momentum. */
+ *  The let-winners-run filter still prevents harvesting during strong momentum.
+ *  Bear-adjusted May-2026: ATR_EARLY 4→3 — 76-day bear; gains at 3×ATR (~6-9%)
+ *  reverse faster in sustained bear regimes; let-winners-run guard (buyRatio>55% AND
+ *  MACD bullish) prevents premature harvest on genuine momentum, so this only fires
+ *  on fading bounces where early capture is correct. */
 export const ATR_PROFIT_TIERS = [
-  { atrMultiple: 4,  sellPercent: 15, label: "ATR_EARLY" },
+  { atrMultiple: 3,  sellPercent: 15, label: "ATR_EARLY" },
   { atrMultiple: 7,  sellPercent: 20, label: "ATR_MID" },
   { atrMultiple: 12, sellPercent: 25, label: "ATR_STRONG" },
   { atrMultiple: 18, sellPercent: 35, label: "ATR_MAJOR" },
