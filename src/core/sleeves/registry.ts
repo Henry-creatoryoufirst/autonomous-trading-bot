@@ -21,6 +21,7 @@ import {
 } from './core-sleeve.js';
 import { AlphaHunterSleeve } from './alpha-hunter.js';
 import { AlphaRotationSleeve } from './alpha-rotation.js';
+import { FundingArbSleeve } from './funding-arb.js';
 import { defaultStaticAllocator } from './allocator.js';
 
 export interface DefaultRegistryOptions {
@@ -55,6 +56,13 @@ export interface DefaultRegistryOptions {
    */
   getAlphaHunterExitOverride?: () => SleeveExitOverride | undefined;
   getAlphaRotationExitOverride?: () => SleeveExitOverride | undefined;
+  /**
+   * NVR-SPEC-034 Phase 1a: ownership provider for the funding-arb sleeve.
+   * Only consumed when the sleeve is installed (env flag
+   * FUNDING_ARB_PAPER_ENABLED=true). Omit to leave the sleeve with zeroed
+   * stats — safe default for early boot before state migration runs.
+   */
+  getFundingArbOwnership?: () => SleeveOwnership | undefined;
 }
 
 export interface SleeveRegistry {
@@ -101,6 +109,12 @@ class InMemorySleeveRegistry implements SleeveRegistry {
  *   - Alpha Hunter at 0% paper (stub, accumulates shadow decisions)
  *   - Alpha Rotation at 0% paper (stub, accumulates shadow decisions)
  *
+ * NVR-SPEC-034 Phase 1a addition (opt-in):
+ *   - Funding-Arb at 0% paper — installed ONLY when env flag
+ *     FUNDING_ARB_PAPER_ENABLED=true. Default is OFF on every deploy so
+ *     existing production behavior is unchanged. Live promotion is a
+ *     separate Henry-greenlit gate (NVR-SPEC-034 §8 Phase 2 review).
+ *
  * Alpha sleeves are registered but allocated 0% — they run decide() each
  * cycle so a shadow track record accumulates, but never touch capital
  * until graduated per NVR-SPEC-016.
@@ -110,30 +124,42 @@ class InMemorySleeveRegistry implements SleeveRegistry {
  * and swapped per-bot (e.g., family bots may disable alpha sleeves).
  */
 export function buildDefaultRegistry(opts: DefaultRegistryOptions = {}): SleeveRegistry {
-  return new InMemorySleeveRegistry(
-    [
-      new CoreSleeve({
-        getState: opts.getCoreState,
-        decideFn: opts.coreDecideFn,
-      }),
-      new AlphaHunterSleeve({
-        getOwnership: opts.getAlphaHunterOwnership,
-        getPortfolioValue: opts.getPortfolioValue,
-        getExitOverride: opts.getAlphaHunterExitOverride,
-        // Env-driven mode: ALPHA_HUNTER_LIVE=true promotes from paper to live.
-        // Default remains 'paper' so existing deployments are unchanged until
-        // explicit opt-in. Pair with ALPHA_HUNTER_ALLOCATION_PCT > 0 in the
-        // allocator for live decisions to actually fire (effectiveMode requires
-        // both: mode='live' AND allocation>0).
-        mode: process.env.ALPHA_HUNTER_LIVE === 'true' ? 'live' : 'paper',
-      }),
-      new AlphaRotationSleeve({
-        getOwnership: opts.getAlphaRotationOwnership,
-        getPortfolioValue: opts.getPortfolioValue,
-      }),
-    ],
-    defaultStaticAllocator(),
-  );
+  const sleeves: Sleeve[] = [
+    new CoreSleeve({
+      getState: opts.getCoreState,
+      decideFn: opts.coreDecideFn,
+    }),
+    new AlphaHunterSleeve({
+      getOwnership: opts.getAlphaHunterOwnership,
+      getPortfolioValue: opts.getPortfolioValue,
+      getExitOverride: opts.getAlphaHunterExitOverride,
+      // Env-driven mode: ALPHA_HUNTER_LIVE=true promotes from paper to live.
+      // Default remains 'paper' so existing deployments are unchanged until
+      // explicit opt-in. Pair with ALPHA_HUNTER_ALLOCATION_PCT > 0 in the
+      // allocator for live decisions to actually fire (effectiveMode requires
+      // both: mode='live' AND allocation>0).
+      mode: process.env.ALPHA_HUNTER_LIVE === 'true' ? 'live' : 'paper',
+    }),
+    new AlphaRotationSleeve({
+      getOwnership: opts.getAlphaRotationOwnership,
+      getPortfolioValue: opts.getPortfolioValue,
+    }),
+  ];
+
+  // NVR-SPEC-034 Phase 1a kill-switch. Default OFF — funding-arb is
+  // dormant unless the operator explicitly flips FUNDING_ARB_PAPER_ENABLED.
+  // The sleeve is HARD-PINNED to mode='paper' here regardless of any
+  // other env var; live promotion needs a separate review gate and a
+  // separate code change (see NVR-SPEC-034 §8 Phase 2).
+  if (process.env.FUNDING_ARB_PAPER_ENABLED === 'true') {
+    sleeves.push(new FundingArbSleeve({
+      mode: 'paper',
+      getOwnership: opts.getFundingArbOwnership,
+      getPortfolioValue: opts.getPortfolioValue,
+    }));
+  }
+
+  return new InMemorySleeveRegistry(sleeves, defaultStaticAllocator());
 }
 
 /**
