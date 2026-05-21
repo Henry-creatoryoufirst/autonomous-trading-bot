@@ -185,6 +185,86 @@ describe('formatSystemAuditPromptBlock — INV-7 sleeve liveness specialization'
   });
 });
 
+describe('formatSystemAuditPromptBlock — INV-4 observation consumer specialization', () => {
+  it('names the offending sources with invalid + empty counts', () => {
+    const violation: Violation = {
+      invariantId: 'INV-4',
+      invariantName: 'observation-consumer',
+      severity: 'WARN',
+      message: 'whatever (overwritten by specialization)',
+      observed: {
+        totalObservations: 5,
+        invalidCount: 2,
+        emptyCount: 1,
+        emptyRatio: 20,
+        perSource: [
+          { source: 'stc-website', total: 3, invalid: 2, empty: 1 },
+          { source: 'alpha-watcher', total: 2, invalid: 0, empty: 0 },
+        ],
+      },
+      expected: {},
+      pauseScope: 'none',
+      detectedAt: new Date().toISOString(),
+    };
+    const block = formatSystemAuditPromptBlock(report([violation]));
+    expect(block).toMatch(/INV-4 observation consumer/);
+    expect(block).toMatch(/2 schema-invalid \+ 1 empty of 5 observations/);
+    expect(block).toMatch(/stc-website \(invalid=2, empty=1, total=3\)/);
+    expect(block).toMatch(/fix the source before letting the prompt inherit garbage/);
+  });
+
+  it('omits clean sources from the offenders breakdown', () => {
+    const violation: Violation = {
+      invariantId: 'INV-4',
+      invariantName: 'observation-consumer',
+      severity: 'WARN',
+      message: 'whatever',
+      observed: {
+        totalObservations: 4,
+        invalidCount: 1,
+        emptyCount: 0,
+        emptyRatio: 0,
+        perSource: [
+          { source: 'stc-website', total: 1, invalid: 1, empty: 0 },
+          { source: 'alpha-watcher', total: 3, invalid: 0, empty: 0 },
+        ],
+      },
+      expected: {},
+      pauseScope: 'none',
+      detectedAt: new Date().toISOString(),
+    };
+    const block = formatSystemAuditPromptBlock(report([violation]));
+    expect(block).toMatch(/stc-website/);
+    expect(block).not.toMatch(/alpha-watcher/);
+  });
+});
+
+describe('formatSystemAuditPromptBlock — INV-8 cycle-vs-trade ratio specialization', () => {
+  it('names cycle count, approx hours, and trade count', () => {
+    const violation: Violation = {
+      invariantId: 'INV-8',
+      invariantName: 'cycle-trade-ratio',
+      severity: 'WARN',
+      message: 'whatever (overwritten)',
+      observed: {
+        cycle: 24,
+        tradesSinceRestart: 0,
+        bootGraceCycles: 8,
+        approxHoursSilent: 6,
+      },
+      expected: {},
+      pauseScope: 'none',
+      detectedAt: new Date().toISOString(),
+    };
+    const block = formatSystemAuditPromptBlock(report([violation]));
+    expect(block).toMatch(/INV-8 cycle-vs-trade ratio/);
+    expect(block).toMatch(/24 heavy cycles/);
+    expect(block).toMatch(/~6\.0h/);
+    expect(block).toMatch(/0 trades executed/);
+    expect(block).toMatch(/permanent HOLD lock-in/);
+  });
+});
+
 describe('formatSystemAuditPromptBlock — edge cases', () => {
   it('skips the dust line when dust list is empty', () => {
     const block = formatSystemAuditPromptBlock(report([
