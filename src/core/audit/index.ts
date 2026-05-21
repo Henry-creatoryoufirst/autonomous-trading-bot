@@ -46,6 +46,8 @@ export { chainDepositReconciliation } from './invariants/chain-deposit-reconcili
 export { cohortCoverage } from './invariants/cohort-coverage.js';
 export { reserveFloor } from './invariants/reserve-floor.js';
 export { sleeveLiveness } from './invariants/sleeve-liveness.js';
+export { observationConsumer } from './invariants/observation-consumer.js';
+export { cycleTradeRatio } from './invariants/cycle-trade-ratio.js';
 
 // Phase B — prompt-block formatter (heavy-cycle prompt wiring)
 export { formatSystemAuditPromptBlock } from './prompt-block.js';

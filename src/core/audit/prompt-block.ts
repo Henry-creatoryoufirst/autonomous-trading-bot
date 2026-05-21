@@ -70,6 +70,34 @@ export function formatSystemAuditPromptBlock(report: AuditReport | null): string
       const threshold = obs.stalenessThresholdHours ?? 12;
       const names = silent.map(s => `${s.id} ${s.hoursSinceDecision.toFixed(1)}h`).join(', ');
       lines.push(`INV-7 sleeve liveness — ${silent.length} live sleeve(s) silent >${threshold}h: ${names}. A silent live sleeve has stranded its slice of capital behind dead code or a routing bug.`);
+    } else if (v.invariantId === 'INV-4') {
+      const obs = v.observed as {
+        totalObservations?: number;
+        invalidCount?: number;
+        emptyCount?: number;
+        emptyRatio?: number;
+        perSource?: Array<{ source: string; total: number; invalid: number; empty: number }>;
+      };
+      const total = obs.totalObservations ?? 0;
+      const invalid = obs.invalidCount ?? 0;
+      const empty = obs.emptyCount ?? 0;
+      const offenders = (obs.perSource ?? [])
+        .filter(s => s.invalid > 0 || s.empty > 0)
+        .map(s => `${s.source} (invalid=${s.invalid}, empty=${s.empty}, total=${s.total})`)
+        .join('; ');
+      lines.push(`INV-4 observation consumer — ${invalid} schema-invalid + ${empty} empty of ${total} observations. Offenders: ${offenders || 'none'}. The bot is reading malformed observations from upstream producers — fix the source before letting the prompt inherit garbage.`);
+    } else if (v.invariantId === 'INV-8') {
+      const obs = v.observed as {
+        cycle?: number;
+        tradesSinceRestart?: number;
+        bootGraceCycles?: number;
+        approxHoursSilent?: number;
+      };
+      const cycle = obs.cycle ?? 0;
+      const trades = obs.tradesSinceRestart ?? 0;
+      const grace = obs.bootGraceCycles ?? 8;
+      const hours = obs.approxHoursSilent ?? 0;
+      lines.push(`INV-8 cycle-vs-trade ratio — ${cycle} heavy cycles (~${hours.toFixed(1)}h) since restart, ${trades} trades executed (boot grace was ${grace} cycles). Bot is rendering decisions that never reach execution — investigate routing, stale gates, or permanent HOLD lock-in.`);
     } else {
       // Generic fallback for any other future WARN-tier invariant
       lines.push(`${v.invariantId} ${v.invariantName} — ${v.message}`);

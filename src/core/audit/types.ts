@@ -222,6 +222,31 @@ export interface InvariantContext {
     lastDecisionAt: string | null;
     decisionsCount: number;
   }>;
+  /**
+   * Phase B — INV-4 input. Per-observation records the agent ingests from
+   * external sources (stc-website auto-investigation pipeline, alpha-watcher
+   * feeds, future research-lab emissions, etc.). INV-4 fires WARN when any
+   * record violates the consumer-shape contract (`schemaValid === false`)
+   * OR when a majority of records have empty/null observation content.
+   *
+   * Optional — when undefined or empty, INV-4 returns null. The agent call
+   * site doesn't have to populate this until Phase C wires the actual
+   * observation pipeline.
+   */
+  observations?: Array<{
+    source: string;
+    observation: string | null;
+    receivedAt: string;
+    schemaValid: boolean;
+  }>;
+  /**
+   * Phase B — INV-8 input. Count of trades the bot has successfully
+   * executed since this process booted. Computed at the call site as
+   * `state.trading.totalTrades - state._tradesAtBoot`, where
+   * `_tradesAtBoot` is captured once at startup right after the persisted
+   * trade history is loaded. Optional — when undefined, INV-8 stays silent.
+   */
+  tradesSinceRestart?: number;
 }
 
 export type Invariant = (ctx: InvariantContext) => Violation | null;

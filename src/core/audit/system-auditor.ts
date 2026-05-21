@@ -44,6 +44,8 @@ import { chainDepositReconciliation } from './invariants/chain-deposit-reconcili
 import { cohortCoverage } from './invariants/cohort-coverage.js';
 import { reserveFloor } from './invariants/reserve-floor.js';
 import { sleeveLiveness } from './invariants/sleeve-liveness.js';
+import { observationConsumer } from './invariants/observation-consumer.js';
+import { cycleTradeRatio } from './invariants/cycle-trade-ratio.js';
 import type { LiveOnChainSnapshot } from './sources/live-onchain.js';
 import type { ChainDepositHistory } from './sources/chain-deposit-history.js';
 
@@ -179,6 +181,14 @@ const PHASE_A_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
  * Run alongside Phase A every heavy cycle.
  */
 const PHASE_B_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
+  // Phase B (2026-05-21): observation-consumer contract. WARN when the
+  // external observation feed (stc-website auto-investigation, alpha-
+  // watcher emissions) drifts off-shape — schema-invalid records or a
+  // majority of empty/null content. Closes the loop on the stc-website
+  // garbage-findings regression that polluted the bot's prompt repeatedly
+  // before the consumer validator was added. Silent until Phase C wires
+  // the actual observation pipeline.
+  { id: 'INV-4', fn: observationConsumer },
   // Phase B (2026-05-21): cohort coverage. WARN every cycle until the
   // 7-quality Option B cohort is actually held in non-dust size. Forcing
   // function for Ship 2 (cohort completion) — bot logs name the missing
@@ -195,6 +205,13 @@ const PHASE_B_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
   // Alpha Hunter 40h silence pre-PR #30. Skips paper sleeves and sleeves
   // that have never decided (warmup, not regression).
   { id: 'INV-7', fn: sleeveLiveness },
+  // Phase B (2026-05-21): cycle-vs-trade ratio. WARN when heavy cycles
+  // advance past the boot grace window (8 cycles ≈ 2h) without a single
+  // trade since restart. Catches the "bot is running but rendering
+  // decisions that never execute" failure mode — routing bugs, stale
+  // gates, permanent HOLD lock-in. Measured off a boot-baseline so a
+  // mid-day redeploy of a long-running bot doesn't get false silence.
+  { id: 'INV-8', fn: cycleTradeRatio },
 ];
 
 const ALL_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
@@ -488,6 +505,25 @@ export interface AuditorDeps {
     lastDecisionAt: string | null;
     decisionsCount: number;
   }>;
+  /**
+   * Phase B — INV-4 input. Records ingested from external observation
+   * sources this cycle. Phase B leaves this undefined (the agent call
+   * site doesn't populate it yet); Phase C wires the real observation
+   * pipeline. When omitted, INV-4 stays silent.
+   */
+  observations?: Array<{
+    source: string;
+    observation: string | null;
+    receivedAt: string;
+    schemaValid: boolean;
+  }>;
+  /**
+   * Phase B — INV-8 input. Trades successfully executed since this
+   * process booted. Computed at the agent call site as
+   * `state.trading.totalTrades - (state._tradesAtBoot ?? totalTrades)`.
+   * Optional — when omitted, INV-8 stays silent.
+   */
+  tradesSinceRestart?: number;
 }
 
 /**
@@ -527,6 +563,15 @@ export async function runSystemAuditor(deps: AuditorDeps): Promise<AuditReport |
     // Phase B — sleeve liveness for INV-7. Optional. When omitted, INV-7
     // returns null and stays silent for the cycle.
     sleeveLiveness: deps.sleeveLiveness,
+    // Phase B — observation feed for INV-4. Optional. Phase B leaves
+    // this unpopulated; INV-4 returns null until Phase C wires the real
+    // observation pipeline.
+    observations: deps.observations,
+    // Phase B — trades-since-restart for INV-8. Optional. When omitted,
+    // INV-8 stays silent. Measured off a process-boot baseline (see
+    // agent-v3.2.ts `state._tradesAtBoot` capture) so mid-day redeploys
+    // of long-running bots don't trip false silence.
+    tradesSinceRestart: deps.tradesSinceRestart,
   };
 
   // Run every invariant; isolate failures so one buggy invariant doesn't

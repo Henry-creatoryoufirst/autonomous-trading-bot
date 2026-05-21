@@ -2230,6 +2230,15 @@ function scheduleNextCycle() {
         console.warn(`[SystemAudit] sleeveLiveness snapshot failed (non-fatal, INV-7 will be silent): ${err?.message?.slice(0, 120) || err}`);
       }
 
+      // NVR-SPEC-035 INV-8 — trades-since-restart computed off the boot
+      // baseline captured right after loadTradeHistory(). Falls back to
+      // totalTrades when the baseline isn't set (e.g., on the very first
+      // cycle of a fresh deploy before persistence has cycled). That
+      // fallback evaluates to 0 by subtraction, so the invariant still
+      // skips silently inside its own boot-grace window.
+      const _tradesAtBoot = (state as any)._tradesAtBoot ?? state.trading.totalTrades;
+      const tradesSinceRestart = Math.max(0, (state.trading.totalTrades ?? 0) - _tradesAtBoot);
+
       try {
         await runSystemAuditor({
           balances: state.trading.balances,
@@ -2241,6 +2250,7 @@ function scheduleNextCycle() {
           chainDepositHistory,
           botTotalDeposited: state.totalDeposited ?? null,
           sleeveLiveness: sleeveLivenessSnapshot,
+          tradesSinceRestart,
         });
       } catch (err: any) {
         console.error(`[SystemAudit] runner threw: ${err?.message || err}`);
@@ -10827,6 +10837,14 @@ async function main() {
     setBtcDominanceHistory: (h) => { btcDominanceHistory = h; state.btcDominanceHistory = h; },
   });
   loadTradeHistory();
+
+  // NVR-SPEC-035 INV-8 — snapshot the persisted trade count once, right
+  // after loadTradeHistory() restores it. tradesSinceRestart is computed
+  // each cycle as `state.trading.totalTrades - state._tradesAtBoot`, so a
+  // mid-day redeploy of a long-running bot starts measuring fresh silence
+  // rather than inheriting a lifetime count that would mask the issue.
+  (state as any)._tradesAtBoot = state.trading.totalTrades ?? 0;
+  console.log(`[SystemAudit:INV-8] tradesAtBoot=${(state as any)._tradesAtBoot} (baseline for cycle-vs-trade ratio)`);
 
   // NVR-SPEC-026 startup hygiene: in HWM mode, pendingFeeUSDC is meaningless
   // (the legacy per-trade accumulator) but the orchestrator still subtracts
