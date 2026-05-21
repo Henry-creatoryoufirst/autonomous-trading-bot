@@ -31,6 +31,11 @@ export type { AlphaHunterSleeveOptions, WatcherDirectStats } from './alpha-hunte
 export { AlphaRotationSleeve } from './alpha-rotation.js';
 export type { AlphaRotationSleeveOptions } from './alpha-rotation.js';
 
+// NVR-SPEC-034 Phase 1a: funding-arb (paper-only) sleeve scaffolding.
+// Opt-in via env flag FUNDING_ARB_PAPER_ENABLED — see registry.ts.
+export { FundingArbSleeve, fundingArbSleeve } from './funding-arb.js';
+export type { FundingArbSleeveOptions } from './funding-arb.js';
+
 export { StaticAllocator, defaultStaticAllocator } from './allocator.js';
 
 export { buildDefaultRegistry, buildRegistry } from './registry.js';

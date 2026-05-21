@@ -137,6 +137,11 @@ export function migrateStateToSleeves<S extends MigratableState>(
   }
 
   // 3. Seed default config if missing (or fill gaps on already-migrated state)
+  // Default paper budget per sleeve. Core trades against the bot's real
+  // balance so it doesn't carry a virtual budget; every other sleeve gets
+  // $1000 simulated to build a graduation-worthy track record. Funding-arb
+  // (NVR-SPEC-034 Phase 1a) inherits this default — large enough to host
+  // multiple simulated $300-notional arb positions.
   const defaultPaperBudget = (sleeveId: string) => (sleeveId === 'core' ? 0 : 1000);
   const defaultExitOverride = (sleeveId: string): SleeveExitOverride | undefined => {
     // Alpha sleeves run tighter exits than Core — this is their discipline edge.
@@ -146,6 +151,9 @@ export function migrateStateToSleeves<S extends MigratableState>(
     if (sleeveId === 'alpha-rotation') {
       return { drawdownOverridePct: -5, maxHoldHours: 72, staleMaxGainPct: 2 };
     }
+    // funding-arb (NVR-SPEC-034) intentionally does NOT use the generic
+    // SleeveExitOverride knobs — its exit logic is funding-rate-driven, not
+    // drawdown/age-driven. Returning undefined keeps the override map clean.
     return undefined;
   };
   if (!state.sleeveConfig) {
