@@ -801,6 +801,7 @@ import {
   getMonitorStats as auditorGetMonitorStats,
   getLastReport as auditorGetLastReport,
   getStartedAt as auditorGetStartedAt,
+  formatSystemAuditPromptBlock,
   captureLiveOnChainSnapshot, fetchChainDepositHistory,
   type LiveOnChainSnapshot, type LiveOnChainTokenSpec, type YieldReceiptSpec,
   type ChainDepositHistory,
@@ -4513,6 +4514,11 @@ function formatOutcomePromptBlock(s: OutcomeSummary | null): string {
   return `\n═══ ALPHA LEDGER (outcome-weighted) ═══\n${parts.join(' · ')}\nSignals with negative edge should require stronger confirmation before a BUY.\n`;
 }
 
+// NVR-SPEC-035 Phase B — prompt block formatter is in
+// src/core/audit/prompt-block.ts and is imported via the barrel above
+// (formatSystemAuditPromptBlock). Kept out of this file so it stays
+// unit-testable without booting the agent.
+
 // ============================================================================
 // TECHNICAL INDICATORS — delegated to src/algorithm/indicators.ts
 // ============================================================================
@@ -5655,6 +5661,11 @@ ${_isFullPrompt ? discoveryIntel : ''}${_isFullPrompt ? hotMoverIntel : ''}${_is
   await refreshOutcomeSummaryIfStale();
   const outcomeBlock = formatOutcomePromptBlock(getCachedOutcomeSummary());
 
+  // NVR-SPEC-035 Phase B — surface SystemAudit WARN-tier signal so the
+  // bot reasons about strategy-alignment gaps (INV-5 cohort coverage, etc).
+  // SEVERE already gates execution; WARN is informational pressure.
+  const systemAuditBlock = formatSystemAuditPromptBlock(auditorGetLastReport());
+
   // v20.6: Dynamic addenda only included on heavy (full strategy) cycles
   const dynamicStrategyAddenda = `${cashDeployment?.active ? `
 ═══ CASH STATUS ═══
@@ -5664,7 +5675,7 @@ ONLY deploy if you see real momentum and conviction. Do NOT buy just to reduce c
 If the market is dead, HOLD is the best trade. Protect capital for when opportunity arrives.
 ` : ''}${payoutUrgency ? `
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
-` : ''}${outcomeBlock}`;
+` : ''}${outcomeBlock}${systemAuditBlock}`;
 
   // v21.21 Routing reset + SPEC-018 OSS_TRADER_MODE integration.
   //

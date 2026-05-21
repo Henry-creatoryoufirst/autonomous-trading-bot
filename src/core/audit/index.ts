@@ -45,6 +45,9 @@ export { chainTruthReconciliation } from './invariants/chain-truth-reconciliatio
 export { chainDepositReconciliation } from './invariants/chain-deposit-reconciliation.js';
 export { cohortCoverage } from './invariants/cohort-coverage.js';
 
+// Phase B — prompt-block formatter (heavy-cycle prompt wiring)
+export { formatSystemAuditPromptBlock } from './prompt-block.js';
+
 // Phase A.1 — live-RPC source for INV-10
 export { captureLiveOnChainSnapshot } from './sources/live-onchain.js';
 export type { LiveOnChainSnapshot, LiveOnChainBalance, LiveOnChainTokenSpec, YieldReceiptSpec } from './sources/live-onchain.js';
