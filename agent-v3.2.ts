@@ -797,6 +797,11 @@ import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterB
 import {
   runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt,
   canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram,
+  getCurrentBlocker as auditorGetCurrentBlocker,
+  getMonitorStats as auditorGetMonitorStats,
+  getLastReport as auditorGetLastReport,
+  getStartedAt as auditorGetStartedAt,
+  formatSystemAuditPromptBlock,
   captureLiveOnChainSnapshot, fetchChainDepositHistory,
   type LiveOnChainSnapshot, type LiveOnChainTokenSpec, type YieldReceiptSpec,
   type ChainDepositHistory,
@@ -4509,6 +4514,11 @@ function formatOutcomePromptBlock(s: OutcomeSummary | null): string {
   return `\n═══ ALPHA LEDGER (outcome-weighted) ═══\n${parts.join(' · ')}\nSignals with negative edge should require stronger confirmation before a BUY.\n`;
 }
 
+// NVR-SPEC-035 Phase B — prompt block formatter is in
+// src/core/audit/prompt-block.ts and is imported via the barrel above
+// (formatSystemAuditPromptBlock). Kept out of this file so it stays
+// unit-testable without booting the agent.
+
 // ============================================================================
 // TECHNICAL INDICATORS — delegated to src/algorithm/indicators.ts
 // ============================================================================
@@ -5651,6 +5661,11 @@ ${_isFullPrompt ? discoveryIntel : ''}${_isFullPrompt ? hotMoverIntel : ''}${_is
   await refreshOutcomeSummaryIfStale();
   const outcomeBlock = formatOutcomePromptBlock(getCachedOutcomeSummary());
 
+  // NVR-SPEC-035 Phase B — surface SystemAudit WARN-tier signal so the
+  // bot reasons about strategy-alignment gaps (INV-5 cohort coverage, etc).
+  // SEVERE already gates execution; WARN is informational pressure.
+  const systemAuditBlock = formatSystemAuditPromptBlock(auditorGetLastReport());
+
   // v20.6: Dynamic addenda only included on heavy (full strategy) cycles
   const dynamicStrategyAddenda = `${cashDeployment?.active ? `
 ═══ CASH STATUS ═══
@@ -5660,7 +5675,7 @@ ONLY deploy if you see real momentum and conviction. Do NOT buy just to reduce c
 If the market is dead, HOLD is the best trade. Protect capital for when opportunity arrives.
 ` : ''}${payoutUrgency ? `
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
-` : ''}${outcomeBlock}`;
+` : ''}${outcomeBlock}${systemAuditBlock}`;
 
   // v21.21 Routing reset + SPEC-018 OSS_TRADER_MODE integration.
   //
@@ -12223,6 +12238,34 @@ const healthServer = http.createServer(async (req, res) => {
         readRecentAuditLog(MASTER_AGENT_ID, n)
           .then((entries) => sendJSON(res, 200, { entries, count: entries.length, ringSize: 1000 }))
           .catch((err) => sendJSON(res, 500, { error: err?.message ?? 'failed' }));
+        break;
+      }
+      case '/api/system-audit': {
+        // NVR-SPEC-035 — read-only surface for the SystemAuditor's live state.
+        // Closes the verification gap: without Railway log access, INV-10/INV-11
+        // firings (and the auto-flip from log-only → alert at 24h) were invisible.
+        try {
+          const stats = auditorGetMonitorStats();
+          const startedAt = auditorGetStartedAt();
+          sendJSON(res, 200, {
+            enabled: stats.enabled,
+            alertMode: stats.alertMode,
+            startedAt,
+            ageMs: Date.now() - new Date(startedAt).getTime(),
+            stats: {
+              cyclesRun: stats.cyclesRun,
+              cyclesSkipped: stats.cyclesSkipped,
+              totalViolations: stats.totalViolations,
+              perInvariantViolations: stats.perInvariantViolations,
+              lastFlipFromLogOnly: stats.lastFlipFromLogOnly,
+              capturedPromptCount: stats.capturedPromptCount,
+            },
+            currentBlocker: auditorGetCurrentBlocker(),
+            lastReport: auditorGetLastReport(),
+          });
+        } catch (err: unknown) {
+          sendJSON(res, 500, { error: `system-audit failed: ${(err as Error).message}` });
+        }
         break;
       }
       case '/api/chat':

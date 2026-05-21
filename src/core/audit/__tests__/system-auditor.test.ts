@@ -40,16 +40,44 @@ function poisonedCostBasis() {
 }
 
 function honestDeps(overrides: Partial<AuditorDeps> = {}): AuditorDeps {
+  // Baseline must be honest across every invariant (Phase A + Phase B).
+  // Cohort coverage (INV-5, Phase B) requires every COHORT_QUALITY_7
+  // symbol held with usdValue ≥ $50 — six are added here at exactly the
+  // floor so the "happy path" tests stay clean and INV-1's three-way
+  // valuation cross-check still balances.
+  const cohortTail = [
+    { symbol: 'cbBTC', balance: 0.001, usdValue: 50, price: 50000 },
+    { symbol: 'cbXRP', balance: 50,    usdValue: 50, price: 1 },
+    { symbol: 'cbLTC', balance: 1,     usdValue: 50, price: 50 },
+    { symbol: 'LINK',  balance: 5,     usdValue: 50, price: 10 },
+    { symbol: 'cbADA', balance: 100,   usdValue: 50, price: 0.5 },
+    { symbol: 'cbSOL', balance: 0.3,   usdValue: 50, price: 166.67 },
+  ];
+  const cohortCostBasis: AuditorDeps['costBasis'] = {};
+  const cohortPrices: AuditorDeps['lastKnownPrices'] = {};
+  for (const { symbol, balance, price } of cohortTail) {
+    cohortCostBasis[symbol] = {
+      symbol,
+      realizedPnL: 0,
+      totalInvestedUSD: balance * price,
+      totalTokensAcquired: balance,
+      averageCostBasis: price,
+      currentHolding: balance,
+    };
+    cohortPrices[symbol] = { price };
+  }
   return {
     balances: [
-      { symbol: 'WETH', balance: 0.95, usdValue: 2000 },
+      { symbol: 'WETH', balance: 0.81, usdValue: 1700 },
       { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+      ...cohortTail.map(({ symbol, balance, usdValue }) => ({ symbol, balance, usdValue })),
     ],
     totalPortfolioValue: 3000,
     costBasis: {
-      WETH: { symbol: 'WETH', realizedPnL: 87, totalInvestedUSD: 217, totalTokensAcquired: 0.95, averageCostBasis: 2105, currentHolding: 0.95 },
+      WETH: { symbol: 'WETH', realizedPnL: 87, totalInvestedUSD: 1705, totalTokensAcquired: 0.81, averageCostBasis: 2105, currentHolding: 0.81 },
+      ...cohortCostBasis,
     },
-    lastKnownPrices: { WETH: { price: 2105 } },
+    lastKnownPrices: { WETH: { price: 2105 }, ...cohortPrices },
     cycle: 1,
     ...overrides,
   };

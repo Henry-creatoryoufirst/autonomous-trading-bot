@@ -17,6 +17,8 @@ export {
   canExecuteAction,
   getCurrentBlocker,
   getMonitorStats,
+  getLastReport,
+  getStartedAt,
   wireTelegram,
   clearBlocker,
   _internals,
@@ -41,6 +43,10 @@ export { promptCoherence } from './invariants/prompt-coherence.js';
 export { auditorSelfTest } from './invariants/auditor-self-test.js';
 export { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
 export { chainDepositReconciliation } from './invariants/chain-deposit-reconciliation.js';
+export { cohortCoverage } from './invariants/cohort-coverage.js';
+
+// Phase B — prompt-block formatter (heavy-cycle prompt wiring)
+export { formatSystemAuditPromptBlock } from './prompt-block.js';
 
 // Phase A.1 — live-RPC source for INV-10
 export { captureLiveOnChainSnapshot } from './sources/live-onchain.js';
