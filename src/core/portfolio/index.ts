@@ -14,6 +14,17 @@ export {
   DUST_PRUNE_THRESHOLD_USD,
 } from './cost-basis.js';
 
+// 2026-05-21 v2 — stricter single-factor sweep on stale per-unit math.
+// Catches entries where currentHolding × averageCostBasis < $0.10, which
+// pollute source A of INV-1 (dimensional honesty) even though they're
+// effectively zero in balances. Trigger for this v2 was Henry's main bot
+// running INV-1 SEVERE for 33h straight on 3.15% A/B/C drift.
+export {
+  identifyDustV2CostBasisEntries,
+  runDustPruneV2MigrationOnce,
+  DUST_PRUNE_V2_THRESHOLD_USD,
+} from './cost-basis.js';
+
 // Phase 4: harvest manager + pure valuation utilities
 export { HarvestManager } from './harvest-manager.js';
 export type { HarvestManagerDeps } from './harvest-manager.js';

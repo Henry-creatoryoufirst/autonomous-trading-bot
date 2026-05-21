@@ -7,6 +7,9 @@ import {
   updateUnrealizedPnL,
   identifyDustCostBasisEntries,
   runDustPruneMigrationOnce,
+  identifyDustV2CostBasisEntries,
+  runDustPruneV2MigrationOnce,
+  DUST_PRUNE_V2_THRESHOLD_USD,
 } from '../cost-basis.js';
 
 import type { TokenCostBasis } from '../../types/index.js';
@@ -406,5 +409,131 @@ describe('runDustPruneMigrationOnce', () => {
     expect(pruned).toEqual([]);
     expect(state.costBasis.WETH).toBeDefined();
     expect((state as any)._migrationDustPruneV21_28).toBe(true);
+  });
+});
+
+
+// ===========================================================================
+// identifyDustV2CostBasisEntries + runDustPruneV2MigrationOnce
+// — single-factor stricter sweep targeting stale per-unit math.
+// Catches the 2026-05-21 INV-1 SEVERE class: entries where
+// currentHolding × averageCostBasis is below the $0.10 floor.
+// ===========================================================================
+
+describe('identifyDustV2CostBasisEntries', () => {
+  function entry(holding: number, avgCost: number, invested = 100): TokenCostBasis {
+    return {
+      symbol: 'X',
+      totalInvestedUSD: invested,
+      totalTokensAcquired: holding,
+      averageCostBasis: avgCost,
+      currentHolding: holding,
+      realizedPnL: 0,
+    } as TokenCostBasis;
+  }
+
+  it('returns empty when nothing is sub-threshold', () => {
+    const result = identifyDustV2CostBasisEntries({
+      WETH: entry(1, 2000),       // 1 × 2000 = $2000 → healthy
+      cbLTC: entry(3.7, 54),      // = $200 → healthy
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('catches stale per-unit math (the SPX case)', () => {
+    // The class that poisoned Henry's main bot for 33h: a previous unit-
+    // conversion bug stored averageCostBasis with the wrong decimals, so
+    // currentHolding × averageCostBasis produces something like $3.77e-6.
+    const result = identifyDustV2CostBasisEntries({
+      WETH: entry(1, 2000),
+      SPX: entry(1e-15, 3_770_000_000),   // 3.77e-6 — well below $0.10
+    });
+    expect(result).toEqual(['SPX']);
+  });
+
+  it('catches sub-cent per-unit values regardless of cause', () => {
+    const result = identifyDustV2CostBasisEntries({
+      WETH: entry(1, 2000),
+      TINY_A: entry(0.0001, 100),  // = $0.01 → prune
+      TINY_B: entry(1e-9, 1e6),    // = $0.001 → prune
+      KEEP: entry(0.001, 200),     // = $0.20 → above floor → keep
+    });
+    expect(result).toEqual(['TINY_A', 'TINY_B']);
+  });
+
+  it('protects cohort symbols even if their per-unit math is dust', () => {
+    // A cohort token (e.g. cbXRP) with sub-floor per-unit math is preserved
+    // — we won't auto-prune positions the strategy is supposed to be running.
+    const result = identifyDustV2CostBasisEntries({
+      cbXRP: entry(0.0001, 1),     // = $0.0001 — dust, but cohort-protected
+      RANDOM: entry(0.0001, 1),    // = $0.0001 — not cohort → prune
+    });
+    expect(result).toEqual(['RANDOM']);
+  });
+
+  it('respects custom thresholds', () => {
+    // Lower threshold catches less, higher catches more
+    const cb = { TINY: entry(0.001, 50) }; // = $0.05
+    expect(identifyDustV2CostBasisEntries(cb, 0.01)).toEqual([]);     // below threshold
+    expect(identifyDustV2CostBasisEntries(cb, 0.10)).toEqual(['TINY']); // at default
+    expect(identifyDustV2CostBasisEntries(cb, 1.00)).toEqual(['TINY']); // catches it
+  });
+});
+
+describe('runDustPruneV2MigrationOnce', () => {
+  function seedV2State(costBasis: Record<string, TokenCostBasis>, flagSet = false): AgentState {
+    const stateStub = {
+      costBasis,
+      errorLog: [],
+      tradeFailures: {},
+    } as unknown as AgentState;
+    if (flagSet) {
+      (stateStub as any)._migrationDustPruneV2 = true;
+    }
+    setState(stateStub);
+    return stateStub;
+  }
+
+  function entry(holding: number, avgCost: number): TokenCostBasis {
+    return {
+      symbol: 'X', totalInvestedUSD: 100, totalTokensAcquired: holding,
+      averageCostBasis: avgCost, currentHolding: holding, realizedPnL: 0,
+    } as TokenCostBasis;
+  }
+
+  it('prunes the per-unit dust and leaves the rest', () => {
+    const state = seedV2State({
+      WETH: entry(1, 2000),
+      SPX: entry(1e-15, 3_770_000_000),
+      TINY: entry(0.0001, 100),
+    });
+    const pruned = runDustPruneV2MigrationOnce();
+    expect(pruned).toEqual(['SPX', 'TINY']);
+    expect(state.costBasis.WETH).toBeDefined();
+    expect(state.costBasis.SPX).toBeUndefined();
+    expect(state.costBasis.TINY).toBeUndefined();
+    expect((state as any)._migrationDustPruneV2).toBe(true);
+  });
+
+  it('is idempotent — second call no-ops', () => {
+    const state = seedV2State({
+      SPX: entry(1e-15, 3_770_000_000),
+    }, /* flagSet */ true);
+    const pruned = runDustPruneV2MigrationOnce();
+    expect(pruned).toBeNull();
+    expect(state.costBasis.SPX).toBeDefined(); // not touched
+  });
+
+  it('uses the documented default threshold', () => {
+    expect(DUST_PRUNE_V2_THRESHOLD_USD).toBe(0.10);
+  });
+
+  it('returns empty + sets flag when no dust to prune', () => {
+    const state = seedV2State({
+      WETH: entry(1, 2000),
+    });
+    const pruned = runDustPruneV2MigrationOnce();
+    expect(pruned).toEqual([]);
+    expect((state as any)._migrationDustPruneV2).toBe(true);
   });
 });

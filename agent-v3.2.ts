@@ -791,7 +791,7 @@ import { computeMacroRegime } from "./src/algorithm/macro-regime.js";
 // Phase 9: Extracted reporting/formatting module
 import { sf as _sf, formatIntelligenceForPrompt as _formatIntelligenceForPrompt, formatIndicatorsForPrompt as _formatIndicatorsForPrompt } from "./src/core/reporting/index.js";
 // Phase 10: Extracted portfolio cost basis module — now imports state directly
-import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades, runDustPruneMigrationOnce } from "./src/core/portfolio/index.js";
+import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterBuy, updateCostBasisAfterSell, updateUnrealizedPnL, rebuildCostBasisFromTrades, runDustPruneMigrationOnce, runDustPruneV2MigrationOnce } from "./src/core/portfolio/index.js";
 // NVR-SPEC-035 Phase A — system auditor (audit-of-audits layer).
 // Default-off via SYSTEM_AUDITOR_ENABLED env; importing alone has zero side effects.
 import {
@@ -11169,6 +11169,19 @@ async function main() {
     }
   } catch (err: any) {
     console.error(`⚠️ dust-prune migration failed: ${err?.message || err}`);
+  }
+
+  // 2026-05-21 v2 dust prune — stricter single-factor sweep targeting
+  // entries whose per-unit math (currentHolding × averageCostBasis) is
+  // sub-$0.10. These pollute INV-1's source A without contributing real
+  // capital — the cause of Henry's main bot's 33h INV-1 SEVERE.
+  try {
+    const dustV2Pruned = runDustPruneV2MigrationOnce();
+    if (dustV2Pruned && dustV2Pruned.length > 0) {
+      saveTradeHistory();
+    }
+  } catch (err: any) {
+    console.error(`⚠️ dust-prune v2 migration failed: ${err?.message || err}`);
   }
 
   // Restore discovery state if available
