@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-21T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-21T UTC | Scout ran (>48h since last scout 2026-05-16) but per CLAUDE.md Rule 1 (Option B benchmark window) wrote COHORT_PROPOSAL_2026-05-21.md instead of TOKEN_REGISTRY changes; auditor lowered MOMENTUM_EXIT_BUY_RATIO 45→43 — 76-day bear + Option B quality cohort; quality assets show lower natural institutional DEX buy ratios (45-55%) vs pre-pivot speculative tokens; 45% exit was firing on normal consolidation |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from this sandbox). MEDIC_REPORT updated (Run #35). This is the 35th consecutive run with the same network restriction.
+- **Scout**: RAN — last scout was 2026-05-16 (VEIL, subsequently reverted), >5 days elapsed. Per CLAUDE.md Rule 1 (Option B benchmark window, cohort locked until ~2026-06-15), TOKEN_REGISTRY was NOT modified. COHORT_PROPOSAL_2026-05-21.md written to repo root instead. GeckoTerminal remains blocked; no specific pool data verified. Scout filter evaluation deferred to Henry.
+- **Auditor**: TRIGGERED by 76-day BEAR market (well past 48h threshold). 4 research searches completed. Top finding: MOMENTUM_EXIT_BUY_RATIO 45→43 — Option B quality-cohort quality assets show lower natural institutional DEX buy ratios vs pre-pivot speculative tokens; 45% exit trigger fires on normal consolidation rather than genuine distribution; FLOW_REVERSAL_EXIT_BUY_RATIO=38 remains as backstop. IMPLEMENTED in constants.ts on `claude/cool-sagan-Fps04` branch. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-21)
+- **Signal Quality**: Smart money wallet mirroring → 65% win rate vs 41% standalone bots (2026 DeFi research). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 3/Complexity 5/Risk medium) → Watch list. No new action. (Priority 0.6)
+- **Execution Efficiency**: Aerodrome Slipstream auto-benefits routing at DEX level. New Metaswaps cross-chain MEV-protected feature in 2026 requires off-limits execution changes. Bot auto-benefits without code change. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly criterion research confirms "at least 100 trades for reliable win rates" (NVR window=30 trades). Under Option B quality cohort launched 2026-05-15, the 30-trade window currently mixes pre-pivot speculative token trades with post-pivot quality trades. Additionally, quality assets (cbBTC/WETH/LINK/etc.) show lower natural institutional DEX buy ratios (45-55%) compared to pre-pivot speculative tokens (55-65%). MOMENTUM_EXIT_BUY_RATIO 45→43 IMPLEMENTED. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+- **Competitive Intelligence**: "Base is primary hub for AI agent activity in 2026." Venice (VVV) is primary inference layer for 100+ DeFi agents — already in TOKEN_REGISTRY. Cross-chain arbitrage via fast bridges active but requires off-limits execution changes. No new actionable code pattern. (Priority 0)
+
+## Watch List (for Henry's Review)
+1. **Smart money full integration** (Nansen/Dune API): Could increase win rate to 65% (vs current ~41% standalone). Requires API integration + analysis pipeline. Impact 3/Complexity 5/Risk medium. Post-Option-B candidate.
+2. **Kelly window re-calibration for Option B**: KELLY_ROLLING_WINDOW=30 mixes pre-pivot speculative token data with post-pivot quality trades. After 30+ quality trades are accumulated (~2026-06-05+), consider resetting the window or using time-based windowing. Impact 2/Complexity 3/Risk low. Review at 30-trade mark.
+3. **COHORT_PROPOSAL_2026-05-21.md**: Scout found no verifiable qualifying tokens (GeckoTerminal blocked). Manual review recommended post-Option-B window.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

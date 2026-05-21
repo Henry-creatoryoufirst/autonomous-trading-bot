@@ -934,7 +934,7 @@ export const SCALE_UP_BUY_RATIO_MIN = 60; // Bear-adjusted May-2026: 55→60 —
 export const SCALE_UP_SIZE_PCT = 3; // Bear-adjusted May-2026: 4→3 — 59-day bear; Kelly-VAPS research confirms scale-up entries in sustained bear are higher-probability false breakouts; 25% smaller scale-up reduces over-concentration risk on bear-market dead-cat bounces while still allowing meaningful adds to genuine winners
 
 /** Exit when buy ratio drops below this % on a profitable position */
-export const MOMENTUM_EXIT_BUY_RATIO = 45;
+export const MOMENTUM_EXIT_BUY_RATIO = 43; // Option B quality-cohort May-2026: 45→43 — quality assets (cbBTC/WETH/LINK/etc.) show lower natural DEX buy ratios (45-55%) vs pre-pivot speculative tokens (55-65%) due to institutional/OTC flow; 45% was firing on normal quality-asset consolidation, not genuine distribution; FLOW_REVERSAL_EXIT_BUY_RATIO at 38 remains as primary backstop
 
 /** Only momentum-exit if position was up this %+ (don't panic sell small gains) */
 export const MOMENTUM_EXIT_MIN_PROFIT = 5;
