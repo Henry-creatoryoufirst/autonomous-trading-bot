@@ -8,6 +8,8 @@
  *   - getCurrentBlocker()     — current SystemHealthBlocker | null
  *   - getMonitorStats()       — cumulative + per-invariant counters
  *   - wireTelegram(fn)        — agent registers its Telegram sender at startup
+ *   - wireAnthropicClient(c)  — agent registers its Anthropic SDK client (Files API persistence)
+ *   - flushAuditorPersistenceOnShutdown() — SIGTERM handler flushes to Files API
  *   - clearBlocker(reason)    — operator escape hatch
  */
 
@@ -20,10 +22,25 @@ export {
   getLastReport,
   getStartedAt,
   wireTelegram,
+  wireAnthropicClient,
+  flushAuditorPersistenceOnShutdown,
   clearBlocker,
   _internals,
   type AuditorDeps,
 } from './system-auditor.js';
+
+// Files-API persistence helpers — exported for cross-bot tooling and tests.
+export {
+  adaptAnthropicClient,
+  loadFromFilesApi,
+  persistToFilesApi,
+  snapshotFilename,
+  snapshotPrefixForBot,
+  type AuditorSnapshot,
+  type FilesApiClient,
+  type LoadResult,
+  type PersistResult,
+} from './persistence.js';
 
 export type {
   AuditReport,

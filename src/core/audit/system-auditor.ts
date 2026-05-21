@@ -48,6 +48,13 @@ import { observationConsumer } from './invariants/observation-consumer.js';
 import { cycleTradeRatio } from './invariants/cycle-trade-ratio.js';
 import type { LiveOnChainSnapshot } from './sources/live-onchain.js';
 import type { ChainDepositHistory } from './sources/chain-deposit-history.js';
+import {
+  adaptAnthropicClient,
+  loadFromFilesApi,
+  persistToFilesApi,
+  type AuditorSnapshot,
+  type FilesApiClient,
+} from './persistence.js';
 
 // ============================================================================
 // CONFIG
@@ -74,6 +81,33 @@ const PERSIST_DIR = process.env.PERSIST_DIR || './logs';
 const REPORT_FILE = `${PERSIST_DIR}/system-auditor-report.json`;
 const LOG_ONLY_AUTO_FLIP_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Files-API persistence cadence. Local-fs write happens every cycle; the
+ * Files-API upload happens every N cycles AND on graceful shutdown.
+ *
+ * Default 10 cycles ≈ 2.5h on a 15-min cycle, which is a reasonable
+ * trade-off between API cost / Files-API rate-limit pressure and how
+ * much history we'd lose to a Railway redeploy mid-run.
+ *
+ * Env override: AUDITOR_FILES_PERSIST_EVERY_N_CYCLES.
+ */
+function getFilesPersistEveryNCycles(): number {
+  const raw = process.env.AUDITOR_FILES_PERSIST_EVERY_N_CYCLES;
+  if (!raw) return 10;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 10;
+  return parsed;
+}
+
+/** Bot-instance identifier used to namespace Files-API snapshots. */
+function resolveBotInstance(): string {
+  return (
+    process.env.BOT_INSTANCE_NAME ??
+    process.env.RAILWAY_SERVICE_NAME ??
+    'unknown'
+  );
+}
+
 // ============================================================================
 // PERSISTED + IN-MEMORY STATE
 // ============================================================================
@@ -96,7 +130,7 @@ interface AuditorStats {
   capturedPromptCount: number;
 }
 
-let _state: PersistedAuditorState = loadPersisted() ?? {
+let _state: PersistedAuditorState = loadPersistedLocal() ?? {
   version: 1,
   startedAt: new Date().toISOString(),
   lastReport: null,
@@ -112,7 +146,32 @@ let _state: PersistedAuditorState = loadPersisted() ?? {
   },
 };
 
-function loadPersisted(): PersistedAuditorState | null {
+/**
+ * Anthropic Files API client. Wired by the agent at boot via
+ * `wireAnthropicClient()`. When null, the auditor degrades to local-fs-
+ * only persistence (Tier 3 in the spec). Importing the auditor without
+ * wiring this client is intentionally side-effect-free.
+ */
+let _filesClient: FilesApiClient | null = null;
+/**
+ * Has the auditor logged the "Files API unavailable, falling back to
+ * local fs" WARN yet this process? Latch so we don't spam the log every
+ * persist call.
+ */
+let _filesUnavailableWarned = false;
+/**
+ * Cycles since the last successful Files API write. When >= the
+ * configured cadence, the next persist() call fires a Files API upload
+ * (fire-and-forget) and resets the counter.
+ */
+let _cyclesSinceFilesPersist = 0;
+/**
+ * Has hydrateFromFilesApi attempted (and either succeeded or failed)?
+ * Latch so wiring the client a second time doesn't re-hit the API.
+ */
+let _filesHydrationAttempted = false;
+
+function loadPersistedLocal(): PersistedAuditorState | null {
   try {
     if (!fs.existsSync(REPORT_FILE)) return null;
     const raw = fs.readFileSync(REPORT_FILE, 'utf-8');
@@ -124,15 +183,118 @@ function loadPersisted(): PersistedAuditorState | null {
   }
 }
 
-function persist(): void {
+function persistLocal(): void {
   try {
     if (!fs.existsSync(PERSIST_DIR)) fs.mkdirSync(PERSIST_DIR, { recursive: true });
     const tmp = REPORT_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(_state));
     fs.renameSync(tmp, REPORT_FILE);
   } catch (err: unknown) {
-    console.warn(`  ⚠️ system-auditor: failed to persist report — ${(err as Error).message}`);
+    console.warn(`  ⚠️ system-auditor: failed to persist report locally — ${(err as Error).message}`);
   }
+}
+
+/**
+ * Write current `_state` to both tiers — local fs always, Files API only
+ * when the batching gate has elapsed (or `force` is true, e.g. on
+ * graceful shutdown).
+ *
+ * Files-API upload is fire-and-forget: it runs as a detached promise so
+ * the per-cycle invariant loop is never blocked on network. Errors are
+ * logged but not rethrown.
+ */
+function persist(opts: { force?: boolean } = {}): void {
+  persistLocal();
+  _cyclesSinceFilesPersist += 1;
+  const cadence = getFilesPersistEveryNCycles();
+  const shouldRemote = opts.force === true || _cyclesSinceFilesPersist >= cadence;
+  if (!shouldRemote) return;
+  if (!_filesClient) {
+    if (!_filesUnavailableWarned) {
+      console.warn(
+        '  ⚠️ system-auditor: Anthropic Files API not wired — auditor persistence is local-fs only (will not survive Railway redeploys). Set ANTHROPIC_API_KEY + wire client to enable.',
+      );
+      _filesUnavailableWarned = true;
+    }
+    return;
+  }
+  _cyclesSinceFilesPersist = 0;
+  // Snapshot the current state and fire the upload async. We capture by
+  // value so a later mutation to `_state` between scheduling + send
+  // doesn't change what gets uploaded.
+  const snapshotState: Omit<AuditorSnapshot, 'snapshotMeta'> = JSON.parse(JSON.stringify(_state));
+  const botInstance = resolveBotInstance();
+  void (async () => {
+    const res = await persistToFilesApi(snapshotState, botInstance, _filesClient, {
+      auditorCyclesRun: snapshotState.stats.cyclesRun,
+    });
+    if (res.ok) {
+      console.log(
+        `[SystemAudit] persisted snapshot to Files API: ${res.filename} (id=${res.fileId})`,
+      );
+    } else {
+      console.warn(
+        `  ⚠️ system-auditor: Files API persist failed (${res.reason}) — local fs is still up to date.`,
+      );
+    }
+  })();
+}
+
+/**
+ * Async hydration from the Files API. Called once, the first time
+ * `wireAnthropicClient()` lands a non-null client.
+ *
+ * Behavior:
+ *   - If local fs already has fresher state (i.e. cyclesRun is higher
+ *     than the remote snapshot), keep local — we don't want to clobber
+ *     a still-running container with an older blob.
+ *   - Otherwise, replace `_state` with the remote snapshot so the next
+ *     cycle picks up cyclesRun where the prior container left off.
+ *   - On any failure, leave the existing `_state` in place and log.
+ *
+ * Returns a promise so tests can await + observe; production callers
+ * fire-and-forget it.
+ */
+async function hydrateFromFilesApi(): Promise<void> {
+  if (_filesHydrationAttempted) return;
+  _filesHydrationAttempted = true;
+  if (!_filesClient) return;
+  const botInstance = resolveBotInstance();
+  const res = await loadFromFilesApi(botInstance, _filesClient);
+  if (!res.ok || !res.snapshot) {
+    if (res.reason !== 'no-snapshots') {
+      console.warn(`  ⚠️ system-auditor: Files API hydrate skipped (${res.reason})`);
+    } else {
+      console.log('[SystemAudit] no prior Files API snapshot found — starting clean');
+    }
+    return;
+  }
+  // Conflict resolution: only adopt the remote snapshot if it has at
+  // least as many cycles as our local state. This handles the case
+  // where this container has been running uninterrupted (local
+  // cyclesRun > remote) — in that case the remote is stale and we
+  // ignore it.
+  if (res.snapshot.stats.cyclesRun < _state.stats.cyclesRun) {
+    console.log(
+      `[SystemAudit] Files API snapshot is older than local (remote cyclesRun=${res.snapshot.stats.cyclesRun}, local=${_state.stats.cyclesRun}) — keeping local`,
+    );
+    return;
+  }
+  _state = {
+    version: res.snapshot.version,
+    startedAt: res.snapshot.startedAt,
+    lastReport: res.snapshot.lastReport,
+    currentBlocker: res.snapshot.currentBlocker,
+    capturedPrompt: res.snapshot.capturedPrompt,
+    stats: res.snapshot.stats,
+  };
+  console.log(
+    `[SystemAudit] hydrated from Files API: cyclesRun=${_state.stats.cyclesRun} (file=${res.fileId}, uploadedAt=${res.uploadedAt})`,
+  );
+  // Mirror the hydrated state to local fs so subsequent in-container
+  // restarts (e.g. process crash + Railway auto-restart) don't lose
+  // ground before the next Files API write.
+  persistLocal();
 }
 
 // ============================================================================
@@ -295,6 +457,83 @@ let _telegramSend: TelegramSendFn | null = null;
 
 export function wireTelegram(fn: TelegramSendFn): void {
   _telegramSend = fn;
+}
+
+/**
+ * Wire the Anthropic SDK client at agent boot. Mirrors `wireTelegram`.
+ *
+ * Accepts:
+ *   - A real Anthropic SDK client (`new Anthropic({ apiKey })`). We
+ *     adapt it via `adaptAnthropicClient`.
+ *   - A pre-adapted `FilesApiClient` (useful for tests + future migration
+ *     to a different upload backend).
+ *   - `null` — explicitly disable Files API persistence. Tests use this
+ *     to assert local-fs-only fallback.
+ *
+ * After wiring, the auditor kicks off a one-shot async hydration to pull
+ * the most recent snapshot for this bot instance. Hydration runs in the
+ * background and does not block the caller.
+ *
+ * Idempotent: re-wiring later replaces the client but does NOT re-trigger
+ * hydration (state is already in memory by then).
+ */
+export function wireAnthropicClient(clientOrAdapter: unknown | FilesApiClient | null): void {
+  if (clientOrAdapter === null) {
+    _filesClient = null;
+    return;
+  }
+  // Already adapted? Use as-is. Heuristic: an adapted client has
+  // `upload`, `list`, and `download` as functions but no `messages`
+  // / `beta` from the Anthropic SDK.
+  const c = clientOrAdapter as Partial<FilesApiClient>;
+  if (
+    typeof c.upload === 'function' &&
+    typeof c.list === 'function' &&
+    typeof c.download === 'function'
+  ) {
+    _filesClient = clientOrAdapter as FilesApiClient;
+  } else {
+    _filesClient = adaptAnthropicClient(clientOrAdapter);
+  }
+  if (!_filesClient) {
+    if (!_filesUnavailableWarned) {
+      console.warn(
+        '  ⚠️ system-auditor: wireAnthropicClient called with an unrecognized client shape — Files API persistence disabled.',
+      );
+      _filesUnavailableWarned = true;
+    }
+    return;
+  }
+  // Fire hydration in the background; don't block the caller.
+  void hydrateFromFilesApi();
+}
+
+/**
+ * Graceful-shutdown handler — flush the current `_state` to the Files
+ * API immediately (bypassing the N-cycle batching gate). Awaitable so
+ * the agent's SIGTERM handler can wait for it before exiting.
+ *
+ * Safe to call when no client is wired — falls through to local-only
+ * persist (already up to date).
+ */
+export async function flushAuditorPersistenceOnShutdown(): Promise<void> {
+  persistLocal();
+  if (!_filesClient) return;
+  const snapshotState: Omit<AuditorSnapshot, 'snapshotMeta'> = JSON.parse(JSON.stringify(_state));
+  const botInstance = resolveBotInstance();
+  const res = await persistToFilesApi(snapshotState, botInstance, _filesClient, {
+    auditorCyclesRun: snapshotState.stats.cyclesRun,
+  });
+  _cyclesSinceFilesPersist = 0;
+  if (res.ok) {
+    console.log(
+      `[SystemAudit] shutdown snapshot persisted to Files API: ${res.filename} (id=${res.fileId})`,
+    );
+  } else {
+    console.warn(
+      `  ⚠️ system-auditor: shutdown Files API persist failed (${res.reason})`,
+    );
+  }
 }
 
 async function maybeAlert(violations: Violation[], mode: AuditorMode, cycle: number): Promise<void> {
@@ -668,12 +907,37 @@ export const _internals = {
       },
     };
     _telegramSend = null;
+    _filesClient = null;
+    _filesUnavailableWarned = false;
+    _cyclesSinceFilesPersist = 0;
+    _filesHydrationAttempted = false;
   },
   setStateForTest(s: Partial<PersistedAuditorState>): void {
     _state = { ..._state, ...s };
   },
   getStateForTest(): PersistedAuditorState {
     return _state;
+  },
+  /**
+   * Install a pre-adapted FilesApiClient for tests — skips
+   * `adaptAnthropicClient` and the boot-time hydrate kick. Tests can then
+   * call `hydrateFromFilesApiForTest` explicitly when they want to
+   * exercise the hydration path.
+   */
+  setFilesClientForTest(client: FilesApiClient | null): void {
+    _filesClient = client;
+  },
+  /** Reset the hydration latch so tests can re-trigger it. */
+  resetHydrationLatchForTest(): void {
+    _filesHydrationAttempted = false;
+  },
+  /** Run the hydration coroutine and await it (test-only convenience). */
+  async hydrateFromFilesApiForTest(): Promise<void> {
+    await hydrateFromFilesApi();
+  },
+  /** Count of cycles since the most recent successful Files-API write. */
+  getCyclesSinceFilesPersistForTest(): number {
+    return _cyclesSinceFilesPersist;
   },
   invariants: ALL_INVARIANTS,
   phaseAInvariants: PHASE_A_INVARIANTS,
