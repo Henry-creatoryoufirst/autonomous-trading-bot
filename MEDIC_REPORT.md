@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-21T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-21T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-F9rPZ (per CLAUDE.md Rule 2 — agents must not push to main/staging)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-21T UTC | Scout + Auditor both BLOCKED: (1) all crypto APIs blocked by network allowlist, (2) CLAUDE.md Option B window rules suspend automated TOKEN_REGISTRY adds and constants.ts changes through ~2026-06-15. No code changes. MEDIC_REPORT updated. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No changes to agent-v3.2.ts.
+- **Scout**: BLOCKED — two independent constraints: (1) GeckoTerminal API and all crypto data sources blocked by network allowlist (403 on api.geckoterminal.com, api.coingecko.com, defillama.com). WebSearch did not surface specific tokens with verifiable liquidity/volume. (2) CLAUDE.md Rule 1 (Option B window, 2026-05-15+): cohort is locked — no auto-adds to TOKEN_REGISTRY during the 30-day benchmark window (~2026-06-15). If Scout had found candidates, would write COHORT_PROPOSAL file instead of committing to token-registry.ts.
+- **Auditor**: BLOCKED — two independent constraints: (1) Production API unreachable — cannot calculate win_rate, drawdown, or losing_streak to check triggers. (2) CLAUDE.md Option B rules explicitly state "unattended automated edits to the constants the strategy runs on muddy the alpha attribution." Automated Auditor changes to constants.ts are suspended during the Option B benchmark window. Any threshold changes during this period require a human-reviewed PR.
+
+## NEW: Option B Window Constraint (2026-05-15 → ~2026-06-15)
+
+**Both Scout and Auditor automated actions are suspended during the 30-day Option B benchmark window.**
+
+- Scout: No TOKEN_REGISTRY auto-adds. Candidates → COHORT_PROPOSAL file only.
+- Auditor: No constants.ts auto-edits. Research may still run and findings documented in this report, but no code changes committed without human review.
+- Medic: Still runs normally — critical bot failures take precedence over all other rules.
+
+Last automated constant change: Run #34 (2026-05-15T UTC) — HOT_MOVER_MIN_FDV_USD 500K→1M. That commit landed at the very start of the Option B window; attribution impact is marginal but Henry should be aware.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +222,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now Run #35 with the same network restriction (ongoing since Run #1 / 2026-04-14). Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
