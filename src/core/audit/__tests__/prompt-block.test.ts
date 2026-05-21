@@ -107,6 +107,84 @@ describe("formatSystemAuditPromptBlock — Henry's 2026-05-21 case study", () =>
   });
 });
 
+describe('formatSystemAuditPromptBlock — INV-6 reserve floor specialization', () => {
+  it('formats the gap-to-target line with the One Hard Rule context', () => {
+    const violation: Violation = {
+      invariantId: 'INV-6',
+      invariantName: 'reserve-floor',
+      severity: 'WARN',
+      message: 'whatever (overwritten by specialization)',
+      observed: {
+        usdcBalance: 150,
+        usdcPct: 5,
+        targetPct: 25,
+        warnFloorPct: 20,
+        targetUsd: 750,
+        gapToTargetUsd: 600,
+        gapToFloorUsd: 450,
+        portfolioValue: 3000,
+      },
+      expected: {},
+      pauseScope: 'none',
+      detectedAt: new Date().toISOString(),
+    };
+    const block = formatSystemAuditPromptBlock(report([violation]));
+    expect(block).toMatch(/INV-6 reserve floor/);
+    expect(block).toMatch(/USDC at 5\.0% \(\$150\)/);
+    expect(block).toMatch(/target 25%/);
+    expect(block).toMatch(/Gap \$600/);
+    expect(block).toMatch(/ONE hardcoded strategy invariant/);
+    expect(block).toMatch(/canonical restore move/);
+  });
+});
+
+describe('formatSystemAuditPromptBlock — INV-7 sleeve liveness specialization', () => {
+  it('names every silent sleeve with hours-since-decision', () => {
+    const violation: Violation = {
+      invariantId: 'INV-7',
+      invariantName: 'sleeve-liveness',
+      severity: 'WARN',
+      message: 'whatever (overwritten)',
+      observed: {
+        silent: [
+          { id: 'alpha-hunter', lastDecisionAt: '2026-05-19T00:00:00Z', hoursSinceDecision: 40.5, decisionsCount: 60 },
+          { id: 'core',         lastDecisionAt: '2026-05-19T08:00:00Z', hoursSinceDecision: 32.0, decisionsCount: 150 },
+        ],
+        stalenessThresholdHours: 12,
+        totalLiveSleeves: 2,
+      },
+      expected: {},
+      pauseScope: 'none',
+      detectedAt: new Date().toISOString(),
+    };
+    const block = formatSystemAuditPromptBlock(report([violation]));
+    expect(block).toMatch(/INV-7 sleeve liveness/);
+    expect(block).toMatch(/2 live sleeve\(s\) silent >12h/);
+    expect(block).toMatch(/alpha-hunter 40\.5h/);
+    expect(block).toMatch(/core 32\.0h/);
+    expect(block).toMatch(/stranded its slice of capital/);
+  });
+
+  it('uses singular form when only one sleeve is silent', () => {
+    const violation: Violation = {
+      invariantId: 'INV-7',
+      invariantName: 'sleeve-liveness',
+      severity: 'WARN',
+      message: 'whatever',
+      observed: {
+        silent: [{ id: 'alpha-hunter', lastDecisionAt: 'x', hoursSinceDecision: 15.2, decisionsCount: 30 }],
+        stalenessThresholdHours: 12,
+        totalLiveSleeves: 1,
+      },
+      expected: {},
+      pauseScope: 'none',
+      detectedAt: new Date().toISOString(),
+    };
+    const block = formatSystemAuditPromptBlock(report([violation]));
+    expect(block).toMatch(/alpha-hunter 15\.2h/);
+  });
+});
+
 describe('formatSystemAuditPromptBlock — edge cases', () => {
   it('skips the dust line when dust list is empty', () => {
     const block = formatSystemAuditPromptBlock(report([
@@ -136,18 +214,18 @@ describe('formatSystemAuditPromptBlock — edge cases', () => {
     expect(block).toMatch(/dust: WETH \$1\.00/);
   });
 
-  it('emits a generic fallback for non-INV-5 WARN violations', () => {
+  it('emits a generic fallback for future WARN invariants that lack a specialization', () => {
     const otherWarn: Violation = {
-      invariantId: 'INV-6',
-      invariantName: 'reserve-floor',
+      invariantId: 'INV-99',
+      invariantName: 'placeholder-future-warn',
       severity: 'WARN',
-      message: 'reserve $40 below 25% target',
+      message: 'placeholder message body',
       observed: {},
       expected: {},
       pauseScope: 'none',
       detectedAt: new Date().toISOString(),
     };
     const block = formatSystemAuditPromptBlock(report([otherWarn]));
-    expect(block).toMatch(/INV-6 reserve-floor — reserve \$40 below 25% target/);
+    expect(block).toMatch(/INV-99 placeholder-future-warn — placeholder message body/);
   });
 });

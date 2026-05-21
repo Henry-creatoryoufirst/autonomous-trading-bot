@@ -42,6 +42,8 @@ import { auditorSelfTest } from './invariants/auditor-self-test.js';
 import { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
 import { chainDepositReconciliation } from './invariants/chain-deposit-reconciliation.js';
 import { cohortCoverage } from './invariants/cohort-coverage.js';
+import { reserveFloor } from './invariants/reserve-floor.js';
+import { sleeveLiveness } from './invariants/sleeve-liveness.js';
 import type { LiveOnChainSnapshot } from './sources/live-onchain.js';
 import type { ChainDepositHistory } from './sources/chain-deposit-history.js';
 
@@ -182,6 +184,17 @@ const PHASE_B_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
   // function for Ship 2 (cohort completion) — bot logs name the missing
   // symbols on every cycle, so they can't get lost in the noise.
   { id: 'INV-5', fn: cohortCoverage },
+  // Phase B (2026-05-21): reserve floor. WARN when USDC reserve drops
+  // below the 20% warning band (25% target with 5pp tolerance). The
+  // structural counterpart to "USDC-reserve is the only hard rule" —
+  // until now that rule lived as documentation; now drift surfaces every
+  // cycle and flows into the prompt via the WARN-injection block.
+  { id: 'INV-6', fn: reserveFloor },
+  // Phase B (2026-05-21): sleeve liveness. WARN when any live sleeve has
+  // gone >12h without rendering a decision. Would have caught the May-19
+  // Alpha Hunter 40h silence pre-PR #30. Skips paper sleeves and sleeves
+  // that have never decided (warmup, not regression).
+  { id: 'INV-7', fn: sleeveLiveness },
 ];
 
 const ALL_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
@@ -463,6 +476,18 @@ export interface AuditorDeps {
   chainDepositHistory?: ChainDepositHistory | null;
   /** Phase A.1 — INV-11 input. From state.totalDeposited. */
   botTotalDeposited?: number | null;
+  /**
+   * Phase B — INV-7 input. Per-sleeve liveness for the current cycle.
+   * Collected by the agent at the auditor call site from
+   * sleeveRegistry.sleeves() + each sleeve's getStats().lastDecisionAt.
+   * Optional — when omitted, INV-7 stays silent for the cycle.
+   */
+  sleeveLiveness?: Array<{
+    id: string;
+    mode: string;
+    lastDecisionAt: string | null;
+    decisionsCount: number;
+  }>;
 }
 
 /**
@@ -499,6 +524,9 @@ export async function runSystemAuditor(deps: AuditorDeps): Promise<AuditReport |
     // when either history or botTotalDeposited is null.
     chainDepositHistory: deps.chainDepositHistory ?? null,
     botTotalDeposited: deps.botTotalDeposited ?? null,
+    // Phase B — sleeve liveness for INV-7. Optional. When omitted, INV-7
+    // returns null and stays silent for the cycle.
+    sleeveLiveness: deps.sleeveLiveness,
   };
 
   // Run every invariant; isolate failures so one buggy invariant doesn't

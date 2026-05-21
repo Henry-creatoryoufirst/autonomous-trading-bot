@@ -206,6 +206,22 @@ export interface InvariantContext {
    * and other deposit-tracking drift.
    */
   botTotalDeposited: number | null;
+  /**
+   * Phase B — INV-7 input. Per-sleeve liveness snapshot, derived from
+   * sleeveRegistry.sleeves() + their stats. INV-7 fires when a live sleeve
+   * goes too long without rendering a decision (paper sleeves and
+   * never-decided sleeves are skipped).
+   *
+   * Optional — when undefined, INV-7 returns null (caller didn't populate
+   * this cycle). When set, every entry should be live data for the current
+   * cycle.
+   */
+  sleeveLiveness?: Array<{
+    id: string;
+    mode: string;
+    lastDecisionAt: string | null;
+    decisionsCount: number;
+  }>;
 }
 
 export type Invariant = (ctx: InvariantContext) => Violation | null;

@@ -44,6 +44,8 @@ export { auditorSelfTest } from './invariants/auditor-self-test.js';
 export { chainTruthReconciliation } from './invariants/chain-truth-reconciliation.js';
 export { chainDepositReconciliation } from './invariants/chain-deposit-reconciliation.js';
 export { cohortCoverage } from './invariants/cohort-coverage.js';
+export { reserveFloor } from './invariants/reserve-floor.js';
+export { sleeveLiveness } from './invariants/sleeve-liveness.js';
 
 // Phase B — prompt-block formatter (heavy-cycle prompt wiring)
 export { formatSystemAuditPromptBlock } from './prompt-block.js';
