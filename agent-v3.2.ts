@@ -1126,6 +1126,40 @@ const anthropic = (process.env.SIGNAL_MODE !== 'central')
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null as any; // Central mode doesn't need Anthropic — signals come from remote producer
 
+// NVR-SPEC-036 Phase 1 — master/mirror module-scope state.
+//
+// Subscriber bots (K&H, Zachary, Ryan, Dansley...) instantiate ONE
+// `MirrorAgent` at boot and reuse it across every heavy cycle. The master
+// bot (efficient-peace) MUST NOT set MIRROR_AGENT_ENABLED — it IS the
+// source the mirror reads, so mirroring itself would be a feedback loop.
+// The env-var gate is the ONLY thing that activates the mirror — keeping
+// MIRROR_AGENT_ENABLED unset on the master bot is the safety guarantee.
+//
+// `_lastMirrorThought` holds the most recent successful translation, so a
+// subsequent cycle that hits a transient Haiku/aggregator failure can
+// still surface the prior thought (annotated as stale by its master
+// freshness field). When the env flag is off, both stay null forever and
+// `formatMirrorThoughtBlock(null)` returns the empty string — zero prompt
+// weight, zero behavioral change.
+let _mirrorAgent: MirrorAgent | null = null;
+let _lastMirrorThought: MirrorThought | null = null;
+if (process.env.MIRROR_AGENT_ENABLED === 'true') {
+  if (!anthropic) {
+    console.warn('[MirrorAgent] MIRROR_AGENT_ENABLED=true but no Anthropic client (central mode?). Mirror stays disabled.');
+  } else {
+    const _mirrorBotName =
+      process.env.BOT_INSTANCE_NAME ||
+      process.env.MIRROR_BOT_NAME ||
+      process.env.RAILWAY_SERVICE_NAME ||
+      'unknown';
+    _mirrorAgent = new MirrorAgent({
+      botName: _mirrorBotName,
+      anthropic,
+    });
+    console.log(`[MirrorAgent] enabled for bot="${_mirrorBotName}" (SPEC-036 Phase 1, subscriber-only)`);
+  }
+}
+
 // v21.2: Gemma 4 local model integration
 import { callModelWithShadow, logModelTelemetry } from './src/core/services/model-client.js';
 import type { GemmaMode } from './src/core/services/model-client.js';
@@ -1140,6 +1174,8 @@ import {
 import { reasonAboutGoal, MASTER_AGENT_ID } from './src/goal-state/reasoner.js';
 import { updateGoalStateLastNextStep, appendAuditLogEntry, readRecentAuditLog } from './src/goal-state/store.js';
 import { alphaReviewer } from './src/core/services/alpha-reviewer.js';
+import { MirrorAgent, type MirrorThought } from './src/core/services/mirror-agent.js';
+import { formatMirrorThoughtBlock } from './src/core/services/mirror-prompt-block.js';
 import { computeBenchmark, formatBenchmarkPromptBlock } from './src/core/benchmark/compute.js';
 import { formatCohortPhysicsBlock } from './src/core/prompt/cohort-physics.js';
 import { formatCompositionGapBlock } from './src/core/prompt/composition-gap.js';
@@ -5706,6 +5742,49 @@ ${_isFullPrompt ? discoveryIntel : ''}${_isFullPrompt ? hotMoverIntel : ''}${_is
   // SEVERE already gates execution; WARN is informational pressure.
   const systemAuditBlock = formatSystemAuditPromptBlock(auditorGetLastReport());
 
+  // NVR-SPEC-036 Phase 1 — master/mirror thought translation.
+  //
+  // Subscriber bots only: when MIRROR_AGENT_ENABLED=true at boot, the
+  // module-scope `_mirrorAgent` is set. Once per HEAVY cycle (we're already
+  // inside the `_isFullPrompt` branch of dynamicStrategyAddenda assembly,
+  // so this naturally fires only on heavy cycles), translate the master
+  // fleet's latest reasoning to THIS bot's portfolio scale.
+  //
+  // Failure modes — every step is graceful:
+  //   - Agent unset (master bot, OR env flag off): the loop body is skipped,
+  //     mirrorThought stays null, formatMirrorThoughtBlock(null) returns ''.
+  //   - runMirrorTick rejects: caught, logged, never blocks the heavy cycle.
+  //     The prior `_lastMirrorThought` (if any) is reused so transient
+  //     failures don't blank the block mid-stream.
+  //   - Aggregator stale / token missing / Haiku parse fail: runMirrorTick
+  //     returns null cleanly; we keep _lastMirrorThought.
+  //
+  // The master bot (efficient-peace) MUST NOT set MIRROR_AGENT_ENABLED.
+  // The env gate at boot is the only thing that activates the mirror, so
+  // unsetting it on the master is the feedback-loop safety guarantee.
+  let mirrorThought: MirrorThought | null = null;
+  if (_mirrorAgent) {
+    try {
+      const _mirrorPositions = balances.filter(b => b.symbol !== 'USDC' && b.usdValue > 0);
+      const _mirrorRecentTrades24h = state.tradeHistory.filter(t => {
+        const ts = Date.parse(t.timestamp);
+        return Number.isFinite(ts) && (Date.now() - ts) < 24 * 60 * 60 * 1000;
+      }).length;
+      mirrorThought = await _mirrorAgent.runMirrorTick({
+        portfolioValueUSD: totalPortfolioValue,
+        usdcBalanceUSD: usdcBalance?.usdValue ?? 0,
+        positionsCount: _mirrorPositions.length,
+        positionsSymbols: _mirrorPositions.map(b => b.symbol),
+        recentTradesCount24h: _mirrorRecentTrades24h,
+        hwm: state.trading.peakValue || 0,
+      });
+      if (mirrorThought) _lastMirrorThought = mirrorThought;
+    } catch (err: any) {
+      console.warn(`[MirrorAgent] cycle ${state.totalCycles} failed (non-fatal): ${err?.message ?? err}`);
+    }
+  }
+  const mirrorBlock = formatMirrorThoughtBlock(mirrorThought ?? _lastMirrorThought);
+
   // v20.6: Dynamic addenda only included on heavy (full strategy) cycles
   const dynamicStrategyAddenda = `${cashDeployment?.active ? `
 ═══ CASH STATUS ═══
@@ -5715,7 +5794,7 @@ ONLY deploy if you see real momentum and conviction. Do NOT buy just to reduce c
 If the market is dead, HOLD is the best trade. Protect capital for when opportunity arrives.
 ` : ''}${payoutUrgency ? `
 ⚠️ PAYOUT URGENCY: <4h to settlement — sell a portion of winners NOW to lock in realized profit. Today's realized: $${todayRealizedPnL.toFixed(2)} from ${todaySells.length} sells. Next payout in ${hoursUntilPayout}h.
-` : ''}${outcomeBlock}${systemAuditBlock}`;
+` : ''}${outcomeBlock}${systemAuditBlock}${mirrorBlock}`;
 
   // v21.21 Routing reset + SPEC-018 OSS_TRADER_MODE integration.
   //
