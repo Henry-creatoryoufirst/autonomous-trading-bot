@@ -797,6 +797,8 @@ import { getOrCreateCostBasis, updateCostBasisAfterBuy as _updateCostBasisAfterB
 import {
   runSystemAuditor, captureLastPrompt as auditorCaptureLastPrompt,
   canExecuteAction as auditorCanExecuteAction, wireTelegram as auditorWireTelegram,
+  wireAnthropicClient as auditorWireAnthropicClient,
+  flushAuditorPersistenceOnShutdown,
   getCurrentBlocker as auditorGetCurrentBlocker,
   getMonitorStats as auditorGetMonitorStats,
   getLastReport as auditorGetLastReport,
@@ -10447,6 +10449,25 @@ async function main() {
     }
   });
 
+  // NVR-SPEC-035 — Files API persistence. Railway wipes the container
+  // filesystem on every redeploy, which resets the auditor's cyclesRun /
+  // lastReport / blocker state. The Anthropic Files API gives us a
+  // workspace-scoped immutable blob store that survives redeploys, so
+  // the next container boot can hydrate audit-of-audits history.
+  //
+  // Wiring is null-safe: when `anthropic` is null (SIGNAL_MODE=central)
+  // or when the SDK doesn't expose Files API (current pinned 0.39.0),
+  // the auditor degrades to local-fs-only persistence + a single WARN.
+  // Bot keeps running regardless. Env knob:
+  // AUDITOR_FILES_PERSIST_EVERY_N_CYCLES (default 10).
+  // The graceful-shutdown flush is wired into the existing
+  // gracefulShutdown(signal) handler below — see SIGTERM/SIGINT path.
+  try {
+    auditorWireAnthropicClient(anthropic ?? null);
+  } catch (err: unknown) {
+    console.warn(`[SystemAudit] failed to wire Anthropic client: ${(err as Error).message}`);
+  }
+
   // (HWM startup hygiene moved to AFTER loadTradeHistory — pendingFeeUSDC
   // value isn't loaded from disk until then.)
 
@@ -11627,6 +11648,21 @@ async function gracefulShutdown(signal: string): Promise<void> {
   } catch (e: any) {
     clearTimeout(saveTimeout);
     console.error(`   ❌ Error saving state on shutdown: ${e.message}`);
+  }
+
+  // NVR-SPEC-035 — flush the auditor's final snapshot to Files API so
+  // cyclesRun + lastReport + blocker survive the impending Railway
+  // restart. Best-effort with a 4s budget; if Files API is unreachable
+  // we still have the local-fs report which we just wrote.
+  try {
+    const auditFlushStart = Date.now();
+    await Promise.race([
+      flushAuditorPersistenceOnShutdown(),
+      new Promise<void>(resolve => setTimeout(resolve, 4000)),
+    ]);
+    console.log(`   ✅ Auditor Files API flush completed in ${Date.now() - auditFlushStart}ms`);
+  } catch (e: any) {
+    console.warn(`   ⚠️ Auditor Files API flush failed: ${e?.message ?? e}`);
   }
 
   // v19.6: Telegram shutdown notification (best-effort, 3s timeout)
