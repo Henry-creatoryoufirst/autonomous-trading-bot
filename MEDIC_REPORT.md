@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-21T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-21T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-BYY8A
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-21T UTC | Scout: overdue (last non-reverted scout SYRUP 2026-05-08, 13 days ago) but GeckoTerminal API blocked + cohort locked (Option B Rule 1) — no TOKEN_REGISTRY additions; auditor lowered VOL_LOW_BOOST 1.25→1.15 — 76-day bear; Fidelity 2026 cbBTC research: 30%+ below ATH, 6-12mo recovery timeline; low-vol windows in week-11 bear are consolidation/distribution traps, not bottoming signals |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403/allowlist on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-BYY8A (per Option B Rule 2 — no staging push).
+- **Scout**: OVERDUE (last non-reverted scout: SYRUP 2026-05-08, 13 days ago) but BLOCKED: GeckoTerminal API not in allowlist; and COHORT LOCKED per CLAUDE.md Option B Rule 1 (no TOKEN_REGISTRY additions until ~2026-06-15). No candidates from WebSearch-only data (AERO, VIRTUAL, BRETT, AAVE all already in registry). Scout noted as run with no adds.
+- **Auditor**: TRIGGERED by inferred 76-day BEAR market (48h+ threshold met, 11+ weeks in). Research ran 4 searches. Top finding: VOL_LOW_BOOST 1.25→1.15 — Fidelity 2026 cbBTC data ($80-90K range, 30%+ below ATH, 6-12mo recovery timeline); low-vol windows in week-11 bear are consolidation/distribution traps per Kelly+VAPS research. IMPLEMENTED in src/core/config/constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-21)
+- **Signal Quality**: Multi-source confluence with 2.5M+ daily signals (price + on-chain + NLP sentiment) — 2026 state of art per wundertrading.com. NVR already does price+whale-flow+AI. Full Nansen/Dune wallet clustering integration remains complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merge confirmed for 2026 (hashbasis.xyz); Slipstream V3 internal MEV auction built into AMM, revenue accruing to token operators and LPs — NVR auto-benefits on DEX routing without code change. Also: Aerodrome monthly volume $482M with cross-chain expansion planned Q2 2026. No action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Fidelity 2026 Bitcoin research: 30%+ drawdown from ATH in late 2025, $80-90K range, 6-12 month recovery typical. Kelly+VAPS research confirms VOL_LOW_BOOST should continue declining in prolonged bear (was 1.5→1.25 at 65-day, now 1.25→1.15 at 76-day). Half-Kelly confirmed to capture 75% of optimal growth with lower variance — NVR Quarter-Kelly already more conservative. IMPLEMENTED: VOL_LOW_BOOST 1.25→1.15. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV-protection mode (private relays / direct block builders) going mainstream in 2026 — quicknode.com MEV guide. NVR already has sequencer-direct RPC via BASE_RPC_URL. AI-on-AI MEV emerging (cryptollia.com) — bots model other bots' signals. HOT_MOVER_MIN_FDV_USD=1M (Run #34) already guards most vulnerable pool tier. No new action needed. (Priority 1.0, handled by prior guard)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
