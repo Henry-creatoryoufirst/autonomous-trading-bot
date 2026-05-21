@@ -27,6 +27,20 @@ const MIN_PORTFOLIO_USD = 50; // below this, all three sources can legitimately 
 const POSITION_MIN_USD = 1; // sub-$1 dust positions don't count toward the price-readiness check
 const PRICE_READINESS_MIN_COVERAGE = 0.80; // ≥80% of non-trivial positions must have live prices for INV-1 to run
 
+/**
+ * Sub-$1 costBasis entries are excluded from source A's position sum.
+ * The math `currentHolding × averageCostBasis` can blow up on stale entries
+ * (e.g. SPX with averageCostBasis = $3.77B from a past unit-conversion bug,
+ * or any entry where the position is effectively zero but the per-unit price
+ * is unrealistic). These entries contribute more noise than signal to
+ * source A and produce false-positive 2%+ drift vs sources B/C.
+ *
+ * The exclusion only applies to source A — source B (balances.usdValue) and
+ * source C (totalPortfolioValue) already exclude dust by their own
+ * accounting paths.
+ */
+const MIN_POSITION_USD_FOR_SOURCE_A = 1;
+
 function makeViolation(observed: Record<string, unknown>, message: string): Violation {
   return {
     invariantId: 'INV-1',
@@ -80,7 +94,11 @@ function sumCostBasisPositions(ctx: InvariantContext): number {
     // only as a last resort (it's stale but better than 0).
     const price = ctx.lastKnownPrices[symbol]?.price ?? cb.averageCostBasis ?? 0;
     if (price <= 0) continue;
-    sum += holding * price;
+    const valueUsd = holding * price;
+    // Skip sub-$1 dust — these entries pollute source A with stale unit math
+    // that drifts vs B/C without representing meaningful held capital.
+    if (valueUsd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
+    sum += valueUsd;
   }
   // Add cash + gas + yield receipt tokens from balances so source A spans
   // the same scope as B + C (all three valuations represent the same total)
