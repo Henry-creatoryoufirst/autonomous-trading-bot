@@ -635,3 +635,87 @@ export function runDustPruneMigrationOnce(
 
   return prunable;
 }
+
+// ============================================================================
+// V2 DUST PRUNE — stricter single-factor sweep on stale per-unit math
+//
+// The v1 prune (above) uses joint-AND: invested-residual < $1 AND current
+// market value < $1. That preserves "loser" positions where we paid real
+// money but value collapsed — which is correct accounting.
+//
+// v2 catches a different class: entries whose per-unit math is so warped
+// that source A of INV-1 keeps drifting from sources B+C, even though the
+// position is effectively zero. The 2026-05-21 production case: Henry's
+// main bot had INV-1 firing SEVERE for 33 hours straight (3.15% drift,
+// outlier=A) because some entries had `currentHolding × averageCostBasis`
+// computing to bizarre values — exactly the SPX-style bug pattern
+// (averageCostBasis = $3.77B from a unit-conversion bug, currentHolding =
+// 1e-15 → $3.77e-6 in source A but $0 in balances).
+//
+// v2 is a one-shot stricter sweep targeting entries where
+// `currentHolding × averageCostBasis < $0.10` — anything below that floor
+// can never contribute meaningful capital but DOES pollute source A.
+// Cohort tokens are still protected.
+// ============================================================================
+
+export const DUST_PRUNE_V2_THRESHOLD_USD = 0.10;
+
+/**
+ * Pure classifier for v2: entries whose per-unit valuation (currentHolding
+ * × averageCostBasis) is below the threshold. Single-factor — doesn't
+ * require the balances side to also be sub-threshold, because the failure
+ * mode is exactly when in-state math diverges from balances.
+ */
+export function identifyDustV2CostBasisEntries(
+  costBasis: Record<string, TokenCostBasis>,
+  thresholdUsd: number = DUST_PRUNE_V2_THRESHOLD_USD,
+  protectedSymbols: ReadonlyArray<string> = COHORT_QUALITY_7_SYMBOLS,
+): string[] {
+  const protectedSet = new Set(protectedSymbols);
+  const prunable: string[] = [];
+
+  for (const [symbol, cb] of Object.entries(costBasis)) {
+    if (protectedSet.has(symbol)) continue;
+    const holding = cb.currentHolding ?? 0;
+    const avgCost = cb.averageCostBasis ?? 0;
+    const perUnitValueUsd = holding * avgCost;
+    if (perUnitValueUsd < thresholdUsd) {
+      prunable.push(symbol);
+    }
+  }
+
+  return prunable.sort();
+}
+
+/**
+ * Idempotent one-shot v2 migration runner. Gated by
+ * `_migrationDustPruneV2`. Caller responsible for `saveTradeHistory()`
+ * after.
+ */
+export function runDustPruneV2MigrationOnce(
+  thresholdUsd: number = DUST_PRUNE_V2_THRESHOLD_USD,
+): string[] | null {
+  const state = getState();
+  if ((state as any)._migrationDustPruneV2) {
+    return null;
+  }
+
+  const prunable = identifyDustV2CostBasisEntries(state.costBasis, thresholdUsd);
+  for (const symbol of prunable) {
+    delete state.costBasis[symbol];
+  }
+
+  (state as any)._migrationDustPruneV2 = true;
+
+  if (prunable.length > 0) {
+    console.log(
+      `🔧 MIGRATION v2 (dust-prune): removed ${prunable.length} cost-basis entries ` +
+      `with currentHolding × averageCostBasis < $${thresholdUsd.toFixed(2)} ` +
+      `(cohort tokens preserved). Symbols: ${prunable.join(', ')}`,
+    );
+  } else {
+    console.log(`🔧 MIGRATION v2 (dust-prune): no stale per-unit entries; nothing to remove.`);
+  }
+
+  return prunable;
+}
