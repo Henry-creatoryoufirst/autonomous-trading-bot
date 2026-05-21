@@ -2203,6 +2203,33 @@ function scheduleNextCycle() {
         }
       }
 
+      // Phase B — collect per-sleeve liveness for INV-7. Pulled fresh from
+      // the sleeve registry each cycle so the auditor sees the same view
+      // /api/sleeves does. Mode comes from the sleeve definition; the
+      // lastDecisionAt + decisionsCount come from the persisted ownership
+      // record (updated by orchestrator.logSleeveDecision every heavy cycle
+      // and by recordTradeOnSleeve on every successful trade).
+      let sleeveLivenessSnapshot: Array<{
+        id: string;
+        mode: string;
+        lastDecisionAt: string | null;
+        decisionsCount: number;
+      }> | undefined;
+      try {
+        const _sleeves = sleeveRegistry.sleeves();
+        sleeveLivenessSnapshot = _sleeves.map((s) => {
+          const ownership = state.sleeveOwnership?.[s.id];
+          return {
+            id: s.id,
+            mode: s.mode,
+            lastDecisionAt: ownership?.lastDecisionAt ?? null,
+            decisionsCount: ownership?.decisions?.length ?? 0,
+          };
+        });
+      } catch (err: any) {
+        console.warn(`[SystemAudit] sleeveLiveness snapshot failed (non-fatal, INV-7 will be silent): ${err?.message?.slice(0, 120) || err}`);
+      }
+
       try {
         await runSystemAuditor({
           balances: state.trading.balances,
@@ -2213,6 +2240,7 @@ function scheduleNextCycle() {
           liveOnChainSnapshot,
           chainDepositHistory,
           botTotalDeposited: state.totalDeposited ?? null,
+          sleeveLiveness: sleeveLivenessSnapshot,
         });
       } catch (err: any) {
         console.error(`[SystemAudit] runner threw: ${err?.message || err}`);

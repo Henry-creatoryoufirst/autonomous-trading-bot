@@ -47,6 +47,29 @@ export function formatSystemAuditPromptBlock(report: AuditReport | null): string
         parts.push(`dust: ${dust.map(d => `${d.symbol} $${d.usdValue.toFixed(2)}`).join(', ')}`);
       }
       lines.push(`INV-5 cohort coverage — ${parts.join(' | ')}`);
+    } else if (v.invariantId === 'INV-6') {
+      const obs = v.observed as {
+        usdcPct?: number;
+        targetPct?: number;
+        warnFloorPct?: number;
+        usdcBalance?: number;
+        targetUsd?: number;
+        gapToTargetUsd?: number;
+      };
+      const usdcPct = obs.usdcPct ?? 0;
+      const targetPct = obs.targetPct ?? 25;
+      const gap = obs.gapToTargetUsd ?? 0;
+      const usdc = obs.usdcBalance ?? 0;
+      lines.push(`INV-6 reserve floor — USDC at ${usdcPct.toFixed(1)}% ($${usdc.toFixed(0)}), target ${targetPct.toFixed(0)}%. Gap $${gap.toFixed(0)} to restore the alpha-strike reserve. The 25% USDC reserve is the ONE hardcoded strategy invariant — selling into reserve from an overweight position is the canonical restore move.`);
+    } else if (v.invariantId === 'INV-7') {
+      const obs = v.observed as {
+        silent?: Array<{ id: string; hoursSinceDecision: number; lastDecisionAt: string }>;
+        stalenessThresholdHours?: number;
+      };
+      const silent = obs.silent ?? [];
+      const threshold = obs.stalenessThresholdHours ?? 12;
+      const names = silent.map(s => `${s.id} ${s.hoursSinceDecision.toFixed(1)}h`).join(', ');
+      lines.push(`INV-7 sleeve liveness — ${silent.length} live sleeve(s) silent >${threshold}h: ${names}. A silent live sleeve has stranded its slice of capital behind dead code or a routing bug.`);
     } else {
       // Generic fallback for any other future WARN-tier invariant
       lines.push(`${v.invariantId} ${v.invariantName} — ${v.message}`);
