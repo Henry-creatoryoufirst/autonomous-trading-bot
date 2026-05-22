@@ -83,6 +83,65 @@ function sumCashGasAndYieldFromBalances(ctx: InvariantContext): number {
   return sum;
 }
 
+/**
+ * Source A's third bucket: balances that are NOT cash/gas, NOT YIELD-sector,
+ * NOT meaningfully covered by costBasis. These are tokens the bot acquired
+ * outside the cost-basis-tracker pipeline (yield distributions, airdrops,
+ * external transfers). Sources B + C count them naturally; source A must too
+ * to stay in dimensional honesty.
+ *
+ * The 2026-05-22 case study: cbLTC at $199 has costBasis: null because the
+ * bot never bought it via the tracker — it arrived via a non-tracked path.
+ * Pre-fix this was the dominant contributor to INV-1's 211-cycle SEVERE
+ * (~4 days of paused buys). Yesterday's PR #38 addressed sub-$1 dust in the
+ * costBasis loop but left this class untouched — cbLTC, cbETH, WELL, KEYCAT,
+ * PENDLE, BRETT, AAVE, TOSHI, CRV, VVV, DRB all carried real value with no
+ * costBasis entry, so source A was systematically lower than B + C.
+ *
+ * Inclusion rule for each balance entry:
+ *   - usdValue >= MIN_POSITION_USD_FOR_SOURCE_A (sub-$1 dust skipped, same as
+ *     the costBasis loop)
+ *   - symbol NOT in CASH_AND_GAS_SYMBOLS (handled by sumCashGasAndYieldFromBalances)
+ *   - sector !== 'YIELD' (handled by sumCashGasAndYieldFromBalances)
+ *   - either no costBasis entry, or the costBasis-derived value would be
+ *     < MIN_POSITION_USD_FOR_SOURCE_A (i.e., would be excluded from source A's
+ *     costBasis pass anyway — orphaned in practice)
+ *
+ * Double-count guard: when a symbol has a costBasis entry whose costBasis-
+ * derived value >= MIN_POSITION_USD_FOR_SOURCE_A, the costBasis loop in
+ * `sumCostBasisPositions` already counted it — we MUST skip it here. This
+ * keeps behavior byte-identical for "healthy" states where every position
+ * has a valid tracker entry.
+ */
+function sumOrphanedBalancesPositions(ctx: InvariantContext): number {
+  let sum = 0;
+  for (const b of ctx.balances) {
+    if (CASH_AND_GAS_SYMBOLS.has(b.symbol)) continue;
+    if ((b as { sector?: string }).sector === YIELD_SECTOR) continue;
+    const usd = b.usdValue ?? 0;
+    if (usd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
+    const cb = ctx.costBasis[b.symbol];
+    if (cb) {
+      // Compute what source A's costBasis loop would have contributed for
+      // this symbol. If >= the dust floor, the costBasis loop already
+      // counted it — skip here to avoid double-counting.
+      const holding = cb.currentHolding ?? 0;
+      if (holding > 0) {
+        const price = ctx.lastKnownPrices[b.symbol]?.price ?? cb.averageCostBasis ?? 0;
+        if (price > 0) {
+          const cbValueUsd = holding * price;
+          if (cbValueUsd >= MIN_POSITION_USD_FOR_SOURCE_A) continue;
+        }
+      }
+      // Otherwise the costBasis entry exists but was filtered out (zero
+      // holding, no price, or sub-$1 dust) — the balance is effectively
+      // orphaned for source A purposes, so add it from balances.
+    }
+    sum += usd;
+  }
+  return sum;
+}
+
 function sumCostBasisPositions(ctx: InvariantContext): number {
   let sum = 0;
   for (const [symbol, cb] of Object.entries(ctx.costBasis)) {
@@ -101,8 +160,10 @@ function sumCostBasisPositions(ctx: InvariantContext): number {
     sum += valueUsd;
   }
   // Add cash + gas + yield receipt tokens from balances so source A spans
-  // the same scope as B + C (all three valuations represent the same total)
-  return sum + sumCashGasAndYieldFromBalances(ctx);
+  // the same scope as B + C (all three valuations represent the same total).
+  // Also add orphaned balances — tokens with no costBasis entry that the bot
+  // acquired via yield/airdrop/external transfer (see sumOrphanedBalancesPositions).
+  return sum + sumCashGasAndYieldFromBalances(ctx) + sumOrphanedBalancesPositions(ctx);
 }
 
 function sumBalancesUsd(ctx: InvariantContext): number {
