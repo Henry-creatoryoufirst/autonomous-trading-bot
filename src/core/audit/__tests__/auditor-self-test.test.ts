@@ -45,10 +45,10 @@ describe('INV-9 auditor self-test', () => {
     expect(auditorSelfTest(makeCtx(5000, null, 0))).toBeNull(); // high bot-cycle on fresh deploy
   });
 
-  it('fires SEVERE if previousReport is null but the auditor has run before (state corruption)', () => {
+  it('fires WARN if previousReport is null but the auditor has run before (state corruption)', () => {
     const v = auditorSelfTest(makeCtx(5, null, 3)); // ran 3 times but no prev report
     expect(v).not.toBeNull();
-    expect(v!.severity).toBe('SEVERE');
+    expect(v!.severity).toBe('WARN');
     expect(v!.invariantId).toBe('INV-9');
     expect(v!.pauseScope).toBe('none');
     expect((v!.observed as any).auditorCyclesRun).toBe(3);
@@ -58,17 +58,72 @@ describe('INV-9 auditor self-test', () => {
     expect(auditorSelfTest(makeCtx(11, report(10, 7), 1))).toBeNull();
   });
 
-  it('fires SEVERE if previous report was from a skipped cycle', () => {
-    const v = auditorSelfTest(makeCtx(15, report(10), 1)); // skipped 4 cycles
-    expect(v).not.toBeNull();
-    expect(v!.severity).toBe('SEVERE');
-    expect((v!.observed as any).previousReportCycle).toBe(10);
-  });
-
-  it('fires SEVERE if previous report ran in 0ms (auditor did not actually execute)', () => {
+  it('fires WARN if previous report ran in 0ms (auditor did not actually execute)', () => {
     const v = auditorSelfTest(makeCtx(11, report(10, 0), 1));
     expect(v).not.toBeNull();
+    expect(v!.severity).toBe('WARN');
+    expect(v!.pauseScope).toBe('none');
     expect((v!.observed as any).previousReportDurationMs).toBe(0);
+  });
+
+  // ==========================================================================
+  // 2026-05-22 polish A: ±1 cycle-skip tolerance.
+  //
+  // Master fleet logged 156 INV-9 firings across 213 cycles (73% false-pos
+  // rate). Root cause: the strict `prev.cycle === ctx.cycle - 1` check
+  // fired SEVERE on every persistence race and every routine non-auditor
+  // cycle. Production workloads naturally produce single-cycle skips;
+  // only multi-cycle skips are real signal.
+  //
+  // Tolerance contract:
+  //   - delta === 1 → consecutive, null
+  //   - delta === 2 → ONE cycle skipped, tolerable, null
+  //   - delta  >= 3 → MORE than one skipped, fire WARN
+  // ==========================================================================
+
+  it('returns null on a single skipped cycle (prev=10, current=12 — one missed cycle is tolerable)', () => {
+    // Canonical race case: persistence raced or the bot did a routine
+    // non-auditor cycle between the two auditor runs.
+    expect(auditorSelfTest(makeCtx(12, report(10, 7), 5))).toBeNull();
+  });
+
+  it('fires WARN on two skipped cycles (prev=10, current=13)', () => {
+    const v = auditorSelfTest(makeCtx(13, report(10, 7), 5));
+    expect(v).not.toBeNull();
+    expect(v!.severity).toBe('WARN');
+    expect(v!.invariantId).toBe('INV-9');
+    expect(v!.pauseScope).toBe('none');
+    expect((v!.observed as any).cycleDelta).toBe(3);
+  });
+
+  it('fires WARN on many skipped cycles (prev=10, current=20 — skipped 9)', () => {
+    const v = auditorSelfTest(makeCtx(20, report(10, 7), 5));
+    expect(v).not.toBeNull();
+    expect(v!.severity).toBe('WARN');
+    expect(v!.pauseScope).toBe('none');
+    expect((v!.observed as any).previousReportCycle).toBe(10);
+    expect((v!.observed as any).cycleDelta).toBe(10);
+  });
+
+  // ==========================================================================
+  // 2026-05-22 polish B: SEVERE → WARN tier downgrade.
+  //
+  // The auditor self-test catching a missed cycle is INFORMATIONAL — not a
+  // safety issue. Previous pauseScope was 'next-llm' which is the lightest
+  // scope; making it 'none' (WARN tier) preserves intent without polluting
+  // blocker state.
+  // ==========================================================================
+
+  it('every non-warmup INV-9 firing has pauseScope=none (WARN tier contract)', () => {
+    // null-prev with prior runs → WARN, scope=none
+    const v1 = auditorSelfTest(makeCtx(5, null, 3));
+    expect(v1!.pauseScope).toBe('none');
+    // multi-cycle skip → WARN, scope=none
+    const v2 = auditorSelfTest(makeCtx(20, report(10, 7), 5));
+    expect(v2!.pauseScope).toBe('none');
+    // zero-duration prev → WARN, scope=none
+    const v3 = auditorSelfTest(makeCtx(11, report(10, 0), 5));
+    expect(v3!.pauseScope).toBe('none');
   });
 
   // ==========================================================================
@@ -97,11 +152,12 @@ describe('INV-9 auditor self-test', () => {
     expect(auditorSelfTest(makeCtx(1, report(120, 7), 5))).toBeNull();
   });
 
-  it('still fires when cycle counter advances normally but skipped a cycle (forward skip stays SEVERE)', () => {
+  it('still fires when cycle counter advances normally but skipped >1 cycles (forward multi-skip stays WARN)', () => {
     // Sanity: the cycle-reset suppression must NOT swallow legitimate
-    // forward skips. previous=10, current=15 → skipped 4 cycles → SEVERE.
+    // forward multi-skips. previous=10, current=15 → skipped 4 cycles → WARN.
     const v = auditorSelfTest(makeCtx(15, report(10, 7), 5));
     expect(v).not.toBeNull();
-    expect(v!.severity).toBe('SEVERE');
+    expect(v!.severity).toBe('WARN');
+    expect(v!.pauseScope).toBe('none');
   });
 });
