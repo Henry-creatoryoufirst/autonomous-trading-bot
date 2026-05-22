@@ -91,6 +91,34 @@ export const COHORT_QUALITY_7 = [
 export const COHORT_QUALITY_7_SYMBOLS = COHORT_QUALITY_7.map(t => t.symbol);
 
 // ============================================================================
+// HOLD-ONLY TOKENS — Thin-liquidity cohort members
+// ============================================================================
+
+/**
+ * Cohort tokens whose Base L2 liquidity is too thin for active TWAP-sliced
+ * trading. Bot continues to HOLD existing positions, tracks them in audit,
+ * and counts them toward INV-5 cohort coverage — but skips any BUY / SELL /
+ * REBALANCE execution attempt.
+ *
+ * Operational rationale: cbLTC self-healing 2026-05-22 detected 3
+ * consecutive TWAP-slice failures with root cause "Compound-backed LTC
+ * may have thinner liquidity than base pairs." Better to recognize the
+ * market constraint structurally than to compound failed-trade churn.
+ *
+ * Override via env `HOLD_ONLY_TOKENS=cbLTC,XYZ` for ops-time tuning
+ * (comma-separated, takes precedence over the default list).
+ */
+export const HOLD_ONLY_TOKENS_DEFAULT = ['cbLTC'] as const;
+
+export function getHoldOnlyTokens(): readonly string[] {
+  const env = process.env.HOLD_ONLY_TOKENS;
+  if (env && env.trim().length > 0) {
+    return env.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  }
+  return HOLD_ONLY_TOKENS_DEFAULT;
+}
+
+// ============================================================================
 // TOKEN REGISTRY — Complete token metadata
 // ============================================================================
 
