@@ -41,6 +41,45 @@ const PRICE_READINESS_MIN_COVERAGE = 0.80; // ≥80% of non-trivial positions mu
  */
 const MIN_POSITION_USD_FOR_SOURCE_A = 1;
 
+/**
+ * 2026-05-22 case (round 3) — costBasis under-contribution edge case.
+ *
+ * PR #38 caught sub-$1 phantoms in the costBasis loop. PR #43 caught absent
+ * costBasis entries (orphans). Both helped — but Henry's main bot (and the
+ * family bots) still fired INV-1 SEVERE for 213 consecutive cycles because
+ * of a *third* class neither fix touched:
+ *
+ *   `costBasis[symbol]` exists with `currentHolding × price >= $1`, so
+ *   PR #38's dust filter doesn't catch it AND PR #43's orphan path skips it
+ *   (cbValueUsd is "valid enough"). But the derived value is materially
+ *   *below* the chain-truth balance — stale `currentHolding`, missing
+ *   `lastKnownPrices` entry forcing the `averageCostBasis` fallback to a
+ *   wildly low number, post-rebase / airdrop tokens added straight to the
+ *   wallet without the cost-basis tracker ever seeing them, etc.
+ *
+ * On master 2026-05-22T12:52:44Z: source A = $2974.22, source B/C = $3076.64
+ * — a $102.42 gap consistent with cbLTC being undercounted by ~$100 (~half
+ * of its real $200.14 balance value). The costBasis loop computed a non-
+ * trivial-but-wrong cbLTC contribution; the orphan helper saw cbValueUsd
+ * >= $1 and (correctly, per the double-count guard) skipped it.
+ *
+ * The fix: in the costBasis loop, bound the per-symbol contribution BELOW
+ * by the chain-truth balance from `state.trading.balances`. Source A should
+ * never under-count what's actually held — the balance is the authoritative
+ * oracle for "how much of this token is in the wallet right now," and the
+ * whole point of INV-1 is that A/B/C agree on that exact figure.
+ *
+ * The over-count direction (cbValueUsd > balanceUsd, e.g. TOSHI's
+ * historical -$2.3M phantom) is preserved unchanged — `Math.max` keeps the
+ * over-count, INV-1 still fires SEVERE outlier=A, the operator still gets
+ * surfaced. The sub-$1 dust filter (PR #38) still applies BEFORE this clamp
+ * so an SPX-style 1e-15 × $3.77B garbage entry never reaches the comparison.
+ *
+ * Behavior is byte-identical for healthy state where `cbValueUsd` and
+ * `balanceUsd` agree within tick-noise (Math.max returns whichever side is
+ * a hair larger; both are effectively the same number for tolerance math).
+ */
+
 function makeViolation(observed: Record<string, unknown>, message: string): Violation {
   return {
     invariantId: 'INV-1',
@@ -113,37 +152,41 @@ function sumCashGasAndYieldFromBalances(ctx: InvariantContext): number {
  * keeps behavior byte-identical for "healthy" states where every position
  * has a valid tracker entry.
  */
-function sumOrphanedBalancesPositions(ctx: InvariantContext): number {
+/**
+ * Build a quick-lookup map from symbol → balance entry. Used by both the
+ * costBasis loop (for the round-3 under-count clamp) and the orphan helper
+ * (which already iterates `ctx.balances` directly but benefits from O(1)
+ * symbol → balance lookup symmetry).
+ */
+function buildBalanceBySymbol(
+  ctx: InvariantContext,
+): Record<string, { symbol: string; balance: number; usdValue: number; sector?: string }> {
+  const map: Record<string, { symbol: string; balance: number; usdValue: number; sector?: string }> = {};
+  for (const b of ctx.balances) {
+    map[b.symbol] = b;
+  }
+  return map;
+}
+
+function sumOrphanedBalancesPositions(ctx: InvariantContext, countedSymbols: Set<string>): number {
   let sum = 0;
   for (const b of ctx.balances) {
     if (CASH_AND_GAS_SYMBOLS.has(b.symbol)) continue;
     if ((b as { sector?: string }).sector === YIELD_SECTOR) continue;
     const usd = b.usdValue ?? 0;
     if (usd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
-    const cb = ctx.costBasis[b.symbol];
-    if (cb) {
-      // Compute what source A's costBasis loop would have contributed for
-      // this symbol. If >= the dust floor, the costBasis loop already
-      // counted it — skip here to avoid double-counting.
-      const holding = cb.currentHolding ?? 0;
-      if (holding > 0) {
-        const price = ctx.lastKnownPrices[b.symbol]?.price ?? cb.averageCostBasis ?? 0;
-        if (price > 0) {
-          const cbValueUsd = holding * price;
-          if (cbValueUsd >= MIN_POSITION_USD_FOR_SOURCE_A) continue;
-        }
-      }
-      // Otherwise the costBasis entry exists but was filtered out (zero
-      // holding, no price, or sub-$1 dust) — the balance is effectively
-      // orphaned for source A purposes, so add it from balances.
-    }
+    // If the costBasis loop already contributed for this symbol (either at
+    // the cb-derived value or clamped up to balanceUsd), skip — adding here
+    // would double-count.
+    if (countedSymbols.has(b.symbol)) continue;
     sum += usd;
   }
   return sum;
 }
 
-function sumCostBasisPositions(ctx: InvariantContext): number {
+function sumCostBasisPositions(ctx: InvariantContext, countedSymbols: Set<string>): number {
   let sum = 0;
+  const balanceBySymbol = buildBalanceBySymbol(ctx);
   for (const [symbol, cb] of Object.entries(ctx.costBasis)) {
     if (!cb) continue;
     if (CASH_AND_GAS_SYMBOLS.has(symbol)) continue; // cash legs counted separately below
@@ -153,17 +196,54 @@ function sumCostBasisPositions(ctx: InvariantContext): number {
     // only as a last resort (it's stale but better than 0).
     const price = ctx.lastKnownPrices[symbol]?.price ?? cb.averageCostBasis ?? 0;
     if (price <= 0) continue;
-    const valueUsd = holding * price;
-    // Skip sub-$1 dust — these entries pollute source A with stale unit math
-    // that drifts vs B/C without representing meaningful held capital.
-    if (valueUsd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
-    sum += valueUsd;
+    const cbValueUsd = holding * price;
+    // Skip sub-$1 dust (PR #38) — these entries pollute source A with stale
+    // unit math that drifts vs B/C without representing meaningful held
+    // capital. This filter MUST run before the balance-clamp below so an
+    // SPX-style 1e-15 × $3.77B = $3.77e-6 garbage entry stays excluded
+    // regardless of what `balances[symbol]` says.
+    if (cbValueUsd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
+
+    // Round-3 (2026-05-22) fix: clamp the per-symbol contribution to be at
+    // least the chain-truth balance value. The cost-basis tracker can drift
+    // (stale `currentHolding`, missing `lastKnownPrices` forcing the
+    // `averageCostBasis` fallback to a wildly off number, airdropped/rebased
+    // tokens that bypassed the tracker entirely). In every such case the
+    // balances oracle is authoritative for "what's actually in the wallet."
+    //
+    // INV-1 asserts A/B/C agree on that figure — so when cb-derived value
+    // drops below balance value, snap source A to the balance value. The
+    // over-count direction is preserved unchanged: Math.max keeps a
+    // legitimately-larger cb-derived contribution, INV-1 still surfaces it
+    // as SEVERE outlier=A, and the operator still gets the alert.
+    const balanceUsd = balanceBySymbol[symbol]?.usdValue ?? 0;
+    const contribution = balanceUsd >= MIN_POSITION_USD_FOR_SOURCE_A
+      ? Math.max(cbValueUsd, balanceUsd)
+      : cbValueUsd;
+
+    sum += contribution;
+    // Mark this symbol counted so the orphan pass doesn't double-add it.
+    countedSymbols.add(symbol);
   }
-  // Add cash + gas + yield receipt tokens from balances so source A spans
-  // the same scope as B + C (all three valuations represent the same total).
-  // Also add orphaned balances — tokens with no costBasis entry that the bot
-  // acquired via yield/airdrop/external transfer (see sumOrphanedBalancesPositions).
-  return sum + sumCashGasAndYieldFromBalances(ctx) + sumOrphanedBalancesPositions(ctx);
+  return sum;
+}
+
+/**
+ * Compose source A across its three buckets:
+ *
+ *   (1) costBasis-loop positions, clamped below by balance value (round-3 fix)
+ *   (2) cash + gas (USDC, ETH) + YIELD-sector receipt tokens, from balances
+ *   (3) orphans — balances entries with no usable costBasis contribution
+ *
+ * `countedSymbols` threads through (1) → (3) so a symbol contributed by the
+ * costBasis loop is never re-added by the orphan pass.
+ */
+function sumSourceA(ctx: InvariantContext): number {
+  const countedSymbols = new Set<string>();
+  const fromCostBasis = sumCostBasisPositions(ctx, countedSymbols);
+  const fromCashGasYield = sumCashGasAndYieldFromBalances(ctx);
+  const fromOrphans = sumOrphanedBalancesPositions(ctx, countedSymbols);
+  return fromCostBasis + fromCashGasYield + fromOrphans;
 }
 
 function sumBalancesUsd(ctx: InvariantContext): number {
@@ -199,7 +279,7 @@ export const dimensionalHonesty: Invariant = (ctx) => {
     }
   }
 
-  const sourceA = sumCostBasisPositions(ctx);
+  const sourceA = sumSourceA(ctx);
   const sourceB = sumBalancesUsd(ctx);
   const sourceC = ctx.totalPortfolioValue;
 

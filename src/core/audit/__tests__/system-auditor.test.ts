@@ -354,3 +354,115 @@ describe('INV-9 missed-cycle blocker false-positive (2026-05-22 noise-reduction)
     expect(getCurrentBlocker()).toBeNull();
   });
 });
+
+describe('INV-1 round 3 — wired-through smoke test (2026-05-22 prod scenario)', () => {
+  // Per Henry's `feedback_ship_it_wired` discipline: the fix isn't real until
+  // we prove it runs through the orchestrator end-to-end with prod-like input.
+  //
+  // Builds an AuditorDeps payload that mirrors master efficient-peace at
+  // 2026-05-22T12:52:44Z (cycle 140) — same balance shape, same costBasis
+  // drift (cbLTC.currentHolding stale, ~half of the true wallet balance),
+  // same price coverage. Pre-round-3 this scenario produced INV-1 SEVERE
+  // outlier=A with all-buys pause for 213 consecutive cycles. Post-round-3
+  // it MUST return a clean report (no INV-1, no all-buys blocker).
+  //
+  // The test also asserts canExecuteAction({ BUY }) returns allowed — the
+  // entire point of the fix is unlocking the bot's BUYs.
+  it('master efficient-peace cycle-140 snapshot clears the all-buys blocker post-fix', async () => {
+    const deps: AuditorDeps = {
+      balances: [
+        { symbol: 'USDC', balance: 1077.516369, usdValue: 1077.516369, price: 1 },
+        { symbol: 'ETH', balance: 0.004781546748853895, usdValue: 10.16632291614035, price: 2126.1578 },
+        { symbol: 'WETH', balance: 0.5717302536487067, usdValue: 1215.588738291176, price: 2126.1578 },
+        // The smoking gun: real $200.14 wallet position. cb tracker has
+        // currentHolding stale to ~half real value.
+        { symbol: 'cbLTC', balance: 3.70006228, usdValue: 200.14037272306652, price: 54.09108214337044 },
+        { symbol: 'ENA', balance: 189.19599114469716, usdValue: 20.545601195031853, price: 0.10859427343425354 },
+        { symbol: 'aBasUSDC', balance: 545.61928, usdValue: 545.61928, price: 1, sector: 'YIELD' },
+      ],
+      totalPortfolioValue: 3069.58,
+      costBasis: {
+        WETH: {
+          symbol: 'WETH',
+          realizedPnL: 0,
+          totalInvestedUSD: 1176.44,
+          totalTokensAcquired: 0.5717302536487067,
+          averageCostBasis: 2057.68,
+          currentHolding: 0.5717302536487067,
+        },
+        ENA: {
+          symbol: 'ENA',
+          realizedPnL: 0,
+          totalInvestedUSD: 22.49,
+          totalTokensAcquired: 189.19599114469716,
+          averageCostBasis: 0.1189,
+          currentHolding: 189.19599114469716,
+        },
+        // STALE TRACKER: currentHolding drifted to ~half wallet truth.
+        // This is the exact pattern PR #43 missed — the orphan helper
+        // skipped cbLTC because cbValueUsd >= $1, and the costBasis loop
+        // counted it at the stale (low) value.
+        cbLTC: {
+          symbol: 'cbLTC',
+          realizedPnL: 0,
+          totalInvestedUSD: 100,
+          totalTokensAcquired: 1.85,
+          averageCostBasis: 54.09,
+          currentHolding: 1.85,
+        },
+      },
+      lastKnownPrices: {
+        WETH: { price: 2126.1578 },
+        cbLTC: { price: 54.09108214337044 },
+        ENA: { price: 0.10859427343425354 },
+      },
+      cycle: 140,
+    };
+
+    const report = await runSystemAuditor(deps);
+    expect(report).not.toBeNull();
+
+    // POST-FIX expectation: no INV-1 violation in the report.
+    const inv1 = report!.violations.find(v => v.invariantId === 'INV-1');
+    expect(inv1).toBeUndefined();
+
+    // No all-buys blocker active.
+    const blocker = getCurrentBlocker();
+    if (blocker !== null) {
+      // If something else fired (e.g. INV-5 cohort-coverage WARN), it must
+      // NOT be a buys-pausing scope.
+      expect(blocker.pauseScope).not.toBe('all-buys');
+      expect(blocker.invariantId).not.toBe('INV-1');
+    }
+
+    // The observable contract: BUYs are allowed again. This is the line
+    // Henry checks on Railway redeploy — `cyclesRun` advances and the bot
+    // starts buying within 1-2 cycles.
+    expect(canExecuteAction({ action: 'BUY', symbol: 'WETH', source: 'llm' }).allowed).toBe(true);
+  });
+
+  it('still trips INV-1 when the drift is REAL (totalPortfolioValue fabricated)', async () => {
+    // Negative case to prove the smoke test is meaningful — feed the same
+    // shape but with a 2x-inflated totalPortfolioValue. INV-1 must still
+    // fire SEVERE so we know the fix didn't silence the invariant entirely.
+    const deps: AuditorDeps = {
+      balances: [
+        { symbol: 'USDC', balance: 1000, usdValue: 1000, price: 1 },
+        { symbol: 'WETH', balance: 1, usdValue: 2000, price: 2000 },
+      ],
+      totalPortfolioValue: 6000, // double reality
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 } },
+      cycle: 99,
+    };
+
+    const report = await runSystemAuditor(deps);
+    expect(report).not.toBeNull();
+    const inv1 = report!.violations.find(v => v.invariantId === 'INV-1');
+    expect(inv1).toBeDefined();
+    expect(inv1!.severity).toBe('SEVERE');
+    expect(inv1!.observed.outlier).toBe('C');
+  });
+});
