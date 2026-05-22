@@ -58,6 +58,7 @@ function makeState(): AgentState {
     btcDominanceHistory: { values: [] },
     stablecoinSupplyHistory: { values: [] },
     errorLog: [],
+    pendingFeeUSDC: 0,
   };
 }
 

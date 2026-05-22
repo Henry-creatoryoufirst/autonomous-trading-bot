@@ -234,7 +234,8 @@ export async function evaluateCycleAgainstGoal(
       messages: [{ role: 'user', content: userPrompt }],
     });
 
-    const text = res.content.find(isTextBlock)?.text ?? '';
+    const textBlock = res.content.find((b) => b.type === 'text');
+    const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
     const evaluation = parseJsonResponse(text);
     if (!evaluation) return null;
 

@@ -115,7 +115,11 @@ function research(params: StrategyParams, onProgress: (msg: string) => void): {
   const conditions: MarketCondition[] = ['BULL', 'BEAR', 'RANGING', 'VOLATILE'];
 
   const results = datasets.map(ds => runReplay([ds], { strategy: params }));
-  const score = calculateAggregateConfidence(results, conditions, DEFAULT_CONFIDENCE_CONFIG);
+  // `conditions` parameter removed from calculateAggregateConfidence — it now
+  // derives byCondition internally. Caller-side variable retained for
+  // backward-compat readability but no longer passed.
+  void conditions;
+  const score = calculateAggregateConfidence(results, DEFAULT_CONFIDENCE_CONFIG);
 
   // Identify weak spots
   const weakSpots: WeakSpot[] = [];
@@ -346,7 +350,8 @@ function scoreAndReport(
     const datasets = generateDatasets();
     const conditions: MarketCondition[] = ['BULL', 'BEAR', 'RANGING', 'VOLATILE'];
     const results = datasets.map(ds => runReplay([ds], { strategy: proposedParams }));
-    proposedScore = calculateAggregateConfidence(results, conditions, DEFAULT_CONFIDENCE_CONFIG);
+    void conditions;
+    proposedScore = calculateAggregateConfidence(results, DEFAULT_CONFIDENCE_CONFIG);
     delta = proposedScore.overall - currentScore.overall;
 
     if (delta > 3 && walkForwardValid && proposedScore.passesThreshold) {

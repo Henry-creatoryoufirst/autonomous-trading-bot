@@ -390,6 +390,37 @@ interface DexScreenerPair {
   pairCreatedAt: number;
 }
 
+// ============================================================================
+// GECKOTERMINAL API — shape of a /pools or /trending_pools response entry.
+// Narrowed to the fields token-discovery actually reads. All strings (Gecko
+// returns numerics as JSON strings); callers parseFloat / parseInt at use site.
+// ============================================================================
+interface GeckoTerminalPool {
+  attributes?: {
+    name?: string;
+    address?: string;
+    dex_id?: string;
+    base_token_price_usd?: string;
+    fdv_usd?: string | number;
+    pool_created_at?: string;
+    reserve_in_usd?: string;
+    price_change_percentage?: {
+      h24?: string;
+      h6?: string;
+    };
+    volume_usd?: {
+      h24?: string;
+      h6?: string;
+    };
+    transactions?: {
+      h24?: { buys?: number; sells?: number };
+    };
+  };
+  relationships?: {
+    base_token?: { data?: { id?: string } };
+  };
+}
+
 /**
  * Scan DexScreener for top Base chain tokens by volume & liquidity.
  * Uses the /search endpoint which returns tokens across all chains,
@@ -495,9 +526,7 @@ async function scanDexScreener(): Promise<DiscoveredToken[]> {
           Accept: 'application/json',
         },
       });
-      const rawPools = (gainersRes.data?.data || []) as Array<{
-        attributes?: { price_change_percentage?: { h24?: string; h6?: string } };
-      }>;
+      const rawPools = (gainersRes.data?.data || []) as GeckoTerminalPool[];
       const gainerPools = rawPools
         .filter((p) => {
           const ch = parseFloat(
@@ -772,9 +801,7 @@ async function scanMomentum(): Promise<DiscoveredToken[]> {
         },
       }
     );
-    const rawPools = (gainersRes.data?.data || []) as Array<{
-      attributes?: { price_change_percentage?: { h24?: string; h6?: string } };
-    }>;
+    const rawPools = (gainersRes.data?.data || []) as GeckoTerminalPool[];
     const gainerPools = rawPools
       .filter((p) => {
         const ch = parseFloat(
