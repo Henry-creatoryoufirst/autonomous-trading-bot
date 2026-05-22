@@ -12014,8 +12014,10 @@ function apiSleevesCompare() {
         // under the honest name so dashboards don't silently show a number
         // that diverges from the lifetime counter.
         tradesSinceRestart: stats.trades,
-        // Deprecated: legacy `trades` field. Kept for one release.
-        // TODO(v21.21): remove once dashboards read tradesSinceRestart.
+        // Deprecated: legacy `trades` field. Kept while dashboards migrate.
+        // TODO(v21.30+): remove once dashboards read tradesSinceRestart.
+        // Originally scheduled for v21.21 (2026-04-24) but missed — re-flagged
+        // in AUDIT_CODE_DEBT_2026-05-22.
         trades: stats.trades,
         positionsCount: ownership ? Object.keys(ownership.positions).length : 0,
         decisionsCount: decisions.length,

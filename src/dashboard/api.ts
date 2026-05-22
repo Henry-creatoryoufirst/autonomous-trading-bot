@@ -345,8 +345,11 @@ export function apiPortfolio() {
     // tradesSinceRestart by design — that's the whole point of reconciliation.
     totalTradesAllTime: state.trading.totalTrades,
     successfulTradesAllTime: state.trading.successfulTrades,
-    // Deprecated aliases — kept for one release while dashboards migrate.
-    // TODO(v21.21): remove once all UIs read *AllTime fields.
+    // Deprecated aliases — kept while dashboards migrate to *AllTime fields.
+    // TODO(v21.30+): remove after stc-website (fleet-panel + fleet-audit) and
+    // any external consumers cut over to `totalTradesAllTime` /
+    // `successfulTradesAllTime`. Originally scheduled for v21.21 (2026-04-24)
+    // but missed — flagged again in AUDIT_CODE_DEBT_2026-05-22.
     totalTrades: state.trading.totalTrades,
     successfulTrades: state.trading.successfulTrades,
     // v12.2.4: Real P&L win rate (profitable sells / total sells) — NOT execution success rate
@@ -529,7 +532,9 @@ export function apiTrades(limit: number, includeFailures: boolean = false) {
     // v21.19-counters: canonical lifetime counters.
     totalTradesAllTime: state.trading.totalTrades,
     successfulTradesAllTime: state.trading.successfulTrades,
-    // Deprecated aliases — TODO(v21.21): remove after one release.
+    // Deprecated aliases — TODO(v21.30+): remove after stc-website + external
+    // consumers cut over to *AllTime fields. Originally scheduled for v21.21
+    // (2026-04-24) but missed — re-flagged in AUDIT_CODE_DEBT_2026-05-22.
     totalTrades: state.trading.totalTrades,
     successfulTrades: state.trading.successfulTrades,
   };

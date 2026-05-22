@@ -302,9 +302,12 @@ export function handleHealth(
     tradesSinceRestart,
     lastLiveExecutionAt,
     hoursSinceLastLiveExecution,
-    // Deprecated aliases — kept for one release so external callers don't
-    // break. New consumers should prefer the canonical names above.
-    // TODO(v21.21): remove once dashboards + stage.sh migrate.
+    // Deprecated aliases — kept so external callers (stc-website fleet-panel,
+    // fleet-audit, stage.sh) don't break. New consumers should prefer the
+    // canonical names above (`tradesSinceRestart`, `hoursSinceLastLiveExecution`).
+    // TODO(v21.30+): remove once stc-website/src/lib/fleet-audit.ts +
+    // fleet-panel.tsx migrate. Originally scheduled for v21.21 (2026-04-24)
+    // but missed — re-flagged in AUDIT_CODE_DEBT_2026-05-22.
     totalTradesExecuted: tradesSinceRestart,
     hoursSinceLastTrade: hoursSinceLastLiveExecution,
     portfolioValue: Math.round(ctx.state.trading.totalPortfolioValue * 100) / 100,
