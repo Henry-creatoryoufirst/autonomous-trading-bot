@@ -2227,32 +2227,57 @@ function scheduleNextCycle() {
       // 24h. Initial scan is ~50-100 RPC calls; we accept that cost once
       // per day to catch wallet-rotation amnesia + missed-deposit class
       // bugs that the bot's in-state totalDeposited field can't detect.
+      //
+      // May-22 rebuild: pass tradeHistory tx hashes as the primary
+      // classification key. Any USDC inflow whose tx hash matches one we
+      // recorded is a swap proceed, not a deposit — works regardless of
+      // which router / aggregator / pool emitted the transfer. Falls back
+      // to the known-router list for txes we can't cross-reference (e.g.,
+      // pre-tracking history or restored-from-backup partial state).
       let chainDepositHistory: ChainDepositHistory | null = _cachedChainDepositHistory;
       if (process.env.SYSTEM_AUDITOR_ENABLED === 'true' && Date.now() - _cachedChainDepositRefreshedAt > CHAIN_DEPOSIT_REFRESH_MS) {
         try {
           const fromBlock = _cachedChainDepositHistory?.lastScannedBlock
             ? _cachedChainDepositHistory.lastScannedBlock + 1
             : 0;
+          // Collect every tx hash the bot has recorded a trade against,
+          // including failed/half-finished ones — if WE caused the tx,
+          // its USDC output is NOT a user deposit. Deduped + lowercased
+          // by the scanner via Set construction.
+          const botTxHashes = new Set<string>();
+          for (const t of state.tradeHistory) {
+            if (t.txHash) botTxHashes.add(t.txHash);
+          }
           const hist = await fetchChainDepositHistory({
             walletAddress: CONFIG.walletAddress,
             fromBlock,
+            botTxHashes,
           });
           // If we had a prior cache, merge: keep the prior total + add the new
           // chunk's deposits. fetchChainDepositHistory returned only the
           // incremental window when fromBlock > 0.
           if (_cachedChainDepositHistory && fromBlock > 0) {
             const mergedDeposits = [...hist.deposits, ..._cachedChainDepositHistory.deposits].slice(0, 50);
+            const priorCC = _cachedChainDepositHistory.classificationCounts;
+            const nextCC = hist.classificationCounts;
             chainDepositHistory = {
               ...hist,
               totalDepositedUsd: _cachedChainDepositHistory.totalDepositedUsd + hist.totalDepositedUsd,
               deposits: mergedDeposits,
+              classificationCounts: {
+                counted: priorCC.counted + nextCC.counted,
+                excludedBotTrade: priorCC.excludedBotTrade + nextCC.excludedBotTrade,
+                excludedKnownRouter: priorCC.excludedKnownRouter + nextCC.excludedKnownRouter,
+                excludedDust: priorCC.excludedDust + nextCC.excludedDust,
+              },
             };
           } else {
             chainDepositHistory = hist;
           }
           _cachedChainDepositHistory = chainDepositHistory;
           _cachedChainDepositRefreshedAt = Date.now();
-          console.log(`[SystemAudit:deposits] history refreshed | total=$${chainDepositHistory.totalDepositedUsd.toFixed(2)} | ${chainDepositHistory.deposits.length} recent deposits | complete=${chainDepositHistory.complete}`);
+          const cc = chainDepositHistory.classificationCounts;
+          console.log(`[SystemAudit:deposits] history refreshed | total=$${chainDepositHistory.totalDepositedUsd.toFixed(2)} | counted=${cc.counted} botTrade=${cc.excludedBotTrade} router=${cc.excludedKnownRouter} dust=${cc.excludedDust} | ${chainDepositHistory.deposits.length} recent | complete=${chainDepositHistory.complete}`);
         } catch (err: any) {
           console.warn(`[SystemAudit:deposits] history scan failed (non-fatal): ${err?.message?.slice(0, 120) || err}`);
         }
