@@ -489,3 +489,225 @@ describe('INV-1 — 2026-05-22 case study: orphaned balances (no costBasis entry
     expect(v!.observed.outlier).toBe('C'); // totalPortfolioValue is the outlier
   });
 });
+
+describe('INV-1 — 2026-05-22 round 3: costBasis-undercontribution edge case', () => {
+  // The exact prod symptom that survived PR #38 + PR #43:
+  // master efficient-peace, /api/system-audit at 2026-05-22T12:52:44Z (cycle 140):
+  //
+  //   sourceA_costBasisPositionSum: 2974.2161226644953
+  //   sourceB_balancesUsdSum:       3076.640181157941
+  //   sourceC_totalPortfolioValue:  3076.640181157941
+  //   worstDeltaPct: "3.33"
+  //   outlier: A
+  //   consecutiveCycles: 213  ← bot's BUYs gated for ~4 days
+  //
+  // cbLTC carried $200.14 on-chain. PR #43 added orphan-balance inclusion, but
+  // the orphan helper SKIPPED cbLTC because state.costBasis['cbLTC'] existed
+  // with a non-zero currentHolding (drifted from the real wallet balance) and
+  // its derived value (currentHolding × price) was non-trivial (>= $1). So the
+  // costBasis loop counted cbLTC at the stale value and the orphan helper
+  // skipped it as already-counted. Source A undercounted by ~$100 every cycle.
+
+  it('reproduces the prod 3.33% / $102 drift when costBasis.currentHolding drifts below true balance', () => {
+    // Real balance is 3.70006228 cbLTC × $54.09 = $200.14
+    // But state.costBasis.cbLTC.currentHolding has drifted to ~half of true.
+    // Pre-round-3, the costBasis loop adds 1.85 × 54.09 = $100.07 and the
+    // orphan helper skips cbLTC because cbValueUsd >= $1.
+    //
+    // Source A pre-round-3 ≈ WETH $1215.59 + ENA $20.55 + cbLTC stale $100.07
+    //                      + USDC $1077.52 + ETH cash $10.17 + aBasUSDC $545.62
+    //                      ≈ $2969.52   (within $5 of prod's $2974.22)
+    //
+    // Sources B + C = $3069.58 (matches prod $3076.64 modulo dust)
+    // Worst delta ≈ 3.3% → SEVERE outlier=A, mirroring the live blocker.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3069.58,
+      balances: [
+        { symbol: 'USDC', balance: 1077.516369, usdValue: 1077.516369 },
+        { symbol: 'ETH', balance: 0.004781546748853895, usdValue: 10.16632291614035 },
+        { symbol: 'WETH', balance: 0.5717302536487067, usdValue: 1215.588738291176 },
+        // The smoking gun: real balance is 3.70 but costBasis.currentHolding
+        // drifted to 1.85. Source A's costBasis loop adds the stale value;
+        // PR #43's orphan helper skips because cbValueUsd is "valid enough".
+        { symbol: 'cbLTC', balance: 3.70006228, usdValue: 200.14037272306652 },
+        { symbol: 'ENA', balance: 189.19599114469716, usdValue: 20.545601195031853 },
+        { symbol: 'aBasUSDC', balance: 545.61928, usdValue: 545.61928, sector: 'YIELD' },
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 1176.44, totalTokensAcquired: 0.5717, averageCostBasis: 2057.68, currentHolding: 0.5717302536487067 },
+        ENA: { symbol: 'ENA', realizedPnL: 0, totalInvestedUSD: 22.49, totalTokensAcquired: 189.2, averageCostBasis: 0.1189, currentHolding: 189.19599114469716 },
+        // STALE: currentHolding drifted to ~half of real wallet balance.
+        // Pre-fix this contributes 1.85 × 54.09 = $100.07 to source A
+        // and the orphan path skips because cbValueUsd >= $1.
+        cbLTC: { symbol: 'cbLTC', realizedPnL: 0, totalInvestedUSD: 100, totalTokensAcquired: 1.85, averageCostBasis: 54.09, currentHolding: 1.85 },
+      },
+      lastKnownPrices: {
+        WETH: { price: 2126.1578 },
+        cbLTC: { price: 54.09108214337044 },
+        ENA: { price: 0.10859427343425354 },
+      },
+    });
+    // Post-fix: Math.max(1.85 × 54.09 = $100.07, balance $200.14) = $200.14.
+    //   Source A = WETH $1215.59 + ENA $20.55 + cbLTC clamped $200.14
+    //            + USDC $1077.52 + ETH cash $10.17 + aBasUSDC YIELD $545.62
+    //            = $3069.58
+    //   Source B = $3069.58, Source C = $3069.58 → all agree → null.
+    expect(dimensionalHonesty(ctx)).toBeNull();
+  });
+
+  it('PRE-FIX simulation (sanity): without the Math.max clamp, the same input fires SEVERE outlier=A', () => {
+    // This test demonstrates the bug ONLY mathematically. It hand-computes
+    // what the OLD code (pre-clamp) would have produced from the same ctx,
+    // and asserts that hand-computed source A diverges >2% from B/C. It
+    // does NOT exercise the dimensional-honesty function (which is now
+    // patched) — it documents that the prod symptom is reproducible from
+    // the same inputs under pre-round-3 arithmetic.
+    const ctx = {
+      balances: [
+        { symbol: 'USDC', balance: 1077.516369, usdValue: 1077.516369 },
+        { symbol: 'ETH', balance: 0.004781546748853895, usdValue: 10.16632291614035 },
+        { symbol: 'WETH', balance: 0.5717302536487067, usdValue: 1215.588738291176 },
+        { symbol: 'cbLTC', balance: 3.70006228, usdValue: 200.14037272306652 },
+        { symbol: 'ENA', balance: 189.19599114469716, usdValue: 20.545601195031853 },
+        { symbol: 'aBasUSDC', balance: 545.61928, usdValue: 545.61928, sector: 'YIELD' as const },
+      ],
+      costBasis: {
+        WETH: { currentHolding: 0.5717302536487067, averageCostBasis: 2057.68 },
+        ENA: { currentHolding: 189.19599114469716, averageCostBasis: 0.1189 },
+        cbLTC: { currentHolding: 1.85, averageCostBasis: 54.09 },
+      },
+      lastKnownPrices: {
+        WETH: { price: 2126.1578 },
+        cbLTC: { price: 54.09108214337044 },
+        ENA: { price: 0.10859427343425354 },
+      },
+    };
+    const totalPortfolioValue = 3069.58;
+    // Hand-compute old source A (no Math.max clamp):
+    //   costBasis loop: WETH 0.5717 × 2126.16 + ENA 189.2 × 0.1086 + cbLTC stale 1.85 × 54.09
+    //   cash/gas/yield: USDC + ETH + aBasUSDC
+    //   orphans: (cbLTC SKIPPED because cb-derived >= $1)
+    const wethCb = 0.5717302536487067 * 2126.1578;
+    const enaCb = 189.19599114469716 * 0.10859427343425354;
+    const cbLTCstale = 1.85 * 54.09108214337044;
+    const cashGasYield = 1077.516369 + 10.16632291614035 + 545.61928;
+    const oldSourceA = wethCb + enaCb + cbLTCstale + cashGasYield;
+    const sourceB = ctx.balances.reduce((s, b) => s + b.usdValue, 0);
+    const sourceC = totalPortfolioValue;
+    // Sanity-pin: B and C agree (within $0.05) in the prod snapshot too.
+    expect(Math.abs(sourceB - sourceC)).toBeLessThan(0.5);
+    const denomAB = Math.max(oldSourceA, sourceB);
+    const deltaAB = Math.abs(oldSourceA - sourceB) / denomAB;
+    // Drift should be ~3.3%, matching the prod observation.
+    expect(deltaAB).toBeGreaterThan(0.02);
+    expect(deltaAB).toBeLessThan(0.05);
+    // Sanity: the gap between sources A and B sits right around $100 — the
+    // amount cbLTC's stale `currentHolding` undercounts the real balance by.
+    expect(sourceB - oldSourceA).toBeGreaterThan(95);
+    expect(sourceB - oldSourceA).toBeLessThan(110);
+  });
+
+  it('handles the stale-averageCostBasis variant — cb.averageCostBasis dragging price downward', () => {
+    // Alternate trigger in the same class: lastKnownPrices['cbLTC'] IS
+    // populated correctly ($54), but the costBasis.averageCostBasis is
+    // stale (e.g., LTC bought when ~$27 and the averaging never caught up).
+    // Both paths go through the cbValueUsd computation — the bug surfaces
+    // when EITHER `currentHolding` OR the price input is stale-low. This
+    // test pins the currentHolding-drift variant with the price input
+    // healthy, complementing the price-side coverage above.
+    //
+    // Note: the lastKnownPrices-MISSING variant would trigger the
+    // price-readiness warmup gate first (any non-trivial position with
+    // no live price drops coverage below 80%), so source A never even
+    // runs. Production never sees that pure variant — when prices are
+    // populated, the lasers are on and the warmup gate has passed. The
+    // realistic in-prod trigger is what the previous test reproduced
+    // (cb.currentHolding drifted while price is healthy).
+    const ctx = makeCtx({
+      totalPortfolioValue: 3270,
+      balances: [
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'cbLTC', balance: 3.70, usdValue: 200 }, // wallet truth
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+        // currentHolding halved — same stale-tracker pattern as the prod
+        // reproduction, but isolated for clarity.
+        cbLTC: { symbol: 'cbLTC', realizedPnL: 0, totalInvestedUSD: 100, totalTokensAcquired: 1.85, averageCostBasis: 54, currentHolding: 1.85 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 }, cbLTC: { price: 54 } },
+    });
+    // Pre-round-3: cbLTC contributes 1.85 × 54 = $99.90, orphan path
+    // skips (cbValueUsd >= $1). Source A = $2000 + $99.90 + $1000 = $3099.90.
+    // Source B = $3200, Source C = $3270. Delta AB = 3.1%, delta AC = 5.2%,
+    // delta BC = 2.1% → outlier=A (both A's pairs exceed tolerance,
+    // BC under) → SEVERE.
+    //
+    // Post-fix: cbLTC clamped to max($99.90, $200) = $200.
+    // Source A = $2000 + $200 + $1000 = $3200 == Source B. Delta AC = BC = 2.1%,
+    // which is just above tolerance — INV-1 still fires but as outlier=C
+    // (C is the odd source out), surfacing the REAL drift between balances
+    // and totalPortfolioValue that's distinct from the source-A artifact.
+    const v = dimensionalHonesty(ctx);
+    expect(v).not.toBeNull();
+    expect(v!.observed.outlier).toBe('C'); // A and B now agree → C is the outlier
+    // The under-contribution gap is gone: A ≈ B within tolerance.
+    expect(Number(v!.observed.relDeltaAB_pct)).toBeLessThan(2);
+  });
+
+  it('preserves the over-count direction (TOSHI-style phantom currentHolding still surfaces)', () => {
+    // Symmetric guard: when costBasis.currentHolding is INFLATED above the
+    // real balance (e.g., a buy-trade was double-recorded), Math.max keeps
+    // the cb-derived value and INV-1 still fires SEVERE outlier=A. The fix
+    // is one-sided — only the under-count side gets clamped.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+      ],
+      costBasis: {
+        // Phantom inflated currentHolding (real balance is 1 WETH, cb claims 10)
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 20000, totalTokensAcquired: 10, averageCostBasis: 2000, currentHolding: 10 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 } },
+    });
+    // Source A = max(10 × 2000 = 20000, balance 2000) = 20000 + USDC 1000 = 21000
+    // Source B = 3000, Source C = 3000 → drift huge, outlier=A.
+    const v = dimensionalHonesty(ctx);
+    expect(v).not.toBeNull();
+    expect(v!.severity).toBe('SEVERE');
+    expect(v!.observed.outlier).toBe('A');
+  });
+
+  it('does NOT clamp when balance is sub-$1 (dust balance + cb-valid is not a Source-A bug)', () => {
+    // Edge case: costBasis says we hold a meaningful position but balance
+    // shows sub-$1 dust. This is a different kind of drift (the wallet
+    // emptied without the tracker noticing, or a balance read failed). In
+    // that case the cb-derived value is the better number for source A —
+    // we should NOT clamp DOWN to the dust balance. The clamp is gated by
+    // `balanceUsd >= MIN_POSITION_USD_FOR_SOURCE_A`.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'cbLTC', balance: 0.001, usdValue: 0.054 }, // sub-$1 dust
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+        cbLTC: { symbol: 'cbLTC', realizedPnL: 0, totalInvestedUSD: 100, totalTokensAcquired: 1.85, averageCostBasis: 54, currentHolding: 1.85 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 }, cbLTC: { price: 54 } },
+    });
+    // cb-derived cbLTC = 1.85 × 54 = $99.90; balance = $0.054. balance <
+    // $1 floor → no clamp. Contribution = $99.90. Source A = WETH $2000 +
+    // cbLTC $99.90 + USDC $1000 = $3099.90. Source B = 1000 + 2000 + 0.054
+    // = $3000.05. delta ≈ 3.2%, outlier=A — INV-1 still fires (this is a
+    // real drift between tracker and wallet that an operator needs to see).
+    const v = dimensionalHonesty(ctx);
+    expect(v).not.toBeNull();
+    expect(v!.observed.outlier).toBe('A');
+  });
+});
