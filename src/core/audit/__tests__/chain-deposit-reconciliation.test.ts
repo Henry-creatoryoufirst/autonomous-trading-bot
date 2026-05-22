@@ -18,6 +18,7 @@ function deposit(opts: { block: number; usd: number; from?: string }): DepositRe
     txHash: '0x' + opts.block.toString(16).padStart(64, '0'),
     fromAddress: (opts.from ?? '0x20fe51a9229e').toLowerCase(),
     usdValue: opts.usd,
+    classification: 'counted-as-deposit',
   };
 }
 
@@ -30,6 +31,12 @@ function history(opts: Partial<ChainDepositHistory> & { totalDepositedUsd: numbe
     lastScannedBlock: opts.lastScannedBlock ?? 46300000,
     complete: opts.complete ?? true,
     errors: opts.errors ?? [],
+    classificationCounts: opts.classificationCounts ?? {
+      counted: opts.deposits?.length ?? 0,
+      excludedBotTrade: 0,
+      excludedKnownRouter: 0,
+      excludedDust: 0,
+    },
   };
 }
 
