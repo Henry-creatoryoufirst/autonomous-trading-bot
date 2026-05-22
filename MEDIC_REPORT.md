@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-22T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-YPlPo (⚠️ changed from staging — CLAUDE.md Option B Rule 2 now prohibits pushing to staging)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-22T UTC | Scout ran (6+ days since last scout) — GeckoTerminal API blocked (403), web search returned only already-registered tokens (AERO, MORPHO, Clanker, cbBTC/WETH), no new qualifying candidates; CLAUDE.md Option B Rule 1 (cohort locked) would have blocked any additions regardless. Auditor triggered (75-day BEAR). Research ran 4 searches — best finding: SWARM_AGENT_WEIGHTS.flow 0.35→0.40 / sentiment 0.05→0.00 (Priority 2.0, Impact 2, Complexity 1, Risk low). NO IMPLEMENTATION: CLAUDE.md Option B rules prohibit automated strategy-constant edits during 30-day benchmark window (~expires 2026-06-15). Watch list: VOLUME_SPIKE_THRESHOLD 2.0→2.5 (from e807de4, still pending Henry merge). Branch switched from staging → claude/cool-sagan-YPlPo per Rule 2. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from sandbox egress proxy). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-YPlPo (CLAUDE.md Option B Rule 2 — no staging pushes).
+- **Scout**: RAN (6+ days since MOLT added 2026-05-14, >48h threshold met). GeckoTerminal API blocked (403 from sandbox). Web search: trending Base tokens are AERO, MORPHO, cbBTC/WETH, Clanker — all already in TOKEN_REGISTRY. No new qualifying candidates identified. CLAUDE.md Option B Rule 1 (cohort locked through ~2026-06-15) would have blocked any additions regardless. Output: no qualifying tokens this scan.
+- **Auditor**: TRIGGERED by inferred 75-day BEAR market (48h+ threshold met; BEAR regime comments throughout constants.ts confirm). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Best finding: SWARM_AGENT_WEIGHTS.flow 0.35→0.40 / sentiment 0.05→0.00 (Impact 2, Complexity 1, Risk low, Priority 2.0). NO IMPLEMENTATION: CLAUDE.md Option B rules explicitly prohibit automated edits to strategy constants during benchmark window (prevents alpha attribution drift). All findings added to Watch List for Henry's review. Notable: VOLUME_SPIKE_THRESHOLD 2.0→2.5 (proposed in medic-auditor e807de4 on claude/cool-sagan-1tLQa) still awaiting Henry's merge.
+
+## Auditor Research Summary (Run #35 — 2026-05-22)
+- **Signal Quality**: Smart money/on-chain wallet tracking achieves 65% win rate vs 41% standalone (2026 research, Nansen). NVR already captures this via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + swarm flow agent. SWARM_AGENT_WEIGHTS.flow could be 0.35→0.40 to reinforce the edge. Impact 2/Complexity 1/Risk low, Priority 2.0. NOT IMPLEMENTED: Option B benchmark window — automated strategy-constant changes muddy alpha attribution.
+- **Execution Efficiency**: Aerodrome Slipstream V3 (Nov 2025) embedded MEV auctions and Flashblocks (10x faster execution) auto-benefit NVR without code changes. Permit2 batch approvals save gas but require touching off-limits execution functions. No new actionable change. (Priority 0)
+- **Position Sizing**: Kelly at KELLY_FRACTION=0.25, KELLY_ROLLING_WINDOW=30 already well-calibrated per research benchmarks. Daily recalculation already happens each cycle. No new actionable change. (Priority 0)
+- **Competitive Intelligence**: MEV protection via Aerodrome Slipstream V3 means slippage could be tighter (1-2% vs current), but this touches execution functions (off-limits). Industry post-loss cooldown standard is 30min; NVR BREAKER_PAUSE_HOURS=1 is more conservative — intentional bear-market safety. No new actionable change. (Priority 0)
+
+**Watch List (for Henry's review):**
+1. SWARM_AGENT_WEIGHTS.flow 0.35→0.40, sentiment 0.05→0.00 — Priority 2.0, low risk, 2-line change in constants.ts. Implement after Option B window closes (~2026-06-15).
+2. VOLUME_SPIKE_THRESHOLD 2.0→2.5 — from e807de4 on claude/cool-sagan-1tLQa. Reduces false-positive volume spike alerts in bear market. Review and merge via PR.
+3. Permit2 batch approvals — saves 45k approval gas per new-token trade. Impact 3/Complexity 4/Risk medium. Post-window implementation candidate.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
