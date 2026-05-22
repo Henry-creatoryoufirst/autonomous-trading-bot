@@ -31,7 +31,6 @@ export {
   handleAutoHarvestTrigger,
   handleAdaptive,
   handleDerivatives,
-  handleEquity,
   handleDiscovery,
   handleCache,
   handleYield,

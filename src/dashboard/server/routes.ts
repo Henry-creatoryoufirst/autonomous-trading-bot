@@ -136,8 +136,6 @@ export interface ServerContext {
   // Service instances
   derivativesEngine: any;
   commoditySignalEngine: any;
-  equityEnabled: boolean;
-  equityEngine: any;
   tokenDiscoveryEngine: any;
   cacheManager: any;
   cooldownManager: any;
@@ -912,22 +910,6 @@ export function handleDerivatives(
     commoditySignal: ctx.commoditySignalEngine?.getLastSignal() || null,
     lastCycleData: ctx.lastDerivativesData,
   });
-}
-
-// ============================================================================
-// Route handler: /api/equity
-// ============================================================================
-
-export async function handleEquity(
-  res: http.ServerResponse,
-  ctx: ServerContext,
-): Promise<void> {
-  if (ctx.equityEnabled && ctx.equityEngine) {
-    const eqDash = await ctx.equityEngine.getDashboardData();
-    ctx.sendJSON(res, 200, eqDash);
-  } else {
-    ctx.sendJSON(res, 200, { enabled: false });
-  }
 }
 
 // ============================================================================

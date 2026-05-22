@@ -26,8 +26,10 @@ import { CoinbaseAdvancedTradeClient } from "./src/core/services/coinbase-advanc
 import { DerivativesStrategyEngine, DEFAULT_DERIVATIVES_CONFIG, type DerivativesSignal, type DerivativesTradeRecord, type MacroCommoditySignal } from "./src/core/services/derivatives-strategy.js";
 import { MacroCommoditySignalEngine, discoverCommodityContracts } from "./src/core/services/macro-commodity-signals.js";
 
-// === v6.0: EQUITY INTEGRATION ===
-import { EquityIntegration } from "./src/core/equity-integration.js";
+// === v6.0 EQUITY INTEGRATION REMOVED ===
+// Option B pivot (2026-05-15) cemented NVR as a crypto-only strategy. The
+// EquityIntegration module + its alpaca/stock-data/market-hours/equity-strategy
+// stack are now permanently dead. See AUDIT_CODE_DEBT_2026-05-22.
 
 // === v6.1: TOKEN DISCOVERY ENGINE ===
 import { TokenDiscoveryEngine, type DiscoveredToken, type TokenDiscoveryState } from "./src/core/services/token-discovery.js";
@@ -706,7 +708,7 @@ import {
   handleCapitalFlows, handleErrors, handleSignals, handleWeeklyReport,
   handleDebug, handleAccounts, handleKill, handleResume,
   handleTrailingStops, handleRiskReview, handleAutoHarvest, handleAutoHarvestTrigger,
-  handleAdaptive, handleDerivatives, handleEquity, handleDiscovery, handleCache,
+  handleAdaptive, handleDerivatives, handleDiscovery, handleCache,
   handleYield, handleYieldRates, handleDexIntelligence,
   handleFamily, handleFamilyMembers, handleFamilyProfiles, handleFamilyWallets,
   handleHealthAudit, handleWinRateTruth, handleCorrectState, handleRepairCostBasis, handleAlphaWatcher, handleAlphaCohortPublic,
@@ -1426,9 +1428,9 @@ let lastIntelligenceData: any = null;
 let previousBuyRatios: Map<string, number> = new Map();
 let cycleStats = { totalLight: 0, totalHeavy: 0, lastHeavyReason: '' };
 
-// === v6.0: EQUITY MODULE STATE (initialized in main()) ===
-let equityEngine: EquityIntegration | null = null;
-let equityEnabled = false;
+// === v6.0 EQUITY MODULE STATE REMOVED ===
+// Removed alongside the EquityIntegration import (Option B pivot crypto-only).
+// See AUDIT_CODE_DEBT_2026-05-22.
 
 // === v6.1: TOKEN DISCOVERY STATE ===
 let tokenDiscoveryEngine: TokenDiscoveryEngine | null = null;
@@ -2165,12 +2167,29 @@ function scheduleNextCycle() {
       // every single cycle (would be ~165 RPC calls/hr just for the
       // auditor). The snapshot ages out at 30 min inside INV-10 itself,
       // so missing it for a few cycles is recoverable without false alarm.
+      //
+      // 2026-05-22 master-only gate: subscriber bots hold orders of magnitude
+      // less capital ($500-$1000) and don't justify the per-cycle RPC cost.
+      // The snapshot is on only when:
+      //   - BOT_INSTANCE_NAME === 'efficient-peace' (Henry's main bot), OR
+      //   - LIVE_ONCHAIN_SNAPSHOT_ENABLED === 'true' (explicit opt-in for
+      //     staging / supervised migrations).
+      // Everywhere else, INV-10 stays silent — the orchestrator's per-cycle
+      // run-line still fires so silence is detectable via INV-9 self-test.
       let liveOnChainSnapshot: LiveOnChainSnapshot | null = _cachedChainSnapshot;
       const CHAIN_SNAPSHOT_EVERY_N_CYCLES = Number(process.env.SYSTEM_AUDITOR_CHAIN_SNAPSHOT_EVERY_N_CYCLES) || 6;
       const cyclesSinceLastSnap = _cachedChainSnapshot
         ? state.totalCycles - _cachedChainSnapshotCycle
         : Infinity;
-      if (process.env.SYSTEM_AUDITOR_ENABLED === 'true' && cyclesSinceLastSnap >= CHAIN_SNAPSHOT_EVERY_N_CYCLES) {
+      const _botInstanceName = process.env.BOT_INSTANCE_NAME || process.env.RAILWAY_SERVICE_NAME || '';
+      const _isMaster = _botInstanceName === 'efficient-peace';
+      const _liveOnchainExplicitEnabled = process.env.LIVE_ONCHAIN_SNAPSHOT_ENABLED === 'true';
+      const _liveOnchainSnapshotAllowed = _isMaster || _liveOnchainExplicitEnabled;
+      if (
+        process.env.SYSTEM_AUDITOR_ENABLED === 'true' &&
+        _liveOnchainSnapshotAllowed &&
+        cyclesSinceLastSnap >= CHAIN_SNAPSHOT_EVERY_N_CYCLES
+      ) {
         try {
           const snap = await captureLiveOnChainSnapshot({
             walletAddress: CONFIG.walletAddress,
@@ -10009,17 +10028,9 @@ async function runTradingCycle() {
       }
     }
 
-    // === v6.0: EQUITY CYCLE ===
-    if (equityEnabled && equityEngine) {
-      try {
-        const equityResult = await equityEngine.runEquityCycle(marketData.fearGreed.value);
-        // The AI prompt section is available but we don't inject it into the crypto AI call
-        // (equity has its own signal generation). Log the summary instead.
-        console.log(`  [EQUITY] ${equityResult.signals.length} signals, ${equityResult.executedTrades.length} trades | Value: $${equityResult.totalEquityValue.toFixed(2)}`);
-      } catch (eqError: any) {
-        console.error(`  ❌ Equity cycle error: ${eqError?.message?.substring(0, 200)}`);
-      }
-    }
+    // === v6.0 EQUITY CYCLE REMOVED ===
+    // Removed alongside the EquityIntegration stack — Option B pivot crypto-only.
+    // See AUDIT_CODE_DEBT_2026-05-22.
 
     // === v11.0: AAVE V3 YIELD CYCLE ===
     // Park idle USDC in Aave V3 for yield when markets are ranging/fearful.
@@ -10910,9 +10921,9 @@ async function main() {
     console.log("\n📊 Derivatives module: DISABLED (set DERIVATIVES_ENABLED=true to activate)");
   }
 
-  // === v6.0: EQUITY INTEGRATION INITIALIZATION ===
-  equityEngine = new EquityIntegration();
-  equityEnabled = await equityEngine.initialize();
+  // === v6.0 EQUITY INTEGRATION INITIALIZATION REMOVED ===
+  // The equity stack was a stub that gated itself on EQUITY_ENABLED=false in
+  // prod and contradicts Option B's crypto-only thesis. See AUDIT_CODE_DEBT_2026-05-22.
 
   // === v6.1: TOKEN DISCOVERY ENGINE INITIALIZATION ===
   console.log("\n🔍 Initializing Token Discovery Engine...");
@@ -12056,7 +12067,7 @@ const serverCtx: ServerContext = {
   lastDexIntelligence, dexIntelFetchCount, lastYieldAction, yieldCycleCount,
   lastYieldRates, lastFamilyTradeResults, latestSignals, signalCycleNumber,
   signalHistory, signalMode, pendingConfigChanges, pendingWithdrawals,
-  derivativesEngine, commoditySignalEngine, equityEnabled, equityEngine,
+  derivativesEngine, commoditySignalEngine,
   tokenDiscoveryEngine, cacheManager, cooldownManager, yieldEnabled, yieldOptimizer,
   aaveYieldService, morphoYieldService, geckoTerminalService,
   familyEnabled, familyManager, familyWalletManager, telegramService,
@@ -12277,9 +12288,6 @@ const healthServer = http.createServer(async (req, res) => {
         break;
       case '/api/derivatives':
         handleDerivatives(res, serverCtx);
-        break;
-      case '/api/equity':
-        await handleEquity(res, serverCtx);
         break;
       case '/api/discovery':
         handleDiscovery(res, serverCtx);
