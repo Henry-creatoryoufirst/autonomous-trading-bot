@@ -13,7 +13,7 @@
  *   bot's primary trade decisions; orchestrator routes via a feature flag.
  */
 
-import type { TradeDecision } from '../types/index.js';
+import type { TradeDecision } from '../types/market-data.js';
 
 // ============================================================================
 // POSITION + DECISION

@@ -22,7 +22,8 @@ import type {
   SleeveStats,
   SleeveMode,
 } from './types.js';
-import type { TokenCostBasis, TradeRecord, TradeDecision } from '../types/index.js';
+import type { TokenCostBasis, TradeRecord } from '../types/index.js';
+import type { TradeDecision } from '../types/market-data.js';
 
 /**
  * Signature of the function a Core sleeve delegates its `decide()` to.
