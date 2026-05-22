@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-22T UTC | Scout skipped (git grep "scout" last hit 34h ago, <48h threshold); auditor lowered BREAKER_DAILY_DD_PCT 7→6 — 75-day bear; industry practice 5-6% daily DD breaker; Apr-2026 auditor went 8→7 citing same standard; completing progression. Implemented on claude/cool-sagan-kIf4f. |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +91,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-05-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-kIf4f.
+- **Scout**: SKIPPED — `git log --grep="scout" -1` last hit was 34h ago (spec-035 body text match), less than 48h threshold. Last actual token-discovery scout was 2026-05-16 (OPENX/VEIL, reverted per Option B cohort-lock). Option B Rule 1 active — any qualifying tokens this run would be written to COHORT_PROPOSAL, not TOKEN_REGISTRY.
+- **Auditor**: TRIGGERED by inferred 75-day BEAR market (48h+ threshold met). Research ran 8 searches across 4 areas (signal quality, execution efficiency, position sizing, competitive intel). Top finding: BREAKER_DAILY_DD_PCT 7→6 — 75-day bear; industry standard is 5-6% daily drawdown pause trigger; Apr-2026 auditor went 8→7 citing same standard ("industry practice 5-6%, bear-market defensive posture warrants earlier pause"); completing progression. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
 - **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-22)
+- **Signal Quality**: Multi-indicator confluence (MACD+RSI+KDJ) claims 70-80% accuracy — NVR already uses MACD+RSI+Bollinger. Adding KDJ requires new indicator calculation code (Impact 2/Complexity 4/Risk medium) → Watch list. Smart money wallet clustering (QuantHive.AI-style alpha trader wallets claiming 65% win rate) — already partially covered by LARGE_TRADE_THRESHOLD_USD=2500; full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V3 embedded MEV auctions — bot auto-benefits at DEX routing level without code change. Permit2 batch operations already fully implemented in NVR. (Priority 0 — no action needed)
+- **Position Sizing**: KEY FINDING — Bear market research 2026 confirms: industry standard daily drawdown breaker is 5-6%. Apr-2026 auditor note on BREAKER_DAILY_DD_PCT already cited "industry practice 5-6%" when going 8→7. At 75-day bear (run #35), completing the progression to 6%. Maximum Drawdown Recovery Sizing research also confirms reducing drawdown tolerance thresholds in prolonged bear regimes reduces compounding losses. IMPLEMENTED: BREAKER_DAILY_DD_PCT 7→6. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: CoW Protocol / intent-based batch clearing eliminates first-come-first-served MEV exposure — already tracked as watch list (requires touching executeDirectDexSwap, off-limits). Slipstream V3 with embedded MEV auctions auto-benefits routing without code change. Private mempool via sequencer-direct RPC already active in BASE_RPC_ENDPOINTS. (Priority 0 — no new action)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
