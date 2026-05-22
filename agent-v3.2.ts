@@ -2165,12 +2165,29 @@ function scheduleNextCycle() {
       // every single cycle (would be ~165 RPC calls/hr just for the
       // auditor). The snapshot ages out at 30 min inside INV-10 itself,
       // so missing it for a few cycles is recoverable without false alarm.
+      //
+      // 2026-05-22 master-only gate: subscriber bots hold orders of magnitude
+      // less capital ($500-$1000) and don't justify the per-cycle RPC cost.
+      // The snapshot is on only when:
+      //   - BOT_INSTANCE_NAME === 'efficient-peace' (Henry's main bot), OR
+      //   - LIVE_ONCHAIN_SNAPSHOT_ENABLED === 'true' (explicit opt-in for
+      //     staging / supervised migrations).
+      // Everywhere else, INV-10 stays silent — the orchestrator's per-cycle
+      // run-line still fires so silence is detectable via INV-9 self-test.
       let liveOnChainSnapshot: LiveOnChainSnapshot | null = _cachedChainSnapshot;
       const CHAIN_SNAPSHOT_EVERY_N_CYCLES = Number(process.env.SYSTEM_AUDITOR_CHAIN_SNAPSHOT_EVERY_N_CYCLES) || 6;
       const cyclesSinceLastSnap = _cachedChainSnapshot
         ? state.totalCycles - _cachedChainSnapshotCycle
         : Infinity;
-      if (process.env.SYSTEM_AUDITOR_ENABLED === 'true' && cyclesSinceLastSnap >= CHAIN_SNAPSHOT_EVERY_N_CYCLES) {
+      const _botInstanceName = process.env.BOT_INSTANCE_NAME || process.env.RAILWAY_SERVICE_NAME || '';
+      const _isMaster = _botInstanceName === 'efficient-peace';
+      const _liveOnchainExplicitEnabled = process.env.LIVE_ONCHAIN_SNAPSHOT_ENABLED === 'true';
+      const _liveOnchainSnapshotAllowed = _isMaster || _liveOnchainExplicitEnabled;
+      if (
+        process.env.SYSTEM_AUDITOR_ENABLED === 'true' &&
+        _liveOnchainSnapshotAllowed &&
+        cyclesSinceLastSnap >= CHAIN_SNAPSHOT_EVERY_N_CYCLES
+      ) {
         try {
           const snap = await captureLiveOnChainSnapshot({
             walletAddress: CONFIG.walletAddress,
