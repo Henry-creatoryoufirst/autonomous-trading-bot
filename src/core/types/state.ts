@@ -4,7 +4,7 @@
  */
 
 import type { StrategyPattern, AdaptiveThresholds, PerformanceReview, ExplorationState, TradeRecord, TokenCostBasis, SectorAllocation } from './index.js';
-import type { ConfigDirective } from '../services/strategy-config.js';
+import type { ConfigDirective } from '../../simulation/strategy-config.js';
 import type { SleeveOwnership, SleeveConfig } from '../sleeves/state-types.js';
 import type { PositionEnteredBy, PositionEntryContext, PositionExitCriterion } from './position-attribution.js';
 

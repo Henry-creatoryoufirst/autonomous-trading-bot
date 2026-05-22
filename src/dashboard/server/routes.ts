@@ -136,8 +136,6 @@ export interface ServerContext {
   // Service instances
   derivativesEngine: any;
   commoditySignalEngine: any;
-  equityEnabled: boolean;
-  equityEngine: any;
   tokenDiscoveryEngine: any;
   cacheManager: any;
   cooldownManager: any;
@@ -304,9 +302,12 @@ export function handleHealth(
     tradesSinceRestart,
     lastLiveExecutionAt,
     hoursSinceLastLiveExecution,
-    // Deprecated aliases — kept for one release so external callers don't
-    // break. New consumers should prefer the canonical names above.
-    // TODO(v21.21): remove once dashboards + stage.sh migrate.
+    // Deprecated aliases — kept so external callers (stc-website fleet-panel,
+    // fleet-audit, stage.sh) don't break. New consumers should prefer the
+    // canonical names above (`tradesSinceRestart`, `hoursSinceLastLiveExecution`).
+    // TODO(v21.30+): remove once stc-website/src/lib/fleet-audit.ts +
+    // fleet-panel.tsx migrate. Originally scheduled for v21.21 (2026-04-24)
+    // but missed — re-flagged in AUDIT_CODE_DEBT_2026-05-22.
     totalTradesExecuted: tradesSinceRestart,
     hoursSinceLastTrade: hoursSinceLastLiveExecution,
     portfolioValue: Math.round(ctx.state.trading.totalPortfolioValue * 100) / 100,
@@ -702,7 +703,7 @@ export async function handleRiskReview(
   res: http.ServerResponse,
   ctx: ServerContext,
 ): Promise<void> {
-  const ddState = (await import('../../services/risk-reviewer.js')).getDrawdownState();
+  const ddState = (await import('../../core/services/risk-reviewer.js')).getDrawdownState();
   ctx.sendJSON(res, 200, {
     version: BOT_VERSION,
     drawdown: ddState,
@@ -912,22 +913,6 @@ export function handleDerivatives(
     commoditySignal: ctx.commoditySignalEngine?.getLastSignal() || null,
     lastCycleData: ctx.lastDerivativesData,
   });
-}
-
-// ============================================================================
-// Route handler: /api/equity
-// ============================================================================
-
-export async function handleEquity(
-  res: http.ServerResponse,
-  ctx: ServerContext,
-): Promise<void> {
-  if (ctx.equityEnabled && ctx.equityEngine) {
-    const eqDash = await ctx.equityEngine.getDashboardData();
-    ctx.sendJSON(res, 200, eqDash);
-  } else {
-    ctx.sendJSON(res, 200, { enabled: false });
-  }
 }
 
 // ============================================================================

@@ -116,6 +116,19 @@ export function getOSSTraderMode(): OSSTraderMode {
   return raw;
 }
 
+/**
+ * Trader-tier Groq model override.
+ *
+ * The OSS-trader pipeline (callGroq within tryOSSTrader) needs a beefier
+ * model than GROQ_MODEL_FAST (the 8B pre-screener). Defaults to Llama 3.3
+ * 70B; override via env GROQ_TRADER_MODEL. Kept as a function rather than a
+ * constant so the env is read at call time (matches the rest of the model
+ * routing primitives).
+ */
+export function getGroqTraderModel(): string {
+  return process.env.GROQ_TRADER_MODEL || 'llama-3.3-70b-versatile';
+}
+
 /** Per-call telemetry */
 export interface ModelTelemetry {
   timestamp: string;
@@ -278,7 +291,7 @@ export async function isGroqAvailable(): Promise<boolean> {
  * Call Groq's OpenAI-compatible chat completions endpoint.
  * Same request/response shape as callOllama() — only base URL, auth, and model differ.
  */
-export async function callGroq(options: ModelRequestOptions): Promise<ModelResponse> {
+export async function callGroq(options: ModelRequestOptions, modelOverride?: string): Promise<ModelResponse> {
   const startMs = Date.now();
   const apiKey = process.env.GROQ_API_KEY;
 
@@ -287,9 +300,10 @@ export async function callGroq(options: ModelRequestOptions): Promise<ModelRespo
   }
 
   const messages = messagesAsStrings(options.messages);
+  const model = modelOverride || GROQ_MODEL_FAST;
 
   const body: Record<string, unknown> = {
-    model: GROQ_MODEL_FAST,
+    model,
     messages,
     stream: false,
     temperature: 0.1,
@@ -330,7 +344,7 @@ export async function callGroq(options: ModelRequestOptions): Promise<ModelRespo
 
     return {
       text,
-      model: GROQ_MODEL_FAST,
+      model,
       backend: 'groq',
       usage: {
         inputTokens: data.usage?.prompt_tokens ?? 0,

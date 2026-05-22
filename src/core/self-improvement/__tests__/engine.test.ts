@@ -10,8 +10,8 @@ import {
   setShadowProposals,
 } from '../engine.js';
 
-import type { TradeRecord } from '../../../types/index.js';
-import type { AgentState } from '../../../types/state.js';
+import type { TradeRecord } from '../../types/index.js';
+import type { AgentState } from '../../types/state.js';
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal mock state that satisfies the module

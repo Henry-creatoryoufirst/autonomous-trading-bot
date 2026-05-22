@@ -78,8 +78,8 @@ describe('simulatePaperBuy', () => {
 
   it('skips when amountUSD ≤ 0 or price ≤ 0', () => {
     const own = mkOwnership();
-    expect(simulatePaperBuy(own, mkBuy('X', 0), 1).action).toBe('SKIP');
-    expect(simulatePaperBuy(own, mkBuy('X', 100), 0).action).toBe('SKIP');
+    expect(simulatePaperBuy(own, mkBuy('X', 0), 1, 1).action).toBe('SKIP');
+    expect(simulatePaperBuy(own, mkBuy('X', 100), 0, 1).action).toBe('SKIP');
     expect(Object.keys(own.positions)).toHaveLength(0);
   });
 });

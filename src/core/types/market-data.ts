@@ -3,9 +3,9 @@
  * Extracted from agent-v3.2.ts (Phase 3b refactor)
  */
 
-import type { TechnicalIndicators } from '../src/algorithm/indicators.js';
+import type { TechnicalIndicators } from '../../algorithm/indicators.js';
 import type { MarketRegime } from './index.js';
-import type { DefiLlamaData, DerivativesData, AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence } from '../src/algorithm/market-analysis.js';
+import type { DefiLlamaData, DerivativesData, AltseasonSignal, SmartRetailDivergence, FundingRateMeanReversion, TVLPriceDivergence } from '../../algorithm/market-analysis.js';
 
 // ============================================================================
 // NEWS & SENTIMENT

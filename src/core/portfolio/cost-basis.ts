@@ -335,7 +335,7 @@ export interface CostBasisAuditReport {
   healthy: number;
   repaired: Array<{
     symbol: string;
-    method: 'self-heal-from-trade-history' | 'peg-to-market' | 'DRY_RUN';
+    method: 'self-heal-from-trade-history' | 'peg-to-market' | 'DRY_RUN' | 'delete-ghost-entry' | 'zero-stuck-position';
     reasons: string[];
     before: { averageCostBasis: number; totalInvestedUSD: number; totalTokensAcquired: number };
     after: { averageCostBasis: number; totalInvestedUSD: number; totalTokensAcquired: number } | null;
