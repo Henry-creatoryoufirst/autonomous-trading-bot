@@ -1,12 +1,84 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-22T07:05 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-22T07:05:13Z
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-2rqal
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-05-22T07:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint). `curl` returns "Host not in allowlist"; `WebFetch` returns HTTP 403 on all production endpoints. No bot error data available. MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — **CLAUDE.md Rule 1 (Option B cohort lock)** overrides the 48h scout timer. The last real scout ran 2026-05-14 (MOLT added, 8+ days ago, threshold met), but cohort changes are frozen until ~2026-06-15. OPENX + VEIL added 2026-05-16 were immediately reverted (confirmed in git log). Network policy also blocks `api.geckoterminal.com`, so GeckoTerminal research cannot be completed from this environment regardless.
+- **Auditor**: SKIPPED — all API endpoints (`/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`) are blocked by network allowlist. Cannot calculate win_rate, drawdown, or losing_streak to check trigger conditions. No change to any strategy constant this run.
+
+## Bot Activity Since Run #34 (from git log)
+
+The repo is extremely active since 2026-05-15. Key merges on `claude/cool-sagan-2rqal`:
+- `2026-05-21` — spec-036: MirrorAgent wired into heavy-cycle prompt (Phase 1 ship)
+- `2026-05-21` — spec-035: Anthropic Files API for auditor persistence (survives Railway redeploys)
+- `2026-05-21` — tooling: SDK 0.97 upgrade + heavy-cycle prompt caching telemetry
+- `2026-05-21` — spec-034: Phase 1a funding-arb paper sleeve scaffold
+- `2026-05-21` — spec-035: INV-4 observation-consumer + INV-8 cycle-vs-trade ratio (Phase B)
+- `2026-05-21` — fix(spec-035): INV-1 source-A excludes sub-$1 dust + cost-basis dust-prune v2
+- `2026-05-21` — spec-035: INV-6 reserve floor + INV-7 sleeve liveness (Phase B WARN)
+- `2026-05-21` — spec-035: /api/system-audit + INV-5 cohort coverage + prompt wiring
+- `2026-05-20` — spec-035: INV-11 chain-deposit reconciliation + history fetcher
+- `2026-05-20` — spec-035: Phase A.1 — INV-10 chain-truth reconciliation + live-RPC source
+- `2026-05-20` — fix(portfolio): include Aave + Morpho yield-receipt tokens in balances
+- `2026-05-20` — fix(dashboard): scope-aware breaker text in /health blockers
+- `2026-05-20` — feat(breaker): lifetime drawdown breaker is now scope-aware (BUYs only)
+- `2026-05-19` — fix(spec-035): INV-1 startup data-readiness + INV-9 cyclesRun grace
+- `2026-05-19` — spec-035: Phase A — System Auditor (audit-of-audits layer) + 4 SEVERE invariants
+- `2026-05-19` — fix(portfolio): one-shot dust prune of cost-basis registry (Option B residue)
+- `2026-05-18` — fix(attribution): unrealized P&L using lifetime buys instead of remaining-position cost
+- `2026-05-17` — feat(alpha-hunter): env-configure 4 constants — enable day-trading rotation cycle
+- `2026-05-17` — fix(critical): composition-gap block referenced undefined `positions` → silent crash
+- `2026-05-17` — Option B prompt reframing (B1–B4 passes)
+- `2026-05-16` — Option B cohort physics, state force-rehydrate, scout guard, drift-pattern collapses
+
+Current COHORT_QUALITY_7: `cbBTC`, `WETH`, `cbXRP`, `cbLTC`, `LINK`, `cbADA`, `cbSOL` (locked per Option B).
+
+## Status Compared to Run #34
+
+No regressions visible from git history. Active development on spec-035 (System Auditor) and spec-036 (MirrorAgent) suggests bot team is engaged. `fix(critical)` on 2026-05-17 patched a silent `makeTradeDecision` crash (composition-gap → undefined `positions`) — this would have been a PATTERN D candidate had the API been reachable.
+
+---
+
+---
+
+## Run History
+
+| Run # | Timestamp | Action |
+|-------|-----------|--------|
+| #35 | 2026-05-22T07:05 UTC | Medic: PATTERN D (API unreachable). Scout: SKIPPED (Option B cohort lock, CLAUDE.md Rule 1). Auditor: SKIPPED (no API data). |
+| #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M |
+| #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K |
+| #32 | 2026-05-07T04:05 UTC | Scout skipped (<48h, cbADA at 05:08 2026-05-05); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 |
+| #31 | 2026-05-06T09:05 UTC | Scout skipped; auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 |
+| #30 | 2026-05-05T UTC | Scout skipped; auditor lowered KELLY_POSITION_CEILING_PCT 14→12 |
+| #29 | 2026-05-05T03:12 UTC | Scout skipped; auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 |
+| #28 | 2026-05-04T16:15 UTC | Scout added UP (Superform); auditor raised GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT 48→72 |
+| #27 | 2026-05-04T08:21 UTC | Scout added cbSOL; auditor lowered CULL_MIN_AGE_HOURS 168→120 |
+| #26 | 2026-05-03T UTC | Scout skipped; auditor lowered DECEL_MIN_PROFIT_PCT 3→2 |
+| #25 | 2026-05-03T00:00 UTC | Scout skipped; auditor lowered DECEL_MIN_DROP_FROM_PEAK 8→6 |
+| #24 | 2026-05-02T17:05 UTC | Scout skipped; auditor raised SCALE_UP_BUY_RATIO_MIN 55→60 |
+| #23 | 2026-05-02T14:xx UTC | Scout skipped; auditor lowered KELLY_FRACTION 0.30→0.25 (true Quarter-Kelly) |
+| #22 | 2026-05-02T00:17 UTC | Scout added KAITO; auditor lowered KELLY_FRACTION 0.35→0.30 |
+| #21 | 2026-04-30T06:08 UTC | Scout skipped; auditor lowered SURGE_MAX_CAPITAL_PER_TOKEN_PCT 25→20 |
+| #20 | 2026-04-27T UTC | Scout skipped; auditor lowered KELLY_ROLLING_WINDOW 50→30 |
+| #19 | 2026-04-27T05:13 UTC | Scout no qualifying tokens; auditor raised RIDE_THE_WAVE_MIN_MOVE 5→7 |
+| #18 | 2026-04-24T UTC | Scout added B3; auditor raised HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 |
+| #17 | 2026-04-23T UTC | Conflict resolved; auditor lowered LARGE_TRADE_THRESHOLD_USD 5000→2500 |
+| #1–16 | 2026-04-14 – 2026-04-22 | PATTERN D: API unreachable — no code changes |
+
+---
+
+## Previous Run Detail (Run #34 — 2026-05-15T UTC)
 
 ## Problem
 
@@ -205,7 +277,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
