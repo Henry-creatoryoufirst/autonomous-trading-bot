@@ -42,42 +42,63 @@ const PRICE_READINESS_MIN_COVERAGE = 0.80; // ≥80% of non-trivial positions mu
 const MIN_POSITION_USD_FOR_SOURCE_A = 1;
 
 /**
- * 2026-05-22 case (round 3) — costBasis under-contribution edge case.
+ * 2026-05-22 — round 4: balances-as-ground-truth (replaces round 3's clamp).
  *
- * PR #38 caught sub-$1 phantoms in the costBasis loop. PR #43 caught absent
- * costBasis entries (orphans). Both helped — but Henry's main bot (and the
- * family bots) still fired INV-1 SEVERE for 213 consecutive cycles because
- * of a *third* class neither fix touched:
+ * The 4-deploy arc on INV-1 source A — and why we're rewriting it:
  *
- *   `costBasis[symbol]` exists with `currentHolding × price >= $1`, so
- *   PR #38's dust filter doesn't catch it AND PR #43's orphan path skips it
- *   (cbValueUsd is "valid enough"). But the derived value is materially
- *   *below* the chain-truth balance — stale `currentHolding`, missing
- *   `lastKnownPrices` entry forcing the `averageCostBasis` fallback to a
- *   wildly low number, post-rebase / airdrop tokens added straight to the
- *   wallet without the cost-basis tracker ever seeing them, etc.
+ *   PR #38 (round 1, dust)   — exclude sub-$1 entries from the costBasis loop.
+ *     Fixed SPX-style 1e-15 × $3.77B garbage.
+ *   PR #43 (round 2, orphans)— add a third bucket: balances with no costBasis
+ *     entry. Fixed cbLTC at $199 with `state.costBasis['cbLTC'] === undefined`.
+ *   PR #47 (round 3, clamp)  — `Math.max(cbValueUsd, balanceUsd)` in the
+ *     costBasis loop. Fixed cbLTC at $199 with `state.costBasis['cbLTC']`
+ *     present but `currentHolding` drifted to half-real, costBasis-derived
+ *     value falling to $100.
+ *   PR #?? (round 4, this)   — replace the costBasis loop entirely. Source A
+ *     becomes `sum(balances.usdValue) + sum(cb entries with no matching
+ *     balance, evaluated at last-known price)`. Held positions take chain
+ *     truth directly; phantom cost-basis (currentHolding > 0 with no wallet
+ *     balance) surfaces in the second term so TOSHI-style stale-after-sale
+ *     entries still fire SEVERE outlier=A.
  *
- * On master 2026-05-22T12:52:44Z: source A = $2974.22, source B/C = $3076.64
- * — a $102.42 gap consistent with cbLTC being undercounted by ~$100 (~half
- * of its real $200.14 balance value). The costBasis loop computed a non-
- * trivial-but-wrong cbLTC contribution; the orphan helper saw cbValueUsd
- * >= $1 and (correctly, per the double-count guard) skipped it.
+ * Why round 3's clamp over-corrected (the proximate trigger for round 4):
  *
- * The fix: in the costBasis loop, bound the per-symbol contribution BELOW
- * by the chain-truth balance from `state.trading.balances`. Source A should
- * never under-count what's actually held — the balance is the authoritative
- * oracle for "how much of this token is in the wallet right now," and the
- * whole point of INV-1 is that A/B/C agree on that exact figure.
+ *   PR #47 took `Math.max(cbValueUsd, balanceUsd)` per cost-basis symbol —
+ *   correct intent (don't under-count chain truth) but wrong scope. The
+ *   gate `balanceUsd >= MIN_POSITION_USD_FOR_SOURCE_A` left a hole: when
+ *   `state.costBasis[X].currentHolding × price >= $1` but the wallet
+ *   `balance.X.usdValue < $1` (token mostly sold, tracker hasn't caught up),
+ *   the clamp didn't engage and source A added the full stale cbValueUsd.
+ *   At cycle 12 post-deploy 2026-05-22 the bot showed source A = $3166.34
+ *   vs B = $3068.33 — a $98 over-count consistent with one or more
+ *   sub-$1-balance-but-cb-≥-$1 entries (cbBTC-class drift) leaking through
+ *   the clamp gate.
  *
- * The over-count direction (cbValueUsd > balanceUsd, e.g. TOSHI's
- * historical -$2.3M phantom) is preserved unchanged — `Math.max` keeps the
- * over-count, INV-1 still fires SEVERE outlier=A, the operator still gets
- * surfaced. The sub-$1 dust filter (PR #38) still applies BEFORE this clamp
- * so an SPX-style 1e-15 × $3.77B garbage entry never reaches the comparison.
+ * The round-4 invariant: source A = source B for any token the wallet
+ * actually holds, plus an explicit "phantom cost-basis" term for entries
+ * the tracker thinks exist but the wallet doesn't show. No clamping, no
+ * Math.max, no ambiguity about which side of a per-symbol disagreement
+ * dominates source A. Held positions follow chain truth; tracker phantoms
+ * surface as a separate, dimensionally-labeled bucket.
  *
- * Behavior is byte-identical for healthy state where `cbValueUsd` and
- * `balanceUsd` agree within tick-noise (Math.max returns whichever side is
- * a hair larger; both are effectively the same number for tolerance math).
+ * TOSHI-style coverage under round 4: the canonical "$30M stored, wallet
+ * empty" failure is exactly a phantom — `state.costBasis['TOSHI'].currentHolding
+ * × price >= $1` with no matching balance ≥ $1. The phantom term adds that
+ * value to source A, A diverges from B + C dramatically, INV-1 fires SEVERE
+ * outlier=A. Test coverage: see "preserves the phantom-costBasis signal"
+ * below.
+ *
+ * Edge that round 4 *intentionally* drops: "cost-basis has 10× current
+ * holding while the wallet holds 1×." Both balance and cb-derived value are
+ * ≥ $1 and disagree. Under rounds 1-3 this fired SEVERE outlier=A (cb-loop
+ * over-counted). Under round 4 it does NOT fire — source A takes the
+ * balance ($2000) and the inflated currentHolding is invisible to INV-1.
+ * That's intentional: in that scenario the WALLET is healthy, the bot's
+ * decisions use balance values, and the cost-basis tracker's `currentHolding`
+ * drift surfaces through cb.realizedPnL / unrealizedPnL drift (INV-2's
+ * territory) rather than dimensional honesty. Henry's bot trades on chain
+ * truth — INV-1 should police chain-truth agreement, not internal-tracker
+ * sync.
  */
 
 function makeViolation(observed: Record<string, unknown>, message: string): Violation {
@@ -97,66 +118,60 @@ function makeViolation(observed: Record<string, unknown>, message: string): Viol
 }
 
 /**
- * Three categories live in `state.trading.balances` but never appear in
- * `state.costBasis` (so the cost-basis-derived sum naturally excludes
- * them). To compare apples-to-apples, INV-1 must add them back to
- * source A from the balances array:
+ * Cash and gas symbols are excluded from the phantom-costBasis bucket of
+ * source A. The cost-basis tracker carries an entry for ETH (gas reserve
+ * has an averageCostBasis from the original ETH purchase) but the value
+ * lives in `balances` and is balance-led — never tracker-led — so the
+ * phantom-costBasis path skips them by design.
  *
- *   1. Cash-and-gas: USDC, native ETH — bot's quote currency + gas reserve
- *   2. YIELD-sector positions: aBasUSDC, mUSDC (Morpho vault shares),
- *      future Aave/Morpho/Compound receipt tokens — added 2026-05-20 after
- *      the silent under-reporting bug surfaced ($430 of value invisible to
- *      portfolio total for weeks because yield receipt tokens weren't read
- *      into balances)
+ * USDC is included in the set for symmetry; the tracker doesn't carry a
+ * USDC entry today, but if a future schema change ever adds one (cash
+ * cost-basis tracking) the phantom bucket would still correctly skip it.
  */
 const CASH_AND_GAS_SYMBOLS = new Set(['USDC', 'ETH']);
-const YIELD_SECTOR = 'YIELD';
-
-function sumCashGasAndYieldFromBalances(ctx: InvariantContext): number {
-  let sum = 0;
-  for (const b of ctx.balances) {
-    const isCashGas = CASH_AND_GAS_SYMBOLS.has(b.symbol);
-    const isYield = (b as { sector?: string }).sector === YIELD_SECTOR;
-    if (isCashGas || isYield) sum += b.usdValue ?? 0;
-  }
-  return sum;
-}
 
 /**
- * Source A's third bucket: balances that are NOT cash/gas, NOT YIELD-sector,
- * NOT meaningfully covered by costBasis. These are tokens the bot acquired
- * outside the cost-basis-tracker pipeline (yield distributions, airdrops,
- * external transfers). Sources B + C count them naturally; source A must too
- * to stay in dimensional honesty.
+ * Round-4 source-A construction: balances-as-ground-truth.
  *
- * The 2026-05-22 case study: cbLTC at $199 has costBasis: null because the
- * bot never bought it via the tracker — it arrived via a non-tracked path.
- * Pre-fix this was the dominant contributor to INV-1's 211-cycle SEVERE
- * (~4 days of paused buys). Yesterday's PR #38 addressed sub-$1 dust in the
- * costBasis loop but left this class untouched — cbLTC, cbETH, WELL, KEYCAT,
- * PENDLE, BRETT, AAVE, TOSHI, CRV, VVV, DRB all carried real value with no
- * costBasis entry, so source A was systematically lower than B + C.
+ * Source A walks two buckets that never overlap by construction (no
+ * countedSymbols set required, no double-count risk):
  *
- * Inclusion rule for each balance entry:
- *   - usdValue >= MIN_POSITION_USD_FOR_SOURCE_A (sub-$1 dust skipped, same as
- *     the costBasis loop)
- *   - symbol NOT in CASH_AND_GAS_SYMBOLS (handled by sumCashGasAndYieldFromBalances)
- *   - sector !== 'YIELD' (handled by sumCashGasAndYieldFromBalances)
- *   - either no costBasis entry, or the costBasis-derived value would be
- *     < MIN_POSITION_USD_FOR_SOURCE_A (i.e., would be excluded from source A's
- *     costBasis pass anyway — orphaned in practice)
+ *   (B-held) sum of `balances.usdValue` for every held position with
+ *            usdValue ≥ $1. Cash/gas (USDC, ETH) and YIELD-sector receipt
+ *            tokens flow through this bucket too — they live in balances
+ *            and the wallet read is authoritative for cash and yield-share
+ *            values. (The previous "cash/gas/yield" helper is folded in here
+ *            because the rule is uniform: balance is truth.)
  *
- * Double-count guard: when a symbol has a costBasis entry whose costBasis-
- * derived value >= MIN_POSITION_USD_FOR_SOURCE_A, the costBasis loop in
- * `sumCostBasisPositions` already counted it — we MUST skip it here. This
- * keeps behavior byte-identical for "healthy" states where every position
- * has a valid tracker entry.
+ *   (CB-phantom) sum of `currentHolding × lastKnownPrice` for every
+ *                cost-basis entry whose derived value is ≥ $1 AND whose
+ *                symbol has NO matching balance ≥ $1. This is the signal
+ *                term — when the tracker insists we hold something the
+ *                wallet doesn't show, INV-1 surfaces the disagreement as
+ *                source A > source B → SEVERE outlier=A.
+ *
+ * Why this is right (and rounds 1-3 were not):
+ *   - Rounds 1-3 tried to make the cost-basis loop authoritative for any
+ *     symbol with a tracker entry, then patched edge cases as they surfaced
+ *     (dust → clamp → orphan → clamp-other-way). The construction had two
+ *     independent value oracles (cb-loop, balance-orphan) and a guarded
+ *     transfer between them. Every guard had a hole.
+ *   - Round 4 picks ONE oracle per symbol per dollar of value: held
+ *     positions follow chain truth (balance.usdValue), tracker-only
+ *     phantoms follow the tracker. There's no overlap and no guard to leak
+ *     through.
+ *
+ * Sub-$1 dust handling: both buckets filter at MIN_POSITION_USD_FOR_SOURCE_A.
+ * Source B (sumBalancesUsd) includes dust naturally so B and source A drift
+ * by at most the total dust value — well under tolerance for any realistic
+ * wallet (Henry's main bot has ~$2 of sub-$1 dust across 25 micro-positions
+ * combined). The price-readiness gate above continues to skip the entire
+ * check during boot warmup when lastKnownPrices is sparse.
  */
+
 /**
- * Build a quick-lookup map from symbol → balance entry. Used by both the
- * costBasis loop (for the round-3 under-count clamp) and the orphan helper
- * (which already iterates `ctx.balances` directly but benefits from O(1)
- * symbol → balance lookup symmetry).
+ * Build a quick-lookup map from symbol → balance entry. Used by the phantom
+ * costBasis pass to test "does a matching held balance exist?" in O(1).
  */
 function buildBalanceBySymbol(
   ctx: InvariantContext,
@@ -168,82 +183,74 @@ function buildBalanceBySymbol(
   return map;
 }
 
-function sumOrphanedBalancesPositions(ctx: InvariantContext, countedSymbols: Set<string>): number {
+/**
+ * Source A — bucket B-held: every balance entry ≥ $1 contributes its
+ * `usdValue`. Cash/gas/YIELD all flow through here uniformly — they're
+ * balance entries, balance is truth. Sub-$1 dust filtered out (matches the
+ * cb-phantom filter; the sub-$1 noise floor across both buckets is well
+ * under tolerance for any realistic wallet).
+ */
+function sumHeldBalances(ctx: InvariantContext): number {
   let sum = 0;
   for (const b of ctx.balances) {
-    if (CASH_AND_GAS_SYMBOLS.has(b.symbol)) continue;
-    if ((b as { sector?: string }).sector === YIELD_SECTOR) continue;
     const usd = b.usdValue ?? 0;
     if (usd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
-    // If the costBasis loop already contributed for this symbol (either at
-    // the cb-derived value or clamped up to balanceUsd), skip — adding here
-    // would double-count.
-    if (countedSymbols.has(b.symbol)) continue;
     sum += usd;
   }
   return sum;
 }
 
-function sumCostBasisPositions(ctx: InvariantContext, countedSymbols: Set<string>): number {
+/**
+ * Source A — bucket CB-phantom: every costBasis entry that the wallet does
+ * NOT corroborate. Catches TOSHI-style "$30M stored, wallet empty" stale
+ * tracker entries. Mirrors INV-1's original intent ("if costBasis says we
+ * hold $30M but wallet says $0, surface the disagreement") without the
+ * round-1-through-3 layering of dust/orphan/clamp guards.
+ *
+ * A symbol is "phantom" when:
+ *   1. state.costBasis[symbol] exists with currentHolding > 0
+ *   2. AND symbol NOT in CASH_AND_GAS_SYMBOLS (cash legs are balance-led)
+ *   3. AND currentHolding × price ≥ MIN_POSITION_USD_FOR_SOURCE_A
+ *      (sub-$1 dust filtered same as the held-balances bucket — prevents an
+ *      SPX-style 1e-15 × $3.77B garbage entry from leaking in)
+ *   4. AND there is NO matching balance entry with usdValue ≥ $1
+ *      (when both buckets see the symbol, the held-balances bucket already
+ *      counted it at chain truth — don't double-count from the tracker side)
+ *
+ * Price source: `lastKnownPrices[symbol]?.price ?? cb.averageCostBasis`.
+ * The price-readiness gate ensures lastKnownPrices coverage ≥ 80% before
+ * INV-1 runs, so the averageCostBasis fallback only ever applies to dust
+ * or already-phantom entries — never to a held position with a healthy
+ * balance.
+ */
+function sumPhantomCostBasis(ctx: InvariantContext): number {
   let sum = 0;
   const balanceBySymbol = buildBalanceBySymbol(ctx);
   for (const [symbol, cb] of Object.entries(ctx.costBasis)) {
     if (!cb) continue;
-    if (CASH_AND_GAS_SYMBOLS.has(symbol)) continue; // cash legs counted separately below
+    if (CASH_AND_GAS_SYMBOLS.has(symbol)) continue;
     const holding = cb.currentHolding ?? 0;
     if (holding <= 0) continue;
-    // Prefer live price from lastKnownPrices; fall back to averageCostBasis
-    // only as a last resort (it's stale but better than 0).
     const price = ctx.lastKnownPrices[symbol]?.price ?? cb.averageCostBasis ?? 0;
     if (price <= 0) continue;
     const cbValueUsd = holding * price;
-    // Skip sub-$1 dust (PR #38) — these entries pollute source A with stale
-    // unit math that drifts vs B/C without representing meaningful held
-    // capital. This filter MUST run before the balance-clamp below so an
-    // SPX-style 1e-15 × $3.77B = $3.77e-6 garbage entry stays excluded
-    // regardless of what `balances[symbol]` says.
-    if (cbValueUsd < MIN_POSITION_USD_FOR_SOURCE_A) continue;
-
-    // Round-3 (2026-05-22) fix: clamp the per-symbol contribution to be at
-    // least the chain-truth balance value. The cost-basis tracker can drift
-    // (stale `currentHolding`, missing `lastKnownPrices` forcing the
-    // `averageCostBasis` fallback to a wildly off number, airdropped/rebased
-    // tokens that bypassed the tracker entirely). In every such case the
-    // balances oracle is authoritative for "what's actually in the wallet."
-    //
-    // INV-1 asserts A/B/C agree on that figure — so when cb-derived value
-    // drops below balance value, snap source A to the balance value. The
-    // over-count direction is preserved unchanged: Math.max keeps a
-    // legitimately-larger cb-derived contribution, INV-1 still surfaces it
-    // as SEVERE outlier=A, and the operator still gets the alert.
+    if (cbValueUsd < MIN_POSITION_USD_FOR_SOURCE_A) continue; // dust
     const balanceUsd = balanceBySymbol[symbol]?.usdValue ?? 0;
-    const contribution = balanceUsd >= MIN_POSITION_USD_FOR_SOURCE_A
-      ? Math.max(cbValueUsd, balanceUsd)
-      : cbValueUsd;
-
-    sum += contribution;
-    // Mark this symbol counted so the orphan pass doesn't double-add it.
-    countedSymbols.add(symbol);
+    // Held-balances bucket already covers this symbol at chain truth.
+    if (balanceUsd >= MIN_POSITION_USD_FOR_SOURCE_A) continue;
+    sum += cbValueUsd;
   }
   return sum;
 }
 
 /**
- * Compose source A across its three buckets:
- *
- *   (1) costBasis-loop positions, clamped below by balance value (round-3 fix)
- *   (2) cash + gas (USDC, ETH) + YIELD-sector receipt tokens, from balances
- *   (3) orphans — balances entries with no usable costBasis contribution
- *
- * `countedSymbols` threads through (1) → (3) so a symbol contributed by the
- * costBasis loop is never re-added by the orphan pass.
+ * Source A = held balances (chain truth for cash + yield + every position
+ * the wallet actually holds) + phantom costBasis (signal term for tracker
+ * drift when the wallet doesn't corroborate). The two buckets never
+ * overlap by construction.
  */
 function sumSourceA(ctx: InvariantContext): number {
-  const countedSymbols = new Set<string>();
-  const fromCostBasis = sumCostBasisPositions(ctx, countedSymbols);
-  const fromCashGasYield = sumCashGasAndYieldFromBalances(ctx);
-  const fromOrphans = sumOrphanedBalancesPositions(ctx, countedSymbols);
-  return fromCostBasis + fromCashGasYield + fromOrphans;
+  return sumHeldBalances(ctx) + sumPhantomCostBasis(ctx);
 }
 
 function sumBalancesUsd(ctx: InvariantContext): number {
