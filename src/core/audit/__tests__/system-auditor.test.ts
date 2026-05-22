@@ -19,6 +19,13 @@ import {
 } from '../system-auditor.js';
 
 function poisonedCostBasis() {
+  // Only TOSHI is poisoned. Tests that use this fixture rely on the merge
+  // behavior in honestDeps() to keep the baseline WETH + cohort costBasis
+  // entries — so INV-1 stays clean and only INV-2 (TOSHI realizedPnL
+  // phantom) fires. (Prior versions of this fixture also overrode WETH; the
+  // 2026-05-22 INV-1 orphan-balances fix exposed that the override pushed
+  // source A out of agreement with sources B + C. Keeping baseline WETH
+  // here is the simpler invariant.)
   return {
     TOSHI: {
       symbol: 'TOSHI',
@@ -27,14 +34,6 @@ function poisonedCostBasis() {
       totalTokensAcquired: 38,
       averageCostBasis: 0.000183,
       currentHolding: 38,
-    },
-    WETH: {
-      symbol: 'WETH',
-      realizedPnL: 87,
-      totalInvestedUSD: 217,
-      totalTokensAcquired: 0.95,
-      averageCostBasis: 2089,
-      currentHolding: 0.95,
     },
   };
 }
@@ -66,6 +65,18 @@ function honestDeps(overrides: Partial<AuditorDeps> = {}): AuditorDeps {
     };
     cohortPrices[symbol] = { price };
   }
+  const baselineCostBasis = {
+    WETH: { symbol: 'WETH', realizedPnL: 87, totalInvestedUSD: 1705, totalTokensAcquired: 0.81, averageCostBasis: 2105, currentHolding: 0.81 },
+    ...cohortCostBasis,
+  };
+  const baselinePrices = { WETH: { price: 2105 }, ...cohortPrices };
+  // Merge (not replace) overrides for costBasis + lastKnownPrices so that
+  // tests overriding ONE entry (e.g. poisoning TOSHI) keep the rest of the
+  // honest cohort intact. Without this merge, INV-1's orphan-balances check
+  // (2026-05-22) trips because the cohort balances would have no costBasis
+  // baseline to anchor against — masking the per-token-buys scope under
+  // an INV-1 all-buys blocker.
+  const { costBasis: cbOverride, lastKnownPrices: lkpOverride, ...rest } = overrides;
   return {
     balances: [
       { symbol: 'WETH', balance: 0.81, usdValue: 1700 },
@@ -73,13 +84,10 @@ function honestDeps(overrides: Partial<AuditorDeps> = {}): AuditorDeps {
       ...cohortTail.map(({ symbol, balance, usdValue }) => ({ symbol, balance, usdValue })),
     ],
     totalPortfolioValue: 3000,
-    costBasis: {
-      WETH: { symbol: 'WETH', realizedPnL: 87, totalInvestedUSD: 1705, totalTokensAcquired: 0.81, averageCostBasis: 2105, currentHolding: 0.81 },
-      ...cohortCostBasis,
-    },
-    lastKnownPrices: { WETH: { price: 2105 }, ...cohortPrices },
+    costBasis: { ...baselineCostBasis, ...(cbOverride ?? {}) },
+    lastKnownPrices: { ...baselinePrices, ...(lkpOverride ?? {}) },
     cycle: 1,
-    ...overrides,
+    ...rest,
   };
 }
 

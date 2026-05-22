@@ -330,3 +330,162 @@ describe('INV-1 — 2026-05-21 case study: sub-$1 dust in source A', () => {
     expect(v!.observed.outlier).toBe('C');
   });
 });
+
+describe('INV-1 — 2026-05-22 case study: orphaned balances (no costBasis entry)', () => {
+  // Henry's main bot had INV-1 firing SEVERE for 211 consecutive cycles
+  // (~4 days, ~30 hours of paused buys). Yesterday's PR #38 addressed the
+  // sub-$1 dust class in source A's costBasis loop, but the dominant
+  // contributor turned out to be a different class: tokens in
+  // state.trading.balances that have NO entry in state.costBasis.
+  //
+  // The bot acquired them via non-tracked paths (yield distributions,
+  // airdrops, external transfers, cbLTC-style oddball holdings) so the
+  // cost-basis tracker was never invoked. Source B (sumBalancesUsd) +
+  // source C (totalPortfolioValue) count them naturally; source A's
+  // costBasis loop has nothing to add. The gap exceeded the 2% tolerance
+  // → SEVERE outlier=A, indefinitely.
+  //
+  // The fix: source A's third bucket, sumOrphanedBalancesPositions, adds
+  // balances entries that are NOT cash/gas, NOT YIELD-sector, NOT covered
+  // by costBasis (or covered only by a sub-$1 entry). Mirrors B + C's
+  // natural inclusion.
+
+  it('reproduces the 2026-05-22 prod case: balances-only cbLTC + dust causes INV-1 SEVERE', () => {
+    // The actual prod cycle that fired SEVERE for 211 cycles:
+    //   sourceA=$2977, sourceB=$3080, sourceC=$3080, drift=3.32%, outlier=A
+    // Cause: cbLTC carried ~$199 in balances with no costBasis entry, so
+    // source A's costBasis loop never touched it. With the orphan helper
+    // it gets added to source A and all three sources agree.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3028,
+      balances: [
+        { symbol: 'WETH', balance: 0.593, usdValue: 1186 },
+        { symbol: 'USDC', balance: 1098, usdValue: 1098 },
+        { symbol: 'aBasUSDC', balance: 545, usdValue: 545, sector: 'YIELD' },
+        // The smoking gun: real $199 position with no costBasis entry.
+        // Pre-fix, source A omits this entirely → 3.32% drift vs B + C.
+        { symbol: 'cbLTC', balance: 2.65, usdValue: 199 },
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 1186, totalTokensAcquired: 0.593, averageCostBasis: 2000, currentHolding: 0.593 },
+        // Critical: cbLTC is NOT in costBasis. This mirrors the prod state
+        // where /api/balances showed cbLTC carrying real $199 of value but
+        // /api/state-export showed costBasis[cbLTC] === undefined.
+      },
+      lastKnownPrices: {
+        WETH: { price: 2000 },
+        cbLTC: { price: 75 }, // ~$75/LTC, balance 2.65 → ~$199 sanity
+      },
+    });
+    // POST-FIX:
+    //   Source A = WETH costBasis ($1186) + USDC ($1098) + aBasUSDC YIELD ($545)
+    //                                     + cbLTC orphan ($199) = $3028
+    //   Source B = 1186 + 1098 + 545 + 199 = $3028
+    //   Source C = $3028
+    // All three match → null
+    expect(dimensionalHonesty(ctx)).toBeNull();
+  });
+
+  it('also covers the broader orphan cohort observed in prod (cbETH, WELL, KEYCAT, PENDLE, BRETT, AAVE, TOSHI, CRV, VVV, DRB)', () => {
+    // The morning of 2026-05-22, /api/balances confirmed the orphan cohort
+    // extended well beyond cbLTC. Every entry below was in balances with a
+    // real usdValue and a null costBasis. The aggregate gap was the actual
+    // engine behind the 211-cycle SEVERE.
+    const orphans = [
+      { symbol: 'cbETH', balance: 0.05, usdValue: 120 },
+      { symbol: 'WELL', balance: 1000, usdValue: 45 },
+      { symbol: 'KEYCAT', balance: 5000, usdValue: 30 },
+      { symbol: 'PENDLE', balance: 10, usdValue: 25 },
+      { symbol: 'BRETT', balance: 200, usdValue: 22 },
+      { symbol: 'AAVE', balance: 0.1, usdValue: 18 },
+      { symbol: 'TOSHI', balance: 5000, usdValue: 15 },
+      { symbol: 'CRV', balance: 25, usdValue: 12 },
+      { symbol: 'VVV', balance: 10, usdValue: 10 },
+      { symbol: 'DRB', balance: 100, usdValue: 8 },
+    ];
+    const orphanTotal = orphans.reduce((s, o) => s + o.usdValue, 0); // $305
+    const portfolio = 2000 + 700 + orphanTotal; // $3005
+    const ctx = makeCtx({
+      totalPortfolioValue: portfolio,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 700, usdValue: 700 },
+        ...orphans,
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+        // No costBasis entries for any orphan — same as prod state.
+      },
+      lastKnownPrices: {
+        WETH: { price: 2000 },
+        ...Object.fromEntries(orphans.map((o) => [o.symbol, { price: o.usdValue / o.balance }])),
+      },
+    });
+    // Post-fix: source A = WETH ($2000) + USDC ($700) + orphans ($305) = $3005.
+    // Sources B + C also $3005 → null.
+    expect(dimensionalHonesty(ctx)).toBeNull();
+  });
+
+  it('does NOT double-count when a balance has a healthy costBasis entry above the dust floor', () => {
+    // Byte-identical-behavior test for healthy state. WETH appears in BOTH
+    // balances and costBasis with matching real value. The costBasis loop
+    // adds $2000; the orphan helper must NOT also add $2000.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 } },
+    });
+    // If the orphan helper double-counted WETH, source A would be $5000
+    // vs B + C at $3000 → SEVERE outlier=A. We expect null instead.
+    expect(dimensionalHonesty(ctx)).toBeNull();
+  });
+
+  it('skips sub-$1 dust balances in the orphan helper (no spurious adds)', () => {
+    // A 0.50¢ dust balance with no costBasis should NOT be added to
+    // source A — it's noise, same floor as the costBasis loop applies.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+        { symbol: 'TINYDUST', balance: 1, usdValue: 0.5 }, // sub-$1, orphan
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 } },
+    });
+    // Source A = $2000 + $1000 = $3000. Source B = $3000.5 (dust included
+    // by sumBalancesUsd). Source C = $3000. Worst delta is ~0.02% — well
+    // under the 2% tolerance, so null. (Confirms the fix doesn't pull dust
+    // back in via the orphan path.)
+    expect(dimensionalHonesty(ctx)).toBeNull();
+  });
+
+  it('still fires SEVERE on real drift after the orphan fix is applied', () => {
+    // Negative test: confirm the fix doesn't silence legitimate disagreement.
+    // Here totalPortfolioValue is fabricated (2x reality) — source C is wrong.
+    const ctx = makeCtx({
+      totalPortfolioValue: 6000,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+        { symbol: 'cbLTC', balance: 2.65, usdValue: 199 }, // orphan
+      ],
+      costBasis: {
+        WETH: { symbol: 'WETH', realizedPnL: 0, totalInvestedUSD: 2000, totalTokensAcquired: 1, averageCostBasis: 2000, currentHolding: 1 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 }, cbLTC: { price: 75 } },
+    });
+    const v = dimensionalHonesty(ctx);
+    expect(v).not.toBeNull();
+    expect(v!.severity).toBe('SEVERE');
+    expect(v!.observed.outlier).toBe('C'); // totalPortfolioValue is the outlier
+  });
+});

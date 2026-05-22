@@ -70,4 +70,38 @@ describe('INV-9 auditor self-test', () => {
     expect(v).not.toBeNull();
     expect((v!.observed as any).previousReportDurationMs).toBe(0);
   });
+
+  // ==========================================================================
+  // 2026-05-22 regression: cycle-counter-reset detection.
+  //
+  // When the bot restarts, state.totalCycles resets to a low number (1, 2,
+  // ...). The auditor's persisted previousReport.cycle still carries the
+  // high pre-restart value. Pre-fix, INV-9 read "previous was 120, current
+  // is 11 → skipped -109 cycles" and fired SEVERE every cycle after the
+  // restart until the persisted prev caught up — a noisy false positive.
+  //
+  // Fix: when ctx.cycle < previousReport.cycle (cycle counter went
+  // BACKWARD, which is only possible across a restart), return null.
+  // ==========================================================================
+
+  it('returns null when bot cycle counter reset (restart): prev=120, current=11', () => {
+    // Exact 2026-05-22 case: bot restarted on Railway, totalCycles reset to
+    // 11, auditor's persisted previousReport.cycle was still 120. Pre-fix
+    // this fired SEVERE with "skipped -109 cycles". Post-fix: null.
+    expect(auditorSelfTest(makeCtx(11, report(120, 7), 1))).toBeNull();
+  });
+
+  it('returns null on a fresh restart at cycle=1 with stale prev=120', () => {
+    // Same class, hottest variant: bot is at cycle 1 (first cycle after a
+    // clean state reset), prev is from before the reset.
+    expect(auditorSelfTest(makeCtx(1, report(120, 7), 5))).toBeNull();
+  });
+
+  it('still fires when cycle counter advances normally but skipped a cycle (forward skip stays SEVERE)', () => {
+    // Sanity: the cycle-reset suppression must NOT swallow legitimate
+    // forward skips. previous=10, current=15 → skipped 4 cycles → SEVERE.
+    const v = auditorSelfTest(makeCtx(15, report(10, 7), 5));
+    expect(v).not.toBeNull();
+    expect(v!.severity).toBe('SEVERE');
+  });
 });

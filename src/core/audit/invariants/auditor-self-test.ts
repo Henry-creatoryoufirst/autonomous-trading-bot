@@ -48,6 +48,20 @@ export const auditorSelfTest: Invariant = (ctx) => {
     };
   }
 
+  // 2026-05-22 polish: cycle-counter-reset suppression. When the bot
+  // restarts, `state.totalCycles` resets to a low number (1, 2, ...) — but
+  // the auditor's persisted `previousReport.cycle` carries forward the high
+  // pre-restart value. Pre-fix, INV-9 would read "previous was 120, current
+  // is 11 → skipped -109 cycles" and fire SEVERE. False positive.
+  //
+  // Interpret `ctx.cycle < prev.cycle` as a bot restart (cycle counter
+  // went BACKWARD, which is otherwise impossible). Return null — don't
+  // fire on what is really a deploy-time baseline reset. We do NOT reset
+  // the auditor's own `auditorCyclesRun` counter here (that's tracked
+  // separately by the orchestrator); we only suppress the negative-delta
+  // case so a restart doesn't produce a spurious SEVERE that gates buys.
+  if (ctx.cycle < prev.cycle) return null;
+
   const issues: string[] = [];
 
   // The bot's cycle counter (state.totalCycles) is what we expect to
