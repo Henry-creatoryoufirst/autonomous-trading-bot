@@ -13,7 +13,7 @@ import type { UserDirective, HarvestRecipient } from '../core/types/state.js';
 import type { StrategyPattern, TokenCostBasis, SectorDefinition, MarketRegime, TradePerformanceStats } from '../core/types/index.js';
 import type { MacroData, GlobalMarketData, NewsSentimentData, StablecoinSupplyData } from '../core/types/market-data.js';
 import type { DefiLlamaData, DerivativesData, FundingRateMeanReversion, SmartRetailDivergence, TVLPriceDivergence } from '../algorithm/market-analysis.js';
-import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../core/services/strategy-config.js';
+import { parseStrategyInstruction, isStrategyInstruction, type ParseResult, type ConfigDirective } from '../simulation/strategy-config.js';
 import { activeChain } from '../core/config/chain-config.js';
 import { findLatestCriticReport, findFreshestRulesProposal } from '../core/config/critic-paths.js';
 import {

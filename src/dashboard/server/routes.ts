@@ -702,7 +702,7 @@ export async function handleRiskReview(
   res: http.ServerResponse,
   ctx: ServerContext,
 ): Promise<void> {
-  const ddState = (await import('../../services/risk-reviewer.js')).getDrawdownState();
+  const ddState = (await import('../../core/services/risk-reviewer.js')).getDrawdownState();
   ctx.sendJSON(res, 200, {
     version: BOT_VERSION,
     drawdown: ddState,
