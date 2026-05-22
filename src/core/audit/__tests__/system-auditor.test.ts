@@ -290,3 +290,67 @@ describe('alert mode auto-flip', () => {
     expect(getMonitorStats().alertMode).toBe('disabled');
   });
 });
+
+// ============================================================================
+// 2026-05-22 — INV-9 noise-reduction integration smoke test.
+//
+// Reproduces the master-fleet pattern that motivated this change: two
+// consecutive auditor runs where the second is one cycle ahead of where
+// the first cycle's persisted report says it should be (the canonical
+// persistence-race / routine-non-auditor-cycle pattern). Pre-fix this
+// produced a SEVERE INV-9 + a `next-llm` blocker that polluted
+// currentBlocker.invariantId for one out of every ~1.5 cycles on
+// master. Post-fix: no SEVERE, no blocker, auditor still functioning.
+// ============================================================================
+
+describe('INV-9 missed-cycle blocker false-positive (2026-05-22 noise-reduction)', () => {
+  it('one-cycle skip between auditor runs produces NO SEVERE INV-9 + NO blocker', async () => {
+    // First cycle: clean run. Establishes prev.cycle = 5.
+    const firstReport = await runSystemAuditor(honestDeps({ cycle: 5 }));
+    expect(firstReport).not.toBeNull();
+    expect(firstReport!.violations.filter(v => v.invariantId === 'INV-9')).toEqual([]);
+    expect(getCurrentBlocker()).toBeNull();
+
+    // Second cycle: bot advanced by 2 (one skipped). Pre-fix this was the
+    // canonical false-positive — SEVERE INV-9 + next-llm blocker that
+    // dominated 73% of currentBlocker.invariantId firings on master fleet.
+    const secondReport = await runSystemAuditor(honestDeps({ cycle: 7 }));
+    expect(secondReport).not.toBeNull();
+
+    // CONTRACT: the cycle-skip itself must NOT trigger SEVERE INV-9. The
+    // delta=2 case is "one skipped cycle" — within ±1 tolerance.
+    const inv9Skipped = secondReport!.violations.filter(
+      v => v.invariantId === 'INV-9' && (v.observed as { issues?: string[] }).issues?.some(i => i.includes('skipped')),
+    );
+    expect(inv9Skipped).toEqual([]);
+
+    // CONTRACT: no INV-9 ever appears at SEVERE (downgraded to WARN this PR).
+    const inv9Severe = secondReport!.violations.filter(
+      v => v.invariantId === 'INV-9' && v.severity === 'SEVERE',
+    );
+    expect(inv9Severe).toEqual([]);
+
+    // CONTRACT: no blocker — the whole point of the fix. INV-9 firings at
+    // WARN have pauseScope='none' so they never set currentBlocker.
+    expect(getCurrentBlocker()).toBeNull();
+    expect(secondReport!.blockerActive).toBe(false);
+
+    // Auditor still rendered a full report for the right cycle (didn't crash)
+    expect(secondReport!.cycle).toBe(7);
+  });
+
+  it('multi-cycle skip surfaces INV-9 as WARN with pauseScope=none (no blocker)', async () => {
+    // First cycle establishes prev.cycle = 5
+    await runSystemAuditor(honestDeps({ cycle: 5 }));
+    // Big jump — 4 cycles skipped → above tolerance → WARN
+    const report = await runSystemAuditor(honestDeps({ cycle: 10 }));
+    const inv9Skipped = report!.violations.find(
+      v => v.invariantId === 'INV-9' && (v.observed as { issues?: string[] }).issues?.some(i => i.includes('skipped')),
+    );
+    expect(inv9Skipped).toBeDefined();
+    expect(inv9Skipped!.severity).toBe('WARN');
+    expect(inv9Skipped!.pauseScope).toBe('none');
+    // WARN-tier INV-9 must NEVER produce a blocker
+    expect(getCurrentBlocker()).toBeNull();
+  });
+});
