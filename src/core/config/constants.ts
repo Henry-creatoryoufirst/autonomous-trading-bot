@@ -623,7 +623,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  */
 export const KELLY_FRACTION = 0.25;           // Bear-adjusted May-2026: 0.30→0.25 — 54-day bear; true Quarter-Kelly (0.25×); effective max 4.2%→3.5% portfolio per trade; research: Quarter-Kelly optimal for sustained bear regimes (crypto fat tails + bear drawdown control)
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
-export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
+export const KELLY_ROLLING_WINDOW = 40;       // Option B May-2026: 30→40 — quality cohort (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL) has more stable win rates than former meme/AI mix; Kelly research recommends ~50-trade window for established assets; 40 = measured midpoint reducing estimate noise while preserving bear responsiveness
 // 2026-05-15 Option B pivot: floor raised $3 → $25 for the quality-asset
 // strategy. $3 in BTC was a fee-loss before the first tick (gas + 0.3%
 // DEX fee + 0.5-1% slippage on a small swap = $0.20-0.40 round-trip on

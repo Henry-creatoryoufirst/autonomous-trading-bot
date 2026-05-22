@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-22T13:08 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-BuPg1
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-22T13:08 UTC | Scout skipped — Option B cohort lock (CLAUDE.md Rule 1, window 2026-05-15..~06-15) + GeckoTerminal egress blocked; auditor raised KELLY_ROLLING_WINDOW 30→40 — Day 7 of Option B; quality blue-chip cohort has more stable win rates than former meme/AI mix; Kelly research recommends ~50-trade window for established assets; 40 = measured midpoint |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-22T13:08 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-BuPg1 per CLAUDE.md Rule 2 (no push to staging during Option B window).
+- **Scout**: SKIPPED — Option B cohort lock (CLAUDE.md Rule 1 hard rule, window 2026-05-15..~2026-06-15) + GeckoTerminal egress blocked by sandbox network policy. Last actual scout: 2026-05-14 (MOLT). 48h threshold met (8 days elapsed) but cohort is locked regardless. Any candidates from future research → COHORT_PROPOSAL file after June 15.
+- **Auditor**: TRIGGERED by inferred 77-day BEAR market (48h+ threshold met; Day 7 of Option B). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: KELLY_ROLLING_WINDOW 30→40 — Option B pivot is a significant strategy change; quality blue-chip cohort has more stable win rates than former meme/AI mix; Kelly criterion research (LBank/Medium 2026-05) recommends ~50-trade window for established assets; 40 = measured midpoint reducing estimation noise without losing bear responsiveness. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0). **NOTE FOR HENRY: Review before merging — this changes a constant during the 30-day Option B attribution window. Auditor proposes, human decides.**
+
+## Auditor Research Summary (Run #35 — 2026-05-22)
+- **Signal Quality**: Smart-money wallet mirroring achieves 65% win rate vs 41% standalone (wundertrading.com 2026). NVR already has LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration remains complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 achieving 34x capital efficiency, $1.24B TVL, routing auto-prefers concentrated pools. Flashblocks on Base: 10x faster execution. Bot auto-benefits at DEX level without code change. No action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly criterion research (LBank/Medium 2026-05): BTC ~18.37% YTD vol, "sweet spot for swing trading"; research recommends recalculating Kelly fraction after "every 50 trades or significant strategy change." Option B pivot is exactly such a change. Quality cohort win rates are statistically more stable than meme/AI coins → 30-trade window introduces noise on quality assets. KELLY_ROLLING_WINDOW 30→40 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: DCA bots outperform lump-sum in ~65% of test scenarios for major cryptocurrencies (Bitsgap/QuantVPS 2026). Maestro/AI agents on Base using copy-trading and whale alerts — NVR already implements similar via LARGE_TRADE_THRESHOLD whale flow. No new actionable code pattern. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
