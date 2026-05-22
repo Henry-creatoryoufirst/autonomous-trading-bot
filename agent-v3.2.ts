@@ -1182,6 +1182,7 @@ import { computeBenchmark, formatBenchmarkPromptBlock } from './src/core/benchma
 import { formatCohortPhysicsBlock } from './src/core/prompt/cohort-physics.js';
 import { formatCompositionGapBlock } from './src/core/prompt/composition-gap.js';
 import { COHORT_QUALITY_7_SYMBOLS } from './src/core/config/token-registry.js';
+import { checkHoldOnlyGate, recordHoldOnlyBlock } from './src/core/services/testable/hold-only-gate.js';
 const gemmaMode: GemmaMode = (process.env.GEMMA_MODE as GemmaMode) || 'disabled';
 if (gemmaMode !== 'disabled') {
   console.log(`[Gemma] Mode: ${gemmaMode} | Ollama: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`);
@@ -6152,6 +6153,23 @@ async function executeTrade(
   if (!auditGate.allowed) {
     console.log(`  ⏸️ Trade blocked — ${auditGate.reason}`);
     return { success: false, error: auditGate.reason ?? 'SystemAuditor blocker active' };
+  }
+
+  // HOLD-ONLY gate — cohort tokens whose Base L2 liquidity is too thin for
+  // active TWAP-sliced trading (default `['cbLTC']`; override via env
+  // `HOLD_ONLY_TOKENS`). Position stays HELD: balance, costBasis, and INV-5
+  // cohort coverage are untouched — we only skip new BUY/SELL/REBALANCE
+  // flow so the bot doesn't compound failed-trade churn. See
+  // HOLD_ONLY_TOKENS_2026-05-22.md in the vault for the cbLTC root cause.
+  const holdOnlyGate = checkHoldOnlyGate({
+    action: decision.action,
+    fromToken: decision.fromToken,
+    toToken: decision.toToken,
+  });
+  if (holdOnlyGate.blocked) {
+    console.log(`  ⏸️ ${holdOnlyGate.reason}`);
+    recordHoldOnlyBlock();
+    return { success: false, error: holdOnlyGate.reason ?? 'HOLD_ONLY token — execution skipped' };
   }
 
   // v21.11: Raptor 3 — gas check is invisible inside every trade, no external gas service
