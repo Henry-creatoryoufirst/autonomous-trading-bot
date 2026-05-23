@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-23T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-23T UTC | Scout blocked (GeckoTerminal unreachable + CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY changes during Option B window ~2026-06-15); auditor lowered BREAKER_WEEKLY_DD_PCT 15→13 — 78-day bear; mirrors daily breaker tightening (8→7, Apr-2026); Kelly/DD research confirms tighter weekly circuit trigger in sustained bear; fires 1h pause + 30% size reduction sooner in bad weeks, reducing MEV-amplified cascading drawdown risk |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,20 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-23T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint; both Railway bot API and GeckoTerminal return "Host not in allowlist"). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — dual blocker: (1) GeckoTerminal API unreachable from execution sandbox; (2) CLAUDE.md Rule 1 prohibits automatic TOKEN_REGISTRY edits during Option B window (~2026-06-15). Last actual scout: 2026-05-14 (MOLT — reverted). Research deferred; any candidate would need `COHORT_PROPOSAL_<date>.md` to Cathedral vault.
+- **Auditor**: TRIGGERED by inferred 78-day BEAR market (48h+ threshold). Research ran 4 searches. Top finding: `BREAKER_WEEKLY_DD_PCT` 15→13 — mirrors `BREAKER_DAILY_DD_PCT` tightening (8→7, Apr-2026); Kelly/DD research + MEV competitive intel confirm tighter weekly circuit trigger in sustained bear; 1h pause + 30% size-reduction fires sooner in bad weeks. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED in `constants.ts` on branch `claude/cool-sagan-h6dkt`.
+
+## Auditor Research Summary (Run #35 — 2026-05-23)
+- **Signal Quality**: On-chain wallet clustering / smart money tracking shows 65% win rate vs 41% for standalone bots (BingX 2026, coinbureau.com). Already partially captured: LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 3/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome/Velodrome merge confirmed 2026 (hashbasis.xyz); Slipstream V3 MEV auction built into AMM accrues to LPs. Bot auto-benefits from DEX-level improvements without code change. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — BREAKER_WEEKLY_DD_PCT 15→13: Daily breaker already tightened 8→7 (Apr-2026); weekly was last untouched major circuit breaker. Research (stratbase.ai, altrady.com): institutional DD management targets weekly limits at 10-12% in crypto bear regimes. With 78-day bear + MEV bots (MEXC 2026) amplifying bad-week cascades, firing 2pp sooner preserves capital. 1h pause + 30% size reduction are mild enough not to suppress genuine recovery rallies. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV bots dominating Base (MEXC 2026, cryptollia.com AI-on-AI section); cross-DEX aggregation (Quicknode/Base) complex — touches off-limits execution path. Smart money wallet tracking (medium.com/tmapendembe) highest competitive gap but requires Nansen/Dune integration (complex). Watch list for Henry.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

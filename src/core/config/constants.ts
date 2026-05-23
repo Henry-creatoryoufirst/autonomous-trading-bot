@@ -670,7 +670,7 @@ export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calcula
  */
 export const BREAKER_CONSECUTIVE_LOSSES = 5;   // 5 consecutive losing trades → pause (less hair-trigger)
 export const BREAKER_DAILY_DD_PCT = 7;         // 7% daily drawdown → pause (auditor Apr-2026: tightened 8→7; industry practice 5-6%, bear-market defensive posture warrants earlier pause)
-export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
+export const BREAKER_WEEKLY_DD_PCT = 13;       // Bear-adjusted May-2026: 15→13 — 78-day bear; mirrors BREAKER_DAILY_DD_PCT tightening (8→7, Apr-2026); Kelly/DD management research + MEV competitive intel confirm tighter weekly circuit trigger in sustained bear regimes; 1h pause + 30% size reduction for 24h fires sooner in bad weeks, preventing MEV-amplified cascading drawdowns
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
 export const BREAKER_SIZE_REDUCTION = 0.7;     // 30% size reduction for 24h after breaker
