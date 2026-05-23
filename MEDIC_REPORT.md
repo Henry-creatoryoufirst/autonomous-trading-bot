@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-23T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-23T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-Zkx4T (Option B window — no staging push)
 
 ## Problem
 
@@ -89,6 +89,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-23T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Current branch: `claude/cool-sagan-Zkx4T` per Option B window Rule 2 (no staging push).
+- **Scout**: SKIPPED ADD — last scout run > 48h ago (last `feat(scout):` was 2026-05-16, reverted). GeckoTerminal API blocked (403); no live token data accessible. CLAUDE.md Rule 1 prohibits all TOKEN_REGISTRY additions during Option B window (~2026-06-15). No proposal written (no on-chain data to evaluate candidates). Standards maintained.
+- **Auditor**: TRIGGERED by inferred 78-day BEAR market (May 15 pivot + 8 days → 48h+ threshold met). Research ran 4 searches. No finding met the priority ≥ 2.0 threshold AND CLAUDE.md Option B window prohibits auto-implementation of strategy constants. All findings are watch-list items for Henry. NVR-HQ not in repo checkout — report file skipped.
+
+## Auditor Research Summary (Run #35 — 2026-05-23)
+- **Signal Quality**: On-chain wallet clustering / smart money mirroring (Nansen-style) reaches 65% win rate vs 41% for pure-technical bots (walletfinder.ai 2026). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow detection. Full signal integration: Impact 3, Complexity 4, Risk medium → Priority 0.75 → Watch list (same finding; no new implementation).
+- **Execution Efficiency**: Aerodrome Slipstream 34x concentrated liquidity efficiency already benefits bot without code change. Slippage already at 100bps (1%) with adaptive MEV-aware tightening for large trades + Flashbots sequencer-direct RPC. Aerodrome+Velodrome merger ongoing — bot auto-benefits. No new actionable code change. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for sustained bear/crypto fat-tails (altrady.com, lbank.com 2026). NVR already at KELLY_FRACTION=0.25 with KELLY_POSITION_CEILING_PCT=12 and TRENDING_DOWN×0.75 → 9% effective max. Well-calibrated; no new change needed. (Priority 0)
+- **Competitive Intelligence**: AI-on-AI MEV growing in 2026 (cryptollia.com); sequencer-direct RPC + Flashbots already active. Intent-based execution (CoW/1inch, 34% DEX share) requires off-limits executeDirectDexSwap changes → Watch list for Henry. Multi-agent specialization (Analyst + Executor + Risk) already implemented in NVR via Sleeves/Guardian/Critic. No new actionable change. (Priority 0)
+
+## Watch List for Henry (Run #35)
+1. **Smart money wallet clustering** — Nansen/Dune integration for on-chain signal confluence. 65% vs 41% documented win-rate improvement. Impact 3, Complexity 4, Risk medium. Requires API integration work, not touched by auto-implementation limit.
+2. **Intent-based routing (CoW/1inch)** — 34% DEX aggregator share, ~$9B/mo volume. Lower realized slippage than direct DEX routing. Complex architecture change (touches off-limits execution path).
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +221,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
