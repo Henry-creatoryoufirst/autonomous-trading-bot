@@ -738,7 +738,7 @@ export const HOT_MOVER_MIN_CHANGE_H1_PCT = 7; // Bear-adjusted Apr-2026: 5→7 �
 export const HOT_MOVER_MIN_VOLUME_H1_USD = 200_000; // Bear-adjusted May-2026: 150K→200K — 65-day bear; total Base DEX vol suppressed (~$673M/day vs bull peaks); $150K/h threshold no longer filters thin MEV-sandwich pumps; $200K floor requires broader market participation
 
 /** Min pool liquidity — below this is a rug risk, skip it */
-export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
+export const HOT_MOVER_MIN_LIQUIDITY_USD = 100_000; // Bear-adjusted May-2026: 75K→100K — 78-day bear; MEV sandwich attacks increasingly automated in 2026 (MEXC research); Aerodrome Slipstream concentrated liquidity means $75K TVL pools can have far less usable depth at current price; $100K floor reduces sandwich exposure on hot-mover entries
 
 /** How often to scan GeckoTerminal trending pools (ms) — reuses cached data, free */
 export const HOT_SCAN_INTERVAL_MS = 90_000;
