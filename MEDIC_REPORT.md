@@ -1,4 +1,21 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-24T12:00 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-05-24T12:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, `Host not in allowlist` on all endpoints). Both WebFetch (403 Forbidden) and curl (`Host not in allowlist`) blocked. MEDIC_REPORT updated (Run #35). Bot health cannot be assessed from this execution environment.
+- **Scout**: SKIPPED (DOUBLE BLOCK) — (1) Option B Rule 1 active: cohort locked until ~2026-06-15; no `feat(scout): add <SYMBOL>` commits permitted during 30-day benchmark window. (2) GeckoTerminal API also blocked by network allowlist. Last scout action: MOLT added 2026-05-14; OPENX + VEIL added/reverted 2026-05-16. All 3 have been reverted. Current COHORT_QUALITY_7: cbBTC, WETH, cbXRP, cbLTC, LINK, cbADA, cbSOL. Cohort is stable.
+- **Auditor**: SKIPPED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (network blocked). Even if trigger conditions could be assessed, Option B Rule 2 prohibits auto-implementing strategy constant changes during benchmark window (2026-05-15 to ~2026-06-15); only human-reviewed PRs may alter strategy shape. Web search also blocked (no external API access). No audit action taken this run.
+
+## Option B Window Note (Run #35)
+
+As of 2026-05-24, we are 9 days into the Option B 30-day benchmark window (started 2026-05-15, ends ~2026-06-15). Per CLAUDE.md ground rules:
+- Cohort is LOCKED (no scout additions, no removals)
+- Automated strategy constant changes are PROHIBITED (muddy alpha attribution)
+- This medic agent may only: (a) diagnose critical bot failures, (b) file PATTERN D reports, (c) push to designated `claude/*` branch
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +83,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-24T12:00 UTC | Scout BLOCKED — Option B Rule 1 (cohort locked, window 2026-05-15 to ~2026-06-15) + network allowlist blocks GeckoTerminal. Auditor SKIPPED — API unreachable + Option B Rule 2 prohibits auto strategy changes during benchmark window. No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
