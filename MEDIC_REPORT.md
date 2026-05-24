@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-24T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-24T UTC | Scout deferred (API+GeckoTerminal blocked; CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY adds during Option B window 2026-05-15→06-15); auditor raised STALE_POSITION_MAX_EXITS_PER_CYCLE 2→3 — 79-day bear; capital-recycling bottleneck after age floor cut to 36h; 50% faster dead-capital rotation per cycle |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-24T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 + allowlist block). MEDIC_REPORT updated (Run #35).
+- **Scout**: DEFERRED — 10 days since last scout (MOLT added 2026-05-14, >48h threshold met). GeckoTerminal API blocked, no verifiable token data. CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY additions during Option B benchmark window (2026-05-15 → ~2026-06-15). WebSearch found no specific new tokens with confirmed contract addresses, liquidity, or volume. No tokens added.
+- **Auditor**: TRIGGERED by inferred 79-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MAX_EXITS_PER_CYCLE 2→3 — after STALE_POSITION_MIN_AGE_HOURS cut 48→36 (Run #31), the 2-per-cycle exit cap has become the binding constraint on capital recycling; competitive intel confirms bear market mode prioritizes capital liberation. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-24)
+- **Signal Quality**: Smart money wallet clustering (Nansen/Arkham/Dune) reaches 65% win rate vs 41% for standalone bots (wundertrading.com, nftplazas.com). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 3/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome METADEX03 upgrade embeds MEV auctions in Slipstream V3 router; profits diverted back to LPs (cryptoadventure.com). Bot auto-benefits at DEX level without code change. Aerodrome+Velodrome Q2 2026 merger still on track. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25f*) confirmed optimal for crypto bear markets — already at KELLY_FRACTION=0.25 (rekko.ai, altrady.com). KEY FINDING: "Parameters should be recalculated frequently; position sizes should be reduced for volatile periods." After STALE_POSITION_MIN_AGE_HOURS was cut to 36h (Run #31), more positions qualify per check — but the 2-exit-per-cycle cap limits how fast dead capital recycles. STALE_POSITION_MAX_EXITS_PER_CYCLE 2→3 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: KEY FINDING — "Bear market mode tightens stop-losses, reduces leverage, prioritizes capital preservation" (ventureburn.com, globenewswire.com). ARMA agent on Base constantly shuffles capital for optimal deployment. Fastest lever remaining: lift stale-exit cap to 3 so recycled USDC re-enters alpha-strike reserve sooner. IMPLEMENTED. Grid/DCA strategies (choppy range-bound bears) — watch list for Henry (requires execution changes).
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

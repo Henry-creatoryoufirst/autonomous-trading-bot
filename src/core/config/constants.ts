@@ -1055,7 +1055,7 @@ export const STALE_POSITION_MAX_MOMENTUM_PCT = 2;
 export const STALE_POSITION_DRAWDOWN_OVERRIDE_PCT = -8;
 
 /** Max stale-exits per check pass — avoid fire-sale */
-export const STALE_POSITION_MAX_EXITS_PER_CYCLE = 2;
+export const STALE_POSITION_MAX_EXITS_PER_CYCLE = 3; // Bear-adjusted May-2026: 2→3 — 79-day bear; STALE_POSITION_MIN_AGE_HOURS was already cut 48→36 (Run #31), more positions qualify per cycle; 2-exit cap has become the capital-recycling bottleneck; 3 exits per check-pass (every 4 cycles/~1h) recycles dead capital 50% faster while guards (age >36h, gain <1%, momentum <2%) still prevent premature exits
 
 /** How often (in cycles) to run the stale-exit check (~1h at 15min intervals) */
 export const STALE_POSITION_CHECK_INTERVAL_CYCLES = 4;
