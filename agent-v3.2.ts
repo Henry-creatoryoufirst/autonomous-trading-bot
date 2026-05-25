@@ -12436,6 +12436,49 @@ const healthServer = http.createServer(async (req, res) => {
         // NVR-SPEC-027: GET=dry-run audit, POST=apply repairs
         handleRepairCostBasis(req, res, serverCtx);
         break;
+      case '/api/admin/restore-trade-history': {
+        // 2026-05-25 (deposit-corruption-trust): Backfill state.tradeHistory
+        // from on-chain. Use when the persisted trade ring buffer was wiped
+        // (Railway redeploy without volume mount) and INV-11's bot-trade
+        // cross-reference path is failing — every historic Aerodrome
+        // swap-return inflow then looks like an unknown deposit, and INV-11
+        // reports a phantom over-count (~$57K observed 2026-05-23 on
+        // efficient-peace). Re-populating tradeHistory with the on-chain
+        // txHashes lets INV-11's classifier collapse the phantom.
+        //
+        // Wraps the same `recoverOnChainTradeHistory` function the bot runs
+        // at boot — explicit operator trigger so we can refresh mid-cycle
+        // without a restart, and so the failure mode (empty tradeHistory)
+        // is recoverable from a single admin call.
+        if (req.method !== 'POST') {
+          sendJSON(res, 405, { error: 'POST only' });
+          break;
+        }
+        if (!isAuthorized(req)) {
+          sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' });
+          break;
+        }
+        try {
+          const tradesBefore = state.tradeHistory.length;
+          const result = await recoverOnChainTradeHistory(CONFIG.walletAddress);
+          flushStateIfDirty('restore-trade-history');
+          sendJSON(res, 200, {
+            message: 'Trade history restored from chain',
+            tradesBeforeRestore: tradesBefore,
+            chainTradesFound: result.recovered,
+            newTradesMerged: result.merged,
+            totalTradesNow: state.tradeHistory.length,
+            costBasisTokensNow: Object.keys(state.costBasis).length,
+            note: result.merged > 0
+              ? 'INV-11 should now produce smaller (or zero) chain-deposit-reconciliation drift on the next audit cycle, since recovered txHashes restore the bot-trade exclusion path.'
+              : 'No new trades to merge — chain matched state. INV-11 drift (if any) is real, not a tradeHistory-wipe phantom.',
+          });
+        } catch (err: any) {
+          console.warn(`[admin/restore-trade-history] failed: ${err.message?.substring(0, 200)}`);
+          sendJSON(res, 500, { error: `Restore failed: ${err.message ?? 'unknown'}` });
+        }
+        break;
+      }
       case '/api/admin/alpha-watcher':
         // NVR-SPEC-028 Phase 1: inspect Watcher status + recent triggers
         handleAlphaWatcher(req, res, serverCtx);
