@@ -8566,30 +8566,61 @@ async function runTradingCycle() {
     // v19.5.0: ON-CHAIN DEPOSIT DETECTION — replaces flaky portfolio-jump heuristic.
     // The blockchain is the source of truth. We query Blockscout for real USDC transfers
     // and identify deposits vs swaps. Runs on a 10-minute cache to avoid API spam.
+    //
+    // 2026-05-25 (deposit-corruption-trust): the "chain is source of truth"
+    // premise breaks for ERC-4337 smart wallets. Blockscout's wallet-centric
+    // tokentx endpoint is blind to UserOp inflows (Henry's bot saw March
+    // deposits silently disappear), and the RPC-receipt scanner mis-classifies
+    // Aerodrome pool returns as deposits (the per-pool addresses aren't in any
+    // router-exclusion list). Both scanners can return a totalDeposited that
+    // is wildly LOWER than the persisted truth. Without protection, an
+    // operator-corrected value gets clobbered next cycle — that's the trust
+    // failure that surfaced on 2026-05-23 when the dashboard read +78% on a
+    // ~-7% portfolio. The regression refusal below makes the chain scanner
+    // additive-only against persisted state: it can introduce new larger
+    // deposits, never erase known ones.
+    const REGRESSION_THRESHOLD_USD = 50;
     const currentUSDCBalance = balances.find(b => b.symbol === 'USDC')?.usdValue || 0;
     try {
       const flows = await detectOnChainCapitalFlows(CONFIG.walletAddress);
-      // Update state with on-chain truth — overwrites any stale/wrong values
+      // Update state with on-chain truth — additively, never silently shrinking
       if (flows.totalDeposited > 0) {
         const prevDeposited = state.totalDeposited;
-        state.totalDeposited = flows.totalDeposited;
-        state.onChainWithdrawn = flows.totalWithdrawn;
-        state.depositHistory = flows.deposits.map(d => ({
-          timestamp: d.timestamp,
-          amountUSD: Math.round(d.amountUSD * 100) / 100,
-          newTotal: 0, // Recalculated below
-        }));
-        // Recalculate running totals
-        let running = 0;
-        for (const d of state.depositHistory) {
-          running += d.amountUSD;
-          d.newTotal = Math.round(running * 100) / 100;
-        }
-        // If deposit total changed significantly, adjust peak to prevent false drawdown
-        if (Math.abs(state.totalDeposited - prevDeposited) > 50) {
-          state.trading.peakValue += (state.totalDeposited - prevDeposited);
-          if (state.trading.peakValue < state.trading.totalPortfolioValue) {
-            state.trading.peakValue = state.trading.totalPortfolioValue;
+        const wouldRegress = prevDeposited > 0
+          && flows.totalDeposited < prevDeposited - REGRESSION_THRESHOLD_USD;
+
+        if (wouldRegress) {
+          // Scanner returned a materially lower value than what we hold.
+          // Keep the persisted truth; surface the disagreement so operators
+          // can investigate. INV-11 (chain-deposit-reconciliation, pauseScope
+          // all-displays) will continue firing and the customer dashboard
+          // will refuse PnL until either the scanner agrees or the operator
+          // updates state explicitly via /api/admin/correct-state.
+          console.warn(
+            `  🛡️ DEPOSIT-WRITE REFUSED: scanner returned $${flows.totalDeposited.toFixed(2)}, ` +
+            `state holds $${prevDeposited.toFixed(2)} (delta -$${(prevDeposited - flows.totalDeposited).toFixed(2)}). ` +
+            `Skipping write — operator must correct via /api/admin/correct-state if scanner is right.`
+          );
+        } else {
+          state.totalDeposited = flows.totalDeposited;
+          state.onChainWithdrawn = flows.totalWithdrawn;
+          state.depositHistory = flows.deposits.map(d => ({
+            timestamp: d.timestamp,
+            amountUSD: Math.round(d.amountUSD * 100) / 100,
+            newTotal: 0, // Recalculated below
+          }));
+          // Recalculate running totals
+          let running = 0;
+          for (const d of state.depositHistory) {
+            running += d.amountUSD;
+            d.newTotal = Math.round(running * 100) / 100;
+          }
+          // If deposit total changed significantly, adjust peak to prevent false drawdown
+          if (Math.abs(state.totalDeposited - prevDeposited) > 50) {
+            state.trading.peakValue += (state.totalDeposited - prevDeposited);
+            if (state.trading.peakValue < state.trading.totalPortfolioValue) {
+              state.trading.peakValue = state.trading.totalPortfolioValue;
+            }
           }
         }
       }

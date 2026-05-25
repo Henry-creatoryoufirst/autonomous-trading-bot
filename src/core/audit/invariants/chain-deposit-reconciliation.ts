@@ -11,16 +11,21 @@
  * and lost the $154 of pre-rotation losses. INV-11 catches this class:
  * any time the chain says "more was deposited than the bot remembers."
  *
- * SEVERE on divergence > $5 AND > 2% of portfolio. Pause scope: none.
+ * SEVERE on divergence > $5 AND > 2% of portfolio. Pause scope: all-displays.
  *
- * Why pause-scope none:
+ * Why pause-scope all-displays (2026-05-25 promotion from 'none'):
  *   - Unlike INV-10 (where in-state is wrong about CURRENT inventory),
  *     INV-11 is about HISTORICAL deposit-tracking. Today's trading
  *     decisions don't depend on yesterday's deposit history. The bug
  *     is one of REPORTING (PnL is wrong relative to true capital), not
- *     of operational safety.
- *   - Pausing all-buys here would punish users for accounting drift
- *     that doesn't affect what's safe to trade. Log loud, don't gate.
+ *     of operational safety. So `all-buys` would over-react.
+ *   - But `none` lets the customer dashboard render hallucinated PnL
+ *     while the substrate knows the math is wrong. The 2026-05-23/24
+ *     incident — bot showed +78% on $1,891 deposits while real
+ *     deposits were ~$3,277 (true performance ~-7%) — is exactly the
+ *     trust failure this scope prevents. `all-displays` keeps trading
+ *     running and forces the dashboard to refuse PnL until the
+ *     reconciliation is resolved.
  *
  * The output's `unaccountedUsd` field is what users care about — it's
  * the "missing deposit" Henry was hunting for the Zack case.
@@ -87,7 +92,7 @@ export const chainDepositReconciliation: Invariant = (ctx) => {
     expected: {
       rule: `bot.totalDeposited must equal sum(chain USDC inflows from non-router senders > $${ABS_TOLERANCE_USD})`,
     },
-    pauseScope: 'none',
+    pauseScope: 'all-displays',
     detectedAt: new Date().toISOString(),
   };
 

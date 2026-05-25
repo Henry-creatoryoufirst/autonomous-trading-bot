@@ -33,6 +33,7 @@ import {
 } from '../core/config/constants.js';
 import { SECTORS, TOKEN_REGISTRY } from '../core/config/token-registry.js';
 import { EMBEDDED_DASHBOARD } from './embedded-html.js';
+import { getCurrentBlocker, isDisplayGateActive } from '../core/audit/system-auditor.js';
 
 // Module-level deps — set by initDashboardAPI()
 let state: any;
@@ -368,6 +369,27 @@ export function apiPortfolio() {
     // True P&L = current portfolio + withdrawn - deposited
     truePnL,
     truePnLPercent,
+    // 2026-05-25: SystemAuditor surfaces — two independent gates.
+    //   `auditBlocker` carries the trading-tier blocker (all-buys / per-token /
+    //     next-llm), if any. The bot's trade-execution path consults this.
+    //   `displayGate` is a boolean — true when any SEVERE invariant with
+    //     pauseScope='all-displays' is active in the latest audit report
+    //     (currently INV-11 chain-deposit-reconciliation). The customer
+    //     dashboard reads this and refuses to render PnL when true,
+    //     showing a "reconciling deposit history" banner instead.
+    // The two are tracked independently so a trading-tier blocker can't mask
+    // a display-tier signal (or vice versa).
+    auditBlocker: (() => {
+      const b = getCurrentBlocker();
+      return b && b.active ? {
+        invariantId: b.invariantId,
+        pauseScope: b.pauseScope,
+        reason: b.reason,
+        consecutiveCycles: b.consecutiveCycles,
+        setAt: b.setAt,
+      } : null;
+    })(),
+    displayGate: isDisplayGateActive(),
     // v6.2: Risk-reward metrics
     riskReward: {
       avgWinUSD: riskReward.avgWinUSD,

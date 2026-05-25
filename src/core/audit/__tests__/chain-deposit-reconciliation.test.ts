@@ -88,7 +88,7 @@ describe('INV-11 — the Zack scenario (the case-study)', () => {
     expect(v).not.toBeNull();
     expect(v!.severity).toBe('SEVERE');
     expect(v!.invariantId).toBe('INV-11');
-    expect(v!.pauseScope).toBe('none'); // historical accounting, doesn't affect operational safety
+    expect(v!.pauseScope).toBe('all-displays'); // 2026-05-25: promoted from 'none' — gates dashboard PnL display, leaves trading running
     const observed = v!.observed as any;
     expect(observed.direction).toBe('UNDER-COUNTED');
     expect(observed.unaccountedUsd).toBeCloseTo(154.14, 1);
