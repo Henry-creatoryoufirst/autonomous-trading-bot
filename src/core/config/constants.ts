@@ -956,7 +956,7 @@ export const SURGE_DEDUP_WINDOW_MINUTES = 3;
 export const SURGE_MAX_CAPITAL_PER_TOKEN_PCT = 20; // Bear-adjusted Apr-2026: 25→20 — 52-day bear; surge events in sustained bear markets are high-probability dead-cat bounces; tighter per-token cap limits catastrophic concentration risk on false surge signals
 
 /** v19.0: Max surge buys per token per hour (prevents runaway buying on noisy flow) */
-export const SURGE_MAX_BUYS_PER_HOUR = 5;
+export const SURGE_MAX_BUYS_PER_HOUR = 3; // Bear-adjusted May-2026: 5→3 — 79-day bear; Base DEX surge events in sustained bear are predominantly MEV-front-run or short-liquidation driven (not genuine demand); Apr-2026 Aerodrome 21% surge driven by short liquidations confirmed false-signal pattern; limiting to 3/hour reduces false-surge capital deployment by ~40% while retaining access to genuine momentum events
 
 /** Dedup window in minutes for forced deploy buys
  *  v18.0: Widened from 10 to 20 min — be more patient with deployment */
