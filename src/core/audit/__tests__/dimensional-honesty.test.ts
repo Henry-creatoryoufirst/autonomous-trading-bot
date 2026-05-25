@@ -104,6 +104,70 @@ describe('INV-1 dimensional honesty', () => {
     expect(v!.observed.outlier).toBe('A');
   });
 
+  it('does NOT fire phantom when wallet holds sub-$1 dust + cb.currentHolding matches (price-source consistency, round 5)', () => {
+    // 2026-05-25 (round 5): the second half of the phantom false-positive
+    // story. When cb.currentHolding tracks wallet.balance correctly AND the
+    // wallet's usdValue is sub-$1 dust, source A's phantom math must NOT
+    // count the entry — even if lastKnownPrices is stale-high and would
+    // push cb.currentHolding × stalePrice over the $1 dust threshold.
+    //
+    // Scenario: bot holds 0.000009 cbBTC. Wallet says $0.71 (current $78,777
+    // price). lastKnownPrices['cbBTC'].price is stale at $135,000 (peak from
+    // earlier session). Without the round-5 fix:
+    //   phantomValue = 0.000009 × $135,000 = $1.22 (≥ $1) → phantom fires
+    //   balance.usdValue = $0.71 (< $1) → held-balances bucket skips
+    //   → source A over-counts by $1.22, false-positive SEVERE outlier=A
+    // With round-5 (use wallet-derived price for phantom calc):
+    //   walletPrice = $0.71 / 0.000009 = $78,777
+    //   phantomValue = 0.000009 × $78,777 = $0.71 (< $1) → dust filtered
+    //   → no phantom, no false positive
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+        { symbol: 'cbBTC', balance: 0.000009, usdValue: 0.71 }, // sub-$1 dust, current price ~$78,777
+      ],
+      costBasis: {
+        cbBTC: {
+          symbol: 'cbBTC',
+          realizedPnL: 0,
+          totalInvestedUSD: 1,
+          totalTokensAcquired: 0.000009,
+          averageCostBasis: 78_777,
+          currentHolding: 0.000009, // perfectly synced with wallet
+        },
+      },
+      lastKnownPrices: {
+        WETH: { price: 2000 },
+        cbBTC: { price: 135_000 }, // STALE — peak from earlier, way above $78,777 current
+      },
+    });
+    const v = dimensionalHonesty(ctx);
+    expect(v).toBeNull(); // no SEVERE — dust filtered correctly
+  });
+
+  it('still fires phantom when cb.currentHolding genuinely diverges from wallet (round 5 preserves the signal)', () => {
+    // Round 5 must NOT silence the real TOSHI-style signal it inherited from
+    // round 4. Here cb.currentHolding (1,000,000) is wildly higher than wallet
+    // (0). Even with the wallet-price-preference fix, lastKnownPrices gives
+    // the only available price, phantom value = 1M × $0.0005 = $500, fires.
+    const ctx = makeCtx({
+      totalPortfolioValue: 3000,
+      balances: [
+        { symbol: 'WETH', balance: 1, usdValue: 2000 },
+        { symbol: 'USDC', balance: 1000, usdValue: 1000 },
+      ],
+      costBasis: {
+        TOSHI: { symbol: 'TOSHI', realizedPnL: 0, totalInvestedUSD: 500, totalTokensAcquired: 1_000_000, averageCostBasis: 0.0005, currentHolding: 1_000_000 },
+      },
+      lastKnownPrices: { WETH: { price: 2000 }, TOSHI: { price: 0.0005 } },
+    });
+    const v = dimensionalHonesty(ctx);
+    expect(v).not.toBeNull();
+    expect(v!.observed.outlier).toBe('A');
+  });
+
   it('emits the three source values + pairwise deltas in observed', () => {
     const ctx = makeCtx({
       totalPortfolioValue: 3000,

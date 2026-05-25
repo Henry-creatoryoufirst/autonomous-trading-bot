@@ -243,6 +243,33 @@ export function updateUnrealizedPnL(
       cb.peakPriceDate = new Date().toISOString();
     }
   }
+
+  // 2026-05-25 (INV-1 round 5): align cost-basis tracker to wallet truth for
+  // entries whose symbol doesn't appear in this cycle's balance scan.
+  //
+  // Why: the loop above only touches symbols present in `balances`. A cost-
+  // basis entry whose symbol disappears from the scan (fully sold, removed
+  // from TOKEN_REGISTRY, withdrawn via Telegram /sendto, lost in a gas-refuel
+  // swap) keeps its stale `currentHolding` indefinitely. INV-1's phantom-
+  // costBasis bucket then sums those stale values against `lastKnownPrices`,
+  // producing a persistent A-vs-B drift that rounds 1-4 each patched
+  // dimensional-honesty.ts to mitigate without ever fixing the source. The
+  // wallet is truth; absent a matching balance, the holding is zero.
+  //
+  // Safe by construction: USDC and any symbol not yet in costBasis are
+  // untouched. We only zero entries the loop above didn't already update.
+  const balanceSyms = new Set(balances.map((b) => b.symbol));
+  for (const [symbol, cb] of Object.entries(costBasisMap)) {
+    if (symbol === "USDC") continue;
+    if (balanceSyms.has(symbol)) continue;
+    if ((cb.currentHolding ?? 0) <= 0) continue;
+    const stale = cb.currentHolding;
+    cb.currentHolding = 0;
+    cb.unrealizedPnL = 0;
+    console.log(
+      `  🔧 costBasis sweep: ${symbol} currentHolding ${stale.toFixed(6)} → 0 (no matching wallet balance; realizedPnL $${cb.realizedPnL.toFixed(2)} preserved)`,
+    );
+  }
 }
 
 export function rebuildCostBasisFromTrades(
