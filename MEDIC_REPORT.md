@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-25T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-25T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-kFseD
 
 ## Problem
 
@@ -89,6 +89,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-25T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-kFseD (CLAUDE.md Rule 2 — no staging push).
+- **Scout**: SKIPPED — GeckoTerminal blocked (403). WebSearch found no Base DEX tokens with verifiable on-chain liquidity/volume metrics. CLAUDE.md Rule 1 (Option B cohort lock, 2026-05-15→2026-06-15) also prevents TOKEN_REGISTRY additions regardless.
+- **Auditor**: TRIGGERED by inferred 77-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding: CULL_MIN_AGE_HOURS 72→48 — Kelly volatility research confirms 2-day culling cycle is optimal for stale sub-$100 positions in >60-day bear; guards (CULL_MAX_MOMENTUM=3%, CULL_MIN_PNL_PCT=-5%) intact. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-25)
+- **Signal Quality**: Smart money wallet clustering (Nansen/Arkham) — 65% win rate vs 41% for standalone bots. Full integration complex (Impact 3/Complexity 4/Risk medium) → Watch list. (Priority 0.75)
+- **Execution Efficiency**: Permit2 batch approvals already implemented. Aerodrome Slipstream V2 auto-benefits without code change. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly volatility research: "position sizes reduced during high volatility; volatility constraints significantly reduce drawdowns in sustained bear." CULL_MIN_AGE_HOURS 72→48 — accelerates capital rotation, frees capital from dead positions 24h faster. Guards prevent genuine winner culling. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: CoW Protocol batch settlement eliminates MEV front-running on Base — requires executeDirectDexSwap changes (off-limits). 1inch Fusion Dutch auction routing — complex architecture (Impact 3/Complexity 5/Risk high). Watch list for Henry.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +217,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
