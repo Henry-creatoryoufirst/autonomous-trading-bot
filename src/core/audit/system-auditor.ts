@@ -398,16 +398,25 @@ const ALL_INVARIANTS: Array<{ id: string; fn: Invariant }> = [
  * The blocker carries the most-recent invariantId for traceability.
  */
 function deriveBlocker(violations: Violation[], prevBlocker: SystemHealthBlocker | null): SystemHealthBlocker | null {
-  const severe = violations.filter(v => v.severity === 'SEVERE' && v.pauseScope !== 'none');
+  // Trading-tier scopes only. Display-tier scopes ('all-displays') are tracked
+  // independently via isDisplayGateActive() so they don't compete with trading
+  // scopes for the single blocker slot. When INV-1 (all-buys) and INV-11
+  // (all-displays) are both SEVERE, the trade gate fires AND the display gate
+  // fires — neither masks the other.
+  const TRADING_SCOPES = new Set<PauseScope>(['all-buys', 'per-token-buys', 'next-llm']);
+  const severe = violations.filter(v => v.severity === 'SEVERE' && TRADING_SCOPES.has(v.pauseScope));
   if (severe.length === 0) {
     return null;
   }
 
   // Pick the most restrictive scope. Order: all-buys > per-token-buys > next-llm.
+  // 'none' and 'all-displays' sit at 0 so the exhaustiveness check passes; they
+  // can't appear in `severe` after the TRADING_SCOPES filter above.
   const order: Record<PauseScope, number> = {
     'all-buys': 3,
     'per-token-buys': 2,
     'next-llm': 1,
+    'all-displays': 0,
     'none': 0,
   };
   let winningScope: PauseScope = 'none';
@@ -648,6 +657,13 @@ export function canExecuteAction(args: {
       persist();
       return { allowed: false, reason };
 
+    case 'all-displays':
+      // Display-tier scope: signals customer-facing surfaces to refuse the
+      // affected number, never gates trading. The bot trades exactly as if
+      // no blocker were active; the dashboard reads the blocker via
+      // /api/portfolio and renders a banner in place of PnL.
+      return { allowed: true };
+
     case 'none':
       return { allowed: true };
   }
@@ -657,6 +673,24 @@ export function canExecuteAction(args: {
 
 export function getCurrentBlocker(): SystemHealthBlocker | null {
   return _state.currentBlocker;
+}
+
+/**
+ * True iff the most-recent audit report has at least one SEVERE violation
+ * with pauseScope='all-displays' (currently INV-11 chain-deposit-reconciliation).
+ *
+ * Tracked independently of currentBlocker so a trading-tier blocker can't mask
+ * the display-tier signal. The customer dashboard reads this through
+ * /api/portfolio.displayGate and refuses to render PnL when true.
+ *
+ * Returns false on bots that haven't run an audit cycle yet (no lastReport).
+ */
+export function isDisplayGateActive(): boolean {
+  const last = _state.lastReport;
+  if (!last) return false;
+  return last.violations.some(
+    v => v.severity === 'SEVERE' && v.pauseScope === 'all-displays'
+  );
 }
 
 export function getMonitorStats(): AuditorStats & { enabled: boolean; alertMode: AuditorMode } {

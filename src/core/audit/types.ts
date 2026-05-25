@@ -34,8 +34,16 @@ export type Severity = 'INFO' | 'WARN' | 'SEVERE';
  * - `per-token-buys` — BUYs of `affectedTokens` pause; everything else allowed
  * - `next-llm`    — the next LLM-driven decision is short-circuited to HOLD;
  *                    deterministic gates (force-sells, breaker exits) keep working
+ * - `all-displays` — trading continues unchanged; customer-facing surfaces
+ *                    (dashboard PnL, Telegram lifetime-return reports) must
+ *                    refuse to render the affected number. For invariants
+ *                    that signal "the math is wrong" without affecting
+ *                    operational safety — e.g. INV-11 deposit-tracking
+ *                    drift. Better than `none` (which lets the dashboard
+ *                    lie) but more honest than `all-buys` (which halts
+ *                    trading over a reporting bug).
  */
-export type PauseScope = 'none' | 'all-buys' | 'per-token-buys' | 'next-llm';
+export type PauseScope = 'none' | 'all-buys' | 'per-token-buys' | 'next-llm' | 'all-displays';
 
 // ============================================================================
 // THE LLM PROMPT CAPTURE
