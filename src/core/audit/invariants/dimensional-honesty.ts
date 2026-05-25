@@ -42,9 +42,19 @@ const PRICE_READINESS_MIN_COVERAGE = 0.80; // ≥80% of non-trivial positions mu
 const MIN_POSITION_USD_FOR_SOURCE_A = 1;
 
 /**
- * 2026-05-22 — round 4: balances-as-ground-truth (replaces round 3's clamp).
+ * 2026-05-25 — round 5: align the SOURCE of drift, not just the symptom.
  *
- * The 4-deploy arc on INV-1 source A — and why we're rewriting it:
+ * Rounds 1-4 all worked WITHIN this file — they tuned what source A counts.
+ * Round 5 finally fixed the upstream cost-basis update path
+ * (`updateUnrealizedPnL` in src/core/portfolio/cost-basis.ts) so cb.currentHolding
+ * tracks wallet truth even for tokens that disappear from the balance scan
+ * (fully sold, removed from cohort, withdrawn via /sendto, lost in a
+ * gas-refuel swap). PLUS this file's `sumPhantomCostBasis` now prefers the
+ * wallet-derived price (b.usdValue / b.balance) over `lastKnownPrices`, so a
+ * stale-high price can't push a perfectly-synced sub-$1 dust entry over the
+ * phantom dust gate.
+ *
+ * The 5-deploy arc on INV-1 source A:
  *
  *   PR #38 (round 1, dust)   — exclude sub-$1 entries from the costBasis loop.
  *     Fixed SPX-style 1e-15 × $3.77B garbage.
@@ -87,6 +97,29 @@ const MIN_POSITION_USD_FOR_SOURCE_A = 1;
  * value to source A, A diverges from B + C dramatically, INV-1 fires SEVERE
  * outlier=A. Test coverage: see "preserves the phantom-costBasis signal"
  * below.
+ *
+ * Why round 4 didn't fully resolve in production (the trigger for round 5):
+ *
+ *   2026-05-23 efficient-peace: source A = $3,159 vs B = $3,061, ~$98 drift,
+ *   outlier=A — identical symptom to rounds 1-3. Verified 2026-05-25 with live
+ *   prod state: ~33 sub-$1 dust positions in wallet, several with matching
+ *   cost-basis entries. Two interacting drift modes:
+ *
+ *   (a) updateUnrealizedPnL iterates `balances` only. Any costBasis symbol
+ *       absent from the wallet scan keeps its stale currentHolding forever.
+ *       Tokens fully sold via Aerodrome but no longer in the active scan
+ *       (cohort changed in PR #48, gas-refuel swap, /sendto withdrawal) leave
+ *       stale tracker rows that source A's phantom bucket then counts.
+ *
+ *   (b) Even when cb.currentHolding == balance.balance (correctly synced),
+ *       `lastKnownPrices[X]` can be stale-high vs the wallet's implied price.
+ *       cb.currentHolding × stalePrice can cross the $1 phantom dust gate
+ *       while the wallet's b.usdValue (using the current price) sits well
+ *       below — phantom fires on a price-source mismatch, not a real drift.
+ *
+ *   Rounds 1-4 each tightened the cost-basis loop's classification gate. None
+ *   addressed (a) — the SOURCE — or (b) — the price-source mismatch INSIDE
+ *   the phantom bucket. Round 5 fixes both.
  *
  * Edge that round 4 *intentionally* drops: "cost-basis has 10× current
  * holding while the wallet holds 1×." Both balance and cb-derived value are
@@ -231,11 +264,25 @@ function sumPhantomCostBasis(ctx: InvariantContext): number {
     if (CASH_AND_GAS_SYMBOLS.has(symbol)) continue;
     const holding = cb.currentHolding ?? 0;
     if (holding <= 0) continue;
-    const price = ctx.lastKnownPrices[symbol]?.price ?? cb.averageCostBasis ?? 0;
+    // 2026-05-25 (INV-1 round 5): price source mismatch is the second half of
+    // the phantom-bucket false-positive story. When the wallet holds a sub-$1
+    // amount AND `cb.currentHolding == balance.balance` (i.e. tracker IS in
+    // sync), `cb.currentHolding × lastKnownPrices[X]` can still cross the $1
+    // dust threshold if lastKnownPrices is stale-high — phantom fires even
+    // though the only divergence is a price-source mismatch. Prefer the
+    // wallet's implied price (b.usdValue / b.balance) when available so the
+    // phantom calc and source-B speak the same dollars.
+    const balanceEntry = balanceBySymbol[symbol];
+    const walletPrice =
+      balanceEntry && balanceEntry.balance > 0 && (balanceEntry.usdValue ?? 0) > 0
+        ? balanceEntry.usdValue / balanceEntry.balance
+        : 0;
+    const price =
+      walletPrice || ctx.lastKnownPrices[symbol]?.price || cb.averageCostBasis || 0;
     if (price <= 0) continue;
     const cbValueUsd = holding * price;
     if (cbValueUsd < MIN_POSITION_USD_FOR_SOURCE_A) continue; // dust
-    const balanceUsd = balanceBySymbol[symbol]?.usdValue ?? 0;
+    const balanceUsd = balanceEntry?.usdValue ?? 0;
     // Held-balances bucket already covers this symbol at chain truth.
     if (balanceUsd >= MIN_POSITION_USD_FOR_SOURCE_A) continue;
     sum += cbValueUsd;

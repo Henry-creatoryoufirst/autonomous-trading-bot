@@ -214,6 +214,69 @@ describe('updateUnrealizedPnL', () => {
     updateUnrealizedPnL(balances);
     expect(map['USDC']).toBeUndefined();
   });
+
+  // ==========================================================================
+  // INV-1 round 5: align cost-basis tracker to wallet truth
+  //
+  // The four prior rounds of INV-1 fixes all worked WITHIN dimensional-honesty.ts —
+  // none touched the cost-basis update path that's the actual source of drift.
+  // updateUnrealizedPnL iterates `balances` only; any costBasis entry whose
+  // symbol disappears from the scan (fully sold, removed from cohort, withdrawn
+  // via /sendto, lost in a gas-refuel swap) keeps its stale `currentHolding`
+  // indefinitely. INV-1's phantom-costBasis bucket then sums those stale values
+  // and over-counts source A. The fix: sweep cost-basis entries with no
+  // matching balance and force currentHolding to zero.
+  // ==========================================================================
+  it('zeros currentHolding for costBasis entries that have no matching wallet balance', () => {
+    const map = initTestState();
+    const prices: PriceMap = {
+      ETH: { price: 2000 },
+      TOSHI: { price: 0.001 },
+    };
+    // Bot once held both ETH and TOSHI
+    updateCostBasisAfterBuy('ETH', 2000, 1, prices);
+    updateCostBasisAfterBuy('TOSHI', 100, 100_000, prices);
+    // Manually populate currentHolding to mirror what an earlier
+    // updateUnrealizedPnL cycle would have done — the buy path only updates
+    // averageCostBasis / totalTokensAcquired, not currentHolding.
+    map['ETH'].currentHolding = 1;
+    map['TOSHI'].currentHolding = 100_000;
+
+    // Wallet now shows ETH only (TOSHI fully sold + removed from balance scan)
+    const balances = [{ symbol: 'ETH', balance: 1, usdValue: 2200, price: 2200 }];
+    updateUnrealizedPnL(balances);
+
+    expect(map['ETH'].currentHolding).toBe(1); // updated to wallet truth
+    expect(map['TOSHI'].currentHolding).toBe(0); // swept to zero — no wallet balance
+    expect(map['TOSHI'].unrealizedPnL).toBe(0); // also cleared
+  });
+
+  it('preserves realizedPnL when sweeping stale currentHolding', () => {
+    const map = initTestState();
+    const prices: PriceMap = { TOSHI: { price: 0.001 } };
+    updateCostBasisAfterBuy('TOSHI', 100, 100_000, prices);
+    map['TOSHI'].currentHolding = 100_000; // simulate prior cycle's update
+    map['TOSHI'].realizedPnL = -42.50; // simulate prior realized loss
+
+    // Wallet no longer holds TOSHI — sweep should zero currentHolding but keep PnL
+    updateUnrealizedPnL([{ symbol: 'ETH', balance: 1, usdValue: 2000, price: 2000 }]);
+
+    expect(map['TOSHI'].currentHolding).toBe(0);
+    expect(map['TOSHI'].realizedPnL).toBe(-42.50); // intact
+  });
+
+  it('leaves untouched costBasis entries with matching balance (no double-update)', () => {
+    const map = initTestState();
+    const prices: PriceMap = { WETH: { price: 2000 } };
+    updateCostBasisAfterBuy('WETH', 2000, 1, prices);
+
+    const balances = [
+      { symbol: 'WETH', balance: 0.5, usdValue: 1100, price: 2200 },
+    ];
+    updateUnrealizedPnL(balances);
+
+    expect(map['WETH'].currentHolding).toBe(0.5); // wallet truth, not zeroed
+  });
 });
 
 // ===========================================================================
