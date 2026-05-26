@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-05-26T UTC | Scout due (>48h, last=2026-05-14) but GeckoTerminal blocked AND cohort LOCKED per CLAUDE.md Rule 1 (Option B window); no qualifying candidates from WebSearch; auditor research complete — no finding reached Priority ≥2.0; CLAUDE.md Option B window blocks constant modifications for attribution integrity; no implementation |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,30 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No critical patterns assessed.
+- **Scout**: DUE (last scout 2026-05-14 = 12 days ago, >48h threshold). GeckoTerminal API blocked by network policy. CLAUDE.md Rule 1 also locks cohort during Option B window (2026-05-15 to ~2026-06-15). WebSearch for "new tokens Base L2 high volume May 2026" returned L2 overview results but no specific Base tokens with verifiable on-chain metrics meeting quality filters. No COHORT_PROPOSAL written — no qualifying candidates identified.
+- **Auditor**: TRIGGERED (inferred bear/volatile regime continuation from Option B pivot context; production metrics inaccessible but historical BEAR regime context from Run #34). Research ran 4 targeted searches. No finding reached Priority ≥ 2.0 threshold. Additionally, CLAUDE.md explicitly states automated edits to strategy constants during Option B window (2026-05-15 to ~2026-06-15) muddy alpha attribution. No implementation. See full research summary below.
+
+## Auditor Research Summary (Run #35 — 2026-05-26)
+
+- **Signal Quality**: Smart money wallet clustering (multiple whale wallets accumulating same token → confluence signal, Nansen labels). Studies show 65% win rate vs 41% for standalone technical bots. NVR already implements whale flow detection (LARGE_TRADE_THRESHOLD_USD=2500). Full Nansen/multi-wallet clustering integration: Impact 3, Complexity 4, Risk medium → Priority 0.75. Below 2.0. Watch list. No new action.
+
+- **Execution Efficiency**: Aerodrome Slipstream V2 (Nov 2025) routing upgrade already benefiting NVR. MEV-Resistant Pool migration scheduled May 2026 — affects LPs, not swap takers. Slipstream V3 gas-aware routing auto-benefits bot without code change. Priority 0. No action.
+
+- **Position Sizing**: Advanced Kelly with Bitcoin dominance as regime indicator (size up in favorable regime, size down or go stablecoins in unfavorable). Current NVR already implements TRENDING_DOWN×0.75 Kelly multiplier. BTC dominance signal would require new data feed integration. Impact 3, Complexity 3, Risk medium → Priority 1.0. Below 2.0. No new action. Quarter-Kelly (KELLY_FRACTION=0.25) + GUARDIAN_NOVEL_TOKEN_HOURS=72h already well-calibrated.
+
+- **Competitive Intelligence**: Intent-based solver routing becoming standard in 2026 (wallets send signed Intents, specialized solvers compete). NVR would require touching executeDirectDexSwap (off-limits). MEV-protection mode (private relays/sequencer-direct RPC) already active in NVR. AI-on-AI MEV growing; bot already defends via HOT_MOVER_MIN_FDV_USD=1M. No new actionable finding above Priority 2.0.
+
+**Option B Window Note**: Even if a finding cleared Priority ≥ 2.0, CLAUDE.md's Option B window rule blocks automated constant modifications until ~2026-06-15. All research findings above are documented here for Henry's post-window review.
+
+## Watch List for Henry (post-Option B window ~2026-06-15)
+
+1. **Smart Money Confluence**: Multi-wallet accumulation clustering as additional confluence point. Priority 0.75 now but compound impact if win rate dips.
+2. **Bitcoin Dominance Regime Signal**: Use BTC.D as secondary Kelly sizing multiplier (more sophisticated than current TRENDING_DOWN binary flag).
+3. **Intent-Based Routing**: CoW-style solver competition for NVR's large trades. Requires executeDirectDexSwap refactor.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
