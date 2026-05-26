@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-05-26T UTC | Scout blocked — Option B cohort lockdown (CLAUDE.md Rule 1, window ~2026-06-15) + GeckoTerminal API unavailable from sandbox; auditor raised VWS_MIN_LIQUIDITY_USD 20K→30K — 81-day bear + Aerodrome LP migration (May 23, 2026) creating thin old-pool liquidity during cross-chain launch transition |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, same as Runs #1–34). Egress proxy blocks Railway and GeckoTerminal domains. Bot health cannot be assessed from this sandbox.
+- **Scout**: BLOCKED — Option B cohort lockdown active per CLAUDE.md Rule 1 (window 2026-05-15 to ~2026-06-15). No TOKEN_REGISTRY additions permitted during benchmark window. GeckoTerminal API also unavailable from sandbox. Last actual scout additions (MOLT 2026-05-14, OPENX/VEIL 2026-05-16) were reverted post-pivot.
+- **Auditor**: TRIGGERED by 81-day BEAR market (48h+ threshold continuously met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: VWS_MIN_LIQUIDITY_USD 20K→30K — Aerodrome launched MEV-resistant pools May 23, 2026 (3 days ago); LPs actively migrating from old Slipstream pools ahead of July cross-chain launch; old pools becoming thinner during migration window; 81-day bear amplifies LP withdrawal pressure. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-26)
+- **Signal Quality**: Smart money wallet clustering (Nansen-style 65% win-rate vs 41% standalone bots) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration requires complex external API hookup (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: KEY FINDING — Aerodrome launched MEV-resistant pool migration May 23, 2026. Old Slipstream pools losing LPs to new pools ahead of July cross-chain DEX launch. Pools that previously had $20K-$30K liquidity may now be below the bot's existing floor during the transition. VWS_MIN_LIQUIDITY_USD 20K→30K raises the floor to account for migrating LPs. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0) Source: cryptoadventure.com aerodrome-slipstream-review-2026
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) confirmed optimal for 80+ day bear. Research notes: reduce sizes when volatility spikes or new-token history is limited. NVR already well-calibrated. KELLY_POSITION_CEILING_PCT=12% + TRENDING_DOWN×0.75 → 9% effective max. No new action. (Priority 0.5)
+- **Competitive Intelligence**: $3B+ MEV extracted from Ethereum and L2s in 2026. Bot's sequencer-direct RPC already provides MEV protection. Grid/DCA bot strategies confirmed for ranging bear markets — NVR's AI-discretionary approach is already equivalent. No new action. (Priority 0)
+
+## Watch List for Henry (Run #35)
+- **Aerodrome cross-chain DEX launch (July 2026)**: Full migration to MEV-resistant pools completes July 2026. May warrant re-calibrating VWS floor again post-migration when new pool liquidity stabilizes.
+- **Smart money clustering**: Nansen-style on-chain wallet analytics (Impact 3, Complexity 4) — requires dedicated data feed integration. High-value but out of scope for autonomous auditor.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

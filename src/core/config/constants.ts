@@ -688,7 +688,7 @@ export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size 
 export const VWS_MAX_SPREAD_PCT = 0.5;             // Skip trade if VWS > 0.5%
 export const VWS_TRADE_AS_POOL_PCT_MAX = 5;        // Max trade size as % of pool liquidity
 export const VWS_TRADE_AS_POOL_PCT_WARN = 2;       // Warn if trade > 2% of pool
-export const VWS_MIN_LIQUIDITY_USD = 20_000;       // Bear-adjusted May-2026: 10K→20K — 63-day bear; $10K pools in sustained downtrends carry 2-3× realized slippage vs bull (LP withdrawal + thinner depth); $20K floor cuts the worst-slippage tail without significantly reducing trade count
+export const VWS_MIN_LIQUIDITY_USD = 30_000;       // Bear-adjusted May-2026: 20K→30K — 81-day bear + Aerodrome LP migration (May 23, 2026); old Slipstream pools losing LPs to new MEV-resistant pools ahead of July cross-chain launch; migrating liquidity creates 2-4× slippage risk in previously $20K-$30K pools during transition window
 export const VWS_PREFERRED_LIQUIDITY_USD = 50_000; // Preferred minimum for full-size trades
 export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools between min and preferred
 
