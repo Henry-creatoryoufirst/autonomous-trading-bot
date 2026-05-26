@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-26T UTC | Option B day 11; Scout ran (GeckoTerminal blocked + CLAUDE.md Rule 1 lock) — no registry changes, COHORT_PROPOSAL_2026-05-26.md written; Auditor triggered (81-day inferred bear), no qualifying constant changes found (all major bear-adjusted params already calibrated), watch items documented |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is now the **35th consecutive run** with the same network restriction.
+- **Scout**: RAN — last scout commit was 2026-05-16 (~10 days ago, well beyond 48h). GeckoTerminal blocked (host not in allowlist). CLAUDE.md Rule 1 also prohibits TOKEN_REGISTRY changes during Option B window (~2026-06-15). WebSearch research conducted; no new qualifying candidates identified beyond existing registry. `COHORT_PROPOSAL_2026-05-26.md` written to repo root per Rule 1 guidance.
+- **Auditor**: TRIGGERED — inferred 81-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). No qualifying constant changes implemented this run: all major bear-adjusted parameters are well-calibrated and the Option B benchmark window requires stability for alpha attribution. Watch items documented. See Auditor Research Summary below.
+
+## Auditor Research Summary (Run #35 — 2026-05-26)
+- **Signal Quality**: Smart money wallet tracking (Nansen-style — 65% win rate vs 41% for standalone bots). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + DEX buy-ratio pipeline. Full integration requires external API (Impact 3/Complexity 4/Risk medium) → Watch list for Henry. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome MEV-resistant pool migration ahead of July 2026 "Aero" cross-chain DEX launch. LPs must migrate; router contract may change. Bot should verify it is routing through the current Slipstream router (0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5 per BaseScan). No code change needed now, but Henry should monitor the July launch date — if Aerodrome deprecates the old router, DEX swaps will fail. (Impact 3/Complexity 2/Risk medium) → **Watch for July 2026**. (Priority 1.5)
+- **Position Sizing**: Quarter-Kelly confirmed optimal for crypto bear regimes (multiple 2026 sources). NVR already at KELLY_FRACTION=0.25 × KELLY_POSITION_CEILING_PCT=12% × TRENDING_DOWN=0.75 → effective max ~2.7% per trade. Fully calibrated. No change. (Priority 0)
+- **Competitive Intelligence**: AI-on-AI MEV increasing on Base (cryptollia.com 2026). Sequencer-direct RPC already active. MEV-resistant pools on Aerodrome (see Execution Efficiency above) are the key upcoming change. No new actionable constant found. (Priority 0)
+- **Why no implementation**: Option B benchmark window (2026-05-15 to ~2026-06-15) requires constant stability for alpha attribution. 34 previous runs have adjusted all major bear-market parameters. The Aerodrome router watch item requires human review before any code action.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
