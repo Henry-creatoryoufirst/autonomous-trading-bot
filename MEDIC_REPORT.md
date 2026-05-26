@@ -1,3 +1,39 @@
+# MEDIC REPORT — 2026-05-26T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-05-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Bot has been live since last update; git history confirms active engineering work (v21.30.0 on main, HOLD_ONLY_TOKENS feature for cbLTC, spec-035 INV reconciliation work).
+- **Scout**: RAN (last scout was 2026-05-16, >10 days ago, >48h threshold). GeckoTerminal API blocked; WebSearch used instead. **COHORT LOCKED** per CLAUDE.md Rule 1 (Option B window runs until ~2026-06-15). No additions to TOKEN_REGISTRY. Candidates documented in `COHORT_PROPOSAL_2026-05-26.md` in repo root.
+- **Auditor**: TRIGGERED by inferred regime shift (BTC $68K retraced from $122K ATH, bull-bear indicator turned green May-12, market down 5.57% weekly — VOLATILE/recovering). All bot constants are bear-adjusted from a 70-day bear that has structurally broken. Top finding: FLOW_REVERSAL_EXIT_BUY_RATIO 38→40 — bull market recalibration (first step). Research source: CoinDesk/CryptoQuant bull-bear indicator green signal May-12 + original comment confirms "40% exits calibrated for bull-market flows." Impact 3, Complexity 1, Risk low, Priority 3.0. IMPLEMENTED in constants.ts. Pushed to `claude/cool-sagan-2Y1gQ` for Henry's review — **NOT auto-merged to staging/main**.
+
+**Henry: review `claude/cool-sagan-2Y1gQ` branch → merge to staging → promote to main when ready.**
+
+## Auditor Research Summary (Run #35 — 2026-05-26)
+
+### Market Regime
+CryptoQuant bull-bear indicator turned green May-12 (first since March 2023). BTC retraced from $122K ATH to ~$68K. ETH at $2,272 (above $2K structural). Market $2.57T, down 5.57% weekly (corrective, not structural). All prior bear-adjusted constants (Runs #17–34) were optimized for a 70-day sustained bear — that environment has changed.
+
+### Signal Quality
+Aerodrome MEV-resistant pool migration live (May-12 window). Slipstream V3 (MetaDEX03) launches July 2026 with MEV interception at DEX level. Bot auto-benefits from Slipstream routing without code change. Impact 2, Complexity 0 — no action needed. (Priority N/A)
+
+### Execution Efficiency
+MetaDEX03 unifies Aerodrome (Base) + Velodrome (Optimism) with cross-chain routing and MEV-protected pools. July 2026 launch. NVR auto-benefits from the DEX layer; no code change required. Watch list: when Aero launches, monitor slippage metrics for improvement. (Priority 0)
+
+### Position Sizing (KEY FINDING — IMPLEMENTED)
+All NVR position sizing constants are bear-adjusted: KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, SURGE_MAX_CAPITAL_PER_TOKEN_PCT=20, RIDE_THE_WAVE_SIZE_PCT=3, FLOW_REVERSAL_EXIT_BUY_RATIO=38. In a recovering bull market, these exit winners too early and limit upside capture. FLOW_REVERSAL_EXIT_BUY_RATIO 38→40 is the lowest-risk first step — the constant's own comment states "40% exits were calibrated for bull-market flows where 55-60% is normal." Implemented. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+### Competitive Intelligence
+65% of crypto volume in 2026 uses automation. DCA/grid bots thriving in volatile recovery markets. NVR's AI-driven confluence approach is architecturally superior. No code gap identified vs competition. Aerodrome's upcoming Aero platform (July 2026) may improve Base DEX depth and reduce slippage. (Priority 0)
+
+### Watch List for Henry (too complex for auto-implementation)
+- Further bull-market recalibration: KELLY_FRACTION 0.25→0.30, KELLY_POSITION_CEILING_PCT 12→14, SURGE_MAX_CAPITAL_PER_TOKEN_PCT 20→25 (sequentially, if market confirms bull regime)
+- RIDE_THE_WAVE_MIN_MOVE 7→6 and HOT_MOVER_MIN_CHANGE_H1_PCT 7→6 as bull confirmation strengthens
+- Aero/Slipstream V3 (MetaDEX03) integration for cross-chain routing when July 2026 launch stable
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
