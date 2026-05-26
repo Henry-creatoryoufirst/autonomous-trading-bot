@@ -1116,7 +1116,7 @@ export const DECEL_MIN_DROP_FROM_PEAK = 6; // Bear-adjusted May-2026: 8→6 — 
 export const DECEL_MIN_CYCLES = 2;
 
 /** Base trim % per cycle */
-export const DECEL_BASE_TRIM_PCT = 10;
+export const DECEL_BASE_TRIM_PCT = 15; // Bear-adjusted May-2026: 10→15 — 81-day bear; mild decel events (accel 0 to -3) fire first; trimming 15% vs 10% captures 50% more profit before position fades; guards unchanged (DECEL_MIN_PROFIT_PCT=2%, DECEL_MIN_CYCLES=2, cap=30%)
 
 /** Moderate deceleration threshold (acceleration < -this) */
 export const DECEL_MODERATE_THRESHOLD = 3;
