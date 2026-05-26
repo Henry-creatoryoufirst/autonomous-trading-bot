@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-26T UTC | Scout skipped (CLAUDE.md Option B HARD RULE — cohort locked during 30-day benchmark window until ~2026-06-15); Auditor research-only — CLAUDE.md prohibits automated constant changes during Option B window (muddy alpha attribution); CRITICAL FINDING: Bitcoin bull-bear cycle indicator turned green for first time since March 2023 — 81-day bear regime may be ending; all bear-adjusted constants potentially too conservative — deferred to Henry for human review |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,59 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403/allowlist on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — CLAUDE.md Option B HARD RULE: cohort is locked for the 30-day benchmark window (2026-05-15 to ~2026-06-15). No automatic additions to COHORT_QUALITY_7. Additional signal: scout-related git activity within 48h (ee86c93, 2026-05-25).
+- **Auditor**: RESEARCH-ONLY — triggered by inferred 81-day BEAR regime (70 days confirmed on 2026-05-15; 11 more days elapsed). CLAUDE.md Option B rules prohibit automated constant changes during benchmark window ("unattended automated edits to the constants the strategy runs on muddy the alpha attribution"). Research ran 4 searches. No code changes made. All findings deferred to Henry for human review. See research summary below.
+
+## Auditor Research Summary (Run #35 — 2026-05-26) — RESEARCH ONLY, NO CODE CHANGES
+
+**⚠️ CRITICAL WATCH ITEM: Market Regime Transition**
+
+Bitcoin's bull-bear cycle indicator (CryptoQuant) turned GREEN for the first time since March 2023 as of May 2026. Bitcoin is range-trading $80,800–$82,000. CMC Altcoin Season Index at 39/100 (Bitcoin Season). This is a regime-shift signal, not a trading trigger — but it implies the 81-day bear market that drove all recent constant adjustments may now be ending.
+
+**Impact for Henry:** All `# Bear-adjusted May-2026` constants in `constants.ts` were calibrated for a sustained bear regime. If the regime has genuinely shifted to neutral/recovering, key constants to consider reviewing:
+- `KELLY_FRACTION = 0.25` (was 0.35 in bull — could step back toward 0.30)
+- `HOT_MOVER_MIN_FDV_USD = 1_000_000` (was 500K — could ease back if bear MEV pressure subsides)
+- `FLOW_REVERSAL_EXIT_BUY_RATIO = 38` (was 40 — exits may be triggering too early in recovering regime)
+- `CULL_MIN_AGE_HOURS = 72` (was 168 — was appropriate for dead capital; may over-rotate in recovery)
+- `STALE_POSITION_MIN_AGE_HOURS = 36` (was 48 — fast exit was bear-market capital-recycling; recovery needs more patience)
+
+**DO NOT auto-implement any of the above.** These are human decisions with audit trail implications for Option B.
+
+### Signal Quality (Search 1)
+- Smart money wallet clustering (multi-wallet same-token accumulation) confirmed as 65% win-rate signal source
+- DeFiLlama TVL tracking for Base L2 regime confirmation now standard practice
+- NVR already implements whale-flow + buy-ratio confluence — no new code action needed
+- Impact 2 / Complexity 4 / Risk medium → Priority 0.5 → Watch list
+
+### Execution Efficiency (Search 2 — Aerodrome)
+- **ACTION REQUIRED (July 2026 deadline):** Aerodrome is migrating liquidity to new MEV-resistant pools for July 2026 launch. LPs must actively participate before launch to continue receiving AERO emissions. This may affect routing if NVR's swap paths route through deprecated pools.
+- MetaDEX03 (cross-chain interoperability, reduced value leakage) in development — auto-benefits when deployed
+- Slipstream V2 routing already in place; V3 cross-chain auto-benefits at DEX level
+- Impact 4 / Complexity 3 / Risk medium → Priority 1.33 → **Henry: review Aerodrome MEV-resistant pool migration by June 2026**
+
+### Position Sizing (Search 3 — Kelly)
+- Quarter-Kelly (0.25×) confirmed optimal for volatile/uncertain markets — NVR already there
+- Research: "track market regime using trend indicators, volatility measures, Bitcoin dominance, sizing up during favorable conditions"
+- The green bull-bear indicator (see Critical Watch Item above) is the regime signal to watch
+- No new code action within scope — implications folded into Critical Watch Item
+- Impact 1 / Complexity 1 / Risk low → Priority 1.0 → No standalone action needed
+
+### Competitive Intelligence (Search 4)
+- AI-driven bots using LLMs as reasoning engine confirmed as best-in-class (NVR already does this)
+- On-chain signal integration (Nansen/Dune/DeFiLlama) remains watch list — complex, requires off-limits execution changes
+- "340% spike in search interest for on-chain bots 2025-2026" — alpha compression incoming; NVR's LLM + adversarial review is a durable edge
+- Impact 2 / Complexity 4 / Risk medium → Priority 0.5 → Watch list
+
+### Henry's Review Queue (Option B Window)
+1. **Regime review** — Is the bear over? CryptoQuant green indicator + $82K BTC range suggests transition. If confirmed, start unwinding bear constants in priority order (Kelly → HOT_MOVER FDV → exit thresholds). Each change needs a human PR with rationale.
+2. **Aerodrome July 2026 migration** — Check if NVR's Aerodrome swap paths need updating before July 2026 MEV-resistant pool launch. This is time-sensitive and may require execution-path changes (above auto-implementation scope).
+3. **Constants snapshot for Option B** — Consider freezing current constants.ts as a named baseline (`OPTION_B_BASELINE_2026_05_15`) so audit trail is clean regardless of mid-window human PRs.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +259,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
