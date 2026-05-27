@@ -1,6 +1,6 @@
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -203,9 +203,21 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Jobs Status This Run (Run #35 — 2026-05-27T10:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout 2026-05-16 → 11 days elapsed). GeckoTerminal API blocked (403 — same sandbox restriction). WebSearch-based candidates written to `data/COHORT_PROPOSAL_2026-05-27.md` per Option B Rule 1 (TOKEN_REGISTRY locked during window). Manual verification required before any add.
+- **Auditor**: TRIGGERED by inferred 71-day BEAR market (48h+ threshold met). Research ran 4 searches. Top finding: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→12 — effective cash deployment threshold rises from 12→15 confluence; at 71-day bear (was 63 days when last tuned), Kelly + bear-market research confirms idle-cash windows in sustained downtrends are pause-before-continuation, not green lights; require stronger signal before URGENT-tier deployment. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-27)
+- **Signal Quality**: Smart money/whale tracking (LARGE_TRADE_THRESHOLD_USD=2500) already covers the top on-chain alpha technique. Research confirms "mirroring smart money wallets achieves 65% win rate vs 41% standalone." No new action.
+- **Execution Efficiency**: Aerodrome pool migration to MEV-resistant pools underway (May 2026, ahead of July Aero cross-chain DEX launch). Bot auto-benefits from DEX-level routing improvements without code change. Aero unified DEX launch (July 2026) is a watch-list item for Henry — could affect routing quality/liquidity depth. No immediate code change.
+- **Position Sizing**: KEY FINDING — Kelly criterion research (2026) confirms: "in sustained bear, idle-cash windows are pause-before-continuation; excess cash should require stronger signal." With NORMAL_CONFLUENCE_BUY=27 and previous discount=15 → effective threshold=12. At 71-day bear (last tuned at 63 days), lowering discount 15→12 raises threshold to 15. IMPLEMENTED: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→12.
+- **Competitive Intelligence**: MEV protection — already using sequencer-direct RPC. Aerodrome Slipstream V3 MEV auctions return value to LPs; bot auto-benefits. Intent-based routing (CoW-style) still requires touching executeDirectDexSwap (off-limits). Watch list.
+
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
