@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-27T UTC | Scout skipped — CLAUDE.md Rule 1 Option B lock prohibits TOKEN_REGISTRY commits (window closes ~2026-06-15); GeckoTerminal blocked by network policy; web search found no verifiable new candidates. Auditor lowered CULL_MIN_AGE_HOURS 72→48 — 82-day bear; sub-$100 research positions recycle 33% faster (3→2 days); Kelly capital rotation research; guards (CULL_MIN_PNL_PCT=-5, CULL_MAX_MOMENTUM=3) intact |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from this sandbox). Bot production URL and GeckoTerminal both blocked by environment egress policy. Not a bot failure — same persistent infrastructure constraint since Run #1. MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 (Option B lock, in force until ~2026-06-15) explicitly prohibits `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` commits. Three auto-adds since the pivot (MOLT 2026-05-14, OPENX + VEIL 2026-05-16) all had to be reverted. GeckoTerminal API additionally blocked by network policy; web search returned no verifiable new token candidates with addresses/liquidity data. Candidates to be proposed to Cathedral vault when Henry opens a review window.
+- **Auditor**: TRIGGERED by inferred 82-day BEAR market (48h+ threshold met; 12 more days beyond Run #34 at 70-day). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: CULL_MIN_AGE_HOURS 72→48 — accelerates stale research-position culling from 3 days to 2 days in 82-day sustained bear; continuation of the 168→120→72 progression (Run #27 at 56 days, Run ~28 at 65 days); guards intact (CULL_MIN_PNL_PCT=-5, CULL_MAX_MOMENTUM=3, CULL_MAX_USD=100). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-27)
+- **Signal Quality**: Nansen Smart Money wallet tracking — following large profitable wallets achieves 65% win rate vs 41% standalone. Already partially captured via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + order flow buy-ratio. Full Nansen API integration requires new pipeline (Impact 4/Complexity 5/Risk med) → Watch list for Henry. (Priority 0.8)
+- **Execution Efficiency**: Aerodrome Slipstream gas-aware routing with concentrated pool preference confirmed active. Bot already routes 85%+ through Aerodrome (per KuCoin 2026 research). MEV protection via sequencer-direct RPC already in BASE_RPC_ENDPOINTS. Aerodrome+Velodrome merge to unified "Aero" platform targeting Q3 2026 — bot auto-benefits without code change. No new action. (Priority 0)
+- **Position Sizing**: Kelly criterion 2026 research confirms Quarter-Kelly (25%) optimal for crypto bear. Already at KELLY_FRACTION=0.25. Fractional Kelly research also confirms "low-vol periods in sustained downtrends are pause-before-continuation, not green lights" — already addressed by VOL_LOW_BOOST=1.25 reduction (from 1.5 at 65-day bear). KEY FINDING: 82-day bear (82 days vs 65 days last CULL adjustment) → CULL_MIN_AGE_HOURS 72→48 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV-aware tighter slippage (1-2% sufficient with MEV protection) confirmed. TWAP jitter at 20% already active. Multi-chain AI order-splitting out of scope (touches execution path). Base MCP launched 2026-05-26 enabling AI agents to execute on-chain DeFi — no immediate code change needed; strategic opportunity for future on-chain AI agent integration (Watch list). (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
