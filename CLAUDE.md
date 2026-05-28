@@ -21,7 +21,7 @@ Memory references: `project_nvr_option_b_pivot`, `feedback_continuous_strategy_c
 ## Overview
 Claude-powered AI trading bot running 24/7 on Base (L2). Executes 15-minute cycles analyzing market conditions via technical indicators, confluence scoring, and adversarial risk review.
 
-## Current Version: v21.13.0 (see package.json — source of truth)
+## Current Version: v21.30.0 (see package.json — source of truth)
 
 ## Quick Reference
 - **Main file:** `agent-v3.2.ts` (~850KB)
