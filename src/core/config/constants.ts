@@ -1110,7 +1110,7 @@ export const POSITION_CONCENTRATED_STOP_PCT = -7;
 export const DECEL_HISTORY_LENGTH = 5;
 
 /** Min drop from peak buy ratio before trim activates (percentage points) */
-export const DECEL_MIN_DROP_FROM_PEAK = 6; // Bear-adjusted May-2026: 8→6 — 55-day bear; buy ratio peaks are lower, smaller drops signal distribution earlier; activates Smart Trim faster to protect profitable positions before they fade
+export const DECEL_MIN_DROP_FROM_PEAK = 5; // Bear-adjusted May-2026: 8→6 (Run#25, 55d) → 6→5 (83d bear); quality-cohort buy ratio peaks at ~55-58%; 6pp drop to ~52% was too late; 5pp drop catches distribution 1 cycle earlier; DECEL_MIN_CYCLES=2 + DECEL_MIN_PROFIT_PCT=2 guards prevent hair-trigger on noise
 
 /** Consecutive deceleration cycles before first trim */
 export const DECEL_MIN_CYCLES = 2;

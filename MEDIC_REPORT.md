@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-28T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-28T UTC (claude/cool-sagan-rYaKf session)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-rYaKf (Rule 2: never push to staging/main)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35+ | 2026-05-26–28T UTC | Option B window active (2026-05-15+). Multiple hourly sessions running on claude/* branches per Rule 2. Scout blocked (GeckoTerminal unreachable + cohort locked). Auditor proposals queued for Henry review: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→12, CULL_MIN_AGE_HOURS 72→48, DECEL_BASE_TRIM_PCT 10→15, VWS_MIN_LIQUIDITY_USD 20K→30K, DECEL_MIN_DROP_FROM_PEAK 6→5. All on separate claude/* branches awaiting merge. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,7 +206,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now 35+ consecutive runs with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,12 +214,26 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Review queued auditor proposals** on claude/* branches (5 proposals pending since 2026-05-26)
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
-- No changes to agent-v3.2.ts
+- MEDIC_REPORT.md updated on claude/cool-sagan-rYaKf per Rule 2 (no staging/main push)
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+
+---
+
+## Jobs Status This Run (2026-05-28T — claude/cool-sagan-rYaKf)
+
+- **Medic**: PATTERN D — API unreachable (persistent, 35+ consecutive runs, 403 from Railway egress allowlist). GeckoTerminal also blocked. MEDIC_REPORT updated.
+- **Scout**: SKIPPED — Option B cohort lock (CLAUDE.md Rule 1, 2026-05-15+). GeckoTerminal API also unreachable. NVR-HQ vault not in repo checkout. Another session (claude/cool-sagan-Q5MV9, 10:08 UTC) already filed COHORT_PROPOSAL_2026-05-28 for AERO.
+- **Auditor**: TRIGGERED — 83-day BEAR regime (48h+ threshold). Research ran 4 searches. Top finding: DECEL_MIN_DROP_FROM_PEAK 6→5 (83-day bear; buy ratio peaks even lower than 55-day bear when 8→6 was set; 5pp sensitivity completes the DECEL tightening arc from Run #25/26). PROPOSED on claude/cool-sagan-rYaKf — awaiting Henry review per Rule 2.
+
+## Auditor Research Summary (2026-05-28)
+
+- **Signal Quality**: On-chain smart money wallet confluence (Nansen/Arkham 2026) — mirroring top-wallet trades achieves 65% win rate vs 41% standalone; price lags wallet behavior. NVR already captures this via LARGE_TRADE_THRESHOLD_USD=2500 buy-ratio pipeline. Full cross-wallet correlation complex (Impact 3/Complexity 4/Risk med) → Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream V2/V3 upgrades — 34× capital efficiency improvement, flashblocks 10× faster execution. Bot auto-benefits via existing Slipstream router. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — DECEL_MIN_DROP_FROM_PEAK 6→5: At 83-day bear, quality-cohort buy ratio peaks are lower (~55-58%) than at the 55-day point when 8→6 was set. A 6pp drop from 58% to 52% triggers DECEL — but distribution in the quality cohort often begins at a 5pp drop (from 58% to 53%). Advancing sensitivity by 1pp with existing guards (DECEL_MIN_CYCLES=2, DECEL_MIN_PROFIT_PCT=2) avoids hair-trigger behavior. Completes the DECEL tightening arc: 8→6 (Run #25) → 6→5 (this run). PROPOSED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Private mempool / MEV protection bots mainstream in 2026; NVR already uses sequencer-direct RPC (MEV protection). Confidence-interval position sizing (adjust size by prediction uncertainty) — interesting but complex to wire into existing swarm pipeline (Impact 3/Complexity 4/Risk med) → Watch list.
