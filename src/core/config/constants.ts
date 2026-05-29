@@ -688,7 +688,7 @@ export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size 
 export const VWS_MAX_SPREAD_PCT = 0.5;             // Skip trade if VWS > 0.5%
 export const VWS_TRADE_AS_POOL_PCT_MAX = 5;        // Max trade size as % of pool liquidity
 export const VWS_TRADE_AS_POOL_PCT_WARN = 2;       // Warn if trade > 2% of pool
-export const VWS_MIN_LIQUIDITY_USD = 20_000;       // Bear-adjusted May-2026: 10K→20K — 63-day bear; $10K pools in sustained downtrends carry 2-3× realized slippage vs bull (LP withdrawal + thinner depth); $20K floor cuts the worst-slippage tail without significantly reducing trade count
+export const VWS_MIN_LIQUIDITY_USD = 15_000;       // Bear-adjusted May-2026: 10K→20K (Run#33) then 20K→15K (Run#35) — Aerodrome METADEX03 upgrade (May 23 2026) added MEV-resistant pools with built-in MEV auctions; sandwich attacks deterred at protocol level; realized slippage on 15K-20K pools materially improved vs when 20K floor was set
 export const VWS_PREFERRED_LIQUIDITY_USD = 50_000; // Preferred minimum for full-size trades
 export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools between min and preferred
 
