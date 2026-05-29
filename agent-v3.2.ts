@@ -6132,7 +6132,15 @@ const tradeInFlight = new Set<string>();
 
 async function executeTrade(
   decision: TradeDecision,
-  marketData: MarketData
+  marketData: MarketData,
+  // 2026-05-28 (full-exit liquidation): operator-forced execution. When true,
+  // bypasses the TRADING_ENABLED dry-run gate and the HOLD_ONLY token gate so
+  // an authenticated /api/admin/liquidate-all call can sweep positions to USDC
+  // even while the bot is parked in dry-run. Defaults false — the autonomous
+  // cycle NEVER passes force, so normal dry-run/HOLD_ONLY behavior is unchanged.
+  // Does NOT bypass withdrawPaused, the auditor gate, gas checks, balance caps,
+  // TWAP, or slippage protection — only the two operator-intent gates.
+  force: boolean = false
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
 
   // v14.0: Block trading during active withdrawal to prevent race conditions
@@ -6166,10 +6174,13 @@ async function executeTrade(
     fromToken: decision.fromToken,
     toToken: decision.toToken,
   });
-  if (holdOnlyGate.blocked) {
+  if (holdOnlyGate.blocked && !force) {
     console.log(`  ⏸️ ${holdOnlyGate.reason}`);
     recordHoldOnlyBlock();
     return { success: false, error: holdOnlyGate.reason ?? 'HOLD_ONLY token — execution skipped' };
+  }
+  if (holdOnlyGate.blocked && force) {
+    console.log(`  ⚠️ FORCE: bypassing HOLD_ONLY gate for ${holdOnlyGate.symbol} (operator liquidation — thin liquidity may cause partial/failed fill)`);
   }
 
   // v21.11: Raptor 3 — gas check is invisible inside every trade, no external gas service
@@ -6261,11 +6272,14 @@ async function executeTrade(
     }
   }
 
-  if (!CONFIG.trading.enabled) {
+  if (!CONFIG.trading.enabled && !force) {
     console.log("  ⚠️ Trading disabled - dry run mode");
     console.log(`  📋 Would execute: $${decision.amountUSD.toFixed(2)} ${decision.fromToken} → ${decision.toToken}`);
     tradeInFlight.delete(dedupKey);
     return { success: false, error: "Trading disabled (dry run)" };
+  }
+  if (!CONFIG.trading.enabled && force) {
+    console.log(`  ⚠️ FORCE: executing ${decision.action} $${decision.amountUSD.toFixed(2)} ${decision.fromToken}→${decision.toToken} despite TRADING_ENABLED=false (operator liquidation)`);
   }
 
   // v12.2.1: PRICE GATE — never buy a token the price engine can't price.
@@ -12476,6 +12490,81 @@ const healthServer = http.createServer(async (req, res) => {
         } catch (err: any) {
           console.warn(`[admin/restore-trade-history] failed: ${err.message?.substring(0, 200)}`);
           sendJSON(res, 500, { error: `Restore failed: ${err.message ?? 'unknown'}` });
+        }
+        break;
+      }
+      case '/api/admin/liquidate-all': {
+        // 2026-05-28 (full-exit): operator-forced liquidation of every non-USDC,
+        // non-gas, non-yield-receipt holding to USDC. Reuses executeTrade's proven
+        // swap path (balance-cap, TWAP, slippage, gas) with force=true to bypass
+        // the TRADING_ENABLED dry-run gate + HOLD_ONLY gate; unwinds the Aave
+        // yield position separately. Designed to run while the bot is parked in
+        // dry-run (TRADING_ENABLED=false) so its own cycle can't race. After this,
+        // the operator calls /api/withdraw to sweep the resulting USDC out.
+        if (req.method !== 'POST') { sendJSON(res, 405, { error: 'POST only' }); break; }
+        if (!isAuthorized(req)) { sendJSON(res, 401, { error: 'Unauthorized — Bearer token required' }); break; }
+        try {
+          const results: any[] = [];
+          const walletAddr = CONFIG.walletAddress;
+          const MIN_SELL_USD = 5; // skip dust — gas would exceed value
+
+          // 1) Unwind Aave (aBasUSDC → USDC). aToken balance accrues interest, so
+          //    the read value is ≤ actual by execution time — withdraw can't overdraw.
+          try {
+            const aaveUsd = await aaveYieldService.getATokenBalance(walletAddr);
+            if (aaveUsd > 1) {
+              const wc = aaveYieldService.buildWithdrawCalldata(aaveUsd, walletAddr);
+              const account = await cdpClient.evm.getOrCreateAccount({ name: CDP_ACCOUNT_NAME });
+              const tx = await account.sendTransaction({
+                network: activeChain.cdpNetwork,
+                transaction: { to: wc.to as `0x${string}`, data: wc.data as `0x${string}`, value: BigInt(0) },
+              });
+              aaveYieldService.recordWithdraw(aaveUsd, tx.transactionHash, 'operator full-exit liquidation');
+              results.push({ step: 'aave-unwind', usd: Math.round(aaveUsd * 100) / 100, txHash: tx.transactionHash, success: true });
+            } else {
+              results.push({ step: 'aave-unwind', usd: aaveUsd, skipped: 'below $1' });
+            }
+          } catch (e: any) {
+            results.push({ step: 'aave-unwind', success: false, error: e?.message?.slice(0, 160) });
+          }
+
+          // 2) Sell every non-USDC, non-gas, non-yield-receipt holding ≥ $5 to USDC.
+          const md = await getMarketData();
+          const balResp = apiBalances();
+          const SKIP = new Set(['USDC', 'ETH']); // ETH kept for gas
+          for (const b of (balResp.balances ?? [])) {
+            const sym = b.symbol;
+            const usd = b.usdValue ?? 0;
+            if (SKIP.has(sym)) continue;
+            if (sym.startsWith('aBas') || sym.startsWith('mUSDC') || sym === 'aUSDC') continue; // yield receipts → handled by unwind
+            if (usd < MIN_SELL_USD) continue;
+            const decision = {
+              action: 'SELL' as const,
+              fromToken: sym,
+              toToken: 'USDC',
+              amountUSD: usd,
+              reasoning: 'OPERATOR_LIQUIDATION: full exit to USDC (forced)',
+            };
+            try {
+              const r = await executeTrade(decision as any, md, true);
+              results.push({ step: 'sell', symbol: sym, usd: Math.round(usd * 100) / 100, success: r.success, txHash: r.txHash, error: r.error });
+            } catch (e: any) {
+              results.push({ step: 'sell', symbol: sym, usd, success: false, error: e?.message?.slice(0, 160) });
+            }
+          }
+
+          // 3) Report resulting USDC balance for the follow-up /api/withdraw.
+          let usdcAfter = 0;
+          try { usdcAfter = await getERC20Balance(TOKEN_REGISTRY.USDC.address, walletAddr, 6); } catch { /* non-fatal */ }
+          markStateDirty(true);
+          sendJSON(res, 200, {
+            message: 'Liquidation attempted — review per-step results, then call /api/withdraw to sweep USDC',
+            results,
+            usdcBalanceAfter: Math.round(usdcAfter * 100) / 100,
+          });
+        } catch (err: any) {
+          console.warn(`[admin/liquidate-all] failed: ${err?.message?.substring(0, 200)}`);
+          sendJSON(res, 500, { error: `Liquidation failed: ${err?.message ?? 'unknown'}` });
         }
         break;
       }
