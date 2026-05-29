@@ -151,6 +151,25 @@ export function loadTradeHistory(): void {
       // resolve. Companion to the saveTradeHistory line below.
       state.trading.benchmarkSnapshots = parsed.benchmarkSnapshots || [];
       state.trading.lastBenchmarkSnapshotDate = parsed.lastBenchmarkSnapshotDate || undefined;
+      // 2026-05-29 (NVR-SPEC-038 Phase A0) — restore sleeve state so paper-sleeve
+      // track records survive redeploys. Only restore when present; otherwise
+      // leave undefined and let migrateStateToSleeves() seed defaults on boot
+      // (preserves first-run behavior). Companion to the saveTradeHistory change.
+      if (parsed.sleeveOwnership && typeof parsed.sleeveOwnership === 'object') {
+        state.sleeveOwnership = parsed.sleeveOwnership;
+      }
+      if (parsed.sleeveAllocation && typeof parsed.sleeveAllocation === 'object') {
+        state.sleeveAllocation = parsed.sleeveAllocation;
+      }
+      if (parsed.sleeveConfig && typeof parsed.sleeveConfig === 'object') {
+        state.sleeveConfig = parsed.sleeveConfig;
+      }
+      if (state.sleeveOwnership && Object.keys(state.sleeveOwnership).length > 0) {
+        const sleeveCount = Object.keys(state.sleeveOwnership).length;
+        const totalDecisions = Object.values(state.sleeveOwnership)
+          .reduce((s: number, o: any) => s + (o?.decisions?.length || 0), 0);
+        console.log(`  🎯 Sleeve state restored: ${sleeveCount} sleeve(s), ${totalDecisions} decisions preserved across restart`);
+      }
 
       // Expire stale trade failures on startup
       if (Object.keys(state.tradeFailures).length > 0) {
@@ -436,6 +455,17 @@ export function saveTradeHistory(): void {
       // serialized state stays bounded.
       benchmarkSnapshots: (state.trading.benchmarkSnapshots || []).slice(-90),
       lastBenchmarkSnapshotDate: state.trading.lastBenchmarkSnapshotDate || null,
+      // 2026-05-29 (NVR-SPEC-038 Phase A0) — sleeve balance sheets / config /
+      // allocation. PREVIOUSLY OMITTED: these were mutated at runtime + dirtied
+      // after every paper trade, but never serialized, so they reset to empty
+      // on every Railway redeploy. That silently wiped paper-sleeve track
+      // records (root cause of "Alpha Hunter 0 trades ever") and made any
+      // multi-week strategy tournament impossible. Now persisted alongside
+      // benchmarkSnapshots, the same way. Per-sleeve `decisions` are already
+      // capped at 500 internally; ownership stays bounded.
+      sleeveOwnership: state.sleeveOwnership || {},
+      sleeveAllocation: state.sleeveAllocation || {},
+      sleeveConfig: state.sleeveConfig || undefined,
       harvestedProfits: state.harvestedProfits,
       autoHarvestTransfers: state.autoHarvestTransfers,
       totalAutoHarvestedUSD: state.totalAutoHarvestedUSD,
