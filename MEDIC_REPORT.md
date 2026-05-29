@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-05-29T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-05-29T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-Kj5ZM
 
 ## Problem
 
@@ -89,6 +89,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-29T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Continuing to Scout+Auditor per precedent of Runs #17-34.
+- **Scout**: LIMITED SCAN — GeckoTerminal 403 from sandbox. Cohort locked per CLAUDE.md Rule 1 (Option B window 2026-05-15 to ~2026-06-15). Last scout was 2026-05-14 (MOLT, >48h). Web search confirms Base L2 dominant ($53B monthly DEX vol), Base MCP launched 2026-05-26 (AI DeFi gateway — watch list). No qualifying tokens added; TOKEN_REGISTRY unchanged.
+- **Auditor**: TRIGGERED — 84-day BEAR market + F&G=22 (Extreme Fear, BTC ~$75K). Research ran 4 searches. Top finding: CULL_MIN_AGE_HOURS 72→48 — Extreme Fear accelerates sub-$100 position drag; 2-day minimum recycles USDC to quality cohort faster. IMPLEMENTED in constants.ts. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-29)
+- **Market Context**: BTC $75,804 as of May 27; F&G=22 (Extreme Fear); 84-day bear. BTC ETF outflows $1.26B over 6 consecutive days. US-Iran conflict + oil >$100/bbl adding uncertainty. Bot regime: TRENDING_DOWN likely.
+- **Signal Quality**: Smart money wallet clustering (65% win rate via on-chain mirroring vs 41% standalone). Already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500). Full integration: Impact 3, Complexity 4, Risk medium → Watch list (Priority 0.75). No new action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (Nov 2025, 34x capital efficiency, $1.24B TVL). NVR already routes through Slipstream. Router address update could improve fills — Impact 2, Complexity 3, Risk medium → Watch list (Priority 0.67). No new action.
+- **Position Sizing**: Research confirms Quarter-Kelly (0.25) optimal for 80+ day bear. NVR already at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12. Max effective = 3.5% portfolio per trade ✅ already calibrated. No new action.
+- **Competitive Intelligence**: MEV protection via private relay going mainstream in 2026 (Impact 4, Complexity 5, Risk medium, Priority 0.80) → Watch list. Base MCP launched 2026-05-26 — AI agents can execute DeFi via natural language (Impact 3, Complexity 5, Risk medium → Watch list). KEY IMPLEMENTED: CULL_MIN_AGE_HOURS 72→48 — Extreme Fear context (F&G=22) not present when 72h was set at 65-day bear; sub-$100 positions drag harder in Extreme Fear; 33% faster recycling to USDC for cohort rebalancing supports Option B. Safety guards unchanged (CULL_MAX_MOMENTUM=3%, CULL_MIN_PNL_PCT=-5%).
+
+## Watch List for Henry's Review (Run #35)
+1. **Aerodrome Slipstream V2 router address** — check if bot is on updated router (34x cap efficiency, $1.24B TVL). Low complexity, medium risk.
+2. **Smart money wallet clustering** — integrate Nansen-style top-wallet signal scoring into confluence. High impact, high complexity.
+3. **MEV protection via private relay** — submit swaps directly to builders, bypass public mempool. High impact, very high complexity.
+4. **Base MCP integration** — use new Base MCP (launched 2026-05-26) to query on-chain data/execute DeFi via natural language in signal pipeline. Medium impact, high complexity.
+5. **Option B cohort proposals** — Base ecosystem active but GeckoTerminal inaccessible from sandbox; manual review of trending pools needed when sandbox network policy updated.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
