@@ -1,3 +1,43 @@
+# MEDIC REPORT — 2026-05-30T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-05-30T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Option B window ACTIVE (2026-05-15 to ~2026-06-15). MEDIC_REPORT updated on feature branch `claude/cool-sagan-HBnZY` per Rule 2 (no auto-push to staging during Option B).
+- **Scout**: RAN RESEARCH — last scout was 2026-05-14 (MOLT added, 16 days ago, >48h threshold). However, CLAUDE.md Rule 1 (cohort locked) prohibits TOKEN_REGISTRY additions during Option B window. GeckoTerminal API also unreachable (403). WebSearch found no specific token candidates with verifiable on-chain metrics (liquidity, volume, pool age). No COHORT_PROPOSAL written — no qualifying candidates identified. Standards maintained.
+- **Auditor**: TRIGGERED by inferred BEAR market (85+ days; 48h+ threshold met; confirmed by 16 days of Option B bear-regime context). 4 research searches completed. Top findings: (1) Aerodrome MEV-resistant pool migration in progress for July 2026 "Aero" launch — NVR auto-benefits post-migration, monitor for router address update in July; (2) Nansen Smart Money multi-wallet confluence scoring could improve win rate by ~24pp (65% vs 41%) but requires Nansen API (Impact 4, Complexity 4, Risk medium, Priority 1.0 — watch list); (3) Quarter-Kelly already optimal per 2026 research; (4) Cross-chain arbitrage requires new infrastructure. NO code changes implemented — Option B Rule 2 prohibits auto-push to staging; all proposed improvements require Henry review.
+
+## Auditor Research Summary (Run #35 — 2026-05-30)
+
+### Signal Quality
+**Finding**: Nansen Smart Money multi-wallet confluence — when 3+ smart money wallets accumulate the same token, AI generates a high-confidence entry signal (65% win rate vs 41% for standalone technical bots).
+- Source: Nansen AI (nansen.ai), WunderTrading on-chain analytics guide
+- Impact: 4 / Complexity: 4 / Risk: medium / Priority: 1.0
+- Status: WATCH LIST — requires Nansen API integration; touches confluence-scoring core; well beyond 10-line budget
+
+### Execution Efficiency
+**KEY FINDING**: Aerodrome has begun migration of all LPs to MEV-resistant pools ahead of July 2026 "Aero" unified DEX launch (Aerodrome + Velodrome merger). Slipstream V3 embeds MEV auction directly into the AMM, capturing revenue previously extracted by sandwich bots. NVR routes through Aerodrome Slipstream — after migration, trades will be inherently MEV-protected at the protocol level without any NVR code change.
+- Source: The Block (theblock.co), CryptoAdventure Slipstream Review 2026
+- Impact: 3 / Complexity: 0 (auto-benefit) / Risk: medium (timing) / Priority: N/A (no code change)
+- Status: MONITOR — migration in progress May 2026. July 2026: verify NVR's router address still valid after "Aero" launch. No code change needed now.
+
+### Position Sizing
+**Finding**: 2026 research confirms "risk-constrained Kelly: adding volatility constraints can help avoid trading during unfavorable conditions." NVR already at Quarter-Kelly (KELLY_FRACTION=0.25), KELLY_POSITION_CEILING_PCT=12, VOL_HIGH_THRESHOLD=6, VOL_HIGH_REDUCTION=0.4. All major Kelly levers already deployed.
+- Source: GPTrader Kelly Criterion 2026, LBank Kelly Criterion guide
+- Impact: 1 / Complexity: 1 / Risk: low / Priority: 1.0
+- Status: NO ACTION — already fully calibrated
+
+### Competitive Intelligence
+**Finding**: 2026 consensus — "pros abandoned 'one agent does it all' models; modern stacks use cooperation between specialized agents." NVR already has multi-agent architecture (agent-v3.2.ts + signal-service + CoreSleeve). Cross-chain arbitrage (monitoring ETH/USDC across Base/Arbitrum/Optimism) is the frontier alpha strategy but requires new bridge/RPC infrastructure (Impact 3, Complexity 5, Risk high, Priority 0.6).
+- Source: KuCoin AI+Crypto deep dive, Dysnix autonomous trading guide
+- Status: WATCH LIST — cross-chain infra is out of scope for current bot; suggest Henry evaluate for next major version
+
+## Option B Constraint Note (Run #35)
+All changes that would normally go to staging are instead documented here and committed to `claude/cool-sagan-HBnZY`. No constants were modified. The Option B benchmark requires the cohort and strategy shape to remain stable until ~2026-06-15 for clean alpha attribution.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
