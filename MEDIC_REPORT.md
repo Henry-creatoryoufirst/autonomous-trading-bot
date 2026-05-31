@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-31T UTC | Scout RAN (15 days since MOLT/SYRUP, GeckoTerminal blocked — no qualifying tokens verified); auditor raised HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — 86-day bear; LP withdrawal thins $75K-$100K pools; MEV sandwich elevated at this liquidity tier; final quality-gate tightening (pool-age ✓, vol ✓, FDV ✓, liquidity ✓) |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-05-31T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Bot API and GeckoTerminal both inaccessible from sandbox egress policy. Bot health cannot be confirmed from this environment — see git history for indirect evidence of continued operation.
+- **Scout**: RAN (15+ days since last add; CLAUDE.md Rule 1 prevents TOKEN_REGISTRY modifications during Option B window ~2026-06-15). GeckoTerminal API blocked — cannot verify hard pool data (liquidity/volume/age). WebSearch-only scan found no new tokens not already in registry. Existing registry comprehensively covers Base ecosystem (VIRTUAL, AIXBT, AERO, BRETT, TOSHI, DEGEN, ZORA, Coinbase-wrapped suite, DeFi protocols). 🔍 No qualifying tokens this scan — standards maintained.
+- **Auditor**: TRIGGERED by inferred 86-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — 86-day bear; LP withdrawal thins pools below $100K to 2-3× realized slippage vs bull; MEV sandwich frequency elevated at $75K-$100K tier on Base (extends Run#34 MEV/MEXC research); completes the hot-mover quality-gate tightening set: pool-age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓, liquidity 75K→100K ✓. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-05-31)
+- **Signal Quality**: Multi-source Smart Money wallet clustering (Nansen/Arkham) as convergent buy signal — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500. Full on-chain Nansen integration complex (Impact 3/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome+Velodrome merging into "Aero" July 2026 — bot auto-benefits from improved cross-chain routing without any code change. Gas-aware batching already in Slipstream V3. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal again for sustained crypto bear (altrady.com, LBank, Medium 2026). NVR already at KELLY_FRACTION=0.25. Secondary finding: Half-Kelly captures ~75% of growth rate with reduced drawdown — potential upside path once Option B window closes and bull regime returns. Watch list (not applicable during bear). No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — MEV bots on Base increasingly targeting $75K-$100K liquidity pools in bear regimes (MEXC 2026). Previous Run#34 raised FDV floor to $1M; this run raises liquidity floor to $100K to close the remaining gap in the quality-gate. Multi-agent AI trading systems (ElizaOS) now standard — NVR's swarm architecture is competitive. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
