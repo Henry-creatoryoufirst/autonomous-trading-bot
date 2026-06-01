@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-01T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-01T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-WUzz4 (CLAUDE.md Rule 2 — no staging push)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-01T UTC | Scout ran (last scout 2026-05-25, 7 days elapsed) — all data sources blocked (GeckoTerminal/DexScreener/CoinGecko all 403 sandbox); no qualifying tokens identified; TOKEN_REGISTRY also locked per CLAUDE.md Rule 1 (Option B window ~expires 2026-06-15). Auditor: research-only — CLAUDE.md prohibits constant edits during Option B to preserve alpha attribution; bear-adjusted constants (Apr–May 2026 bear) flagged as potentially over-conservative for quality-7 cohort; recommend Henry review post-June 15. |
 
 ## Bot Health Evidence (from git history)
 
@@ -107,6 +108,18 @@ Because the API is unreachable, the medic cannot determine:
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #32).
 - **Scout**: SKIPPED — last scout ran 2026-05-05T05:08 UTC (cbADA added), ~47h ago, less than 48h threshold.
 - **Auditor**: TRIGGERED by inferred 62-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: SCOUT_UPGRADE_BUY_RATIO 55→60 — aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60). Kelly criterion research confirms new/uncertain positions require stronger confirmation; 55% buy ratio in 62-day bear is predominantly early-stage distribution or MEV front-running. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Jobs Status This Run (Run #35 — 2026-06-01T00:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-WUzz4 (CLAUDE.md Rule 2 prohibits staging push for research-only runs).
+- **Scout**: RAN (last scout 2026-05-25 07:19 UTC, 7 days elapsed, >48h threshold). All data sources blocked (GeckoTerminal API 403, DexScreener 403, CoinGecko 403 — persistent egress sandbox constraint). Web searches returned only generic L2/Base ecosystem overviews with no specific token/pool metrics. No qualifying candidates with verified liquidity/volume data identified. Additionally: CLAUDE.md Rule 1 is active — TOKEN_REGISTRY locked for remainder of Option B window (~2026-06-15). Even if candidates were found, they would go to COHORT_PROPOSAL file, not token-registry.ts.
+- **Auditor**: RESEARCH-ONLY (API blocked → trigger conditions unverifiable). Last known state: 61-day bear as of Run #31 (May 6); Option B window began May 15 with COHORT_QUALITY_7 blue-chip pivot. CLAUDE.md explicitly prohibits automated constant edits during Option B window to preserve alpha attribution purity. Research ran 4 searches. No implementation. Watch-list for Henry: (1) Bear-adjusted constants from April–May 2026 bear market may be over-conservative for quality blue-chip cohort — recommend systematic review post-June 15; (2) Intent-based solver routing (CoW Swap, ~34% DEX share) remains high-value architecture evolution but requires off-limits execution path changes.
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: Multi-source on-chain confluence (whale wallet clustering, TVL inflow/outflow, stablecoin supply change, active addresses) confirmed as alpha signals in 2026 DeFi landscape. NVR already partially implements via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + buy-ratio order-flow pipeline. Full Nansen/Dune integration complex (Impact 3/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (November 2025, 34× capital efficiency, $1.24B TVL, $1M/week fees) already live — bot auto-benefits. Cross-chain expansion (Aerodrome+Velodrome merge, Q2 2026) will further improve routing without code change. No new action. (Priority 0)
+- **Position Sizing**: Kelly criterion research reconfirms Quarter-Kelly (0.25×) optimal for crypto bear; NVR already there. KEY WATCH-LIST FINDING: Current bear-adjusted constants (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, CONFLUENCE_BUY=27, CULL_MIN_AGE_HOURS=72, STALE_POSITION_MIN_AGE_HOURS=36, SURGE_MAX_CAPITAL_PER_TOKEN_PCT=20) were tuned for 60+ day bear market with speculative meme/AI cohort. With Option B's quality-7 blue-chip cohort (cbBTC/WETH dominant, lower volatility profile), these may be over-conservative — particularly CONFLUENCE_BUY=27 (was 25 pre-bear) and KELLY_POSITION_CEILING_PCT=12 (was 14). Not implementable during Option B — recommend Henry review for post-window recalibration. (Impact 3, Complexity 2, Risk med → Deferred to Henry)
+- **Competitive Intelligence**: Intent-based solver routing (CoW Protocol / 1inch fusion, ~34% DEX aggregator share) achieves zero slippage + no failed-tx costs + MEV-free mempool exposure. High strategic value but requires touching executeDirectDexSwap (off-limits for auto-implementation). Watch list for Henry post-Option B. (Impact 4, Complexity 4, Risk med → Watch list)
 
 ## Auditor Research Summary (Run #32 — 2026-05-07)
 - **Signal Quality**: Smart money wallet clustering (multi-wallet same-token buys within time window as confluence) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
@@ -205,7 +218,9 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
+
+**Option B window alert (Run #35 — 2026-06-01):** The window closes ~2026-06-15. After close, recommend reviewing and partially reverting bear-adjusted constants — they were tuned for a 60+ day speculative-token bear market and may be over-conservative for the quality-7 blue-chip cohort (cbBTC/WETH/LINK/cbXRP/cbADA/cbSOL/cbLTC). Specifically: CONFLUENCE_BUY=27→25, KELLY_POSITION_CEILING_PCT=12→14, CULL_MIN_AGE_HOURS=72→120 may all be candidates. Henry's call after reviewing the 30-day performance log.**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
