@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-01T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-01T07:04 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-9pRpN
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-01T07:04 UTC | Scout LOCKED — Option B cohort lock (CLAUDE.md Rule 1, window through ~2026-06-15); GeckoTerminal blocked; no TOKEN_REGISTRY edits; Auditor — API blocked, cannot verify triggers; no changes implemented; key watch-list: Aerodrome→Aero merger July 2026 (MEV-resistant pools) |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,27 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-01T07:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints and `Host not in allowlist` via curl). MEDIC_REPORT updated (Run #35). No bot failure implied — main branch at v21.30.0 with active recent development.
+- **Scout**: LOCKED per CLAUDE.md Rule 1 (Option B cohort lock, 2026-05-15 through ~2026-06-15). >48h has elapsed since last scout token commit (2026-05-16 MOLT, reverted), so scout would otherwise run. GeckoTerminal API remains blocked (403). Web search found no specific qualifying tokens from public sources alone. NVR-HQ not in checkout, so no COHORT_PROPOSAL file written. Scout research complete — see watch list below.
+- **Auditor**: CANNOT CHECK TRIGGERS — all bot API endpoints blocked (`/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`). Win rate, drawdown, and losing streak unknown. Option B window active; strategy stability prioritized. Research ran 4 searches — no changes implemented (triggers unverifiable).
+
+## Scout Watch List (Run #35 — not eligible for TOKEN_REGISTRY until ~2026-06-15)
+
+Ecosystem observation only — no qualifying tokens identified via web search alone (GeckoTerminal blocked):
+- **Aero DEX (AERO)**: Aerodrome+Velodrome unified cross-chain DEX launching July 2026. Token launchpad included. NVR already holds AERO routing exposure. Not a new addition candidate — already in registry.
+- **Base native launch cohort (July 2026)**: Aero launchpad will create new permissionless token launches on Base. Scout should run a full GeckoTerminal pass once the egress allowlist is updated or once the window closes (~2026-06-15).
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+
+Triggers could not be verified (API blocked). Research completed for informational value only. No changes implemented.
+
+- **Signal Quality**: Smart money wallet confluence is standard practice in 2026 (Nansen-style multi-wallet accumulation tracking). NVR already partially implements via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full on-chain clustering complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: KEY FINDING — Aerodrome→Aero merger July 2026 brings MEV-resistant pool migration. Slipstream V3 already gives NVR 34× capital efficiency vs V2. The merger/migration is a routing-layer change NVR auto-benefits from without code change. Liquidity migration begins ahead of July launch. No code action needed. (Priority 0)
+- **Position Sizing**: Volatility targeting (constant-portfolio-vol dynamic sizing) confirmed beneficial by 2026 research. NVR's TRENDING_DOWN ×0.75 multiplier already implements the core concept. KELLY_FRACTION=0.25 + KELLY_POSITION_CEILING_PCT=12 remains well-calibrated for crypto bear regimes. (Priority 0)
+- **Competitive Intelligence**: MevX multi-chain MEV bots expanding on Base. Olas/Polystrat autonomous agents (4,200+ trades, ElizaOS framework) active. Option B's 7-quality-token quality cohort is the correct defensive posture against MEV-dominated micro-cap Base activity. No new action. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +227,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
