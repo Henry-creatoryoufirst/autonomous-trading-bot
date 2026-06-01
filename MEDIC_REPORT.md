@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-01T UTC | Scout: CLAUDE.md Rule 1 enforced — cohort LOCKED (Option B window until ~2026-06-15); no TOKEN_REGISTRY changes; GeckoTerminal blocked; no new qualifying candidates (AERO/MORPHO already tracked). Auditor: BREAKER_DAILY_DD_PCT 7→6 — 87-day bear; industry practice 5-6%; post-liquidate-all USDC re-entry protection. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,20 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-01T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). 17 days since last agent run (#34, 2026-05-15). In the interim, human engineers shipped v21.20→v21.30: spec-035 System Auditor invariants, MirrorAgent, lifetime drawdown scope-aware breaker, liquidate-all admin endpoint, HOLD_ONLY_TOKENS for cbLTC.
+- **Scout**: ACTIVE (last scout was MOLT added 2026-05-14, 18 days ago — well over 48h threshold). CLAUDE.md Rule 1 enforced: cohort LOCKED during Option B benchmark window (active until ~2026-06-15). No changes to TOKEN_REGISTRY. GeckoTerminal API blocked in sandbox (403). WebSearch research: AERO and MORPHO already in TOKEN_REGISTRY; cbBTC/WETH dominant pools in COHORT_QUALITY_7 already; no new qualifying candidates identified. No COHORT_PROPOSAL written (no qualifying candidates).
+- **Auditor**: TRIGGERED — inferred 87-day BEAR market (last confirmed 70-day bear on 2026-05-15; June 1 = +17 days = 87 days; 48h+ threshold met). 4 research searches completed. Top finding: BREAKER_DAILY_DD_PCT 7→6 — 87-day bear (industry practice 5-6%, progression 8→7→6 complete); post-liquidate-all (May 28 admin endpoint) portfolio likely rebuilding from USDC; first re-entries need tighter intraday protection; 1h pause fires 1pp sooner to cap day-1 drawdown. Implemented in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: Smart money wallet clustering (Nansen/Arkham-style) — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500 whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merge into "Aero" unified DEX launching July 2026 — LP migration to MEV-resistant pools underway. Existing Aerodrome Slipstream swap routing continues to function; NVR auto-benefits when Aero launches without code change. VWS_MIN_LIQUIDITY_USD=20K is adequate — cohort pools are $5M-$20M+ and unaffected by LP migration. No new action. (Priority 0)
+- **Position Sizing**: Kelly Quarter (0.25×) already at optimal bear-market level (Fidelity 2026, altrady.com research confirms). VOL_LOW_BOOST already adjusted 1.5→1.25 in May. KELLY_POSITION_CEILING_PCT=12 with TRENDING_DOWN×0.75 → 9% effective max. No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — BREAKER_DAILY_DD_PCT 7→6: industry practice 5-6% for daily drawdown breakers confirmed across multiple 2026 sources (KirChainLabs, WunderTrading, MOSS risk guides). The 8→7→6 progression was explicitly the stated intent of the April tightening ("industry practice 5-6%"). 87-day bear + post-liquidate-all re-entry context makes this the right moment to complete the step. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
