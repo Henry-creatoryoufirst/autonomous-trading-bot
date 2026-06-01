@@ -1113,7 +1113,7 @@ export const DECEL_HISTORY_LENGTH = 5;
 export const DECEL_MIN_DROP_FROM_PEAK = 6; // Bear-adjusted May-2026: 8→6 — 55-day bear; buy ratio peaks are lower, smaller drops signal distribution earlier; activates Smart Trim faster to protect profitable positions before they fade
 
 /** Consecutive deceleration cycles before first trim */
-export const DECEL_MIN_CYCLES = 2;
+export const DECEL_MIN_CYCLES = 1; // Bear-adjusted Jun-2026: 2→1 — 87-day bear; 1 confirmed decel cycle (DROP_FROM_PEAK≥6% + PROFIT≥2% + position guards all hold) is sufficient in sustained bear; 2-cycle requirement was designed for bull false-outs; fires Smart Trim ~15 min earlier per exit
 
 /** Base trim % per cycle */
 export const DECEL_BASE_TRIM_PCT = 10;

@@ -1,8 +1,34 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-01T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-01T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-qSoXw
+
+## Jobs Status This Run (Run #35 — 2026-06-01T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch corrected to `claude/cool-sagan-qSoXw` per CLAUDE.md Rule 2 (previous runs were incorrectly pushing to `staging`).
+- **Scout**: RAN (last scout commit >48h ago, 2026-05-25). GeckoTerminal API blocked (403), DexScreener API blocked (403). WebSearch surfaced general Base ecosystem data but no specific pool candidates with verified liquidity/volume metrics. Additionally: CLAUDE.md Rule 1 prohibits `feat(scout):` TOKEN_REGISTRY auto-adds during Option B window (active until ~2026-06-15). No tokens added. Standards maintained.
+  - Candidates researched but unverifiable/excluded: NORMIE (meme, unverified liquidity), FOMO Base (meme, unverified), DEFIDO (unknown). SEAM already in registry.
+- **Auditor**: TRIGGERED by inferred 87-day BEAR market (2026-06-01 minus ~Apr-3 pivot ≈ 87 days; 48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: DECEL_MIN_CYCLES 2→1 — in a sustained 87-day bear market, 1 confirmed decel cycle with existing guards (DROP_FROM_PEAK≥6%, PROFIT≥2%, DECEL_TRIM_COOLDOWN=120s) is sufficient to fire Smart Trim; the 2-cycle requirement was designed for bull false-outs. Fires exits ~15 min earlier per position. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0) — pushed to `claude/cool-sagan-qSoXw` for Henry's review, NOT to staging.
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: On-chain wallet mirroring (65% win rate vs 41% standalone) — complex full implementation (Nansen/Dune, Impact 3/Complexity 4/Risk medium) → Watch list. NVR already captures via LARGE_TRADE_THRESHOLD_USD=2500. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome Slipstream gas-aware routing + UniversalRouter+Permit2 already integrated. Velodrome/Aerodrome merger July 2026 auto-benefits routing without code change. With MEV protection active, slippage could be tightened, but slippage is in agent-v3.2.ts execution code (off-limits for auto-impl). (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) already confirmed optimal; NVR well-calibrated. KEY FINDING: DECEL_MIN_CYCLES 2→1 — removing extra cycle confirmation that was designed for bull-market false-outs. All protective guards (DROP_FROM_PEAK, PROFIT_PCT, COOLDOWN) remain. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV protection enables 1-2% slippage (vs 5% unprotected) — touches off-limits execution code. OpenOcean cross-DEX aggregation — off-limits. NVR's MEV protection via sequencer-direct RPC already active. No new implementable action. (Priority 0)
+
+## CLAUDE.md Rule Compliance (Run #35)
+- ✅ Rule 1: No TOKEN_REGISTRY auto-adds during Option B window
+- ✅ Rule 2: All commits to `claude/cool-sagan-qSoXw` only (NOT staging or main)
+- Previous runs (#17-#34) were pushing to `staging` in violation of Rule 2 — corrected this run
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
-## Environment
+## Environment (Run #34)
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
