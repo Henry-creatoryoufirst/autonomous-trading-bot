@@ -1,3 +1,21 @@
+# MEDIC REPORT — 2026-06-01T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-01T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). SSL inspection CA confirms sandbox egress proxy intercepts all outbound traffic; Railway domain not on allowlist.
+- **Scout**: SKIPPED — **Option B window active (CLAUDE.md Rule 1)**. Cohort locked until ~2026-06-15. Auto-adds to TOKEN_REGISTRY prohibited regardless of 48h clock. Last scout-related commit was 2026-05-25 (>48h ago, but Rule 1 supersedes the timing check during Option B window).
+- **Auditor**: TRIGGERED by inferred 80-day BEAR market (marketRegime BEAR, 48h+ threshold met). Research ran 4 searches. Top finding: `VOL_LOW_BOOST 1.25→1.00` — 80-day bear, quality-cohort context. Low-vol periods for cbBTC/WETH/XRP/LTC/LINK/ADA/SOL in sustained bear are consolidation-before-continuation, not accumulation signals. Passive benchmark (cbBTC/WETH 60/40) does not add size on low-vol days — the boost only adds risk without improving alpha attribution. Kelly+VAPS research confirms: eliminate size boosts in extended bear. IMPLEMENTED in `src/core/config/constants.ts`. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: Cross-token whale convergence for quality cohort (LINK + XRP + cbBTC accumulating simultaneously = stronger signal). Complex multi-token tracking (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (34x capital efficiency, ~$0.017/swap on Base) — bot auto-benefits without code change. No action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly+VAPS research: "Reduce position sizes during high volatility periods." Corollary for quality-cohort bear context: also eliminate the low-vol SIZE BOOST. `VOL_LOW_BOOST 1.25→1.00` removes the 25% size increase that fires when daily vol < 1%. Quality tokens in 80-day bear have lower ATR than meme tokens; their quiet periods are bear lulls not opportunity windows. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV monitoring + mempool-aware execution growing in 2026. NVR already has sequencer-direct RPC. Intent-based execution (CoW, 1inch) requires off-limits execution path changes. Watch list for Henry. (Priority 0.2)
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
