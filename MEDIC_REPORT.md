@@ -1,3 +1,19 @@
+# MEDIC REPORT — 2026-06-01T (latest) UTC
+
+## Jobs Status This Run (Run #35 — 2026-06-01T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN — 48h+ elapsed since last scout. GeckoTerminal still inaccessible (403). WebSearch conducted for trending Base tokens. No qualifying candidates found that aren't already in TOKEN_REGISTRY (BRETT, TOSHI, VIRTUAL, AERO, HIGHER all registered). Additionally, CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY auto-adds during Option B window (~2026-06-15). No COHORT_PROPOSAL written (no candidates to propose).
+- **Auditor**: TRIGGERED by inferred 83-day BEAR market (Bitcoin peaked $126K Oct 2025, fell to $64K Feb 2026, still consolidating Jun 2026; CMC Altcoin Season Index 39/100 = Bitcoin Season). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: MOMENTUM_EXIT_BUY_RATIO 45→40 — 83-day bear suppresses baseline buy ratios to 45-50%; 45% threshold fires on normal bear noise; 40% requires genuine distribution (60% sell dominance) before exiting profitable positions. Mirrors FLOW_REVERSAL_EXIT_BUY_RATIO bear adjustment pattern (40→38). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: Nansen Smart Money wallet clustering for confluence signals — already on watch list. Smart-money convergence on same token is strongest on-chain alpha per 2026 research. Full Nansen/Dune integration complex (Impact 3/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome+Velodrome officially merged into "Aero" platform Q2 2026. Flashblocks provide 10x faster Base execution; sequencer-direct RPC already captures this. Slipstream V3 cross-chain routing active; bot auto-benefits at DEX level. No code action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — "If bankroll drops 20% from peak, cut position sizes in half; if 40%, stop trading" (industry-standard drawdown controls). NVR already has LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 + CAUTION_PCT=12. MOMENTUM_EXIT_BUY_RATIO 45→40 was the gap: mechanical exit was firing on 83-day bear noise at 45%. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing (cryptollia.com, Jun-2026). Bot already has sequencer-direct RPC + Flashblocks. Intent-based routing (CoW Swap, 1inch) not worth touching executeDirectDexSwap. No new code action. (Priority 0)
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
