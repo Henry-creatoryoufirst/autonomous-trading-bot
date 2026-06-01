@@ -1,4 +1,28 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-01T14:04 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-01T14:04 UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-WM013
+
+---
+## Jobs Status This Run (Run #35 — 2026-06-01T14:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No agent-v3.2.ts changes. Branch: claude/cool-sagan-WM013 (per CLAUDE.md Rule 2 — staging off-limits during Option B window).
+- **Scout**: PAUSED (CLAUDE.md Rule 1 — Option B benchmark window active until ~2026-06-15). Cohort is locked. Last non-reverted scout: 2026-05-08 (SYRUP). Subsequent scouts MOLT (2026-05-14), OPENX (2026-05-16), VEIL (2026-05-16) all reverted by humans. GeckoTerminal API also blocked (403). Research done via web search; no specific qualifying tokens surfaced with verified on-chain data. COHORT_PROPOSAL_2026-06-01.md written to claude/cool-sagan-WM013 for Henry's post-window review.
+- **Auditor**: RESEARCH-ONLY (CLAUDE.md Rule 2 — no parameter changes to staging during Option B window). API blocked → trigger conditions unverifiable. 4 web searches completed (signal quality, execution efficiency, position sizing, competitive intel). NVR-HQ not present in this checkout. No implementation this run. Key watch-list items: (1) Aerodrome "Aero" cross-chain DEX launching July 2026 — bot auto-benefits from routing upgrade when live, no code change needed. (2) ARMA/Giza USDC yield optimization already covered by existing aave-yield.ts. (3) Intent-based CoW Protocol routing ~34% DEX share but requires off-limits execution changes.
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: On-chain smart money wallet clustering (Nansen/Dune) — established alpha signal in 2026 DeFi; NVR already uses LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action.
+- **Execution Efficiency**: Aerodrome "Aero" unified cross-chain DEX (Velodrome merger) launching July 2026; Slipstream V3 MEV-resistant pools being introduced. Bot auto-benefits from routing improvements when live — no code change needed now. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) already confirmed optimal. Dynamic weekly recalibration already handled by KELLY_ROLLING_WINDOW=30. Conservative Kelly fractions (10-25%) validated as best practice for crypto 2026. No new action. (Priority 0)
+- **Competitive Intelligence**: ARMA by Giza ($3.96B agentic volume, 15% USDC yield on Base) — NVR already has aave-yield.ts / yield-optimizer.ts covering this. CoW Protocol intent-based routing at ~34% DEX share — requires off-limits executeDirectDexSwap changes. MEV protection via sequencer-direct RPC already active. KEY WATCH-LIST ITEM: Aerodrome "Aero" July 2026 launch — first cross-chain Slipstream V3 deployment with embedded MEV auctions. NVR should evaluate routing upgrade when live. Not implementable pre-launch. (Impact 3, Complexity 2 post-launch, Risk low → Henry's review at July 2026)
+
+---
+_Previous run (Run #34 — 2026-05-15T UTC):_
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
