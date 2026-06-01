@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-01T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-01T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-75HVE (per CLAUDE.md Rule 2 — not pushing to staging)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-01T UTC | Scout ran (48h+ since MOLT 2026-05-14); GeckoTerminal API + bot API blocked — no pool metrics verified; COHORT_PROPOSAL_2026-06-01.md written to COHORT_PROPOSALS/; auditor research ran 4 searches; Option B lock in effect → NO constants changed; Aerodrome/Velodrome July merger flagged as watch item. Branch: claude/cool-sagan-75HVE |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-01T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints + curl host-not-in-allowlist). MEDIC_REPORT updated (Run #35). No code changes.
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT), 18+ days elapsed (>48h threshold). GeckoTerminal API blocked by network policy (same allowlist restriction). Web search found no specific new Base tokens with verified address + pool metrics. **Option B lock in effect** (2026-05-15 to ~2026-06-15) — NO additions to TOKEN_REGISTRY committed. COHORT_PROPOSAL_2026-06-01.md written to COHORT_PROPOSALS/ with research findings and methodology note for Henry.
+- **Auditor**: RESEARCH RAN — trigger conditions unverifiable (API blocked). Inferred regime: bear market transitioning (Base DEX vol +31.57% day, HYPE at ATH, ETF optimism in market). **Option B lock active** — to preserve alpha attribution, NO constants changed this run. All findings proposed in COHORT_PROPOSAL file. Key watch item: Aerodrome→Aero merger July 2026 may temporarily fragment pool liquidity; AERO token address migration TBD.
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+- **Signal Quality**: ARMA (Giza, already in registry as GIZA) spawned 25K+ instances managing $35M+ on Base — confirms on-chain agent activity on Base growing fast. Already implemented: LARGE_TRADE_THRESHOLD_USD=2500 whale flow. No new action. (Impact 2, Complexity 4, Priority 0.5)
+- **Execution Efficiency**: KEY FINDING — Aerodrome/Velodrome merging into "Aero" unified DEX in July 2026. LPs must migrate to new MEV-resistant pools before launch. AERO is both a traded token (in TOKEN_REGISTRY) AND the primary routing DEX. Migration could temporarily fragment liquidity. Recommended: Henry review AERO pool migration status before July and verify bot routing addresses. Cannot auto-implement — touches executeDirectDexSwap (off-limits) and AERO address update needs human confirmation. Watch list. (Impact 4, Complexity 3, Risk medium, Priority 1.3)
+- **Position Sizing**: Base DEX volume at $1.06B/day (+31.57%) and HYPE reaching $64 ATH suggests market regime shift from 85-day bear. Several bear-adjusted constants (CULL_MIN_AGE_HOURS=72, KELLY_FRACTION=0.25, HOT_MOVER_MIN_CHANGE_H1_PCT=7) were calibrated for 65-day bear. Option B attribution requires human-reviewed PRs to adjust — proposed in COHORT_PROPOSAL file. (Impact 3, Complexity 1, Risk low-to-medium given Option B, Priority DEFERRED to human review)
+- **Competitive Intelligence**: QuantHive.AI: multi-chain DEX aggregator analyzing "Alpha Trader" wallets on Base. Momentum metrics + TPI (Trader Profitability Index) from profitable wallet flow. More sophisticated than NVR's current LARGE_TRADE_THRESHOLD_USD=2500 gate. Full integration complex (Impact 3, Complexity 4, Risk medium). Watch list for Henry.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
