@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-01T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-01T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-iweOT (Option B window — no staging push)
 
 ## Problem
 
@@ -89,6 +89,50 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-01T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints including Railway bot API and GeckoTerminal). MEDIC_REPORT updated (Run #35). Working on `claude/cool-sagan-iweOT` per Option B rules (no staging push).
+- **Scout**: RAN RESEARCH — last `feat(scout)` commit was 2026-05-16 (reverted); last non-reverted scout >48h ago. GeckoTerminal API blocked (403) — pool liquidity/volume/age quality filters cannot be applied. No WebSearch result provided specific pool-level metrics for Base tokens. **Per CLAUDE.md Rule 1 (cohort locked through ~2026-06-15)**: zero changes to TOKEN_REGISTRY regardless. Scout research archived below; no COHORT_PROPOSAL written (insufficient pool-level data to score candidates).
+- **Auditor**: SKIPPED IMPLEMENTATION — Bot API blocked (win_rate/drawdown/streak unverifiable). **Per CLAUDE.md Option B attribution rule**: no automated constants changes during 30-day benchmark window (2026-05-15 to ~2026-06-15). Research ran 4 searches; findings archived below for Henry's discretionary review. No changes committed.
+
+## Scout Research Summary (Run #35 — 2026-06-01)
+
+GeckoTerminal API returned 403 (network policy). Quality filter (liquidity >$100k, 24h vol >$50k, pool age >3 days) could not be applied. WebSearch confirms Base is the dominant L2 by daily active users (1M+ DAU), DeFi TVL, and transaction count (7-10M/day). No specific new pool data retrievable from this environment. Scout cannot evaluate candidates without pool-level data.
+
+**Result**: No qualifying tokens this scan — standards maintained. Cohort lock (Rule 1) also prohibits any addition regardless.
+
+## Auditor Research Summary (Run #35 — 2026-06-01)
+
+*Trigger conditions unverifiable (API blocked). Research ran as informational; no changes implemented per Option B alpha-attribution rules.*
+
+### Signal Quality
+- **Finding**: Smart money wallet clustering across multiple wallets → 65% win rate vs 41% for standalone bots (Nansen 2026, walletfinder.ai). On-chain metrics (TVL growth, exchange outflows, active addresses) cited as established alpha signals.
+- **NVR status**: Whale flow partially implemented (LARGE_TRADE_THRESHOLD_USD=2500). Full Nansen/Dune integration requires API keys + complex on-chain pipeline.
+- **Score**: Impact 2 / Complexity 4 / Risk medium → Priority 0.5 — below 2.0 threshold
+- **Action**: Watch list for Henry.
+
+### Execution Efficiency
+- **Finding**: MEV protection via private relay/sequencer-direct RPC enables 1-2% slippage vs 5% unprotected (MEVX guide, QuickNode 2026). Aerodrome Slipstream uses "advanced pathfinding, gas-aware routing, batched settlement."
+- **NVR status**: Bot already uses sequencer-direct RPC for MEV protection and routes via Aerodrome Slipstream. Bot auto-benefits at DEX level without code changes.
+- **Score**: Impact 1 / Complexity 1 / Risk low → Priority 1.0 — below 2.0 threshold
+- **Action**: No code change needed.
+
+### Position Sizing
+- **Finding**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear markets; "update Kelly calculations weekly or after every 20 trades" (altrady.com, stratbase.ai 2026). If drawdown exceeds 25%, temporarily reduce to 0.25× Quarter-Kelly floor.
+- **NVR status**: KELLY_FRACTION=0.25 (already at Quarter-Kelly). KELLY_ROLLING_WINDOW=30 (updated Run #20). KELLY_POSITION_CEILING_PCT=12 (updated Run #30).
+- **Score**: Impact 1 / Complexity 1 / Risk low → Priority 1.0 — below 2.0 threshold
+- **Action**: No change needed — already well-calibrated.
+
+### Competitive Intelligence
+- **Finding**: Top 2026 Base bots use real-time smart money tracking + hard position limits (15% portfolio cap) + anti-MEV protection. "Hard limits set in plugin code (not in LLM)" is now standard. Risk evaluators with "cooldown intervals — after a loss, agent must rest for 30 minutes" are emerging.
+- **NVR status**: Hard position limits enforced via KELLY_POSITION_CEILING_PCT. MEV protection active. Cooldown/loss-rest pattern not implemented but touches execution logic (off-limits for auto-patch). Intent-based routing (CoW Protocol, ~34% DEX share) gaining share — requires executeDirectDexSwap changes (off-limits).
+- **Score**: Impact 2 / Complexity 3 / Risk medium → Priority 0.67 — below 2.0 threshold
+- **Action**: Watch list — intent-based routing / loss cooldown for Henry to evaluate.
+
+**Top finding priority**: 0.5 (best candidate) — no finding cleared the 2.0 threshold with risk=low/medium. No implementation. During Option B window, this is the correct outcome: if no obvious low-risk win exists, maintain signal purity.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +249,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
