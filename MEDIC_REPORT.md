@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-02T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-02T UTC | **Option B window active.** Scout: GeckoTerminal blocked + Rule 1 prohibits TOKEN_REGISTRY edits — no qualifying tokens (standards maintained). Auditor: 8 searches across 4 categories — no finding met priority ≥2.0 threshold; top candidate (drawdown-aware Kelly, priority 1.5) below bar AND blocked by Rule 2 (no staging push during Option B window). No implementation. Report on `claude/cool-sagan-iBi3q`. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,41 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-02T UTC)
+
+⚠️ **Option B window in effect (2026-05-15 to ~2026-06-15)** — CLAUDE.md Rule 1 (cohort locked) and Rule 2 (no staging push) apply to all automated agents this run.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 "Host not in allowlist"). No bot failure detectable. Report updated (Run #35). Working branch: `claude/cool-sagan-iBi3q`.
+- **Scout**: DUE (>48h since last run, 2026-05-16 reverted VEIL). GeckoTerminal also blocked (403). WebSearch found no Base token candidates with verifiable on-chain metrics (liquidity, volume, pool age). Even if candidates found: Rule 1 prohibits adding to TOKEN_REGISTRY during Option B window. Any proposals go to COHORT_PROPOSAL file post-window. Result: **No qualifying tokens — standards maintained.**
+- **Auditor**: TRIGGERED by inferred 88-day BEAR market (48h+ threshold). Ran 8 searches across 4 categories. **No finding met priority ≥2.0 threshold.** Additionally, Rule 2 prohibits pushing constant changes to staging during Option B window. All findings documented below as watch-list items for Henry's post-window review. Result: **No implementation — Option B benchmark integrity preserved.**
+
+## Auditor Research Summary (Run #35 — 2026-06-02)
+
+### Signal Quality
+- **Finding**: Confluence 9+ indicators historically posts 68–72% win rates vs 55–62% for 6–7 indicators (walletfinder.ai 2026). Whale wallet monitoring and stablecoin flow tracking increasingly actionable in 2026 DeFi bots.
+- **NVR assessment**: Already implemented. NVR's multi-indicator confluence + buy ratio tracking covers this. No gap.
+- **Scores**: Impact 2 / Complexity 4 / Risk medium → Priority 0.5. No action.
+
+### Execution Efficiency
+- **Finding**: Permit2 batch approvals allow multiple ERC-20 approvals in one signature, saving gas. Aerodrome Slipstream V2 at $1.24B TVL, 34× capital efficiency, swap fees <$0.50 on Base.
+- **NVR assessment**: Permit2 already used. Aerodrome Slipstream already the primary router. No new actionable gap. Batch permit could reduce approval overhead but touches off-limits execution path.
+- **Scores**: Impact 2 / Complexity 3 / Risk medium → Priority 0.67. Watch list (execution path off-limits).
+
+### Position Sizing
+- **Finding**: Drawdown-aware Kelly reduction — volatility-adjusted sizing automatically reduces exposure during turbulent periods. Research confirms reducing position sizes during high volatility/new tokens. Correlation coefficient <0.6 across portfolio pairs for diversification.
+- **NVR assessment**: Currently at Quarter-Kelly (0.25×f*). A formal drawdown gate (e.g., if drawdown>8% then KELLY_FRACTION×0.80) could add another bear-market safety layer. Implementable in ~3 lines to constants.ts as `KELLY_DRAWDOWN_REDUCTION_PCT`.
+- **Scores**: Impact 3 / Complexity 2 / Risk low → Priority **1.5**. Below the 2.0 threshold AND blocked by Rule 2 (Option B window). **Watch list for post-window (2026-06-15+).**
+
+### Competitive Intelligence
+- **Finding**: Base Flashblocks — Base splits each 2s block into ten 200ms preconfirmation sub-blocks, reducing MEV exposure. Multi-agent architecture (Analyst + Auditor + Executor separation) is the 2026 standard; NVR's Sleeves Phase 2 already aligns. Intent-based trading (CowSwap on Base) provides off-chain order matching with MEV protection.
+- **NVR assessment**: Flashblocks is genuinely novel and Base-specific. Current sequencer-direct RPC partially addresses this. Full Flashblocks integration requires execution path changes (off-limits). CowSwap on Base — could route through it for MEV protection on larger swaps. Both complex.
+- **Scores**: Flashblocks Impact 2 / Complexity 4 / Risk medium → Priority 0.5. Watch list.
+
+## Watch List (for Henry's review post 2026-06-15)
+1. **Drawdown-aware Kelly gate** (Priority 1.5): Add `KELLY_DRAWDOWN_REDUCTION_PCT = 0.80` to constants.ts — multiply Kelly fraction by 0.80 when portfolio drawdown >8%. Estimated ~3 lines. Low risk. Missed the 2.0 bar but worth implementing after Option B window closes.
+2. **Base Flashblocks integration** (Priority 0.5): Use ~200ms preconfirmation sub-blocks to front-run MEV sandwiches. Needs execution path work. Review post-window.
+3. **CowSwap intent routing on Base** (Priority 0.5): Off-chain order matching, zero MEV slippage. Requires swap router changes. Review post-window.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
