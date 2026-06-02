@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-02T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-02T UTC | Scout PROHIBITED — CLAUDE.md Rule 1 (Option B window active until ~2026-06-15); Auditor research-only — Option B window prohibits automated constant changes for alpha attribution integrity; API still unreachable |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,28 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-02T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: PROHIBITED by CLAUDE.md Rule 1. Option B benchmark window is ACTIVE (2026-05-15 to ~2026-06-15). The last three scout auto-adds to TOKEN_REGISTRY all had to be reverted. Last actual scout discovery was MOLT (2026-05-14), 19 days ago — well past 48h threshold — but CLAUDE.md explicitly prohibits `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` commits during this window regardless. No scout run.
+- **Auditor**: TRIGGERED by 88-day BEAR market (48h+ threshold met). Research ran 4 searches. **RESEARCH ONLY — no code changes implemented** per CLAUDE.md spirit: "Unattended automated edits to the constants the strategy runs on muddy the alpha attribution." Option B window closes ~2026-06-15. See findings below.
+
+### Auditor Research Findings (Run #35 — 2026-06-02)
+
+**Signal Quality** (Impact 3/Complexity 4/Risk med/Priority 0.75 → Watch list):
+Wallet mirroring via on-chain analytics achieves 65% win rate vs 41% for standalone bots (BingX 2026 research). NVR partially captures this via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + buy_ratio. Full Nansen/Dune-style smart money clustering requires significant integration work. Cannot auto-implement in ≤10 lines, and the Option B window prohibits strategy changes anyway.
+
+**Execution Efficiency** (Impact 2/Complexity 0/Risk low/Priority ∞ → Already happening):
+Aerodrome Slipstream V3 / Aero MetaDEX (Q2 2026 unification of Aerodrome + Velodrome) auto-benefits NVR routing at DEX level. Slipstream V3 now intercepts MEV auction revenue at the DEX level from centralized sequencers. Bot auto-benefits without code change.
+
+**Position Sizing** (Impact 1/Complexity 1/Risk low/Priority 1.0 → Already calibrated):
+Professional practice confirmed at 10–25% of full Kelly. NVR at KELLY_FRACTION=0.25 (Quarter-Kelly, top of the range) with KELLY_POSITION_CEILING_PCT=12, VOL_HIGH_THRESHOLD=6 ATR-equivalent, and TRENDING_DOWN×0.75 — already fully calibrated. No new improvement identified.
+
+**Competitive Intelligence** (Impact 2/Complexity 3/Risk med/Priority 0.67 → Watch list):
+MEV bots dominating DeFi in 2026 (MEXC 2026 news — consistent with HOT_MOVER_MIN_FDV_USD=1M guard already applied in Run #34). Bear market DCA-accumulation strategy ("wide safety order steps in declining phase") noted but conflicts with Kelly-sizing philosophy. No actionable ≤10-line change identified.
+
+**Summary**: No findings qualify for implementation this run (best priority 0.75, Option B window in effect). All four research areas show NVR is well-positioned; the on-chain wallet clustering signal is the most impactful Watch List item for post-window implementation.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +228,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,7 +236,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window**: closes ~2026-06-15. Scout and constant-tuning will resume after that.
+5. **Watch List item (post-window)**: On-chain wallet clustering / smart money signals. Wallet mirroring achieves 65% win rate vs 41% standalone (BingX 2026). High impact, medium complexity — worth a deliberate implementation sprint after the window closes.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
