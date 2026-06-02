@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-02T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-02T UTC | Scout RAN (18d since MOLT 2026-05-14) — GeckoTerminal API blocked, no verifiable candidates; CLAUDE.md Option B Rule 1 observed (no TOKEN_REGISTRY edits). Auditor: API blocked, trigger conditions unverifiable; Option B window active (~2026-06-15) — research only, no constant changes (attribution preservation). |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,40 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-02T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the 35th consecutive run with the same network restriction.
+- **Scout**: RAN — last scout ran 2026-05-14 (MOLT added), 19 days ago, well past the 48h threshold. GeckoTerminal API is blocked from this sandbox. WebSearch surfaces no new qualifying Base L2 tokens not already in TOKEN_REGISTRY (Aave, Morpho, AERO, Brett, Toshi all already tracked). **CLAUDE.md Option B Rule 1 observed**: cohort is locked through ~2026-06-15; no TOKEN_REGISTRY edits made even if a candidate had been found. No COHORT_PROPOSAL filed (no qualifying candidates verifiable without API access).
+- **Auditor**: RESEARCH ONLY — bot trade API blocked; win rate, drawdown, and losing streak cannot be verified. Option B benchmark window is active (2026-05-15 to ~2026-06-15); automated constant changes would muddy alpha attribution. Research completed (4 searches). No constants changed. Findings documented for Henry's review.
+
+## Auditor Research Summary (Run #35 — 2026-06-02)
+
+**⚠️ OPTION B WINDOW ACTIVE**: No constants changes implemented this run. Research findings are proposals for Henry's review post-window (~2026-06-15).
+
+- **Signal Quality**: Advanced DeFi bots in 2026 run 9+ indicator confluence systems achieving 68–72% win rates (vs 55–62% at 6–7 indicators). Key on-chain signals: whale wallet clustering, stablecoin inflow/outflow monitoring, DEX liquidity concentration. NVR currently uses 5 technical indicators (RSI, MACD, BB, SMA, Fear & Greed). **Watch list**: Adding stablecoin inflow as a 6th confluence vote — already partially captured via LARGE_TRADE_THRESHOLD_USD whale flow. Full Nansen/Dune integration is Impact 3/Complexity 4/Risk medium. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome is migrating to MEV-resistant pools (prerequisite for July 2026 "Aero" cross-chain launch). Existing routing auto-benefits at DEX level without NVR code changes. Confirmed: Base gas fees under $0.01 make Permit2 batch optimization immaterial at current trade sizes. No new action. (Priority 0)
+- **Position Sizing**: Dynamic volatility-targeting research confirms: Kelly should be updated weekly or after every 20 trades. NVR already at Quarter-Kelly (0.25×), KELLY_ROLLING_WINDOW=30, KELLY_POSITION_CEILING_PCT=12. Current calibration is well-positioned per 2026 literature. **One gap identified**: no volatility regime multiplier distinct from TRENDING_DOWN — bear markets suppress Kelly via TRENDING_DOWN×0.75 but volatile/choppy regimes (not trending) don't get a separate discount. Potential future enhancement: add VOLATILE_REGIME_KELLY_MULTIPLIER (0.85). (Priority 1.5, Complexity 1, Risk low — defer to post-Option-B window)
+- **Competitive Intelligence**: MEV sandwich attacks still dominant on micro-cap Base tokens. Slippage differentiation by risk tier is best practice: 3–5% for blue chips, 15–25% for memes. NVR's existing FDV gate (HOT_MOVER_MIN_FDV_USD=1M) correctly filters the highest-risk MEV targets. Aerodrome's MEV-resistant pool migration is worth tracking — may require routing address update post-July 2026 launch. **Watch list**: routing contract address update when Aero cross-chain DEX launches. (Priority 0 now, Priority 3.0 in July 2026)
+
+## Watch List (for Henry's review — post Option B window ~2026-06-15)
+
+1. **VOLATILE_REGIME_KELLY_MULTIPLIER = 0.85**: Add a separate multiplier for VOLATILE/CHOPPY regime (distinct from TRENDING_DOWN). Currently volatile ≠ trending-down regimes get no Kelly discount. Small constants.ts addition. (Impact 2, Complexity 1, Risk low)
+2. **Aerodrome routing address update**: When Aero cross-chain DEX launches (July 2026), the Slipstream router address may change. Monitor Aerodrome announcements and update routing contract reference in agent-v3.2.ts. (Impact 3, Complexity 2, Risk low)
+3. **Stablecoin inflow confluence vote**: Add USDC mint/burn delta as a 6th confluence signal input (positive = risk-on, negative = risk-off). Requires new data source integration. (Impact 3, Complexity 4, Risk medium)
+
+## Recommended Action for Henry
+
+**This is now the 35th consecutive run with the same network restriction (Run #1 was 2026-04-14). Urgent:**
+
+1. **Add to Claude Code egress allowlist:**
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+2. **Review post-Option-B** (after ~2026-06-15): The watch list above has 3 low-risk improvements ready to implement. VOLATILE_REGIME_KELLY_MULTIPLIER is the highest-priority, lowest-complexity one.
+3. **Option B window progress**: 18/30 days complete as of 2026-06-02. 12 days remaining.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
