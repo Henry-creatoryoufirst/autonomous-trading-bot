@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-02T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-02T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-02T UTC | Scout ran (19 days since last scout; GeckoTerminal API blocked; cohort locked per Option B Rule 1); wrote COHORT_PROPOSAL_2026-06-02.md — "Aero" cross-chain token (Dromos Labs/Aerodrome+Velodrome merger, July 2026) flagged as post-window watch candidate; no TOKEN_REGISTRY changes. Auditor: cannot trigger (no API access); strategic intel: Aerodrome MEV-resistant pool migration in progress + "Aero" cross-chain DEX launching July 2026 + Base volume +31.57% daily surge (possible bear-end signal). Option B window closes ~2026-06-15. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-02T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Notable: /api/admin/liquidate-all commit on 2026-05-28 indicates operator-initiated full exit to USDC — intentional management action, not a bot failure. No critical condition inferred; bot believed running per Railway auto-deploy of main branch (v21.30.0).
+- **Scout**: RAN (19 days since MOLT added 2026-05-14, well past 48h threshold). CLAUDE.md Rule 1 active: Option B cohort locked through ~2026-06-15 — no TOKEN_REGISTRY changes permitted. GeckoTerminal API blocked (403) in this sandbox — cannot verify real-time liquidity/volume for candidates. Web search conducted; no specific new token could be confirmed against $100K liquidity + $50K volume + 3-day age thresholds. Wrote COHORT_PROPOSAL_2026-06-02.md to document findings and flag "Aero" cross-chain token (Dromos Labs, Aerodrome+Velodrome merger, expected July 2026) as highest-priority post-window watch candidate.
+- **Auditor**: CANNOT TRIGGER — no API access to verify win_rate, drawdown, losing_streak, or marketRegime. Strategic intelligence gathered: (1) Aerodrome MEV-resistant pool migration in progress ahead of "Aero" cross-chain DEX launch July 2026; (2) Base daily volume +31.57% spike suggests possible bear-end inflection; (3) Option B window closes ~2026-06-15 (13 days). NOTE: bear-adjusted constants (set through Run #34) may require relaxation post-window if market regime has shifted. See COHORT_PROPOSAL for full intelligence summary.
+
+## Auditor Research Summary (Run #35 — 2026-06-02)
+- **Signal Quality**: Base volume +31.57% daily spike observed in web search data; potential bear-end inflection. Without API access cannot confirm portfolio win rate or drawdown to verify trigger. Watch: if BEAR → NEUTRAL/BULL regime confirmed, consider relaxing HOT_MOVER_MIN_CHANGE_H1_PCT 7→5 and RIDE_THE_WAVE_MIN_MOVE 7→5 to capture upside momentum. Requires human confirmation. (Impact 3, Complexity 1, Risk low — but needs verified trigger before auto-implementation)
+- **Execution Efficiency**: KEY FINDING — Aerodrome MEV-resistant pool migration in progress (Q2 2026, ahead of Aero cross-chain DEX launch). Aerodrome LPs are migrating to new MEV-resistant pool contracts. NVR bot should verify its DEX routing stays on active pools post-migration. No immediate code change (routing is DEX-level); monitor if trade failures increase after July 2026 launch. (Impact 2, Complexity 2, Risk low, Priority 1.0)
+- **Position Sizing**: Bear-adjusted constants calibrated through Run #34 (70-day bear). If bear has ended (LIQUIDATE-ALL on 2026-05-28 may signal regime reset), gradual relaxation of KELLY_FRACTION 0.25→0.30, SURGE_MAX_CAPITAL_PER_TOKEN_PCT 20→25 would be appropriate. Requires confirmed market regime change via API data — watch list for Henry. (Impact 3, Complexity 1, Risk medium without confirmed regime change)
+- **Competitive Intelligence**: Aerodrome + Velodrome merger creating "Aero" cross-chain DEX (July 2026) — the unified protocol will be the dominant Base/Optimism liquidity venue. NVR is already routed through Aerodrome Slipstream; cross-chain launch auto-benefits routing depth without code change. New "Aero" governance token may be high-quality scout candidate post-Option-B window.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
