@@ -1,3 +1,63 @@
+# MEDIC REPORT — 2026-06-03T10:04 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-03T10:04 UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-htSxQ
+
+## Problem
+
+The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment.
+
+All endpoints attempted returned `403 Forbidden`:
+
+```
+GET https://autonomous-trading-bot-production.up.railway.app/api/errors      → 403
+GET https://autonomous-trading-bot-production.up.railway.app/api/balances    → 403
+GET https://autonomous-trading-bot-production.up.railway.app/api/health      → 403
+GET https://autonomous-trading-bot-production.up.railway.app/api/trades      → 403
+GET https://autonomous-trading-bot-production.up.railway.app/api/portfolio   → 403
+GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools        → 403
+GET https://api.dexscreener.com/latest/dex/search                            → 403
+GET https://www.coingecko.com/en/categories/base-ecosystem                   → 403
+```
+
+This is a **persistent infrastructure constraint** — the Claude Code execution sandbox egress proxy does not allowlist Railway or third-party on-chain API domains. It does NOT indicate a bot failure.
+
+## Jobs Status This Run (Run #35 — 2026-06-03T10:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code changes.
+- **Scout**: NOT RUN — Option B benchmark window still open (closes ~2026-06-15, 12 days remaining). Per CLAUDE.md Rule 1, cohort is locked; no TOKEN_REGISTRY additions during window. Additionally, GeckoTerminal and DexScreener APIs both return 403 from this sandbox — quality filter criteria (liquidity, volume, pool age) cannot be verified regardless. Standards maintained.
+- **Auditor**: RESEARCH COMPLETE — Bear market regime confirmed (~85 days; Bitcoin ~$73K sliding toward $70K; ETF outflows $2.43B in May, $1.67B weekly). 4 searches run. **No code changes implemented**: Option B window closes in 12 days; automated constant edits at this stage would muddy attribution without recoverable audit trail. All findings filed as watch-list items for Henry's post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-03)
+
+### Signal Quality
+**Finding**: Confluence scoring research confirms 9/12 indicator agreement → 68-72% win rates vs 6-7/12 → 55-62%. NVR's multi-indicator approach is architecturally sound. On-chain signal weighting (whale inflows, exchange outflows, funding rates) could further lift win rates but requires Nansen/Dune integration. (Impact 3, Complexity 4, Risk medium, Priority 0.75) → **Watch list**. No action taken.
+
+### Execution Efficiency
+**KEY FINDING**: Aerodrome + Velodrome merger → "Aero" cross-chain DEX launching July 2026. The new platform uses MEV-resistant pools (migration began May 12, 2026). **Liquidity providers must migrate to new pools by July or lose emissions rewards.** NVR routes 50%+ of volume through Aerodrome Slipstream — the bot likely auto-benefits from improved routing, but Henry should verify the router contract address remains valid after the Aero launch. (Impact 3, Complexity 2, Risk medium, Priority 1.5) → **Watch list — Henry action required before July 2026**.
+
+### Position Sizing
+**Finding**: Drawdown-aware circuit breaker: "if bankroll drops 20% from peak, cut position sizes in half until recovery" (LBank/altrady research). NVR already at Quarter-Kelly (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING=12%). Effective max per trade ~3.5% portfolio. Fully calibrated for sustained bear. No new action. (Impact 2, Complexity 1, Priority 2.0) → No action — already implemented implicitly via KELLY constants.
+
+### Competitive Intelligence
+**Finding**: MEV-resistant pools now mainstream on Base (Aero migration). MevX private relay for lower slippage. NVR already uses sequencer-direct RPC. The Aero merger also consolidates AERO and VELO token governance — AERO position in TOKEN_REGISTRY remains valid symbol. (Impact 2, Complexity 3, Risk low, Priority 0.67) → **Watch list**. No action taken.
+
+## Key Watch Items for Henry (Post-Window Review ~June 15)
+
+1. **🚨 Aero Router Migration (July 2026)**: Aerodrome Slipstream is merging into "Aero." Verify that the bot's Aerodrome router contract address (`agent-v3.2.ts`) remains valid post-merge. If Dromos Labs deploys a new router contract, a targeted update will be needed before July. Check: `grep -n "aerodrome\|router\|SLIPSTREAM" agent-v3.2.ts`.
+2. **Signal Quality**: On-chain confluence (Nansen-style whale inflow detection, exchange outflow monitoring) could lift win rates by 6-10pp. Complex integration but high priority post-window.
+3. **Option B Window Closes ~June 15**: After close, cohort expansion is back on the table. Scout has been holding candidates. Tokens that have been trending on Base during the window period (BRETT utility hybrid, Virtuals Protocol $500M mcap) are worth evaluating via GeckoTerminal post-window.
+
+## Pattern Classification
+PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
