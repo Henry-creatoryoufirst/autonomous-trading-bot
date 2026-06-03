@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-03T UTC | Scout: GeckoTerminal API blocked (network policy); WebSearch-only scan; no qualifying tokens verified; COHORT_PROPOSAL skipped (Option B window active — cohort LOCKED until ~2026-06-15, 12 days remaining); auditor: bear market confirmed day 89 (BTC $66K, -14% from $77K 2-day high, June 1-2 2026 mass liquidation YTD); no auto-implementation — all top research candidates exceed complexity threshold or require live API metrics not accessible; audit report written to data/critic-reports/ |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-03T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints + "Host not in allowlist" from sandbox). No fix applicable. MEDIC_REPORT updated (Run #35).
+- **Scout**: ATTEMPTED — GeckoTerminal API blocked (network policy). WebSearch-only fallback. No qualifying tokens confirmed (cannot verify liquidity >$100K, volume >$50K, pool age >3 days without on-chain data). Additionally, CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY additions during Option B benchmark window (active until ~2026-06-15). Scout produces no commit this run.
+- **Auditor**: TRIGGERED by inferred 89-day BEAR market (far exceeds 48h threshold; BTC -14% to $66K June 1-2). Research ran 4 searches. No auto-implementation warranted — live trigger metrics (win rate, drawdown, losing streak) are unknowable from this environment; implementing threshold changes without confirmed triggers would violate Option B attribution integrity. Full research report: `data/critic-reports/audit-2026-06-03-14.md`.
+
+## Auditor Research Summary (Run #35 — 2026-06-03)
+- **Signal Quality**: 9+ confluence signal convergence → 68-72% win rate (confirmed by multiple 2026 sources). NVR already uses multi-signal confluence at NORMAL_CONFLUENCE_BUY=27. No change needed; current system is aligned with best-practice design. (Impact 2, Complexity 4, Risk low → Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merge confirmed for 2026; auto-benefits routing without NVR code change. No action. Flashblocks 200ms MEV protection on Base (used by BananaGun) is a meaningful improvement but touches execution path (off-limits). Watch list. (Impact 4, Complexity 5 → Priority 0.8)
+- **Position Sizing**: Fidelity + Kelly research reconfirms Quarter-Kelly (0.25) as optimal for crypto bear. NVR at KELLY_FRACTION=0.25 + KELLY_POSITION_CEILING_PCT=12 + TRENDING_DOWN×0.75 → effective 2-4% max per trade. Well-calibrated. No change. (Priority 0)
+- **Competitive Intelligence**: KEY MARKET CONTEXT — BTC fell from $77K→$66K June 1-2 (-14%, worst 2-day YTD). Bear market day 89. All existing bear-adjusted thresholds remain appropriate; loosening any would be premature. Private-relay MEV protection and Flashblocks are emerging but require off-limits execution changes. (Priority 0 for implementation, Watch list)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
