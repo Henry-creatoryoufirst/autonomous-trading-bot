@@ -1,4 +1,48 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-03T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-03T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN — last scout was 2026-05-16 (~18 days ago, >48h threshold). GeckoTerminal API blocked by network policy; web search research conducted. COHORT LOCKED per CLAUDE.md Rule 1 (Option B window, open until ~2026-06-15) — no TOKEN_REGISTRY additions. NVR-HQ not in checkout — no COHORT_PROPOSAL file. No qualifying tokens verified: cannot confirm liquidity/volume/age thresholds without API access. Result: no new tokens added; standards maintained.
+- **Auditor**: RAN — inferred 89-day BEAR market (70 days at Run #34 on 2026-05-15, +19 days to today). Bot metrics API unreachable; used inferred context. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: VOL_LOW_BOOST 1.25→1.10 (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTATION BLOCKED — CLAUDE.md Option B window prohibits automated strategy edits until ~2026-06-15 to preserve alpha attribution integrity. Finding documented for Henry's post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-03)
+
+### Signal Quality
+- **Finding**: 2026 AI trading bots use multi-layer confluence: EMA crossovers (20/50/200), Supertrend, ADX. NVR's SWARM architecture (flow 35%, risk 25%, momentum 20%, trend 15%, sentiment 5%) already addresses this. Full Nansen/Dune smart-money integration remains the high-value gap (Impact 4, Complexity 4, Risk medium) → Watch list for Henry. No new code action.
+- **Source**: DEXTools, BingX, ainvest.com 2026 research
+
+### Execution Efficiency
+- **Finding**: Aerodrome/Velodrome merger creates "Aero" unified cross-chain DEX launching July 2026; LP migration to MEV-resistant pools underway. Bot as TRADER (not LP) auto-benefits from improved pool execution without code change. Permit2 batch approvals already implemented. No new action. (Priority 0)
+- **Source**: cryptoadventure.com, aerodrome-slipstream.com 2026 review
+
+### Position Sizing
+- **KEY FINDING**: Research confirms in prolonged bear markets (60+ days), Kelly position sizing should be progressively reduced below Quarter-Kelly. `VOL_LOW_BOOST = 1.25` (already reduced from 1.5→1.25 at 65-day bear run). At 89-day bear, reducing to `VOL_LOW_BOOST = 1.10` is the natural next step — restrains deployment during low-volatility pauses that in sustained bear are pause-before-continuation patterns, not green lights. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **BLOCKED** — Option B window. Propose post-2026-06-15.
+- **Source**: lbank.com Kelly research, GPTrader 2026 Kelly optimization, altrady.com
+
+### Competitive Intelligence
+- **Finding**: Intent-based trading (CoW Protocol, 1inch) at 34%+ DEX aggregator share — zero slippage, gasless, MEV-protected via private solvers. Architecture requires touching `executeDirectDexSwap` (off-limits for auto-implementation). MEV protection via sequencer-direct RPC already active. TWAP ±20% jitter already implemented. No new auto-action. Watch list for Henry. (Impact 4, Complexity 4, Risk medium)
+- **Source**: ai-frb.com, quicknode.com, bitsgap.com 2026 MEV research
+
+## Watch List for Henry's Post-Window Review (~2026-06-15)
+
+| Finding | Change | Impact | Complexity | Risk | Notes |
+|---------|--------|--------|------------|------|-------|
+| VOL_LOW_BOOST reduction | 1.25→1.10 | 3 | 1 | Low | 89-day bear; low-vol pauses = continuation risk |
+| Nansen/Dune smart-money signals | New confluence input | 4 | 4 | Med | API integration; large uplift if done right |
+| Intent-based solver routing | CoW/1inch integration | 4 | 4 | Med | Requires execution path rewrite |
+| Aerodrome "Aero" migration July 2026 | Router update | 3 | 2 | Low | Will need attention at July 2026 launch |
+
+## Scout Candidate Log (Run #35 — 2026-06-03, GeckoTerminal blocked)
+- **Aerodrome migration context**: ~85% of new Base tokens launch via Aerodrome. Pool MEV-resistance upgrade incoming July 2026.
+- **RWA sector surge**: Tokenized stocks 66% growth in 2026, $486M+ on-chain. NVR already has `deSPXA` and `bCOIN`. Ondo Global Markets (100+ tokenized stocks) launched Q1 2026 — potential TOKENIZED_STOCKS candidate for post-window review if Base liquidity is confirmed.
+- **Impossible Cloud Network (ICN/ICE)**: Listed on Coinbase March 2026. Infrastructure token. Cannot verify Base pool metrics from this environment. Flag for Henry.
+- All candidates require human pool verification before cohort consideration (post-~2026-06-15).
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
