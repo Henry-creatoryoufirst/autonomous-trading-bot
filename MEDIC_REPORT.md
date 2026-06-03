@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-03T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-03T (latest) UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-03T UTC | **Option B window active (day 19/30).** Scout BLOCKED: GeckoTerminal unreachable + CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY additions. Auditor: research-only (no constant changes — would muddy alpha attribution). VOLUME_SPIKE_THRESHOLD 2.0→2.5 watch-list reminder for Henry. Branch: claude/cool-sagan-xxcSF |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-03T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Option B window active (day 19/30, closes ~2026-06-15). CLAUDE.md Rule 2 in effect: no staging/main pushes — report committed to `claude/cool-sagan-xxcSF`.
+- **Scout**: BLOCKED (DUAL REASON) — (1) GeckoTerminal API blocked by execution environment egress filter; (2) CLAUDE.md Rule 1 prohibits any TOKEN_REGISTRY additions during Option B benchmark window. Last scout commit was 2026-05-25 (9 days ago, >48h threshold would normally trigger). No cohort proposal written (NVR-HQ vault directory not present in checkout). Scout will remain blocked until Option B window closes ~2026-06-15.
+- **Auditor**: RESEARCH-ONLY — Cannot confirm trigger conditions (win rate, drawdown, streak all require blocked API). Option B Rule: automated constant changes would muddy alpha attribution during 30-day benchmark window. Research ran 4 searches; findings documented below. No constants changed. All findings added to watch list for Henry's review post-window.
+
+## Auditor Research Summary (Run #35 — 2026-06-03)
+- **Signal Quality**: On-chain signal integration (funding rates, OI, exchange flows) confirmed as alpha edge in 2026 DeFi bots. Current bot captures buy-ratio flow + whale flow (LARGE_TRADE_THRESHOLD_USD=2500). Full integration complex (Impact 2/Complexity 4/Risk med) → Watch list. No action.
+- **Execution Efficiency**: Aerodrome Slipstream at 3M+ transactions (May 2026). Slipstream CLMM provides up to 4000× capital efficiency vs basic vAMM. Bot already routes via Slipstream. No code change yields improvement. MEV protection with 1-2% slippage sufficient when using private RPC. Bot already uses sequencer-direct RPC. No new action.
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed as 2026 standard for crypto. NVR already at KELLY_FRACTION=0.25. Volatility-targeting (automatic leverage reduction during high-vol periods) is next-level improvement — would require new vol-tracking state. (Impact 3/Complexity 3/Risk med) → Watch list post-Option-B-window.
+- **Competitive Intelligence**: Intent-based MEV protection (CoW Protocol style) remains complex off-limits change. AI-on-AI MEV growing — sequencer-direct RPC already mitigates. No new actionable finding within 10-line / low-risk constraints. VOLUME_SPIKE_THRESHOLD 2.0→2.5 (proposed by Run e807de4 on claude/cool-sagan-1tLQa, 2026-05-17) still outstanding — recommend Henry review and merge post-window.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,7 +226,10 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B watch-list (review after ~2026-06-15):**
+   - Merge `claude/cool-sagan-1tLQa` VOLUME_SPIKE_THRESHOLD 2.0→2.5 (proposed 2026-05-17, never merged)
+   - Re-enable scout post-window — 9 days of Base ecosystem have passed unscanned
+   - Consider volatility-targeting position sizing (Impact 3/Complexity 3) for post-Option-B improvement cycle
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
