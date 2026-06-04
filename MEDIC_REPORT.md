@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-04T UTC | Scout ran (>48h since MOLT 2026-05-14): GeckoTerminal blocked in sandbox, web research found no new Base tokens with verified liquidity >$100k; no additions (also prohibited per CLAUDE.md Rule 1, Option B window). Auditor ran: Option B day 20/30 — API blocked, cannot compute win_rate/drawdown. Key finding: Aerodrome→Aero MEV-resistant pool migration required by July 2026 (operational alert for Henry). No constant changes per Option B attribution rules. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-04T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Bot is Run #35 of the same network-restriction issue; no error-pattern data available.
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT added, >48h elapsed, ~21 days). GeckoTerminal API blocked in sandbox (403). Web search (4 queries) found no new Base tokens with verified on-chain liquidity >$100k, 24h volume >$50k, and pool age >3 days. Zero candidates qualified. Additionally, CLAUDE.md Rule 1 prohibits any TOKEN_REGISTRY additions during the Option B benchmark window (2026-05-15 to ~2026-06-15). No additions made.
+- **Auditor**: TRIGGERED by inferred market conditions (Option B window Day 20/30; bear regime presumed ongoing). API blocked — cannot compute live win_rate, drawdown, or streak. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). KEY FINDING: **Aerodrome→Aero MEV-resistant pool migration** — Aerodrome is migrating all liquidity pools to MEV-resistant architecture ahead of the July 2026 unified "Aero" cross-chain DEX launch (merger with Velodrome). LPs who don't migrate will stop earning emissions. NVR's bot routes ~50%+ of trades through Aerodrome. If old pools drain liquidity, NVR's swap quality could degrade. **NO constant changes implemented** — CLAUDE.md Rule 1/2 explicitly prohibit automated strategy edits that muddy Option B alpha attribution. All findings documented for Henry's review.
+
+## Auditor Research Summary (Run #35 — 2026-06-04)
+- **Signal Quality**: Smart money wallet clustering (multiple VC/whale wallets accumulating same token as confluence signal) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + order-flow buy-ratio pipeline. Full Nansen-style multi-wallet clustering complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: KEY FINDING — Aerodrome→Aero July 2026 MEV-resistant pool migration. Dromos Labs' METADEX03 embeds MEV auctions directly into the AMM so profits go to LPs/operators instead of MEV bots; metalane private routing provides MEV protection. LPs must migrate from old pools to continue earning emissions. **OPERATIONAL ALERT**: Henry should verify NVR's active Aerodrome pools are being migrated ahead of July 2026 launch. New Aero metalane routing may benefit NVR swap quality automatically post-launch. No code change needed pre-launch. (Impact 4 operational, Complexity 1)
+- **Position Sizing**: Circuit-breaker / drawdown-aware sizing — NVR already has LIFETIME_DRAWDOWN_CAUTION_PCT=12 (halves position sizes) and LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 (blocks new buys) plus BREAKER_DAILY_DD_PCT=7. Research confirms these settings are well-calibrated for bear markets. No improvement identified. (Priority 0)
+- **Competitive Intelligence**: Aero METADEX03 metalane private routing and intent-based settlement (solvers compete for best fill). NVR auto-benefits from MEV-resistant pools post-migration. Full intent-based routing (solver architecture) is architectural (off-limits). MEV protection via sequencer-direct RPC already active. No new actionable code change. (Priority 0 for code; medium operational awareness re: July launch)
+
+## OPTION B STATUS NOTE (Run #35)
+Option B window: 2026-05-15 to ~2026-06-15 (Day 20 of 30). CLAUDE.md Rules 1 and 2 are active:
+- No TOKEN_REGISTRY additions (Rule 1 — cohort locked)
+- No automated constant changes pushed to staging/main (Rule 2 — alpha attribution)
+- All proposals land on claude/* branch for Henry's intentional review
+Remaining window: ~11 days. After 2026-06-15, cohort changes and strategy tuning can resume.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
