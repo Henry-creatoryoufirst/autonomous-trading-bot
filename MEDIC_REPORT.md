@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-04T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-04T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-xPxEu (Option B window — per CLAUDE.md Rule 2, no staging pushes)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-04T UTC | Scout skipped — CLAUDE.md Rule 1 locks TOKEN_REGISTRY during Option B benchmark window (~2026-06-15); GeckoTerminal/DexScreener APIs also blocked by network allowlist. Auditor triggered (20+ days since Run #34, Option B window active); 4 research searches completed; no qualifying new implementation found — all candidates too complex or already implemented; strategy well-calibrated for Option B quality cohort. MEDIC_REPORT updated (no staging push per Rule 2). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,43 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-04T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-xPxEu per CLAUDE.md Rule 2.
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 locks TOKEN_REGISTRY additions during Option B benchmark window (ends ~2026-06-15). Additionally, GeckoTerminal and DexScreener APIs are blocked by network allowlist, making quality-filtered scoring (liquidity > $100k, 24h vol > $50k, pool age > 3 days) impossible without verifiable data. No COHORT_PROPOSAL written — insufficient data to score candidates.
+- **Auditor**: TRIGGERED (20+ days elapsed since Run #34 with no API access; Option B window active 20/30 days). Research ran 4 searches. No qualifying implementation found — all candidates either too complex (Priority < 2.0 after complexity weighting) or already implemented. Strategy is well-calibrated for Option B quality cohort in current market regime.
+
+## Auditor Research Summary (Run #35 — 2026-06-04)
+
+### Signal Quality
+- **Finding**: Smart money "cross-token convergence" — pre-move accumulation by known alpha wallets tracked across multiple tokens simultaneously (DeepBlueAlpha 2026, Nansen smart money flow). Three key signals: cross-token convergence, net flow direction during catalyst windows, deposit/withdrawal asymmetry.
+- **NVR gap**: Already tracking LARGE_TRADE_THRESHOLD_USD=2500 whale flow per token, but not cross-token convergence within the 7-token cohort.
+- **Score**: Impact 3 / Complexity 4 / Risk medium → Priority 0.75
+- **Action**: Watch list — too complex for ≤10 lines. Requires new data pipeline.
+
+### Execution Efficiency
+- **Finding**: Aerodrome/Velodrome merger (Aero brand) planned mid-2026, adding cross-chain gas-aware batched settlement. Auto-benefits NVR routing without code change. (Aerodrome Finance — $453M TVL, #3 DEX by 30-day volume, $12.4B/30d)
+- **Score**: Impact 2 / Complexity 0 (auto-benefit) → no action
+- **Action**: None needed. Bot auto-benefits at DEX routing layer.
+
+### Position Sizing
+- **Finding**: Quarter-Kelly (0.25×) confirmed as the optimal framework for crypto with fat-tail distributions. "Half-Kelly captures ~75% of optimal growth with dramatically reduced drawdowns." NVR at KELLY_FRACTION=0.25 with TRENDING_DOWN ×0.75 → effective max ~9% per trade.
+- **Score**: No new actionable change — already at optimal configuration (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, Quarter-Kelly floor well-established since Run #23).
+- **Action**: None. Already optimal.
+
+### Competitive Intelligence
+- **Finding**: MEVX-style MEV protection enables 1-2% slippage settings vs 5% on unprotected standard DEX (MEVX documentation, QuickNode guides 2026). NVR already uses sequencer-direct RPC (MEV protection active). Base MCP launched 2026-05-26 allowing AI agent DeFi actions — different architecture.
+- **Score**: MEV protection already active → no new action. Base MCP: Impact 3 / Complexity 5 / Risk high → watch list.
+- **Action**: None. NVR slippage settings are already appropriate given active MEV protection.
+
+### Net Assessment
+All 4 research areas confirm NVR is well-calibrated for Option B. No candidate meets (Priority ≥ 2.0 AND risk ≤ medium AND ≤10 lines AND no execution function touch). Strategy parameter tightening through Runs #17-#34 was comprehensive and aligned with current bear/recovery market regime.
+
+**Watch List for Henry:**
+1. **Cross-token convergence signal** — if ≥3 of the 7 cohort tokens simultaneously show buy-ratio > 65% within a 30-min window, consider that an institutional accumulation signal worth a heavier buy cycle. Would require ~20 lines of new confluence logic. Impact 3 / Complexity 3 / Risk medium.
+2. **Base MCP integration** — as a RECEIVER of signals, not as execution layer. Could let other AI agents subscribe to NVR's signal feed. Watch for ecosystem maturation post-July 2026 Aero launch.
+3. **CoW Protocol intent-based routing** — 34.3% DEX aggregator share in 2026. Would capture price improvement on large cohort trades. Touches executeDirectDexSwap (off-limits for auto-implementation).
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
