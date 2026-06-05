@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-05T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-05T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-al9J6
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-05T UTC | Scout ran (>48h since last scout commit); no qualifying tokens — GeckoTerminal/DexScreener APIs blocked (403) in this container, metric verification impossible; Option B ground rules also prohibit TOKEN_REGISTRY auto-adds during benchmark window (~2026-06-15). Auditor triggered (inferred ~91-day BEAR market, 48h+ threshold); research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel); implementation BLOCKED by Option B window — strategy constants frozen for attribution integrity. Research findings archived below. No code changes. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,43 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-05T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Last run was 2026-05-15 (Run #34), 21 days ago.
+- **Scout**: RAN (last scout commit 2026-05-25 >48h ago). No qualifying tokens — GeckoTerminal API (403) and DexScreener API (403) blocked in this container; cannot verify pool liquidity/volume/age metrics against quality filters. **Option B ground rules (CLAUDE.md) also prohibit auto-additions to TOKEN_REGISTRY during benchmark window (~2026-06-15)**. Candidates require manual Henry review via PR. WebSearch found no specific new Base pool launches with verifiable metrics this run.
+- **Auditor**: TRIGGERED by inferred ~91-day BEAR market (2026-03-05 onset; 48h+ threshold met). Research ran 4 searches. **Implementation BLOCKED by Option B window** — CLAUDE.md prohibits unattended automated edits to strategy constants during benchmark window (attribution integrity). Research findings documented below; no constants.ts changes.
+
+## Auditor Research Summary (Run #35 — 2026-06-05)
+
+**Trigger**: Inferred ~91-day BEAR market. Bot metrics (win_rate, drawdown, losing_streak) unverifiable — BEAR inferred from historical continuity.
+
+**Current Key Constants**:
+- KELLY_FRACTION=0.25 (Quarter-Kelly), KELLY_POSITION_CEILING_PCT=12
+- HOT_MOVER_MIN_FDV_USD=1M, HOT_MOVER_MIN_BUY_RATIO=0.60, HOT_MOVER_MIN_POOL_AGE_HOURS=48
+- STALE_POSITION_MIN_AGE_HOURS=36, CULL_MIN_AGE_HOURS=72
+- Option B cohort: cbBTC / WETH / cbXRP / cbLTC / LINK / cbADA / cbSOL
+
+**Signal Quality** (DeFi confluence scoring, Base L2 on-chain signals):
+- 9+ confluence indicators achieve 68-72% win rates vs 55-62% for 6-7 signals. On-chain wallet flow (QuantHive.AI, Nansen) superior alpha source over pure technicals. Smart money wallet copy-signals track actual blockchain behavior.
+- Impact 3, Complexity 4, Risk medium → Priority 0.75. Not qualifying.
+- **Watch list**: On-chain smart-wallet momentum signal as additional confluence vote.
+
+**Execution Efficiency** (Aerodrome Slipstream routing, gas optimization):
+- Aerodrome/Velodrome cross-chain merge targeting July 2026. Flashblocks live on Base (10× execution speed). Bot auto-benefits from DEX-level improvements without code change.
+- Impact 0, Priority 0. No action needed.
+
+**Position Sizing** (Kelly criterion volatility-adjusted, drawdown-aware):
+- Volatility targeting demonstrably improves risk-adjusted returns. Key insight: Option B cohort (quality blue-chips) is structurally less volatile than prior speculative cohort — bear-adjusted parameters may be over-conservative for these instruments.
+- Implementation blocked by Option B attribution integrity. Impact 2, Complexity 2, Risk low → Priority 1.0.
+- **Watch list for Henry**: After ~2026-06-15 close, review whether bear-adjusted constants need recalibration for the quality cohort's lower vol profile (e.g., STALE_POSITION_MIN_AGE_HOURS 36→48, KELLY_FRACTION 0.25→0.30).
+
+**Competitive Intelligence** (DeFi bot MEV protection, Base chain alpha):
+- Intent-based execution (CoW Protocol-style Solvers) is 2026 state-of-the-art for MEV protection. Recommended slippage: 3-5% for established tokens (vs 15-25% memes) — relevant for quality cohort.
+- OpenOcean v4 / intent-based solver routing: touches executeDirectDexSwap (off-limits). Impact 2, Complexity 3, Risk medium → Priority 0.67. Not qualifying.
+- **Watch list for Henry**: Evaluate intent-based solver routing via QuickNode Base DeFi Power Bundle post-Option B close.
+
+**Action Taken**: No code changes. All findings require human review or blocked by Option B attribution integrity.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +243,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
