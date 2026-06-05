@@ -1,6 +1,20 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-05T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-05T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout 2026-05-14, 22 days ago, >48h threshold). Executed WebSearch for trending Base tokens. No additions to TOKEN_REGISTRY — CLAUDE.md Rule 1 (Option B cohort locked) prohibits auto-additions during benchmark window (~2026-06-15). Quantitative data (GeckoTerminal API also blocked 403) could not be verified. Tokens from web research: HYPE/Hyperliquid (own L1, not Base — rejected), AXION (Ethereum BEP20, not Base — rejected), general market tokens already in registry. No qualifying new candidates found with verifiable metrics.
+- **Auditor**: TRIGGERED by inferred 80+ day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MIN_AGE_HOURS 36→42 — Option B quality cohort (cbBTC/WETH/LINK/etc.) develops moves more slowly than speculative tokens; 36h was calibrated for rapid capital rotation in a meme/AI-heavy bear registry; Fidelity/Kelly 2026 research confirms quality assets warrant higher hold patience; STALE_POSITION_MAX_GAIN_PCT=1 guard unchanged. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #35 — 2026-06-05)
+- **Signal Quality**: Multi-indicator confluence on quality/high-liquidity pairs already optimal (aijourn.com 2026: "focus outperforms breadth on high-liquidity pairs"). 9+ indicators agreeing yields 68-72% win rates. NVR's swarm system + quality cohort already captures this. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream v3 now has internal MEV auctions built into the AMM — "additional revenue accrues to token operators and liquidity providers instead of MEV bots." Cross-chain routing landing. All auto-benefits NVR without code change. No action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Fidelity/Kelly 2026: "Recalculate Kelly when regime changes. Edge in a trending market differs from edge in a ranging market." Option B pivot (2026-05-15) is exactly a regime change. Quality cohort blue chips (cbBTC, WETH) have slower intraday price development than speculative tokens; 36h stale exit threshold was calibrated for meme/AI bear-market rapid rotation, not for quality timing. IMPLEMENTED: 36→42h (midpoint of original 48h and bear-adjusted 36h). (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Polystrat agent (Olas, Feb 2026): "exit when probabilities shift" — not on arbitrary timers. Quality-cohort bot should hold cbBTC/WETH through weekend chop as long as flow is neutral. 42h gives an extra 6h window before stale-exit fires on quality positions with no momentum signal. No additional action. (Priority 1.5)
+
+## Previous Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC

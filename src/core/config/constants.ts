@@ -1031,7 +1031,7 @@ export const CULL_MAX_PER_RUN = 3;
 // ============================================================================
 
 /** Minimum age before a meaningful position is eligible for stale-exit */
-export const STALE_POSITION_MIN_AGE_HOURS = 36; // Bear-adjusted May-2026: 48→36 — 61-day bear; $100+ positions flat for 1.5 days with <1% gain are dead money; bear market research confirms faster stale-exit recycling reduces dead-capital accumulation; STALE_POSITION_MAX_GAIN_PCT=1 + MAX_MOMENTUM_PCT=2 guards prevent exiting genuine winners
+export const STALE_POSITION_MIN_AGE_HOURS = 42; // Option B pivot Jun-2026: 36→42 — quality cohort (cbBTC/WETH/LINK/cbXRP/cbSOL) develops moves more slowly than speculative tokens; 36h was calibrated for rapid capital rotation in a bear-market meme/AI registry; Fidelity/Kelly 2026 research: quality assets warrant higher hold patience; STALE_POSITION_MAX_GAIN_PCT=1 + MAX_MOMENTUM_PCT=2 guards unchanged
 
 /** Only consider positions above this USD value — smaller tier is cullStalePositions' job */
 export const STALE_POSITION_MIN_USD = 100;
