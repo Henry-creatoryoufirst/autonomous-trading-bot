@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-05T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-05T UTC | **Option B window active (2026-05-15 → ~2026-06-15).** Scout ran research (21 days since last token add) — GeckoTerminal/DexScreener still 403, web search only. Aerodrome router confirmed correct (0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5, unchanged by MetaDEX03 upgrade). TOKEN_REGISTRY locked per CLAUDE.md — no additions this run. Auditor API still 403; trigger conditions unknown; 4 research searches ran — no qualifying <10-line change found. No code changes. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-05T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Aerodrome router address independently confirmed correct via web search.
+- **Scout**: RAN RESEARCH (last token add 2026-05-16, >20 days). GeckoTerminal/DexScreener APIs still blocked. **Option B window (2026-05-15 → ~2026-06-15) locks TOKEN_REGISTRY** per CLAUDE.md regardless of findings. No qualifying candidates with verified metrics found. No additions made.
+- **Auditor**: RESEARCH ONLY — bot API 403 blocks trigger-condition check (win_rate, drawdown, losing_streak). 4 research searches ran. Key findings: (1) Aerodrome router unchanged by MetaDEX03 — NVR routing confirmed correct. (2) Conservative Kelly sizing validated as optimal. (3) On-chain signal integration (whale clustering + stablecoin flows) — complex (Complexity 4), watch list. No code changes pushed.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +212,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,7 +220,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window note (~2026-06-15):** TOKEN_REGISTRY is locked until the 30-day window closes. Scout will resume token additions after ~2026-06-15. Any candidates found in the interim are documented for Henry's review.
+5. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
