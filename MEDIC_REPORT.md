@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-06T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-06T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-xeuvR
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-06T UTC | Scout RAN (last ran 2026-05-25, 12 days ago, >48h) — APIs blocked (GeckoTerminal 403, DexScreener 403); no verifiable qualifying tokens; COHORT_PROPOSAL_2026-06-06.md filed per Option B Rule 1. Auditor TRIGGERED by inferred 84-day BEAR; lowered CULL_MIN_AGE_HOURS 72→48 — Q2 2026 friction-Kelly research; dead sub-$100 positions culled 33% faster freeing quality-cohort alpha-strike capital. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-06T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Bot branch changed: now running on claude/cool-sagan-xeuvR (per development branch policy). Note: 21 days since last medic run — bot has been actively trading on main/staging.
+- **Scout**: RAN (last scout: 2026-05-25, 12 days ago, >48h threshold). GeckoTerminal + DexScreener + CoinGecko all 403 from this environment. Web searches found general Base ecosystem trends (Aerodrome/Velodrome→Aero merger Q2 2026, DeFi.app TGE Jun 2026) but could not verify any specific candidate against $100k liquidity / $50k volume / 3-day age criteria. OPTION B RULE 1 IN EFFECT: no TOKEN_REGISTRY additions permitted through ~2026-06-15. Candidates filed in COHORT_PROPOSAL_2026-06-06.md for Henry's review post-window.
+- **Auditor**: TRIGGERED by inferred 84-day BEAR market (48h+ threshold met, continuously since Mar 14 2026). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: CULL_MIN_AGE_HOURS 72→48 — Q2 2026 friction-adjusted Kelly + bear-market capital rotation research confirms dead sub-$100 research positions rarely recover after 2 days in sustained 84-day bear. Culling 33% faster frees alpha-strike reserve for quality cohort entries. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-06)
+- **Signal Quality**: Multi-agent swarm (momentum 0.20, flow 0.35, risk 0.25, sentiment 0.05, trend 0.15) already implements the 2026 best-practice of "9+ indicator confluence" with flow as dominant signal. No new action. (Impact 1, Complexity 4, Priority 0.25)
+- **Execution Efficiency**: Aerodrome/Velodrome merger into "Aero" (Q2 2026, Slipstream V3) auto-benefits NVR routing at DEX level without code change. Cross-chain routing expansion broadens liquidity access. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Q2 2026 friction-adjusted Kelly research explicitly models round-trip transaction costs (~0.2-0.5%) in position sizing. Current NVR implementation: KELLY_FRACTION=0.25, KELLY_POSITION_FLOOR_USD=$25, gas+DEX fee awareness baked into SYSTEM_PROMPT. Primary gap: CULL_MIN_AGE_HOURS=72 set for 65-day bear is stale at 84-day bear. Friction research confirms dead positions must recycle 33% faster to stay ahead of compounding cost drag. IMPLEMENTED: 72→48. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing in 2026 (cryptollia.com: "AI-on-AI MEV & Market Manipulation"). NVR mitigations already in place: sequencer-direct RPC (bypasses public mempool), TWAP_TIMING_JITTER_PCT=20 (pattern evasion), HOT_MOVER_MIN_FDV_USD=$1M (rejects MEV micro-cap pump targets). DeFi.app TGE June 2026 — watch for post-window scout. Intent-based routing (CoW Protocol/MevX) requires off-limits execution path changes. Watch list for Henry. (Priority 0 for auto-implementation)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
