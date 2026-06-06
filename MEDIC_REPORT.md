@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-06T UTC | Scout ran (22 days since MOLT — well past 48h); COHORT LOCKED (Option B window active until ~2026-06-15) → COHORT_PROPOSAL_2026-06-06.md written; auditor trigger conditions unconfirmed (API unreachable), research findings documented — no code change this run |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-06T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from Claude Code execution sandbox). No critical condition confirmable. MEDIC_REPORT updated (Run #35). This is run #35 of the same persistent infra constraint; bot health inferred as OK from active git history.
+- **Scout**: RAN (22 days since last scout — MOLT added 2026-05-14). COHORT LOCKED per CLAUDE.md Option B ground rules (window active until ~2026-06-15, 9 days remaining). GeckoTerminal API also blocked from execution sandbox. WebSearch-based research found no verifiable new token candidates with concrete liquidity/volume data. COHORT_PROPOSAL_2026-06-06.md written to repo root (NVR-HQ not in this checkout) documenting ecosystem events and post-window candidates.
+- **Auditor**: Live trigger conditions UNCONFIRMED (API unreachable). Market regime since 2026-05-15 Option B pivot unknown from this environment. 4 research searches ran; key findings documented below. No code change implemented — Henry must verify trigger conditions before any constants change.
+
+## Auditor Research Summary (Run #35 — 2026-06-06)
+- **Signal Quality**: On-chain whale wallet flows + stablecoin inflows confirmed as strongest alpha signal in 2026 DeFi research. NVR partially implements this via LARGE_TRADE_THRESHOLD_USD=2500 buy-ratio pipeline. Full Dune/Nansen integration remains complex (Impact 3/Complexity 4/Risk medium) → Watch list. No auto-implementable action. (Priority 0.75)
+- **Execution Efficiency**: KEY ECOSYSTEM EVENT — Aerodrome and Velodrome merging into unified "Aero" cross-chain DEX, targeting July 2026 launch. Bot's executeDirectDexSwap is Aerodrome-specific; router contracts may change at merge. Henry must monitor Aerodrome announcements and update router address if needed post-merge. AERO TVL $453M, 30-day volume $12.4B — ecosystem healthy. (Impact 4/Complexity 2/Risk medium — too high complexity and risk for auto-implement)
+- **Position Sizing**: Volatility-regime-adjusted Kelly fraction (dynamic rather than fixed 0.25×) confirmed as next-tier improvement in 2026 research. NVR's regime multipliers (TRENDING_DOWN=0.75, VOLATILE=0.7) already partially implement this. Full dynamic Kelly (scaling fraction continuously by rolling vol estimate) is a meaningful upgrade but requires >10 lines. Watch list. (Priority 1.0 without live trigger confirmation)
+- **Competitive Intelligence**: Intent-based solver routing (CoW Protocol, 1inch Fusion) gaining share in 2026 — solvers compete for best execution, achieving near-zero slippage. Requires touching executeDirectDexSwap (off-limits). MEV protection via tighter slippage on MEV-protected venues (0.5-1% vs 5% standard) is actionable. Watch list for Henry — verify current bot slippage tolerance in executeDirectDexSwap is ≤2% for cohort tokens. (Impact 3/Complexity 1/Risk low)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
