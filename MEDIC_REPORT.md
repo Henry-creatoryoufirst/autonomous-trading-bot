@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-07T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-07T17:00 UTC (approx)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-kBUII (Option B window: no staging pushes)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-07T UTC | COHORT LOCK ACTIVE (Rule 1, Option B window 2026-05-15→~2026-06-15). Scout ran but GeckoTerminal blocked — no qualifying tokens identified (cannot verify pool criteria). Auditor research complete: 4 searches ran; no implementation this run (API blocked prevents trigger verification; near end of Option B window, no blind threshold changes appropriate). Notable: 2026-05-28 commit `feat(admin): /api/admin/liquidate-all` suggests possible full USDC exit by operator. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-07T UTC)
+
+**Note: Option B cohort lock is ACTIVE (Rule 1, CLAUDE.md). Token registry edits are prohibited until ~2026-06-15.**
+
+- **Medic**: PATTERN D — API unreachable (persistent sandbox constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Notable: 2026-05-28 prod commit `feat(admin): /api/admin/liquidate-all` added operator force-exit capability; unknown whether it was used — operator should verify portfolio state.
+- **Scout**: RAN (last scout was 2026-05-14, 24+ days ago, well beyond 48h threshold). GeckoTerminal blocked — cannot verify pool liquidity, volume, or age for any candidate. Per CLAUDE.md Rule 1, TOKEN_REGISTRY is locked regardless. No tokens added. No COHORT_PROPOSAL written (no data to support a quality claim without pool metrics).
+- **Auditor**: Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). No implementation this run — API blocked prevents verifying trigger conditions (win_rate, drawdown, streak), and blind threshold changes during the final 8 days of the Option B window would muddy alpha attribution. Findings written to MEDIC_REPORT. Henry: review and merge if any finding resonates.
+
+## Auditor Research Summary (Run #35 — 2026-06-07)
+- **Signal Quality**: Research confirms 9/12 indicator confluence yields 68-72% win rates vs 6-7/12 at 55-62%. NVR's confluenceBuy=8 is a raw score, not a signal count — but the principle holds: higher bar = higher win rate. In Option B's quality cohort of established tokens, signal noise is lower so current threshold may be appropriate. Watch: if win rate is below 55% when API is accessible, consider raising confluenceBuy from 8→10. (Impact 3, Complexity 1, Risk medium — needs live data first)
+- **Execution Efficiency**: Aerodrome Slipstream TVL $453M, 30-day vol $12.4B, confirmed $0.017/swap all-in on Base. "Aero Launch" / "Aero Ignition" ecosystem programs improve Base token liquidity discovery. No code action needed — NVR already routes through Slipstream. (Priority 0)
+- **Position Sizing**: Half-Kelly confirmed capturing 75% of optimal growth at dramatically reduced drawdown. NVR at Quarter-Kelly (KELLY_FRACTION=0.25) — already more conservative than mainstream research recommendation. No change warranted. Circuit breaker (CAPITAL_FLOOR_PERCENT=40) pattern matches 2026 best practice. (Priority 0)
+- **Competitive Intelligence**: ARMA (Giza's DeFi agent) deploys on Base for stablecoin yield optimization — different strategy, not a direct competitor. Leading 2026 production bots: ML signal classification + LLM strategy + deterministic hard limits. NVR matches this exact architecture (Gemma/Groq/OSS + Claude + circuit breakers). Permissioned Base agents gaining over Solana due to regulatory considerations — NVR correctly positioned. No gap identified. (Priority 0)
+
+## Watch List (for Henry)
+1. **confluenceBuy threshold calibration** — once API is accessible post-Option B window, check win rate. If <55%, consider 8→10. Impact 3, Complexity 1, Risk medium.
+2. **On-chain whale wallet clustering** — Nansen-style: multi-wallet same-token buys within 15-min window as a +2 confluence bonus. Significant engineering but high alpha signal quality per 2026 research. Impact 4, Complexity 4.
+3. **Operator action needed**: Verify whether `/api/admin/liquidate-all` (2026-05-28 commit) was used and current portfolio allocation. If fully USDC, bot needs re-deployment direction when Option B window closes 2026-06-15.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
