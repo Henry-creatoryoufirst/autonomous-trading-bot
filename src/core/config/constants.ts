@@ -700,7 +700,7 @@ export const TWAP_THRESHOLD_USD = 100;              // Orders > $100 get TWAP'd
 export const TWAP_NUM_SLICES = 5;                   // Split into 5 sub-orders
 export const TWAP_SLICE_INTERVAL_MS = 12_000;       // 12 seconds between slices
 export const TWAP_TIMING_JITTER_PCT = 20;           // Randomize ±20% to avoid pattern detection
-export const TWAP_ADVERSE_MOVE_PCT = 1.0;           // Pause TWAP if price moves >1% against us
+export const TWAP_ADVERSE_MOVE_PCT = 0.8;           // Bear-adjusted Jun-2026: 1.0→0.8 — 95-day bear; AI-on-AI MEV front-running intensifying on Base (Bitsgap/Cryptollia 2026); quality cohort (cbBTC/WETH/LINK) are primary sandwich targets; pausing slices 0.2% earlier reduces MEV exposure on Option-B cohort trades without meaningfully cutting fill rate on low-vol quality assets
 export const TWAP_MAX_DURATION_MS = 120_000;        // Max 2 minutes total TWAP duration
 
 /**

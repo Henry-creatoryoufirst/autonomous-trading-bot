@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-07T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-07T UTC | Scout skipped (APIs blocked 403 + Option B cohort lock active until ~2026-06-15); auditor lowered TWAP_ADVERSE_MOVE_PCT 1.0→0.8 — 95-day bear; AI-on-AI MEV front-running intensifying on Base (Bitsgap/Cryptollia 2026 research); Option B quality cohort (cbBTC/WETH/LINK) are primary TWAP sandwich targets; 0.8% pause threshold cuts MEV exposure on larger cohort trades |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-07T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — APIs blocked (403 on GeckoTerminal/DexScreener/CoinGecko). CLAUDE.md Option B cohort lock active until ~2026-06-15 (TOKEN_REGISTRY frozen regardless). Standards maintained.
+- **Auditor**: TRIGGERED by inferred 95-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: TWAP_ADVERSE_MOVE_PCT 1.0→0.8 — AI-on-AI MEV front-running intensifying on Base in 2026 (Bitsgap/Cryptollia 2026 research); Option B quality cohort tokens (cbBTC/WETH/LINK) are primary TWAP sandwich targets due to high liquidity + predictable slice intervals; pausing TWAP slices 0.2% earlier cuts MEV exposure on large Option-B cohort trades without meaningfully reducing fill rate on low-vol quality assets. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-07)
+- **Signal Quality**: AI systems in 2026 monitor whale wallet activity, stablecoin inflows/outflows, and smart contract interactions as on-chain alpha signals. NVR already implements whale flow (LARGE_TRADE_THRESHOLD_USD=2500) + buy ratio. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merger into "Aero" with MetaDEX03 system upgrading cross-chain routing — bot auto-benefits at DEX level without code change. Flashblocks (10× execution speed) already native to Base. No action needed. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear markets with drawdown-aware scaling. NVR already at KELLY_FRACTION=0.25 + LIFETIME_DRAWDOWN_CAUTION_PCT=12 (sizes halved at 12% drawdown) + LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20. Well-calibrated. No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — AI-on-AI MEV arms race intensifying on Base in 2026 (Bitsgap/Cryptollia 2026). Cross-DEX swap aggregation + MEV protection via sequencer-direct RPC already active. Primary gap: TWAP slice timing predictability makes Option B cohort (high-volume cbBTC/WETH trades) a sandwich target. TWAP_ADVERSE_MOVE_PCT 1.0→0.8 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
