@@ -1,12 +1,47 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-07T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-07T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 "Host not in allowlist" on all endpoints). MEDIC_REPORT updated (Run #35). No critical condition assessable.
+- **Scout**: RAN (last scout 2026-05-14, 24 days ago). GeckoTerminal API blocked. WebSearch scans found no new Base tokens meeting all quality gates ($100k+ liquidity, $50k+ 24h vol, >3 days old, not in TOKEN_REGISTRY). Candidates assessed: STABUL ($8.5k market cap — FAIL), Aerodrome/Velodrome merger "Aero" token (AERO already in registry), LUNA trending (already in registry). **NO TOKEN ADDED** — CLAUDE.md Rule 1 (Option B window active through ~2026-06-15) prohibits automatic TOKEN_REGISTRY modifications regardless; proposal-only mode enforced.
+- **Auditor**: TRIGGERED — F&G 23-26 (extreme fear), BTC at $69.2k (-45% from Oct-2025 peak of $126.3k), 3 red monthly candles, BEAR regime clearly 48h+. Research ran 4 searches. **NO IMPLEMENTATION** — Option B window has 8 days remaining (~Jun 15); automated constants changes during final window days would muddy alpha attribution for the benchmark close. Research findings documented below for Henry's post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-07)
+
+### Market Context
+Bitcoin: $69,200 (-45% from $126,296 peak 2025-10-06). Ethereum: ~$1,700. F&G: 23-26 (extreme fear). 3 consecutive red monthly candles. Base daily volume: $1.13B (-38% from prior day). This is a clear sustained BEAR regime.
+
+### Signal Quality (Search 1)
+Finding: On-chain signals (exchange inflows/outflows, TVL trends, funding rates) are established as superior alpha sources in 2026. Current NVR implementation captures this via LARGE_TRADE_THRESHOLD_USD=2500 whale-flow detection. Full Nansen/Dune smart-money integration remains complex (Impact 2/Complexity 4/Risk medium). Funding rates at extreme negative readings in 2026 bear — confirms bear regime. **No new action below 10-line threshold. Priority: 0.5.**
+
+### Execution Efficiency (Search 2 & WebFetch)
+Finding: Aerodrome+Velodrome merger into unified "Aero" DEX scheduled for Q3 2026; MEV-resistant pool migration began 2026-05-12. NVR auto-benefits from DEX-level improvements (Slipstream V3) without code changes. Permit2 batch approvals already implemented. Slipstream TVL $453M, 30d DEX vol $12.4B. **No new action. Priority: 0.**
+
+### Position Sizing (Search 3)
+Finding: Quarter-Kelly (0.25×) confirmed universally optimal for crypto in 2026 (multiple institutional sources: Fidelity, Altrady, Medium research). "Never use full Kelly; reduce sizes during high volatility." NVR already at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, SECTOR_KELLY_CEILING_OVERRIDES[BLUE_CHIP]=18. Per-sector overrides now correct for quality cohort. VOL_LOW_BOOST already reduced 1.5→1.25. All sizing calibrations current. **No new action. Priority: 0.**
+
+### Competitive Intelligence (Search 4)
+Finding: MEV private relay (sequencer-direct) already active in NVR RPC endpoints. Slippage guidance: 3-5% for established quality tokens (exactly what BLUE_CHIP cohort is). Intent-based execution (CoW Protocol, 1inch solver) at 34%+ DEX share — requires touching executeDirectDexSwap (off-limits). TWAP jitter already at ±20%. **No new action below 10-line threshold. Priority: 0.**
+
+### Top Finding
+No finding meets priority ≥ 2.0 with risk = low/medium at ≤10 lines. All previously-identified high-priority improvements have been implemented in prior runs (#19-#34). Strategy is well-calibrated for the current BEAR/quality-cohort regime. **No implementation this run. Preserving clean Option B attribution for benchmark window close (~Jun 15).**
+
+### Watch List for Henry (Post-Option-B-Window)
+1. **Smart money on-chain clustering** (Nansen-style, multi-wallet same-token buys within 5min window as conviction multiplier) — Impact 4/Complexity 4/Risk med. Recurring watchlist item — major effort, major upside.
+2. **Intent-based solver routing** (CoW Protocol) — 34%+ DEX share, lower effective slippage, MEV-immune. Requires executeDirectDexSwap architecture change (off-limits during Option B). High-value post-window project.
+3. **Aerodrome/Aero unified DEX** — Monitor Q3 2026 launch; routing API may change. NVR should validate pool discovery after migration.
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-07T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-aI8US (CLAUDE.md Rule 2: staging/main off-limits to automated agent)
 
 ## Problem
 
@@ -66,6 +101,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-07T UTC | Scout ran (24 days since #34); no qualifying tokens found (GeckoTerminal blocked; STABUL $8.5k mcap FAIL; AERO/LUNA already registered). TOKEN_REGISTRY not modified — CLAUDE.md Rule 1 active (Option B window closes ~Jun 15). Auditor triggered (F&G 23, BTC -45%, 3 red monthly candles, BEAR 48h+). No constants changed — preserving Option B attribution for final 8 days. Research: all high-priority findings already implemented; watch list updated for post-window. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,7 +241,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th run (and counting) with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
