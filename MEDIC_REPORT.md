@@ -1,4 +1,22 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-07T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-07T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 / "Host not in allowlist" on all endpoints). MEDIC_REPORT updated (Run #35). No code changes.
+- **Scout**: SKIPPED — two blockers: (1) CLAUDE.md Rule 1: Option B cohort is locked; window closes ~2026-06-15 (8 days remain); no TOKEN_REGISTRY changes permitted. (2) External APIs (GeckoTerminal, DexScreener) blocked by network policy. Per Rule 1, any candidate tokens must go to `COHORT_PROPOSAL_<date>.md` in the Cathedral vault — but vault is not in this checkout and discovery APIs are blocked.
+- **Auditor**: SKIPPED — (1) Cannot verify trigger conditions (API unreachable). (2) CLAUDE.md Option B rules prohibit automated constant edits during benchmark window; unattended edits muddy alpha attribution. 8 days remain. Henry should run a manual review once the window closes (~2026-06-15) and then promote staged changes.
+
+## ⚠️ Option B Window Status
+
+The 30-day Option B benchmark window (started 2026-05-15) ends **~2026-06-15** — approximately **8 days** from now.
+
+- **CLAUDE.md Rule 1 (cohort lock)** and **Rule 2 (no auto-merges)** remain in effect until then.
+- After 2026-06-15, Henry should: (1) evaluate Option B vs cbBTC/WETH 60/40 benchmark, (2) run a deliberate post-window auditor review, (3) decide on cohort expansion via human PR.
+- Previous auditor runs (Runs #17–#34) made many constant changes that should be reviewed before the next window.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
