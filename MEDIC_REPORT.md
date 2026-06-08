@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-08T UTC | Scout ran (last scout >48h ago) — GeckoTerminal/DexPaprika blocked, no qualifying tokens found via web search; registry already 60+ tokens comprehensive. Auditor: API unreachable, market context strongly BEAR (BTC ~$62-64K, ETH <$2K, -48% from peak, 10-day ETF outflows, US-Iran conflict); no finding met priority≥2.0 threshold; no code changes. **WATCH LIST**: Aerodrome "Aero" July 2026 router migration (Aerodrome+Velodrome merger into new MEV-resistant pools — chain-config.ts AERODROME_SLIPSTREAM_ROUTER will need updating before July launch). Option B window closes ~2026-06-15. |
 
 ## Bot Health Evidence (from git history)
 
