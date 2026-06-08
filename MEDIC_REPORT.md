@@ -1,8 +1,54 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-08T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
+- Run timestamp: 2026-06-08T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-puptd9
+
+## Jobs Status This Run (Run #35 — 2026-06-08T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Sandbox egress proxy blocks Railway and GeckoTerminal domains.
+- **Scout**: RAN (14 days since last scout on 2026-05-25). GeckoTerminal API blocked (403). WebSearch returned only general market commentary — no specific pool data with addresses/liquidity/volume sufficient to verify quality filter criteria. No tokens added. Reporting: **no qualifying tokens — data sources unavailable from execution sandbox**.
+- **Auditor**: TRIGGERED by inferred VOLATILE/BEAR market (Base 24h volume -37.99% day-over-day from WebSearch; consistent with previous 34-run bear inference). Research ran 4 searches. **No implementation this run.** Rationale: (1) No research finding met priority ≥ 2.0 + risk = low/med + ≤ 10 lines with a code change needed. (2) Option B 30-day benchmark window closes ~2026-06-15 (7 days out) — making parameter changes in the final week of the attribution window would muddy alpha attribution exactly as CLAUDE.md Rule 2 warns. All high-value bear-market tightenings from Runs #17-34 already implemented. Watch list below.
+
+## Auditor Research Summary (Run #35 — 2026-06-08)
+
+### Signal Quality
+- **Finding**: On-chain wallet mirroring (top wallet tracking via Nansen/Dune-style signals) — 65% win rate vs 41% for standalone bots (AI crypto trading signal research 2026). Exchange inflow/outflow monitoring. Funding rate anomalies.
+- **Current NVR state**: Partially implemented — LARGE_TRADE_THRESHOLD_USD=2500 (whale flow), buy ratio 0.35-weight flow agent, FUNDING_RATE_STD_DEV_THRESHOLD=2.0.
+- **Score**: Impact 3, Complexity 4, Risk medium → Priority 0.75. **Below threshold.** → Watch list.
+
+### Execution Efficiency
+- **Finding**: Aerodrome → Aero merger (July 2026): MEV-resistant pool migration May–July 2026. Slipstream V3 auto-benefits routing. QuickNode Aerodrome Swap API provides unified interface.
+- **Current NVR state**: Already using Aerodrome Slipstream. Auto-benefit at DEX level — no code change required.
+- **Score**: Impact 2, Complexity 1, Risk low → Priority 2.0. **At threshold but no code change needed** (DEX-level improvement auto-applies). No action.
+
+### Position Sizing
+- **Finding**: VAPS (Volatility-Adjusted Position Sizing) normalizes Kelly against real-time ATR. Position sizes should increase during winning streaks / decrease during drawdowns.
+- **Current NVR state**: KELLY_FRACTION=0.25 (Quarter-Kelly), VOL_TARGET_DAILY_PCT=1.5, VOL_HIGH_THRESHOLD=6, VOL_LOW_BOOST=1.25. GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT=72. All well-calibrated.
+- **Score**: Impact 2, Complexity 2, Risk low → Priority 1.0. **Below threshold.** No action.
+
+### Competitive Intelligence
+- **Finding**: Intent-based trading (trades not exposed in mempool = MEV protection). Social graph monitoring (X, Farcaster, Lens) as early-trend signal. MevX multi-chain bot dominating Base in 2026.
+- **Current NVR state**: MEV protection already active via sequencer-direct RPC. Social graph monitoring complex (Impact 2, Complexity 4) → Watch list.
+- **Score**: Impact 2, Complexity 4, Risk medium → Priority 0.5. **Below threshold.** No action.
+
+## Watch List for Henry (post-Option B window, ~2026-06-15+)
+
+1. **On-chain wallet mirroring**: Track top 20 Base wallets for early trend signals. Nansen/Dune integration. Impact 3, Complexity 4. Implement as a new signal-service endpoint feeding into confluence scoring.
+2. **Social graph signals**: Farcaster/Lens trending topics as narrative-momentum detector. Impact 2, Complexity 3.
+3. **Bear-to-bull transition audit**: If market regime confirmed TRENDING_UP post-June-15, consider relaxing some bear-market tightenings: NORMAL_CONFLUENCE_BUY 27→25, VOL_LOW_BOOST 1.25→1.35, HOT_MOVER_MIN_CHANGE_H1_PCT 7→5. All have human-review PR requirement.
+4. **Aero cross-chain DEX (July 2026)**: When Aerodrome merges to Aero with cross-chain routing, review pool registry and routing parameters. Low urgency — should auto-benefit.
+
+---
+
+## Previous Run Header (now archived below)
+### Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+
+### Environment (Run #34)
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
