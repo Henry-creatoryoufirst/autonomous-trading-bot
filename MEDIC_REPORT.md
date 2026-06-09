@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-09T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-09T UTC | Scout RAN (25+ days since MOLT 2026-05-14); GeckoTerminal blocked — proposal written to repo root; TOKEN_REGISTRY unchanged (Option B window active until ~2026-06-15). Auditor: TRIGGERED (inferred 75+ day bear → recovery signals Jun-2026); CULL_MIN_AGE_HOURS 72→96 — partial bear reversal as altcoin momentum builds (first recovery adjustment since pivot) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-09T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Note: operator ran `/api/admin/liquidate-all` on 2026-05-28 per git history — bot likely in USDC-heavy position.
+- **Scout**: RAN (25+ days since last scout; MOLT added 2026-05-14). GeckoTerminal API blocked from this environment; WebSearch ran for market context. TOKEN_REGISTRY unchanged per CLAUDE.md Rule 1 (Option B window active until ~2026-06-15, 6 days remaining). Recovery candidates documented in COHORT_PROPOSAL_2026-06-09.md.
+- **Auditor**: TRIGGERED by inferred 75+ day BEAR → RECOVERY transition (48h+ condition met; market recovery signals confirmed: HYPE ATH+51% monthly Jun-2026, altcoins gaining momentum per second-week-of-June search results). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: CULL_MIN_AGE_HOURS 72→96 — first recovery-direction adjustment since May pivot; recovering market positions need one extra day to prove thesis before sub-$100 culling; partial reversal of bear tightening (120→72→96, not yet back to 120h bull-market default). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-09)
+- **Signal Quality**: Smart money wallet clustering (Nansen/Dune-style multi-wallet same-token buys) — watch list carry-over from previous runs; complex (Impact 2/Complexity 4/Risk med). No new action. Exmon.pro 2026: "modern stacks relying on cooperation between specialized agents" → NVR swarm already implements multi-agent voting. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) mandatory MEV-resistant pool migration complete — bot auto-benefits from deeper/cleaner liquidity without code change. No new action. (Priority 0)
+- **Position Sizing**: Kelly criterion 2026 research confirms Quarter-Kelly (0.25×) optimal for crypto; NVR already at KELLY_FRACTION=0.25. KEY FINDING: With recovery signals, overly tight bear constants become counterproductive. CULL_MIN_AGE_HOURS 72→96 is the most conservative lever: recovering positions should not be culled at 3-day pace when market momentum is building. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: Intent-based routing (CoW Protocol/1inch Fusion) gaining share — complex architecture (off-limits). MEV protection via sequencer-direct RPC already active. Aerodrome MEV-resistant CL pools now standard (March 2026 mandatory migration). No new action. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

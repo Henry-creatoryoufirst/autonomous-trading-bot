@@ -999,8 +999,8 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // This is the middle tier between dust cleanup (<$5) and meaningful holds (>$100).
 // ============================================================================
 
-/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear) */
-export const CULL_MIN_AGE_HOURS = 72; // Bear-adjusted May-2026: 120→72 — 65-day bear; dead sub-$100 research positions recycle 40% faster; Kelly criterion research confirms sustained bear regimes require accelerated capital rotation out of non-performing positions to reduce portfolio drag; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards prevent culling genuine winners
+/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear → 4 days recovery Jun-2026) */
+export const CULL_MIN_AGE_HOURS = 96; // Bear-adjusted May-2026: 120→72; Recovery-adjusted Jun-2026: 72→96 — market recovery signals detected (altcoin momentum building, first week of June 2026); partial reversal of bear tightening; recovering positions need one extra day to prove thesis before culling; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards still active
 
 /** Only cull positions under this USD value — don't touch meaningful holds */
 export const CULL_MAX_USD = 100;
