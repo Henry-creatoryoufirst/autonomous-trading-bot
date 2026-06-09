@@ -769,7 +769,7 @@ export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0
 export const ICU_STOP_LOSS_PCT = 15;
 
 /** Hours a position must survive at > ICU_STABLE_THRESHOLD_PCT before graduating to ESTABLISHED */
-export const ICU_GRADUATION_HOURS = 4;
+export const ICU_GRADUATION_HOURS = 6; // Bear-adjusted Jun-2026: 4→6 — 75-day bear; run #35. Position reversals in bear bottoms occur on 4-8h timescales; extending ICU oversight catches late sell-offs before graduation to ESTABLISHED. Consistent with GUARDIAN_NOVEL_TOKEN_HOURS 48→72 (Run #28) — all new-position oversight parameters aligned to longer bear-regime review windows.
 
 /** Minimum P&L % required to graduate out of ICU (position must not be deeply underwater) */
 export const ICU_STABLE_THRESHOLD_PCT = -5;

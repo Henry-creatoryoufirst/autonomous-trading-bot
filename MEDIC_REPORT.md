@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-09T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-09T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-m27mku
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-09T UTC | Scout blocked by Option B lock (window closes ~June 15) — COHORT_PROPOSAL_2026-06-09.md filed. Auditor raised ICU_GRADUATION_HOURS 4→6 — 75-day bear; BTC -47% from $122K ATH to $64K; position reversals in bear bottoms occur on 4-8h timescales; extends ICU oversight to match GUARDIAN framework; last untuned new-position safety parameter. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-09T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: DUE (last run 2026-05-25, 15 days ago) but blocked by CLAUDE.md Option B lock (Rule 1 prohibits auto-adds to TOKEN_REGISTRY during the 30-day window, which closes ~2026-06-15). COHORT_PROPOSAL_2026-06-09.md filed to repo root with candidates for post-window review. GeckoTerminal API also unreachable from container (persistent network constraint).
+- **Auditor**: TRIGGERED by inferred 75-day BEAR market (BTC -47% from $122K ATH to ~$64K; ETH ~$1,685). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: ICU_GRADUATION_HOURS 4→6 — extends ICU new-position oversight window from 4h to 6h. Bear bottoms have 4-8h reversal timescales; longer ICU catches late sell-offs before graduation. Consistent with GUARDIAN_NOVEL_TOKEN_HOURS 48→72 direction. Last untuned new-position safety parameter in the bear-mode set. IMPLEMENTED in constants.ts. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-09)
+- **Signal Quality**: RSI+MACD confluence improved by on-chain signal layer (wallet flow). Bot already implements: buy ratio tracking + LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Multi-layered confluence confirmed effective (Gate 2026 guide). No new code change needed. (Priority 0.5)
+- **Execution Efficiency**: Base Flashblocks (200ms, since Oct 2025) + Aerodrome 30-min TWAP router auto-benefit bot without code change. Bot already uses TWAP_TIMING_JITTER_PCT=20% for anti-MEV pattern detection. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) already optimal per 2026 research. "Cut sizes in half at 20% drawdown" already enforced by LIFETIME_DRAWDOWN_CAUTION_PCT=12 + LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20. KEY FINDING: ICU_GRADUATION_HOURS 4→6 — the last untuned new-position safety parameter; all other bear-mode oversight windows already extended. IMPLEMENTED. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+- **Competitive Intelligence**: OKX Agent Trade Kit (60+ blockchains, 500+ DEXs), CoW Protocol intent-based routing — architecture requires off-limits execution path changes. Aerodrome/Velodrome merge into unified "Aero" DEX planned July 2026 — bot auto-benefits at routing level. TWAP slicing (NVR already at 5 slices, 12s intervals) confirmed best practice for large orders in 2026 DEX research. No new action. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
