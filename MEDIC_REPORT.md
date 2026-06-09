@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-09T UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-09T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-69wkvp
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-09T UTC | Scout: cohort LOCKED (Option B window closes June 15) + GeckoTerminal blocked + no confirmed new candidates; auditor triggered (75-day BEAR, BTC -12% week to ~$64K, ETH $1,700 — deepest since Feb-2026); top finding: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→10 NOT implemented per Option B ground rules (6 days remain) |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-09T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints / "Host not in allowlist"). MEDIC_REPORT updated (Run #35). No trade errors assessable.
+- **Scout**: DOUBLE-SKIPPED — (1) CLAUDE.md Rule 1: cohort is LOCKED during Option B benchmark window (closes ~2026-06-15, 6 days remaining). Even if qualifying tokens found, TOKEN_REGISTRY must not be modified. (2) GeckoTerminal API also blocked from this sandbox. WebSearch conducted: no new Base tokens confirmed with verifiable on-chain data (liquidity > $100K, vol > $50K, age > 3 days) that aren't already in TOKEN_REGISTRY. cbDOGE mentioned in Coinbase wrapped-asset list alongside cbBTC/cbXRP/cbADA — potential watch-list item post-window, but no Base contract confirmed. Aerodrome AERO already in registry.
+- **Auditor**: TRIGGERED — 75-day BEAR regime (BTC -12% this week to ~$64K, ETH at $1,700, total market cap -48% from peak — deepest correction since Feb 2026; ETF outflows, institutional selling, Strategy first-ever BTC sale). 4 searches conducted. Top finding: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→10 (raises effective cash deployment threshold 12→17, protects USDC dry powder in acute bear acceleration) — Impact 3, Complexity 1, Risk low, Priority 3.0. NOT IMPLEMENTED: Option B benchmark window closes June 15 (6 days); automated constant changes muddy alpha attribution per CLAUDE.md Rule 2. Watch-list for Henry.
+
+## Auditor Research Summary (Run #35 — 2026-06-09)
+- **Signal Quality**: Advanced on-chain systems in 2026 monitor stablecoin inflows, whale wallet clusters, and smart contract interactions as leading indicators (ventureburn.com, intellectia.ai). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V3 now has embedded MEV auction in AMM + dynamic fee module (temporarily lowers fees at block start). Bot auto-benefits from DEX-level improvements without code change. "Aero" unified DEX (Aerodrome + Velodrome merger) launching July 2026 — further routing benefits automatic. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly research (gptrader.app, medium.com): "errors in expected returns are 20× more important than variance estimates." In deepest bear since Feb 2026 (BTC -12% this week), current CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT=15 sets effective cash deployment threshold at 12 (27-15). Reducing to 10 raises threshold to 17 — requires significantly stronger signal before deploying USDC reserves into new positions. Guards USDC dry powder against false recoveries in acute bear acceleration. (Impact 3, Complexity 1, Risk low, Priority 3.0) PROPOSED but NOT IMPLEMENTED (Option B window).
+- **Competitive Intelligence**: ARMA/Giza yield optimizer on Base (Aave/Morpho/Compound rate chasing) mirrors NVR's aave-yield.ts. Bear market grid/DCA strategies — already implemented via AI discretionary + RIDE_THE_WAVE. Slipstream MEV-resistant pools (July 2026) will reduce sandwich risk automatically. No new actionable code pattern found. (Priority 0)
+
+## Henry Watch-List (Post-Window — after June 15)
+1. **Implement**: `CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT` 15→10 (staging PR) — protects USDC dry powder in deep bear
+2. **Evaluate**: cbDOGE as cohort candidate — confirm Base contract address and on-chain liquidity before adding
+3. **Monitor**: Aerodrome "Aero" DEX launch (July 2026) — may enable new routing features worth wiring in
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +223,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent (Option B window closes June 15):**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
