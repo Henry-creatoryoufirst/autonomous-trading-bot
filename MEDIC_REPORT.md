@@ -1,6 +1,56 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-09T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-09T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent sandbox egress constraint, `Host not in allowlist` on all Railway + GeckoTerminal endpoints). MEDIC_REPORT updated (Run #35). No code changes.
+- **Scout**: BLOCKED — CLAUDE.md Rule 1 (Option B cohort lock). The 7-token `COHORT_QUALITY_7` is frozen until the 30-day benchmark window closes (~2026-06-15, 6 days from now). No TOKEN_REGISTRY edits under any circumstance.
+- **Auditor**: RESEARCH ONLY — Cannot verify API-based trigger conditions (win_rate, drawdown, losing_streak). However, 25 days have elapsed since Run #34 (2026-05-15) and market regime has shifted. All findings documented as post-Option-B proposals (do NOT implement — 6 days left in benchmark window; changes now would muddy alpha attribution).
+
+## Auditor Research Summary (Run #35 — 2026-06-09)
+
+**Market regime inference**: Web searches confirm crypto markets shifted from extended bear to "volatile market recovery" phase in 2026 (Bitsgap, Phemex Q1-2026 reports). NVR constants were last tuned for a 70-day bear (Run #34, 2026-05-15). Current settings are now potentially over-conservative.
+
+**Trigger inferred**: If bear-regime assumption still holds from Run #34 (~95+ day bear continuing), all threshold triggers are met. But market data suggests recovery has begun — the strategy shape is still valid; the bear-adjusted sizing floors may now create drag.
+
+### Signal Quality
+- On-chain derivative signals (funding rates, open interest) confirmed as alpha in 2026 — DeFi bots integrating perp funding rates + sentiment into confluence scoring. Already partially addressed in NVR via whale flow. Full integration requires new data source (Impact 3, Complexity 3, Risk medium). **Watch list for Henry.**
+- Priority: 1.0 — too complex for auto-implement.
+
+### Execution Efficiency
+- Aerodrome Slipstream V2 (March 2026) auto-benefits NVR routing with no code change required.
+- **KEY**: Aerodrome LP migration to new MEV-resistant pools by July 2026. LPs who don't migrate stop earning AERO emissions → old pools thin out post-July → potential slippage increase for NVR's current token pairs. NVR uses router (auto-routes to deepest pool), so bot should auto-benefit. **Watch list: monitor slippage post-July 2026.** (Impact 2, Complexity 1, Risk low, Priority 2.0) — no code change needed today.
+
+### Position Sizing
+- Quarter-Kelly (0.25×) remains confirmed optimal for crypto — no change to `KELLY_FRACTION`.
+- **KEY FINDING**: Recovery-phase research (Bitsgap 2026) explicitly states optimal recovery bot settings are "balanced — enough exposure to participate, enough reserve capital for pullbacks." NVR's 25% dry-powder reserve already handles this correctly.
+- `CULL_MIN_AGE_HOURS = 72` (3 days) was set for 65-day bear. In recovery, positions may need 4-5 days to play out before being culled. **Post-Option-B proposal**: CULL_MIN_AGE_HOURS 72 → 96. (Impact 2, Complexity 1, Risk low, Priority 2.0) — deferred until window closes.
+- `STALE_POSITION_MIN_AGE_HOURS = 36` (1.5 days) similarly aggressive for recovery. **Post-Option-B proposal**: 36 → 48. (Impact 2, Complexity 1, Risk low, Priority 2.0) — deferred.
+- NOT implementing either: 6 days left in 30-day Option B benchmark — changes now muddy alpha attribution per CLAUDE.md Rule 1 rationale.
+
+### Competitive Intelligence
+- Production agents in 2026 use ML (signal) + LLM (strategy) + deterministic rules (risk limits) — NVR already has this architecture.
+- Recovery-phase AI bots: "balanced exposure + reserve discipline" is optimal. NVR's 25% MIN_DRY_POWDER_PCT already implements this.
+- No new competitive findings require code changes. (Priority 0)
+
+## Post-Option-B Watch List (Henry: review after ~2026-06-15)
+
+| Change | Current | Proposed | Rationale |
+|--------|---------|---------|-----------|
+| `CULL_MIN_AGE_HOURS` | 72 | 96–120 | Recovery phase; positions need more time to play out |
+| `STALE_POSITION_MIN_AGE_HOURS` | 36 | 48 | Recovery phase; 1.5-day exit too aggressive for bull |
+| `GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT` | 72 | 48 | Was 57-day bear; relax oversight window post-bear |
+| `HOT_MOVER_MIN_CHANGE_H1_PCT` | 7 | 5–6 | 7% bar was for bear; recovery has smaller reliable moves |
+| Scout cohort expansion | 7 tokens | +1–2 | Run fresh scout after window closes ~2026-06-15 |
+
+---
+
+## Previous Run Header (Run #34 — 2026-05-15T (latest) UTC)
+
+## Status (archived): API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
