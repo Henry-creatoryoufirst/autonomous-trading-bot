@@ -296,7 +296,7 @@ export const REVIEW_TRADE_INTERVAL = 10;
 export const REVIEW_TIME_INTERVAL_HOURS = 24;
 
 /** Stagnation threshold — trigger exploration trade if no trade in this many hours */
-export const STAGNATION_THRESHOLD_HOURS = 6; // v12.2.7: 1h → 4h; auditor Apr-2026: 4h → 6h — extreme fear (F&G 23) + RANGING regime warrants patience; reduces forced friction trades by ~33%
+export const STAGNATION_THRESHOLD_HOURS = 12; // v12.2.7: 1h → 4h; auditor Apr-2026: 4h → 6h; auditor Jun-2026: 6h → 12h — post-liquidation recovery + ~95-day bear; doubled threshold prevents stagnation-forced entries before signals stabilize; CASH_DEPLOYMENT_TIERS URGENT pressure still applies for genuine signal-based deployment
 
 /** Max exploration trade amount (USD) — used for full positions */
 export const EXPLORATION_TRADE_USD = 50; // v11.4.22: $3 → $50 — build real positions
