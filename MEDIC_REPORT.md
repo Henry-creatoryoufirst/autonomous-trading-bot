@@ -1,12 +1,33 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-10T15:07 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-10T15:07 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 hard lock: Option B cohort locked until ~2026-06-15 (5 days remaining). Even if 48h threshold exceeded, no automatic cohort additions permitted during benchmark window.
+- **Auditor**: Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). **No implementation** — all findings score < priority 2.0 OR are blocked by Option B window closure (5 days). Deferred to post-June-15 window.
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+- **Signal Quality**: 9+ signal confluence → 68-72% win rate (vs 6-7 = 55-62%). NVR NORMAL_CONFLUENCE_BUY already raised to 27 (bear-adjusted May-2026: 25→27). No new actionable gap. (Impact 1, Complexity 1, Priority 1.0) → No action.
+- **Execution Efficiency**: Aerodrome V2 34× capital efficiency improvements are protocol-level; bot auto-benefits without code change. May-2026 MEV-resistant pool migration is LP-side only. (Impact 0) → No action.
+- **Position Sizing**: Research confirms Quarter-Kelly optimal for sustained bear. NVR already at KELLY_FRACTION=0.25 with TRENDING_DOWN×0.75 effective multiplier (≈3.5% effective max per trade). Already calibrated. (Impact 1, Priority 0.5) → No action.
+- **Competitive Intel**: MEV protection research recommends 1-3% slippage cap on private relays. NVR uses sequencer-direct routing; slippage check requires reading 666KB agent file + touches execution path (off-limits). (Impact 2, Complexity 2, Risk medium) → Watch list.
+
+## Option B Window Note (2026-06-10)
+Option B 30-day benchmark window closes ~2026-06-15 (5 days). Per CLAUDE.md Rule 1+2, all cohort and constant changes are deferred until after window close. Even qualifying auditor findings will not be auto-implemented until post-June-15. After window closes, the MEV slippage cap finding (competitive intel above) is the top candidate for Henry's review.
+
+---
+
+# MEDIC REPORT — 2026-05-15T (historical)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-10T15:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-lt65yo
 
 ## Problem
 
@@ -66,6 +87,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T15:07 UTC | Scout BLOCKED — CLAUDE.md Option B cohort lock (5 days remaining, window ~2026-06-15); auditor research ran 4 searches, no implementation (Option B window + no priority≥2.0 finding) |
 
 ## Bot Health Evidence (from git history)
 
