@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-10T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-10T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-sf8vpk (Option B window — no staging pushes per CLAUDE.md Rule 2)
 
 ## Problem
 
@@ -89,6 +89,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Pushed to `claude/cool-sagan-sf8vpk` per CLAUDE.md Rule 2 (Option B window active, no staging push).
+- **Scout**: SKIPPED (cohort locked) — last scout ran 2026-05-25 (16 days ago, >48h threshold met), BUT CLAUDE.md Rule 1 locks TOKEN_REGISTRY until ~2026-06-15. GeckoTerminal API also blocked. COHORT_PROPOSAL_2026-06-10.md written to repo root for Henry's post-window review.
+- **Auditor**: TRIGGERED by 93-day BEAR market + F&G extreme fear (23-26), BTC −45% from $126K ATH. Research ran 4 searches. Top finding: KELLY_POSITION_CEILING_PCT 12→10 — risk-constrained Kelly research confirms extreme-fear regimes warrant ceiling tightening beyond fraction alone; with TRENDING_DOWN ×0.75 → effective max 7.5% (from 9%). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+- **Signal Quality**: Multi-source confluence (on-chain + price + sentiment) is 2026 standard. Bot already has whale flow (LARGE_TRADE_THRESHOLD_USD=2500) + F&G integration. No incremental action warranted in ≤10 lines. (Impact 2, Complexity 4, Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing; Base L2 gas $0.017/swap. Bot already on optimal path. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Risk-constrained Kelly 2026 research: volatility constraints and fear-regime ceiling tightening reduce drawdowns in extreme-fear markets beyond fraction alone. F&G 23-26 (extreme fear), BTC −45%. KELLY_POSITION_CEILING_PCT 12→10 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV protection via private RPC already in place. Intent-based routing (CoW-style) too complex for auto-implementation. Metamask Agent Wallet on Base (summer 2026) — watch list for Henry. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

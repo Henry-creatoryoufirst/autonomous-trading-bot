@@ -632,7 +632,7 @@ export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30
 // be large enough that the P&L move dominates the fee drag. $25 gives
 // 0.5-1% fee-cost ratio on a +6% first-tier take-profit — recoverable.
 export const KELLY_POSITION_FLOOR_USD = 25;
-export const KELLY_POSITION_CEILING_PCT = 12;  // Bear-adjusted May-2026: 14→12 — 59-day bear; with TRENDING_DOWN ×0.75 → 9% effective max; research (Institutional Kelly-VAPS, adaptive Kelly criterion): sustained bear regimes require tighter per-trade ceiling beyond Quarter-Kelly fraction alone
+export const KELLY_POSITION_CEILING_PCT = 10;  // Bear-adjusted Jun-2026: 12→10 — 93-day bear, F&G extreme fear (23-26), BTC −45% from ATH; with TRENDING_DOWN ×0.75 → 7.5% effective max; risk-constrained Kelly research: volatility constraints reduce drawdowns in extreme-fear regimes beyond fraction alone
 export const KELLY_SMALL_PORTFOLIO_CEILING_PCT = 30; // Boost for <$10K portfolios — $5K × 30% = $1,500 max per position
 export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K gets the boosted ceiling
 
