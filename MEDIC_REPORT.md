@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T21:xx UTC | **Option B window active (~2026-05-15→~2026-06-15).** Scout BLOCKED × 2: (a) GeckoTerminal API blocked by network policy (same sandbox constraint as bot API); (b) CLAUDE.md Rule 1 — TOKEN_REGISTRY locked for Option B benchmark (27 days since MOLT, scout would have run). Auditor: trigger conditions unverifiable (API blocked); BEAR ~96 days inferred; Option B Rule prohibits implementing constant changes — research compiled only. No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,21 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T21:xx UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Local code scan: PATTERN A ("Insufficient balance" fallback) already at line 7190. PATTERN B (allowance wait 20s) — checking code shows 10s at time of last review; no new critical pattern detected from static scan.
+- **Scout**: DOUBLE-BLOCKED — (1) GeckoTerminal API returns 403 (same network policy blocking Railway API). (2) CLAUDE.md Rule 1: TOKEN_REGISTRY locked for Option B benchmark window (~2026-05-15 to ~2026-06-15, 5 days remaining). Time since last actual scout add: 27 days (MOLT, 2026-05-14). Scout would run but cannot query data or commit adds. Candidates to evaluate post-window: check Aerodrome July 2026 expansion tokens.
+- **Auditor**: TRIGGERED (inferred ~96-day BEAR + no API verification possible). Option B Rule 2 prohibits auto-implementing strategy constant changes during benchmark window. Research compiled (4 WebSearch runs). Top finding documented below. NVR-HQ not in repo checkout — skip report file. No implementation this run.
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+
+- **Signal Quality**: On-chain analytics (whale wallet clustering, stablecoin flows, smart contract interactions) remain best-in-class alpha sources per 2026 research. NVR pipeline already captures buy-ratio flow + LARGE_TRADE_THRESHOLD=2500 whale detection. Full Nansen/Dune integration remains complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome V2 routing (March 2026) already live; cross-chain DEX expansion launching July 2026 to Ethereum mainnet + Circle's Arc. Protocol also migrating to MEV-resistant pools ahead of launch. Bot auto-benefits at DEX layer without code change. **Watch**: AERO token is a 2-4 week pre-launch catalyst window — July expansion could drive significant price appreciation. (Priority: research note only)
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) reconfirmed optimal for crypto bear markets per 2026 Fidelity + quant research. Adding volatility constraints during unfavorable conditions (already done: TRENDING_DOWN ×0.75 multiplier). KELLY_POSITION_CEILING_PCT=12 (effective max ~9% with bear multiplier) well within institutional guidance. No new action. (Priority 0)
+- **Competitive Intelligence**: MEV AI-on-AI growing in sophistication (cryptollia.com); NVR's existing TWAP jitter + sequencer-direct RPC + FDV floor remain best current defenses. Slippage best practice: 0.5-1% liquid pairs, 10-20% meme coins — NVR current settings adequate per VWS_MIN_LIQUIDITY_USD=20K floor. No actionable new code pattern. (Priority 0)
+
+**TOP FINDING (for Henry's review post-Option-B-window):** AERO July 2026 pre-launch catalyst — Aerodrome expanding cross-chain (Ethereum mainnet + Circle's Arc) in July 2026, migrating to MEV-resistant pools. AERO currently $0.33 with $312M market cap. If NVR's AERO allocation is underweight vs. 15% DEFI sector target, increasing ahead of this catalyst is worth evaluating. Not implemented (Option B window). Propose: review AERO portfolio weight and consider tactical overweight via standard trade cycle after ~2026-06-15.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
