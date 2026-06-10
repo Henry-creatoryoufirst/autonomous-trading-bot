@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-10T20:05 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T20:05 UTC | Scout BLOCKED (network policy + CLAUDE.md Rule 1: cohort locked during Option B window, ends ~2026-06-15 in 5 days); Auditor: no formal trigger (API unreachable); research run: Slipstream V3 MEV-auction auto-benefit confirmed, Kelly/sizing calibrated, no implementation — Option B attribution integrity preserved |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,36 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T20:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: `claude/cool-sagan-jf5zwk` (CLAUDE.md Rule 2: no push to staging).
+- **Scout**: BLOCKED (two hard constraints):
+  1. GeckoTerminal API unreachable (network policy, same as all prior runs)
+  2. **CLAUDE.md Rule 1 — cohort locked**: Option B window (2026-05-15 to ~2026-06-15) prohibits any TOKEN_REGISTRY changes. Three prior auto-adds (MOLT 2026-05-14, OPENX + VEIL 2026-05-16) were all reverted; cohort is fixed at the 7 quality tokens.
+  - **⚠️ WINDOW ENDS IN ~5 DAYS (~2026-06-15)**: Scout can resume after Henry reviews Option B performance vs cbBTC/WETH 60/40 benchmark and decides whether to continue, expand, or modify the cohort.
+- **Auditor**: Formal trigger SKIPPED (cannot compute win_rate/drawdown/losing_streak — bot API unreachable). Research conducted regardless; see summary below. No implementation — preserving Option B attribution integrity per CLAUDE.md Rule 2.
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+
+- **Signal Quality** (cbBTC/WETH benchmark): No NVR-specific benchmark data accessible. cbBTC confirmed dominant BTC representation on Base (integrated into Aave/Morpho/Compound). US inflation data creating June 2026 market pressure. No new alpha signal identified. (Impact 1, Complexity N/A) → Watch list. No action.
+
+- **Execution Efficiency** (Aerodrome): **KEY FINDING** — Slipstream V3 launched with a built-in MEV auction: MEV revenue now accrues to LPs and operators *instead of* MEV bots. May 2026 LP migration to new MEV-resistant pools. NVR auto-benefits via Aerodrome routing — better execution prices, less sandwich front-running loss. **Action for Henry**: Verify NVR's router is hitting the new V3 pools via BaseScan. No code change needed. (Impact 3, Complexity 0, Risk 0 — auto-benefit)
+
+- **Position Sizing** (post-bear Kelly): Research confirms "volatility has become the norm, not the exception" in 2026. Fractional Kelly (25-50%) remains optimal for crypto. NVR at KELLY_FRACTION=0.25 (Quarter-Kelly) is correctly calibrated. No new change warranted. (Impact 0)
+
+- **Competitive Intelligence**: Production DeFi agents in 2026 combine ML (low-latency classification) + LLM (strategy decisions) + deterministic rules (hard risk limits) — exactly NVR's architecture. Virtuals Protocol on Base at $477M aGDP with 15,800+ AI projects signals Base ecosystem health for NVR's cohort. Key signal: whale wallet tracking + stablecoin inflows/outflows are the primary alpha edge in 2026. (Impact 2, Complexity 4, Risk medium) → Watch list for post-window consideration.
+
+**Top Finding**: Slipstream V3 MEV auction = auto-benefit, no code action needed. No implementation warranted for this run (Option B window + no qualifying ≤10-line change with priority ≥ 2.0).
+
+**⚠️ OPTION B WINDOW ENDING SOON — HENRY ACTION REQUIRED**:
+The 30-day benchmark window closes ~2026-06-15. Before that date, Henry should:
+1. Pull actual performance data from Railway: did NVR outperform cbBTC/WETH 60/40 by ≥5% annualized?
+2. Decide: extend Option B cohort, expand cohort, or revert to broader token set
+3. If expanding: resume scout operations post-window (blocked since 2026-05-16 reverts)
+4. Verify Slipstream V3 pool routing via BaseScan (auto-benefit action item above)
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -203,17 +234,27 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
-## Recommended Action for Henry
+## Recommended Action for Henry (Run #35 — 2026-06-10)
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. The Option B window closes in ~5 days.**
 
+### Priority 1 — Option B Window Closing (~2026-06-15)
+1. Pull actual NVR performance data from Railway and compare to cbBTC/WETH 60/40 benchmark
+2. Decide post-window cohort strategy: maintain 7-token quality cohort, expand, or revert
+3. If expanding: Scout will be unblocked post-window and can resume auto-discovery
+4. Communicate the decision so CLAUDE.md Rule 1 / Rule 2 can be updated accordingly
+
+### Priority 2 — Network Access (Persistent)
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+
+### Priority 3 — Slipstream V3 Pool Check
+Aerodrome migrated LPs to new MEV-resistant pools in May 2026 (Slipstream V3 with built-in MEV auction).
+Verify NVR's router is hitting V3 pools via BaseScan for the smart wallet `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1`.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
