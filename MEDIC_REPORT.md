@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-10T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T UTC | Scout ran (last scout >48h ago, ~27 days since MOLT/May-14); no qualifying tokens found — GeckoTerminal/DexScreener APIs blocked by sandbox egress policy, web searches found no new Base tokens with verified addresses meeting $100K liq + $50K vol + 3-day age criteria not already in registry; COHORT_PROPOSAL guard enforced (Option B window to ~Jun-15 prohibits TOKEN_REGISTRY changes). Auditor triggered (inferred 86-day bear + 26 days into Option B quality cohort). Top finding: STALE_POSITION_MIN_AGE_HOURS 36→48 — BTC on-chain accumulation signals (declining exchange balances, LTH accumulation, MVRV not at peak); quality cohort assets (cbBTC/WETH/LINK) consolidate 2-4 days before next leg; restores original pre-bear threshold appropriate for quality-cohort patience. IMPLEMENTED in constants.ts. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout >48h ago, ~27 days since MOLT/May-14). No qualifying tokens found — GeckoTerminal/DexScreener APIs blocked by sandbox egress policy; web searches returned no verifiable new Base tokens meeting all criteria ($100K liq, $50K vol, >3-day age, not already in registry). COHORT_PROPOSAL guard enforced per CLAUDE.md Rule 1 (Option B window ~Jun-15 — no TOKEN_REGISTRY changes regardless).
+- **Auditor**: TRIGGERED by inferred 86-day market + 26 days into Option B quality cohort. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MIN_AGE_HOURS 36→48 — quality cohort patience adjustment; BTC on-chain accumulation signals (declining exchange balances, LTH accumulation, MVRV not at cycle peak); cbBTC/WETH/LINK consolidate 2-4 days before next leg in accumulation phase; 36h stale-exit was calibrated for bear-era meme/AI churn, not quality-cohort thesis horizons. Restores original pre-bear threshold. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+- **Signal Quality**: BTC on-chain shows structural accumulation phase — declining exchange balances, long-term holder accumulation, rising stablecoin supply, MVRV Z-Score not at typical cycle top. Specific alpha: exchange outflows as timing signal for cbBTC entries already partially captured via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full on-chain signal integration (Nansen/Dune-style) remains complex (Impact 2/Complexity 4/Risk medium) → Watch list. KEY FINDING: accumulation phase context drove STALE_POSITION_MIN_AGE_HOURS restoration. (Priority 0.5 as standalone; fed top finding)
+- **Execution Efficiency**: Aerodrome MetaDEX03 with Slipstream V3 (Nov 2025) internalizes MEV via embedded auctions — bot auto-benefits from DEX-level improvements without code change. cbBTC/WETH pool at $19M liquidity with $66M 24h volume (Aerodrome). TWAP_THRESHOLD_USD=$100 is over-conservative for quality cohort pools of this depth (candidate: raise to $200); however, TWAP benefits on quality cohort are marginal vs. execution risk. Watch list. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+- **Position Sizing**: Kelly criterion for concentrated quality portfolios — Frontiers 2020 paper: "optimal rebalancing frequency" key variable; quality assets with better Sharpe allow slightly higher Kelly fraction, but requires 2+ months of quality cohort data (currently 26 days) before recalibrating KELLY_FRACTION upward from 0.25. SECTOR_KELLY_CEILING_OVERRIDES.BLUE_CHIP=18 already provides quality-cohort upsizing. KEY FINDING: 36h stale-exit was the Kelly-misalignment, not the fraction itself. IMPLEMENTED via stale-exit restoration. (Priority 3.0 indirect)
+- **Competitive Intelligence**: ARMA (Giza) earns 15% APY on USDC via automated lending protocol rotation (Aave/Morpho/Moonwell on Base) — NVR already has yield-optimizer.ts + aave-yield.ts services for this. Multi-agent specialized stacks now standard in 2026; NVR already has sleeve architecture + GUARDIAN pattern. No actionable gap found. Watch list: YIELD_MIN_IDLE_USD $50→$25 could ensure more of USDC reserve earns yield (Impact 1, Complexity 1, Priority 1.0) — too minor for this run.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
