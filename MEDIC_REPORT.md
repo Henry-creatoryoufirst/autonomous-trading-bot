@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-10T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-10T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-izt5nq
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T UTC | Scout ran (GeckoTerminal blocked; no new qualifying candidates; Option B cohort lock ~2026-06-15); auditor triggered (96-day bear); HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K proposed but DEFERRED (5 days left in Option B window); COHORT_PROPOSAL_2026-06-10.md written |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: `claude/cool-sagan-izt5nq`.
+- **Scout**: RAN — last scout was Run #34 (2026-05-15), >48h elapsed. GeckoTerminal API blocked; WebSearch fallback used. No new qualifying candidates identified (all WebSearch-found tokens already in TOKEN_REGISTRY: AERO, GIZA; $BASE token unconfirmed contract). Option B cohort lock in effect until ~2026-06-15 (5 days). COHORT_PROPOSAL_2026-06-10.md written with research findings and post-window action items.
+- **Auditor**: TRIGGERED by inferred 96-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K — 96-day bear; continued Base DEX vol suppression; $200K threshold no longer adequately filtering lowest-conviction hot movers. Impact 2, Complexity 1, Risk low, Priority 2.0. **DEFERRED** — Option B window closes ~2026-06-15 (5 days); no constants changed this run to preserve attribution integrity per CLAUDE.md Rule 1 spirit. Change ready to apply post-window.
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+- **Signal Quality**: 9+ indicator confluence → 68-72% win rate (trendrider.net 2026 research). NVR already at NORMAL_CONFLUENCE_BUY=27 with multi-indicator scoring. No new action. (Priority 0)
+- **Execution Efficiency**: KEY FINDING — Aerodrome MEV-resistant pool migration ahead of July 2026 cross-chain DEX launch (Aerodrome + Velodrome merger → unified "Aero" DEX on Ethereum + Base + Circle's Arc). NVR's Slipstream execution auto-benefits from MEV-resistant routing + dynamic fee module (lower fees at block start). Impact 3, Complexity 1 (0 lines — auto-benefit), Risk low. No code change needed. Watch: AERO token upside from July catalyst. (Priority 3.0, but 0 lines of code)
+- **Position Sizing**: ATR-based Kelly adjustment reduces position sizes during high-volatility periods (multiple sources). Would further improve bear-market sizing. Requires code changes to Kelly sizing function (not just constants). Impact 3, Complexity 3, Risk medium, Priority 1.0 → below 2.0 threshold. Watch list for Henry.
+- **Competitive Intelligence**: 40% of on-chain txns AI-initiated; 30% lower costs via order splitting — NVR's TWAP slicing already captures this. Giza ARMA: $3.96B yield optimization on Aave/Morpho — NVR's yield strategy already uses both. KEY FINDING: HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K (95-day bear vol suppression). Impact 2, Complexity 1, Risk low, Priority 2.0. DEFERRED (Option B).
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
