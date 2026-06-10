@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T UTC | Scout BLOCKED — CLAUDE.md Rule 1 (cohort locked, Option B window, ~5 days remaining ~2026-06-15); GeckoTerminal API also unreachable from sandbox. No TOKEN_REGISTRY change. Auditor: API blocked, trigger conditions unverifiable; research ran 4 searches; top finding: Aerodrome/Velodrome July 2026 "Aero" merger catalyst (Priority 3.0) — HELD per CLAUDE.md Rule 2 + Option B attribution clarity; bear-adjustment constants remain unchanged pending human review post-window. Notable git event: `feat(admin): /api/admin/liquidate-all` added 2026-05-28 — new operator-forced full-exit endpoint. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,29 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints including `/health`). Both `curl` (blocked by egress proxy) and `WebFetch` (HTTP 403 from server) fail. MEDIC_REPORT updated (Run #35). No critical condition assessable.
+- **Scout**: BLOCKED by CLAUDE.md Rule 1 — cohort locked for Option B benchmark window (2026-05-15 to ~2026-06-15, ~5 days remaining). Last successful token add: MOLT 2026-05-14 (25 days ago, exceeds 48h threshold). GeckoTerminal API also unreachable from sandbox. WebSearch conducted: no concrete candidates with verifiable live data (liquidity/volume/pool-age unconfirmable without API). No TOKEN_REGISTRY or COHORT_QUALITY_7 changes made.
+- **Auditor**: API blocked — trigger conditions (win_rate, drawdown, losing_streak, regime) unverifiable. Research ran all 4 searches. Top finding: Aerodrome/Velodrome July 2026 "Aero" unified protocol launch (Impact 3, Complexity 1, Risk medium, Priority 3.0). **HELD per CLAUDE.md Rule 2**: automated changes to strategy constants during Option B window muddy alpha attribution. With ~5 days left in window, no code change deployed. Research archived below for Henry's post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+
+**Context**: 26 days since last audit (Run #34, 2026-05-15). All bear-adjusted constants from Apr-May 2026 still active. Option B window ends ~2026-06-15. Notable: `feat(admin): /api/admin/liquidate-all` endpoint added 2026-05-28 — operator-forced full-USDC exit capability now exists. Bot v21.30.0 running with MirrorAgent, Anthropic Files API persistence, System Auditor (spec-035), and HOLD_ONLY_TOKENS (cbLTC) active.
+
+- **Signal Quality**: Multi-signal confluence research confirms 9+ indicators = 68-72% win rate vs 55-62% for 6-7 signals. NVR's current confluenceBuy=8 default is calibrated for this. No actionable change (Impact 2/Complexity 3/Risk med → Priority 0.67). WebSearch: walletfinder.ai, trendrider.net.
+- **Execution Efficiency**: **KEY FINDING** — Aerodrome launched MEV-resistant pool migration in May 2026. LPs must migrate to new pools; old pools stop earning AERO emissions at July 2026 Aero launch. Slipstream V2 (Nov 2025) already delivered 34x capital efficiency ($1.24B TVL, $1M/week fees). Base gas: $0.017/swap. NVR's Aerodrome Slipstream Router auto-routes to best pools — no code change needed, but **Henry should verify routing to migrated pools around July 2026 launch** (Impact 2/Complexity 2/Risk low → Priority 1.0). WebSearch: cryptoadventure.com, ainvest.com.
+- **Position Sizing**: Research confirms NVR's Quarter-Kelly (KELLY_FRACTION=0.25) is optimal. Kelly with Kalman filtering adds minimal value beyond existing regime multipliers (Impact 1/Complexity 3/Risk med → Priority 0.33). WebSearch: altrady.com, backtestme.com.
+- **Competitive Intelligence**: **TOP FINDING** — Aerodrome/Velodrome merger launches July 2026 as unified "Aero" protocol across Base + Optimism. AERO: $424M TVL, 50%+ Base DEX volume, $11.4M/24h. LP migration event creates 2-4 week catalyst window starting now. HOT_MOVER_MIN_CHANGE_H1_PCT=7 (bear-adjusted from 5) — lowering to 6 would capture AERO momentum signals earlier. **HELD** per CLAUDE.md Rule 2 + Option B attribution (Impact 3, Complexity 1, Risk med → Priority 3.0). For Henry: consider 7→6 after window closes ~2026-06-15. WebSearch: phemex.com/news, ainvest.com.
+
+## Watch List for Henry (Post-Option-B Review, after ~2026-06-15)
+
+1. **Aerodrome Aero merger catalyst (July 2026)**: Consider HOT_MOVER_MIN_CHANGE_H1_PCT 7→6 to capture AERO momentum in the LP migration window. Verify bot routes to new Aerodrome pools.
+2. **Bear-adjustment constant review**: All constants adjusted in Apr-May 2026 for 50-70 day bear. Market regime unknown since Run #34 (2026-05-15). Post-window audit should confirm whether regime has shifted before reverting: KELLY_FRACTION (0.25), KELLY_POSITION_CEILING_PCT (12), STALE_POSITION_MIN_AGE_HOURS (36), DECEL_MIN_PROFIT_PCT (2), HOT_MOVER_MIN_CHANGE_H1_PCT (7), CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT (15), GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT (72).
+3. **Scout cohort proposals (post-window)**: x402 ecosystem tokens (new CoinGecko category), Base network token (if/when announced — Jesse Pollak confirmed exploring in Sept 2025), Aerodrome "Aero" token migration mechanics.
+4. **Base Azul upgrade (activated 2026-05-28)**: Includes native account abstraction + Flashblock Access Lists. May affect CDP wallet interaction patterns — worth checking after Option B window.
+5. **Base MCP (launched 2026-05-26)**: Claude + Base integration via Model Context Protocol. Potential future signal source for NVR — architectural consideration for post-Option-B roadmap.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
