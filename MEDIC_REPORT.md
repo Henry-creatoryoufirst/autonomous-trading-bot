@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-10T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-10T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ujn469 (Option B window active — no staging push per CLAUDE.md Rule 2)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-10T UTC | Scout ran (last scout 2026-05-25, 16d ago); GeckoTerminal + CoinGecko both 403 from sandbox — no verifiable token metrics, no qualifying adds; auditor raised HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — 86-day bear; last remaining hot-mover gate not tightened; completes full quality-gate set (vol ✓, FDV ✓, pool-age ✓, buy-ratio ✓, liquidity ✓). Option B window active (closes ~2026-06-15) — push to claude/cool-sagan-ujn469 per CLAUDE.md Rule 2. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-10T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **Option B window active: push to `claude/cool-sagan-ujn469`, NOT staging.**
+- **Scout**: RAN (last scout 2026-05-25, 16 days ago — well past 48h threshold). GeckoTerminal API 403 and CoinGecko 403 from this sandbox. Web searches did not surface specific tokens with verifiable on-chain metrics (liquidity, volume, pool age). No qualifying tokens — standards maintained.
+- **Auditor**: TRIGGERED by inferred 86-day BEAR market (48h+ threshold met; last confirmed BEAR at Run #34 on 2026-05-15, 26 days ago). Research ran 4 searches. KEY FINDING: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — the only hot-mover quality gate not tightened during the bear market. Completes full gate set. IMPLEMENTED in `src/core/config/constants.ts`. Pushed to `claude/cool-sagan-ujn469` (per CLAUDE.md Rule 2 — no staging push during Option B window). (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-10)
+- **Signal Quality**: Confluence approach: advanced bots in 2026 use 2.5M+ daily signals (price + on-chain + NLP sentiment); whale wallet clustering (multi-wallet same-token buys within time window) is the leading edge. Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) routing already auto-benefits bot without code change. Cross-chain DEX launch upcoming in July 2026 (Ethereum mainnet + Circle Arc). MEV-resistant pool migration underway. Bot auto-benefits without code change. No new action. (Priority 0)
+- **Position Sizing**: Volatility-scaled sizing already implemented (volMultiplier in calculateKellyPositionSize, line 5475 agent-v3.2.ts). Quarter-Kelly (0.25×) already confirmed optimal for crypto bear. "Fractional Kelly (25-50%) plus drawdown scaling" confirmed standard in 2026 research. NVR already fully aligned. KEY FINDING redirected to signal quality gate: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K is structural, not sizing. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: MEV protection via private mempool/sequencer-direct RPC already in place. Intent-based trading (CoW Protocol, ~34% DEX share) requires touching executeDirectDexSwap (off-limits). MetaMask Agent Wallet (Consensys) launching summer 2026 with TEE-based MEV protection — watch list for Henry.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
