@@ -1,4 +1,47 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-11T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — Two independent constraints prevent scouting this run:
+  1. CLAUDE.md Rule 1: **Cohort is locked** for the Option B benchmark window (2026-05-15 → ~2026-06-15). TOKEN_REGISTRY additions are forbidden. The window expires in ~4 days.
+  2. GeckoTerminal API (`api.geckoterminal.com`) returns 403 from this execution environment — cannot evaluate specific candidates with on-chain liquidity/volume data regardless.
+  - Recommendation: Normal scouting resumes after ~2026-06-15. First post-window scout should evaluate: (a) tokens identified during the Option B window that weren't added, and (b) fresh GeckoTerminal trending/new pools scan.
+- **Auditor**: TRIGGERED (inferred 92-day bear market — 70-day bear at Run #34, 27 more days elapsed). Research ran 4 searches. **NO IMPLEMENTATION** — Option B window ends ~2026-06-15 (4 days); automated changes to strategy constants would muddy alpha attribution for the benchmark. All findings deferred to post-window human review.
+
+### Notable Events Since Run #34 (2026-05-15)
+- **2026-05-28**: `feat(admin): /api/admin/liquidate-all — operator forced full-exit to USDC (#54)` — Henry manually triggered a full portfolio exit to USDC. Bot likely operating from USDC-dominant state.
+- **2026-05-25**: v21.30.0 deployed — INV-1 round 5 (cost-basis tracker aligned to wallet truth)
+- **2026-05-25**: INV-11 gates display + write-site refuses regression (#51)
+- **2026-05-20**: INV-10 chain-truth reconciliation + live-RPC source (#33)
+- Multiple spec-035 INV fixes between Run #34 and now — audit invariant system substantially hardened.
+
+### Auditor Research Summary (Run #35 — 2026-06-11)
+**Trigger**: Inferred 92-day bear market (BEAR regime 48h+ threshold well exceeded). Admin liquidation-all 2026-05-28 suggests strategic repositioning already in progress.
+
+**Signal Quality** (Impact: 2, Complexity: 4, Priority: 0.5 — No action):
+Multi-source signal confluence (price + on-chain + NLP sentiment) is the 2026 standard. NVR already implements whale flow (LARGE_TRADE_THRESHOLD_USD=2500) + buy/sell ratio + technical indicators. Full Nansen/Dune-style smart money integration remains complex. Watch list.
+
+**Execution Efficiency** (Impact: 2, Complexity: 1, Priority: 2.0 — Watch list, no code change):
+KEY FINDING: **Aerodrome MEV-Resistant Pool Migration** (May 2026). Aerodrome launched new MEV-resistant pools; LPs must migrate by July 2026 or stop earning AERO emissions. NVR uses the Aerodrome Slipstream ROUTER which auto-routes to the deepest/best pool — should auto-benefit as liquidity migrates to new pools. No code change needed. BUT: verify after July 2026 launch that router is routing to new pools not drained old ones. Flashblocks (10x faster execution, July 2025) already active on Base — auto-benefit.
+
+**Position Sizing** (Impact: 0, Priority: 0 — No action):
+Quarter-Kelly (KELLY_FRACTION=0.25) confirmed optimal for sustained bear. "Update Kelly weekly or after every 20 trades" — KELLY_ROLLING_WINDOW=30 + KELLY_MIN_TRADES=20 already aligned. KELLY_POSITION_CEILING_PCT=12 with TRENDING_DOWN×0.75 = 9% effective max — well-calibrated. No new action.
+
+**Competitive Intelligence** (Impact: 3, Complexity: 3, Priority: 1.0 — Watch list):
+- Hard limits in plugin code (not LLM) are 2026 standard — NVR already implements via constants
+- Olas Polystrat on Polymarket: 4,200 trades, peak 376% — different domain (prediction markets)
+- Cross-chain arbitrage (Base/Arbitrum/Optimism atomic intents) — architectural change, post-window candidate
+- Intent-based execution (CoW Protocol, UniswapX) — $9B/mo volume, 34.3% DEX aggregator share. Strong MEV protection, best-price execution. Requires touching executeDirectDexSwap (off-limits for auto-implementation). **Top Watch-List item for Henry post-window.**
+
+**Top Post-Window Implementation Candidates (for Henry's review after ~2026-06-15):**
+1. Intent-based execution via CoW/UniswapX — Impact 4, Complexity 4, Risk medium. High payoff but requires human-reviewed PR touching execution path.
+2. Aerodrome MEV-Resistant Pool migration verification — Impact 2, Complexity 1, Risk low. Simple router address check post-July 2026 launch.
+3. Resume normal scouting + first post-window cohort expansion proposal.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -65,6 +108,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-11T UTC | Scout blocked: cohort LOCKED (Option B window ends ~2026-06-15, 4 days) + GeckoTerminal 403. Auditor triggered (92-day bear, admin liquidation-all 2026-05-28). NO implementation — preserving Option B attribution. Top post-window candidate: Intent-based execution (CoW/UniswapX), Aerodrome MEV-resistant pool migration. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
