@@ -1,8 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-11T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #36)
 
 ## Environment
+- Run timestamp: 2026-06-11T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-az1si9
+
+## Jobs Status This Run (Run #36 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #36).
+- **Scout**: SKIPPED — two blockers: (1) last scout ran 2026-06-10 09:12 UTC (~24h ago, less than 48h threshold); (2) CLAUDE.md Rule 1 Option B lockout active until ~2026-06-15 (4 days remaining). No TOKEN_REGISTRY edits.
+- **Auditor**: TRIGGERED by inferred 94-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: VOL_TARGET_DAILY_PCT 1.5→1.25 — VAPS target follows established bear-market progression (2%→1.5% at 46 days, 1.5%→1.25% at 94 days). At 1.25% target, typical 2.5% daily vol → 50% position size (was 60%). Volatility targeting research confirms lower target auto-scales risk during prolonged dangerous periods. Not a duplicate of pending proposals. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #36 — 2026-06-11)
+
+- **Signal Quality**: AI-on-AI MEV growing in 2026 (cryptollia.com). Autonomous AI agents locked in relentless competition for MEV. NVR already protected via sequencer-direct RPC + TWAP jitter (20%). No new action. (Priority 0)
+- **Execution Efficiency**: Aerodrome Slipstream V2 routing improvements (March 2026) still active; MEV-resistant pool migration required by July 2026 (LP positions only — not relevant to swap execution path). No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Volatility targeting research confirms "lower target automatically reduces risk during dangerous periods." Pattern: 2%→1.5% at 46-day bear, 1.5%→1.25% at 94-day bear. At 1.25% target: 2.5% vol → 50% size (was 60%), 5% vol → 25% (was 30%). 17% systematic reduction in deployed capital per trade. IMPLEMENTED: VOL_TARGET_DAILY_PCT 1.5→1.25. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Professional traders use 10-25% of full Kelly for bear markets. NVR at Quarter-Kelly (25%) — upper bound. Pending proposals from Run #35 (KELLY_POSITION_CEILING_PCT 12→10, unmerged) would bring effective max lower. No new position sizing action needed beyond VOL_TARGET_DAILY_PCT. (Priority 0 — covered by pending PRs)
+
+## Pending Proposals Not Yet Merged (for Henry)
+
+| Branch | Change | Status |
+|--------|--------|--------|
+| claude/cool-sagan-ujn469 | HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K | ⏳ Awaiting review |
+| claude/cool-sagan-sf8vpk | KELLY_POSITION_CEILING_PCT 12→10 | ⏳ Awaiting review |
+| claude/cool-sagan-kf8bii | STAGNATION_THRESHOLD_HOURS 6→8 | ⏳ Awaiting review |
+| claude/cool-sagan-az1si9 | VOL_TARGET_DAILY_PCT 1.5→1.25 | ⏳ This run |
+
+## Previous Environment
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
