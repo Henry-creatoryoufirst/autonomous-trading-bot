@@ -1,3 +1,56 @@
+# MEDIC REPORT — 2026-06-11T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-11T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-ttqc1d (per CLAUDE.md Rule 2)
+
+## Problem
+
+The bot production API at `https://autonomous-trading-bot-production.up.railway.app` is **completely unreachable** from this execution environment (same persistent PATTERN D as all prior runs).
+
+```
+GET https://autonomous-trading-bot-production.up.railway.app/api/errors      → "Host not in allowlist"
+GET https://autonomous-trading-bot-production.up.railway.app/api/balances    → "Host not in allowlist"
+GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools        → "Host not in allowlist"
+```
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code changes.
+
+- **Scout**: RAN (last scout run was ~28 days ago). GeckoTerminal blocked. Web search found **TEA** (Tea Protocol) as a potential candidate: TGE June 4 on Aerodrome, $19.9M raised, pool age 7 days, listed on MEXC/Gate/KuCoin. However: (1) operates as own L2, not primarily Base-native; (2) cannot verify liquidity > $100K or 24h volume > $50K (API blocked); (3) scored 5/10 — below quality threshold of 6/10. **No addition to TOKEN_REGISTRY** (also blocked by Option B window rule, CLAUDE.md). TEA added to watch list.
+
+- **Auditor**: TRIGGERED by inferred BEAR/EXTREME_FEAR regime. Market data (web search): Bitcoin ~$61K (-14% MTD, -30% YTD), Fear & Greed Index = 13-29 (Extreme Fear), crypto market cap $2.11T (-2.66% 24h). BEAR regime 48h+ threshold clearly met. Ran 4 research searches.
+
+  **Top finding: STAGNATION_THRESHOLD_HOURS 6→8** — F&G is now 13 (Extreme Fear), down from 23 when this constant was last set (Apr-2026 auditor). At F&G=13, stagnation-triggered exploration trades in 6h are even more likely to be forced friction in capitulation. Raising to 8h gives the bot 2 more hours of patience before launching an exploration probe into a market in full capitulation. Impact 3, Complexity 1, Risk low, Priority 3.0.
+
+  **ACTION DEFERRED — Option B window closes 2026-06-15 (~4 days).** Per CLAUDE.md, automated edits to strategy constants muddy alpha attribution for the 30-day benchmark. Proposing this change for Henry's review after the window closes.
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+
+**Market context**: Bitcoin ~$61K, F&G = 13-29 (Extreme Fear), BTC -30% YTD, altcoins broadly declining. Quality-cohort (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL) strategy in Option B window closing ~June 15.
+
+- **Signal Quality**: Multi-signal confluence approach confirmed correct by 2026 research. On-chain exchange outflow/inflow monitoring is the next alpha layer — identifies accumulation before price confirmation. NVR already implements LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration (Impact 3/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.75)
+
+- **Execution Efficiency**: Aerodrome METADEX03 upgrade (Dec-2025) routes MEV auction profits back to LPs. Mandatory LP migration to MEV-resistant pools started May 12, 2026 (~2 months for full migration). NVR is a trader (not LP) — bot auto-benefits from improved pool architecture without code change. No action needed. (Priority 0)
+
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for extreme volatility, black swans, and bear markets. NVR already at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12. Current configuration well-calibrated. GUARDIAN_MIN_CONFIDENCE_DEFAULT=0.55 → 0.60 considered (extreme fear warrants stricter OSS confidence gate) but complex to isolate in agent-v3.2.ts. Priority 1.5 — deferred.
+
+- **Competitive Intelligence**: KEY FINDING — **STAGNATION_THRESHOLD_HOURS 6→8**: At F&G=13, stagnation exploration probes in < 8h are pure noise trades into capitulation. This constant was last raised (4→6) when F&G was 23; F&G at 13 is materially more extreme. One-line change, Impact 3, Complexity 1, Risk low, Priority 3.0. **PROPOSED (deferred post-June-15).**
+
+## Watch List for Henry's Post-Window Review (after ~2026-06-15)
+
+1. **STAGNATION_THRESHOLD_HOURS 6→8** — F&G dropped from 23 to 13 since last set; 2 more hours of patience in capitulation reduces friction trades. *Implement in constants.ts, 1 line.*
+2. **GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60** — OSS confidence at 55% in extreme fear (F&G<20) is barely above random; raising to 60% reduces bad AI-on-AI trades. *Confirm call site in agent-v3.2.ts before implementing.*
+3. **TEA token (Tea Protocol)** — TGE June 4 on Aerodrome, $19.9M raised, pool age 7 days, listed on MEXC/Gate/KuCoin. Verify Base contract address + liquidity/volume via GeckoTerminal directly. Scout candidate for post-window TOKEN_REGISTRY addition if metrics pass.
+4. **Aerodrome MEV-resistant pool migration** — confirm NVR's router is hitting migrated pools (METADEX03). Operational check, no code change expected.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
