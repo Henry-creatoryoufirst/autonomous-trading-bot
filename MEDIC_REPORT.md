@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-11T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-11T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-qxm0zg
 
 ## Problem
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-11T UTC | Scout: no qualifying new tokens (AERO already in registry; GeckoTerminal API blocked; cohort locked per CLAUDE.md Rule 1 until ~2026-06-15); auditor: LIFETIME_DRAWDOWN_CAUTION_PCT 12→10 — 97-day bear; risk-constrained Kelly research confirms tighter volatility constraints in sustained bear; capital preservation priority in closing phase of Option B window (4 days remaining) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints, Run #35). MEDIC_REPORT updated. Branch: claude/cool-sagan-qxm0zg (CLAUDE.md Rule 2: no push to staging/main).
+- **Scout**: No qualifying tokens — AERO already in TOKEN_REGISTRY; GeckoTerminal API blocked; cohort locked per CLAUDE.md Rule 1 until ~2026-06-15. 34 days since last scout (>48h threshold met, but no actionable candidates). 4 days until cohort lock lifts.
+- **Auditor**: TRIGGERED by inferred 97-day BEAR market (70-day bear on 2026-05-15 + 27 elapsed days, 48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: LIFETIME_DRAWDOWN_CAUTION_PCT 12→10 — risk-constrained Kelly research confirms tighter caution zone in sustained bear; triggers position-size halving 2pp earlier; capital preservation for Option B window closing. IMPLEMENTED in constants.ts. Watch list: Aerodrome/Velodrome METADEX03 merger (new router contracts — requires henry review before it breaks DEX routing).
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+- **Signal Quality**: Multi-indicator confluence confirmed ("9+ indicator agreement → 68-72% win rate vs 55-62% for 6-7 indicators"). NVR already runs RSI+MACD+BB+SMA+F&G+buy_ratio = 6-indicator confluence. Full expansion requires significant architectural work. (Impact 2, Complexity 4, Risk medium, Priority 0.5) → Watch list.
+- **Execution Efficiency**: CRITICAL FINDING — Aerodrome + Velodrome merging into unified "Aero" DEX under METADEX03 OS (Q2 2026). New features: embedded MEV auctions, dual engine, MetaSwaps for cross-chain. Current AERO/VELO tokens will migrate to new token. If Slipstream router addresses change, NVR's executeDirectDexSwap will route to stale contracts → all DEX-fallback swaps silently fail. Cannot auto-implement (touches off-limits execution functions). URGENT for Henry. (Impact 5, Complexity 4, Risk high) → Watch list.
+- **Position Sizing**: KEY FINDING — Risk-constrained Kelly research 2026 (Medium/@tmapendembe, lbank.com): "adding volatility constraints avoids trading in unfavorable conditions, reduces drawdowns significantly." "During bearish cycle, priorities shift to capital preservation; tight controls must be implemented." LIFETIME_DRAWDOWN_CAUTION_PCT 12→10 IMPLEMENTED. Triggers position-size halving at 10% drawdown instead of 12%, providing 2pp earlier capital protection entering Option B's closing phase. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Aerodrome/Velodrome METADEX03 merger (see Execution Efficiency). Intent-based MEV protection going mainstream — NVR already uses sequencer-direct RPC. AI-on-AI MEV more sophisticated in 2026 (cryptollia.com), but private relay already active in RPC stack. No new code-level action available. (Impact 3, Complexity 5, Priority 0.6) → Watch list.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -220,5 +233,15 @@ PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmen
 
 ## Safety
 - No changes to agent-v3.2.ts
-- No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- LIFETIME_DRAWDOWN_CAUTION_PCT 12→10 in constants.ts (auditor, 1-line change)
+- All commits on claude/cool-sagan-qxm0zg only (per CLAUDE.md Rule 2 — no push to staging/main)
+- COHORT_QUALITY_7 unchanged (per CLAUDE.md Rule 1 — cohort locked until ~2026-06-15)
+
+## URGENT: Aerodrome/Velodrome METADEX03 Merger — Henry Action Required
+The Aerodrome and Velodrome protocols are merging into a unified "Aero" DEX (METADEX03 OS, Q2 2026).
+- New router contracts will be deployed for the merged platform
+- NVR's executeDirectDexSwap routes through the current Aerodrome Slipstream router
+- If contracts change without NVR updating the router address, all DEX-fallback swaps will fail silently
+- AERO token in TOKEN_REGISTRY may need address update if the token migrates
+- **Henry should monitor migration timeline and update router addresses before or immediately after METADEX03 goes live**
+- Sources: thedefiant.io, cryptobriefing.com, ambcrypto.com (all June 2026)

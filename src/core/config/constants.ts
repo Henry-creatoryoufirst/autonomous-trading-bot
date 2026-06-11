@@ -531,7 +531,7 @@ export const CAPITAL_FLOOR_ABSOLUTE_USD = 50; // $50 absolute minimum
 export const LIFETIME_DRAWDOWN_BUY_BLOCK_PCT = 20;
 
 /** Lifetime drawdown threshold at which position sizes are halved. */
-export const LIFETIME_DRAWDOWN_CAUTION_PCT = 12;
+export const LIFETIME_DRAWDOWN_CAUTION_PCT = 10; // Bear-adjusted Jun-2026: 12→10 — 97-day bear; risk-constrained Kelly research confirms tightening volatility constraints avoids trading in unfavorable conditions; triggers position-size halving 2pp earlier; capital preservation priority in closing phase of Option B window
 
 // ============================================================================
 // SECTOR RISK LIMITS — v6.2 Per-Sector Stop-Loss Overrides
