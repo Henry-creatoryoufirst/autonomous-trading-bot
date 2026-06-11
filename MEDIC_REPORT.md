@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-11T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-11T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-uapl9z (CLAUDE.md Rule 2: no staging push during Option B window)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-11T UTC | Scout COHORT_LOCKED per CLAUDE.md Rule 1 (Option B window ends ~2026-06-15, 4 days remaining); auditor NO_ACTION per CLAUDE.md Rule 1 rationale — no constant changes 4 days before window close (attribution integrity). Research completed, all constants already at bear-optimized levels. Branch: claude/cool-sagan-uapl9z per Rule 2. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Same environmental block as all 34 prior runs. MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-uapl9z (CLAUDE.md Rule 2 prevents staging push during Option B window).
+- **Scout**: COHORT_LOCKED — CLAUDE.md Rule 1 hard-blocks TOKEN_REGISTRY changes during Option B benchmark window (~2026-05-15 to ~2026-06-15, 4 days remaining). Last scout was 2026-05-14 (MOLT, 27+ days ago); threshold of 48h IS met, but the lock takes priority. GeckoTerminal API also returning 403 from this environment. No COHORT_PROPOSAL written (NVR-HQ not in repo checkout). Henry: cohort lock lifts ~June 15 — review scout candidates then.
+- **Auditor**: RESEARCH COMPLETE, NO_CHANGE — Option B window ends in ~4 days. Making constant changes now would muddy alpha attribution (CLAUDE.md "Why these rules exist" section). Research ran 4 searches. ALL previously-identified improvements already implemented in Runs #17–34. Current constants are at bear-market-optimal levels confirmed by research. See summary below.
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+- **Signal Quality**: Multi-source on-chain signals (exchange flows, OI, funding rates as veto conditions) — Impact 2/Complexity 4/Risk medium → Watch list. Already partially captured via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. No new actionable change. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026, 34× capital efficiency improvement) continues to auto-benefit NVR routing. Bot's adaptive slippage already at 100bps→75bps→50bps tiered (MEV-aware, already optimal per research). No code change needed. (Priority 0)
+- **Position Sizing**: Research confirms Quarter-Kelly (0.25×) is correct for crypto bear markets. NVR KELLY_FRACTION=0.25 already at optimum. All related constants (KELLY_POSITION_CEILING_PCT=12, KELLY_ROLLING_WINDOW=30, SCALE_UP_SIZE_PCT=3, RIDE_THE_WAVE_SIZE_PCT=3) already bear-adjusted. No remaining gap. (Priority 0)
+- **Competitive Intelligence**: MEV protection with private relays allows lower slippage (1-3%). NVR already at 1% base with tighter tiers for larger trades. Sequencer-direct RPC already active. No new actionable gap found. (Priority 0)
+- **Option B Window Integrity Note**: Even if a qualifying finding had been found (Priority ≥ 2.0, Risk low/med, ≤10 lines), implementing it 4 days before the window close would violate the attribution-integrity principle in CLAUDE.md. Any such finding belongs in a post-window PR, not an auto-commit.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
