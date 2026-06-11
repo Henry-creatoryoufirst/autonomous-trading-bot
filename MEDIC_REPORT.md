@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-11T UTC (Run #35 latest)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-11T UTC | Scout skipped — GeckoTerminal blocked (network policy) + cohort LOCKED (CLAUDE.md Rule 1, Option B window ends ~2026-06-15, ~4 days remaining). WebSearch partial scout: COHORT_PROPOSAL_2026-06-11.md written to NVR-HQ/CathedralVault. Auditor research-only (API blocked + Rule 2 prohibits staging push during Option B): AERO pool migration July 2026 watch, BASE token 33%/69% launch odds by June/Dec, HOME (DeFi.app) post-window candidate. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,27 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+### ⚠️ Option B Window — ~4 Days Remaining (ends ~2026-06-15)
+
+After window closes, the following are unlocked:
+- Scout can run with full GeckoTerminal access and may add tokens to TOKEN_REGISTRY
+- Cohort changes (COHORT_QUALITY_7) permitted via human PR review
+- Auditor can push threshold changes to staging branch
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 35th consecutive run). Bot healthy assumed. No changes to agent-v3.2.ts.
+- **Scout**: SKIPPED — GeckoTerminal blocked by network policy + cohort LOCKED (CLAUDE.md Rule 1). Partial scout via WebSearch: 4 candidates identified and scored. `NVR-HQ/CathedralVault/COHORT_PROPOSAL_2026-06-11.md` written for Henry's review post-window.
+- **Auditor**: RESEARCH-ONLY — Bot API unreachable (cannot check win_rate/drawdown triggers). Cannot push to staging (CLAUDE.md Rule 2 during Option B). 3 key external findings: (1) Aerodrome→Aero pool migration underway (May 12–July 2026) — AERO LPs must migrate or lose emissions, monitor pool liquidity; (2) BASE native token 33% launch odds by June 30, 69% by Dec 31 — pre-position analysis warranted; (3) DeFi.app HOME 132.9% monthly growth — post-window candidate. No constants changes this run.
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+- **Signal Quality**: No new findings beyond Run #34. Smart-money clustering on watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome→Aero pool migration (May 12–July 2026 deadline) — LPs must migrate to MEV-resistant pools or lose emissions. Risk: AERO token pool liquidity may thin before July deadline, degrading NVR's AERO swap execution. Action: monitor AERO pool health on Aerodrome UI. No code change needed. (Impact 3, Complexity 0, Risk medium — external dependency)
+- **Position Sizing**: No new actionable findings. KELLY_FRACTION=0.25 (Quarter-Kelly) and KELLY_POSITION_CEILING_PCT=12 confirmed optimal for extended bear by prior research. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — BASE native token exploration confirmed. Polymarket: 33% odds by June 30, 69% by Dec 31. If launched, would be primary BLUE_CHIP addition to cohort post-window (Coinbase's own L2 governance token with deepest Base liquidity). Secondary: DeFi.app (HOME) +132.9% MoM with new perpetuals — strong DEFI candidate post-window. (Impact 4, Complexity 1, Risk medium — timing uncertain)
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +227,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -221,4 +243,4 @@ PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmen
 ## Safety
 - No changes to agent-v3.2.ts
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- MEDIC_REPORT.md committed to claude/cool-sagan-2dxedj (staging push prohibited per CLAUDE.md Rule 2 during Option B window)
