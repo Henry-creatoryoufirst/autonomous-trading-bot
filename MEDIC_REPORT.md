@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-11T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-11T UTC | Scout RAN — Option B cohort lock (CLAUDE.md Rule 1) prevents TOKEN_REGISTRY additions through ~2026-06-15; GeckoTerminal unreachable from sandbox (403); WebSearch surfaced Aero (Dromos Labs AERO+VELO merger, Jul-2026 launch) and uncertain BASE native token as watch items — no qualifying new tokens with verified pool data; Auditor triggered (BEAR regime, F&G 23-26, BTC -45% cycle high, liquidate-all 2026-05-28 context); 4 searches run; NO implementation — all bear-market constants already well-tuned by 26 prior runs; watch items: (1) Aero METADEX03 migration Jul-2026, (2) private relay MEV protection for Base |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code fix possible or needed.
+- **Scout**: RAN (last scout was 2026-05-14, MOLT — 28 days ago, well over 48h threshold). GeckoTerminal blocked (403) from sandbox. WebSearch used. Option B cohort lock (CLAUDE.md Rule 1) prevents TOKEN_REGISTRY additions through ~2026-06-15 (4 days). No qualifying tokens with verified pool data found. Watch items for post-window-close: (1) Aero — Dromos Labs AERO+VELO unified DEX token, launches July 2026, would require updating existing AERO registry entry; (2) BASE native token — still uncertain, monitor for official launch confirmation.
+- **Auditor**: TRIGGERED by 90-day+ BEAR market (F&G 23-26 extreme fear, BTC -45% from Oct-2025 cycle high $126K, current ~$61K per June 2026 data). Context: operator liquidate-all executed 2026-05-28, bot likely in high USDC. 4 searches run. NO IMPLEMENTATION — all standard bear-market constants already well-tuned across 26 prior auditor sessions (KELLY_FRACTION=0.25, KELLY_ROLLING_WINDOW=30, NORMAL_CONFLUENCE_BUY=27, HOT_MOVER thresholds all tightened, STALE_POSITION/CULL constants accelerated). No finding meets priority ≥ 2.0 + risk low/medium + ≤10 lines threshold. NVR-HQ not in checkout — report file skipped.
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+- **Signal Quality**: Multi-timeframe confluence with smart money wallet tracking (Nansen-style) — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500 whale detection, flow weight=35% in swarm). Full integration complex (Impact 2/Complexity 4/Risk medium, Priority 0.5) → Watch list. No new action.
+- **Execution Efficiency**: Aerodrome METADEX03 upgrade (part of Aero unified DEX, July 2026 launch) promises "reduced value leakage, lower costs, MEV-resistant pools." Bot auto-benefits at DEX layer without code change on upgrade. No new action. Watch: migrate AERO entry to new Aero contract when July 2026 launch confirms.
+- **Position Sizing**: Kelly criterion research confirms Quarter-Kelly (0.25×) optimal for crypto bear markets with fat tails. NVR already at KELLY_FRACTION=0.25 with KELLY_POSITION_CEILING_PCT=12. Effective max per trade ≈3.5% portfolio (0.25 × 12% × TRENDING_DOWN 0.75 = 2.25% — well within safe range). All prior audits have systematically reduced and aligned these constants. No new action. (Priority 0)
+- **Competitive Intelligence**: Private relay MEV protection (Flashbots Protect equivalent for Base L2 sequencer) — Impact 3, Complexity 4, Risk medium → Priority 0.75. Would require changes to RPC routing in execution path (off-limits). Watch list for Henry. Aero METADEX03's MEV-resistant pool migration (May-June 2026 mandatory LP migration underway) will provide structural MEV improvement at the DEX level without bot code changes.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
