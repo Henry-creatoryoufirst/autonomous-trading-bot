@@ -1,3 +1,81 @@
+# MEDIC REPORT — 2026-06-11T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 "Host not in allowlist" on all endpoints). MEDIC_REPORT updated (Run #35). This is the 35th consecutive run with the same network restriction.
+- **Scout**: RAN (17 days elapsed since last scout commit 2026-05-25, far beyond 48h threshold). WebSearch ran 2 targeted searches. **No qualifying new tokens found** that aren't already in TOKEN_REGISTRY. Additionally, CLAUDE.md Rule 1 (Option B window cohort lock, active until ~2026-06-15 — **4 days remaining**) prohibits any `feat(scout): add` commits to TOKEN_REGISTRY regardless. Scout result: no action. Key intelligence gathered (see Scout section below).
+- **Auditor**: TRIGGERED — inferred market context (97+ day bear/recovery, Aerodrome pool migration window active, forced liquidation endpoint added in v21.30). API trigger conditions unverifiable. Research ran 4 searches. Top qualifying finding: TWAP_SLICE_INTERVAL_MS 12s→15s during Aerodrome MEV-pool migration window (Priority 2.0, Impact 2, Complexity 1, Risk low). **NOT IMPLEMENTED** — Option B window closes in 4 days; changes now would muddy alpha attribution per CLAUDE.md Rule 2. Proposed to Henry's watch list (see Auditor section below).
+
+## ⚠️ OPTION B WINDOW STATUS (as of 2026-06-11)
+- Window start: 2026-05-15
+- Window close: **~2026-06-15 (4 days remaining)**
+- Cohort: COHORT_QUALITY_7 (cbBTC, WETH, cbXRP, cbLTC, LINK, cbADA, cbSOL) — LOCKED
+- CLAUDE.md Rules 1 & 2 remain in effect: no TOKEN_REGISTRY auto-adds, no auto-merge to staging/main
+- All changes in this run committed to feature branch `claude/cool-sagan-cbblyw` only
+
+## Scout Research Summary (Run #35 — 2026-06-11)
+
+### Candidates Evaluated
+
+| Token / Category | Notes | Score | Decision |
+|---|---|---|---|
+| New Base L2 tokens | No new high-liquidity tokens surfaced via web search not already in TOKEN_REGISTRY | N/A | Skip |
+| AERO (Aerodrome) | Already in TOKEN_REGISTRY | — | Already tracked |
+| MORPHO | Already in TOKEN_REGISTRY; TVL +1906% YTD on Base ($966M) — strong signal but already tracked | — | Already tracked |
+
+### Key Scout Intelligence (NOT a cohort proposal — for Henry's awareness)
+- **Aerodrome cross-chain expansion July 2026**: Aerodrome is launching on Ethereum mainnet + Circle's Arc blockchain in July 2026. Pre-launch pool migration (MEV-resistant pools) is active May–July 2026. LPs must migrate to continue earning emissions. Impact on NVR: AERO token may have elevated momentum leading into July launch. Old Aerodrome pools may thin during migration window, temporarily increasing slippage on non-AERO pairs.
+- **Morpho Protocol TVL**: $966M on Base (up 1906% YTD) — if already held, could be worth holding through the recovery. Already in TOKEN_REGISTRY and being tracked.
+- **NVR-HQ Cathedral vault**: Not present in this repo checkout. Cannot write COHORT_PROPOSAL file to vault. Noting candidates here as the only available persistent record.
+
+### Post-Window Scout Candidates (for Henry's review after ~2026-06-15)
+After the Option B window closes, Henry should evaluate:
+1. No new tokens surfaced this scan that require immediate addition. The TOKEN_REGISTRY is current.
+2. Consider reviewing cbSOL HOLD_ONLY_TOKENS_DEFAULT status — if cbLTC liquidity remains thin after window, and cbSOL gains liquidity improvements, could be worth active trading status.
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+
+**Trigger**: Inferred 97+ day bear market / recovery context (last auditor ran Run #34, 2026-05-15). API trigger conditions (win_rate, drawdown, streak) unverifiable. Forced-liquidation endpoint (`/api/admin/liquidate-all`) added in most recent main commit — suggests Henry may have reset bot to all-USDC at some point. Running research regardless given 27-day gap since last audit.
+
+### Signal Quality
+Web research confirms: multi-wallet confluence scoring (2+ wallets buying same token within observation window) is the top 2026 alpha source. "Trigger only when two or more watched wallets buy the same token within a short window." NVR already captures LARGE_TRADE_THRESHOLD_USD=2500 whale flow as proxy. Full Nansen-style wallet-cluster integration would require external API + significant architecture work. (Impact 3, Complexity 4, Risk medium, Priority 0.75) → Watch list.
+
+### Execution Efficiency — KEY FINDING
+**Aerodrome MEV-resistant pool migration (May–July 2026)**: Aerodrome requires LPs to migrate from legacy pools to new MEV-resistant pool types to continue earning emissions ahead of the July 2026 cross-chain launch. During this transition window, old pool liquidity is thinning as LPs migrate. The bot routes through Aerodrome Slipstream, which auto-selects best liquidity path — but temporarily thinner intermediate pools could increase TWAP slice execution costs.
+
+**Proposed change** (NOT auto-implementing, see reasoning below):
+- `TWAP_SLICE_INTERVAL_MS`: 12,000 → 15,000 (1 line in constants.ts)
+- Rationale: Slightly slower TWAP execution gives MEV-pool migration time to settle between slices, reducing the chance of executing into a pool that's mid-migration (half-migrated, thin depth).
+- Impact: 2/5, Complexity: 1/5, Risk: low, Priority: 2.0
+- **Why not implemented this run**: Option B window closes in 4 days. A change to execution timing now would affect the last few days of benchmark data. Per CLAUDE.md Rule 2: "Unattended automated edits to the constants the strategy runs on muddy the alpha attribution." This is exactly that scenario. Change proposed for Henry to review and apply AFTER the window closes if Aerodrome migration is still active.
+
+### Position Sizing
+Quarter-Kelly (KELLY_FRACTION=0.25) + KELLY_ROLLING_WINDOW=30 confirmed by 2026 research as well-calibrated. "Continuous recalculation using rolling window of recent trades" — already implemented. "Correlation between trades means Full Kelly is even riskier" — NVR's sector ceiling overrides (BLUE_CHIP: 18%, others: 12%) address this. No new implementation needed. (Priority 0)
+
+### Competitive Intelligence
+- ARMA (Giza) autonomous DeFi agent on Base — already in TOKEN_REGISTRY as GIZA. Already tracked.
+- HeyElsa (ELSA): $300M+ on-chain volume — already in TOKEN_REGISTRY. Already tracked.
+- "Production 2026 agents combine ML signal classification + LLM strategy decisions + deterministic risk rules" — NVR already has this architecture (Gemma/Groq for screening, Claude Sonnet for heavy decisions, breakers as hard rails).
+- No actionable competitive gap found. NVR architecture is industry-standard 2026. (Priority 0)
+
+## Watch List for Henry (post-window review)
+1. **TWAP_SLICE_INTERVAL_MS 12s → 15s**: Low-risk, low-complexity. Reduces execution into thin Aerodrome pools during the July 2026 migration window. Implement after 2026-06-15 if migration still active.
+2. **AERO position review**: July 2026 cross-chain launch catalyst. Consider increasing BLUE_CHIP allocation to AERO if momentum builds into July launch.
+3. **cbLTC HOLD_ONLY_TOKENS_DEFAULT**: Re-evaluate cbLTC liquidity after window close. If Aerodrome migration improves cbLTC pool depth, could be worth re-enabling active trading.
+4. **Multi-wallet confluence**: Full Nansen/Dune wallet-cluster integration is high-impact but high-complexity. Henry's call on prioritizing for v22.x.
+
+## Action for Henry (Urgent — within 4 days)
+1. **Option B window closes ~2026-06-15**: Evaluate bot performance vs cbBTC/WETH 60/40 benchmark over the 30-day window starting 2026-05-15. Get the benchmark data before closing.
+2. **Post-window**: Review COHORT_QUALITY_7 composition, consider adding back broader TOKEN_REGISTRY tokens for active trading.
+3. **Verify bot health**: https://autonomous-trading-bot-production.up.railway.app/health — the medic cannot reach this from the execution environment. 35 consecutive runs blind.
+4. **Add egress allowlist** (same recommendation as prior 34 runs): `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` need to be in the Claude Code sandbox allowlist.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
