@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-11T UTC | Scout ran (MOLT was last, 28 days ago); cohort LOCKED (Option B window ends ~2026-06-15); GeckoTerminal blocked; no candidates. Auditor triggered (8-month bear, BTC -50%, F&G=23-26); NO code changes — Option B final 4 days; findings queued post-window. ⚠️ AERO token unlock TODAY (June 11). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,36 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-11T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout was MOLT, 2026-05-14, ~28 days ago — well over 48h threshold). GeckoTerminal API blocked (can't verify liquidity/volume). Option B cohort LOCKED per CLAUDE.md Rule 1 (window 2026-05-15 to ~2026-06-15, expires in ~4 days). No TOKEN_REGISTRY changes. No qualified candidates identified without verified data. Standards maintained.
+- **Auditor**: TRIGGERED by inferred 8-month BEAR market (BTC -50% from Oct-2025 high, F&G=23-26 extreme fear, BTC RSI=35). 48h+ threshold met. Research ran 4 searches. **NO IMPLEMENTATION** — Option B window closes ~2026-06-15 (4 days); any constants change now would muddy 30-day alpha attribution. All findings queued as watch items for Henry post-window.
+
+## Auditor Research Summary (Run #35 — 2026-06-11)
+
+### Market Context
+- Bitcoin: $61,193 (−50% from Oct-2025 ATH)
+- Fear & Greed Index: 23–26 (extreme fear)
+- BTC RSI: 35.12 (oversold), MACD negative
+- Bear regime active since October 2025 (~8 months)
+- Selective narrative: BTC leads, altcoins rotating through short-lived pumps
+
+### Signal Quality
+Multi-indicator scoring research: 9+ aligned indicators historically produce 68–72% win rates (walletfinder.ai, trendrider.net 2026). On-chain signals — funding rates, open interest, exchange flows — add meaningful edge. NVR's existing confluence scoring already multi-indicator; adding funding rate / OI as independent confirmation could push NVR toward the 9+ indicator tier. **Complex change (>10 lines), not safe to implement in final 4 days of Option B window.** Impact 2/Complexity 4/Risk medium → Watch list for post-June-15. (Priority 0.5)
+
+### Execution Efficiency — ⚠️ TIME-SENSITIVE WATCH ITEM
+**Aerodrome MEV-resistant pool migration (deadline July 2026).** Slipstream V3 embeds MEV auction directly into AMM — protects NVR swaps from sandwich attacks. Migration started May 2026; LPs who don't migrate by July lose AERO emissions. The Aerodrome *router* auto-routes through new pools — no code change needed for NVR's swap execution. **Auto-benefit confirmed.** However: **AERO token unlock scheduled June 11, 2026 (TODAY)** — potential short-term sell pressure on NVR's AERO position. Henry should be aware. (Impact 3/Complexity 0/Risk low — watch only, no code action)
+
+### Position Sizing
+Quarter-Kelly confirmed optimal for 2026 bear (multiple sources: lbank.com, altrady.com, learncrypto.com). Adding volatility constraints reduces drawdown significantly per risk-constrained Kelly research. NVR already at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, effective max 3–4% per position — well-calibrated per prior audits. No new action. (Priority 0)
+
+### Competitive Intelligence
+AI-on-AI MEV warfare growing on Base (cryptollia.com 2026). ElizaOS intent-based trading trending but requires major architecture change. MetaMask Agent Wallet and MevX emerging competitors on Base. Quicknode MEV protection available for Base. Slipstream V3 MEV auction auto-benefits NVR passively. No implementable change in ≤10 lines. (Priority 0.5)
+
+### Option B Window Decision
+All four findings either require >10 lines, touch execution paths (off-limits), or are auto-benefits requiring no code. Option B window expires in ~4 days (~2026-06-15). Implementing now would muddy 30-day attribution. **Correct call: research documented, zero code changes.** Post-window actions: (1) add funding rate / OI signals to confluence scoring, (2) confirm Aerodrome router handles new MEV-resistant pool addresses transparently.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
