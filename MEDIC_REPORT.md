@@ -1,6 +1,34 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-12T14:07 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-12T14:07 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint). Both `api/errors` and `api/balances` return network-level block: `Host not in allowlist: autonomous-trading-bot-production.up.railway.app`. GeckoTerminal also blocked. MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 (cohort locked during Option B benchmark window, active until ~2026-06-15, **3 days remaining**). GeckoTerminal API also blocked. Last scout commit: 2026-05-25 (18 days ago, >48h threshold met, but Rule 1 overrides). If any candidates are found post-window, Henry must review via PR — no auto-add.
+- **Auditor**: CANNOT ASSESS TRIGGER (API blocked — portfolio/trade/patterns endpoints unreachable). Research ran 4 searches regardless. No code change implemented (cannot verify trigger conditions, and most near-term findings are complex; NVR-HQ not in checkout so research file skipped). See Research Summary below.
+
+## Auditor Research Summary (Run #35 — 2026-06-12)
+
+- **Signal Quality**: 2026 alpha comes from multi-signal confluence — whale wallet flow, on-chain exchange inflow/outflow, NLP sentiment, price data. QuantHive.AI (new, Base-native) surfaces "Alpha Trader" wallet momentum signals with volume change metrics as early indicators. NVR already uses buy-ratio + LARGE_TRADE_THRESHOLD_USD whale flow. Full wallet-clustering integration is complex (Impact 2/Complexity 4/Risk medium) → Watch list for Henry post-Option-B.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026, improved routing algorithm) + MEV-Resistant Pool Migration (May 2026) — bot auto-benefits at DEX level without code change. New REST API for Aerodrome/Velodrome (HN post Jun-2026) allows trade-without-Web3-complexity pattern — worth exploring for a simpler swap path in a future spec. No action needed this run.
+- **Position Sizing**: Half-Kelly (0.5f*) captures ~75% of optimal geometric growth while dramatically reducing drawdowns vs Full-Kelly. NVR is at Quarter-Kelly (KELLY_FRACTION=0.25) — already conservative. Research (arxiv 2025, Atlas Peak 2026) validates this floor. Drawdown-probability constraint as a secondary lever: "estimate raw Kelly → apply drawdown-probability constraint." Already implemented via KELLY_POSITION_CEILING_PCT. No new action.
+- **Competitive Intelligence**: Intent-based trading (SperaxOS DeFi Guard now public, Jun-2026) provides zero-slippage + MEV protection by routing through solvers. High impact but requires touching executeDirectDexSwap (off-limits). MEV sandwich attacks on micro-caps remain the primary threat (confirmed by MEV Bots 2026 research). NVR's HOT_MOVER_MIN_FDV_USD=1M (set Run #34) is the right defense. No new actionable change.
+
+## ⚠️ Option B Window Approaching End
+
+Today is 2026-06-12. The Option B benchmark window closes **~2026-06-15 (3 days)**. After that:
+1. Scout job can resume auto-discovery and add qualified tokens to TOKEN_REGISTRY
+2. COHORT_QUALITY_7 can be reviewed/expanded via human-reviewed PR
+3. Consider a full Auditor audit with actual portfolio metrics to assess Option B outcome
+
+Henry: please check the 30-day performance vs cbBTC/WETH 60/40 benchmark before the window closes.
+
+---
+
+## Previous Run (Run #34 — 2026-05-15T UTC)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +94,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T14:07 UTC | Scout blocked (CLAUDE.md Rule 1 — cohort locked, Option B window ends ~2026-06-15, 3 days remaining; GeckoTerminal also egress-blocked); Auditor research ran 4 searches — trigger conditions unassessable (API blocked), no code change; ⚠️ Option B window ends ~Jun 15 |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,7 +234,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
