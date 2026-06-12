@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-12T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-12T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-bk6o8l
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T UTC | Scout ran (>48h since last: 2026-05-16); GeckoTerminal blocked by sandbox; no qualifying candidates from WebSearch; COHORT_QUALITY_7 locked per CLAUDE.md Rule 1 (Option B window ends ~2026-06-15). Auditor: API blocked, trigger conditions indeterminate; 4 research searches ran; no implementing change (3 days to Option B close — clean attribution over marginal tuning). Watch list: Aerodrome MEV-resistant LP migration deadline July 2026; market L2 +8.14% suggests possible bear-end transition. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-12T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from sandbox). MEDIC_REPORT updated (Run #35). Bot health indeterminate — see git history and Railway dashboard for production status.
+- **Scout**: RAN — last scout was 2026-05-16 (>48h elapsed). GeckoTerminal API blocked by sandbox egress policy (same restriction as prior 34 runs). WebSearch returned no specific Base-native token candidates with verifiable liquidity/volume data. **COHORT_QUALITY_7 remains locked per CLAUDE.md Rule 1** — Option B benchmark window closes ~2026-06-15 (3 days). No TOKEN_REGISTRY changes. No COHORT_PROPOSAL (no candidates identified). Standards maintained.
+- **Auditor**: Trigger conditions INDETERMINATE (API blocked — cannot compute win_rate, drawdown, or losing_streak). Research ran 4 searches. Key findings below. No implementation change this run — with 3 days remaining in Option B window, preserving clean alpha attribution outweighs marginal threshold tuning. Watch list forwarded to Henry.
+
+## Auditor Research Summary (Run #35 — 2026-06-12)
+
+- **Signal Quality**: Multi-signal confluence (on-chain buy ratio + MACD + RSI + volume) confirmed as dominant approach in 2026. NVR already implements this with SWARM_AGENT_WEIGHTS (flow 35%, risk 25%, momentum 20%, trend 15%, sentiment 5%). No actionable gap. (Impact 1, Priority 0)
+- **Execution Efficiency**: **WATCH LIST ITEM** — Aerodrome launched MEV-resistant pool migration in May 2026 (LPs must migrate before July 2026 or stop earning AERO emissions). This affects LP positions, NOT traders — the bot's router (`0xBE6D8f0d05cC4be24d5167a3ef062215bE6D18a5`) routes to the deepest pool automatically and is unaffected by the LP migration. Slipstream V2 routing algorithm improvement (March 2026) auto-benefits NVR at the DEX level without code change. (Impact 0 for bot, Watch: LP-side)
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) confirmed optimal for crypto in 2026 (Atlas Peak Research, TradingOnramp). Current KELLY_POSITION_CEILING_PCT=12, KELLY_ROLLING_WINDOW=30 are well-calibrated for sustained bear. L2 market up 8.14% may signal bear transition — **WATCH LIST**: if market enters TRENDING_UP regime, relaxing DECEL_MIN_PROFIT_PCT 2→3 and HOT_MOVER_MIN_BUY_RATIO 0.60→0.55 may re-capture missed momentum entries. Not implementing today (no confirmed regime data, 3 days to Option B close). (Impact 2, Complexity 1, Risk medium without confirmed trigger)
+- **Competitive Intelligence**: Intent-based trading (private relays, solver competition) is going mainstream in 2026 per QuickNode/MetaMask research. NVR already uses sequencer-direct RPC for MEV protection. Full intent-based architecture would require off-limits execution path changes. (Impact 2, Complexity 4, Risk medium) → Watch list for post-Option-B.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
