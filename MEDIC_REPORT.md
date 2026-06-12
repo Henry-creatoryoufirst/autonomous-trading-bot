@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-12T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-12T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-udxgmk (CLAUDE.md Rule 2: no push to staging during Option B)
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T UTC | Scout ran (last scout 2026-05-25, 18d ago); COHORT_PROPOSAL written (Option B window active — cohort locked, no TOKEN_REGISTRY edits); auditor research complete (API unavailable for trigger metrics); no code changes; pushed to claude/cool-sagan-udxgmk |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-12T UTC)
+
+**OPTION B WINDOW ACTIVE — ends ~2026-06-15. No auto-changes to staging per CLAUDE.md Rule 2.
+All findings and proposals committed to `claude/cool-sagan-udxgmk` for Henry's review.**
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code changes.
+- **Scout**: RAN (last scout 2026-05-25, 18 days ago — over 48h threshold). GeckoTerminal API also network-blocked. WebSearch used as fallback. No specific token candidates with verified on-chain metrics ($100K+ liq, $50K+ vol, 3d+ age) identified from available data sources. COHORT_PROPOSAL_2026-06-12.md written with manual verification steps for Henry. No TOKEN_REGISTRY edits (Option B Rule 1: cohort locked until ~2026-06-15).
+- **Auditor**: RESEARCH COMPLETE (trigger conditions could not be evaluated — API unavailable). 4 searches ran. No finding met ≥2.0 priority threshold for auto-implementation with confidence. Full audit report written to `reports/audit-2026-06-12.md`. No code changes made.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +215,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
