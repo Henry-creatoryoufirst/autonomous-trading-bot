@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-12T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T UTC | Scout ran (18 days since last scout); Option B window active (closes ~Jun-15) — wrote COHORT_PROPOSAL_2026-06-12.md instead of modifying TOKEN_REGISTRY (Rule 1); NOCK (Nockchain, $2.15M liq, $1.27M+ vol, 7/10) queued for post-window review; auditor ran — VOL_LOW_BOOST 1.25→1.5, post-bear recovery adjustment (Option B closing, bear market resolved, quality-cohort low-vol = accumulation not pause-before-continuation-down) |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-12T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (18 days since last scout, 2026-05-25). Option B window active (closes ~Jun-15, 3 days). Per CLAUDE.md Rule 1, TOKEN_REGISTRY is LOCKED. Research only: NOCK (Nockchain) scored 7/10 — liquidity $2.15M, 24h vol $1.27M+, 13 months old, Base contract 0x9B5E262cF9bb04869ab40b19AF91D2dc85761722. RFL (Reflect) rejected: 24h vol $10.9K fails $50K floor. KTA and AVNT already in registry. Filed COHORT_PROPOSAL_2026-06-12.md for Henry's post-window review.
+- **Auditor**: TRIGGERED (28+ days since last change, Run #34 May-15; Option B window closing Jun-15; bear market resolved). Research ran 4 searches. Top finding: VOL_LOW_BOOST 1.25→1.5 — restoring pre-bear position-sizing boost for low-vol periods. In post-bear recovery, low-vol consolidations signal accumulation before breakout (not pause-before-continuation-down as in the 65-day bear). 1-line change. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0). Pushed to `claude/cool-sagan-7m3mmn` — requires Henry's review before merge per CLAUDE.md Rule 2.
+
+## Auditor Research Summary (Run #35 — 2026-06-12)
+- **Signal Quality**: 2026 best-practice DeFi bots combine price, on-chain, and sentiment signals. NVR already uses technical indicators + whale flow. New finding: specialized quality-cohort strategies (like Option B) outperform general-purpose bots by 2–3x after fees (2026 AI arena research). No new signal type to add cleanly within 10-line constraint. (Impact 2, Complexity 4, Risk medium → Priority 0.5) Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream launched MEV internalization (METADEX03 Nov-2025; LP migration deadline July 2026). Bot auto-benefits from DEX-level routing improvements without code change. July 2026 LP migration is worth Henry monitoring for any pool depth changes in the cohort. No code action needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Post-bear recovery VAPS calibration. VOL_LOW_BOOST was bear-adjusted 1.5→1.25 specifically for "sustained downtrend pause-before-continuation" pattern. Research confirms that in post-bear recovery phases, low-volatility periods represent accumulation/consolidation, not continuation signals. With Option B window closing Jun-15 and bear market resolved (~70-day bear peaked May 2026), restoring 1.25→1.5 is the correct post-recovery calibration. Quarter-Kelly (0.25) + VOL_LOW_BOOST(1.5) effective sizing is still conservative. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: KEY FINDING — AI bots that specialize outperform general bots (Pump Parade Medium, AI Arena 2026). Over 80% of retail fully-automated bots underperform buy-and-hold after fees. NVR's Option B quality-cohort thesis aligns with this finding — specialized quality-timing > broad speculation. No code change (strategic validation). Aerodrome MEV auction internalization (July 2026) — Henry should monitor pool migration for cohort tokens. (Priority: Watch list)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,7 +226,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window closes ~2026-06-15 (3 days).** Review COHORT_PROPOSAL_2026-06-12.md for post-window additions. Review and merge auditor change (VOL_LOW_BOOST 1.25→1.5) from `claude/cool-sagan-7m3mmn` before or after the window closes (your call on attribution).
+5. **Aerodrome LP migration:** Aerodrome's MEV-internalized pools require LP migration by July 2026 for continued AERO emissions. Verify cohort token pools have migrated.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
