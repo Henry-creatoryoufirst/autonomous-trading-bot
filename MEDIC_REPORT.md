@@ -66,6 +66,16 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T UTC | **Scout attempted but blocked** — GeckoTerminal API 403, bot API 403, CLAUDE.md Rule 1 cohort lock still active (Option B window ends ~2026-06-15, 3 days remaining). No TOKEN_REGISTRY changes. Auditor: API unreachable, cannot assess trigger conditions. See Run #35 section below. |
+
+## Jobs Status This Run (Run #35 — 2026-06-12T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403/egress-blocked on all endpoints). MEDIC_REPORT updated (Run #35). No bot error data available; no code changes.
+- **Scout**: ATTEMPTED. Last successful scout: MOLT added 2026-05-14 (~29 days ago, ≫ 48h threshold → Scout should run). **Two blockers prevented execution:**
+  1. Network egress: GeckoTerminal API (api.geckoterminal.com) returns 403/blocked — no pool liquidity or volume data obtainable programmatically.
+  2. CLAUDE.md Rule 1 (hard override): Option B benchmark window active 2026-05-15 → ~2026-06-15 (3 days remaining). Auto-adds to TOKEN_REGISTRY explicitly prohibited. Cathedral vault (NVR-HQ) not present in this repo checkout, so COHORT_PROPOSAL file cannot be written to canonical location.
+  **Web research summary**: Aerodrome TVL ~$453M, Base DEX volume ~$3B/day (all-time high). Aerodrome cross-chain DEX launch to Ethereum mainnet planned July 2026. No specific new token candidates identified with verified liquidity >$100K and volume >$50K — insufficient data to apply quality filter without live API access. Scout result: no qualifying tokens found this scan (data insufficient).
+- **Auditor**: SKIPPED — bot API unreachable (403/egress-blocked). Cannot calculate win_rate, drawdown, or losing_streak. Cannot assess trigger conditions. No code changes.
 
 ## Bot Health Evidence (from git history)
 
