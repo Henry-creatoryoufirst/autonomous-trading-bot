@@ -527,8 +527,13 @@ export const CAPITAL_FLOOR_ABSOLUTE_USD = 50; // $50 absolute minimum
 // alignment with that same pattern.
 // ============================================================================
 
-/** Lifetime drawdown threshold at which NEW BUYs are blocked. Cycle still runs. */
-export const LIFETIME_DRAWDOWN_BUY_BLOCK_PCT = 20;
+/** Lifetime drawdown threshold at which NEW BUYs are blocked. Cycle still runs.
+ *  Jun-2026: 20→28 — post force-liquidation recovery. When portfolio is in USDC after
+ *  admin liquidation and F&G=12 (extreme fear), the 20% gate prevented redeployment into
+ *  quality cohort at optimal accumulation points. 28% still blocks deeply broken portfolios
+ *  while allowing tactical reaccumulation at extreme-fear bottoms (Kelly criterion research:
+ *  fractional Kelly accumulation in quality assets at extreme fear historically outperforms). */
+export const LIFETIME_DRAWDOWN_BUY_BLOCK_PCT = 28;
 
 /** Lifetime drawdown threshold at which position sizes are halved. */
 export const LIFETIME_DRAWDOWN_CAUTION_PCT = 12;

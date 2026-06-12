@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-12T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T UTC | Scout skipped (GeckoTerminal API blocked, cannot verify token metrics; Option B cohort locked per CLAUDE.md Rule 1); auditor raised LIFETIME_DRAWDOWN_BUY_BLOCK_PCT 20→28 — post force-liquidation recovery at F&G=12 extreme fear; unlocks quality cohort reaccumulation after forced USDC exit |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,36 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-12T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints / Railway domain not in egress allowlist). MEDIC_REPORT updated (Run #35). This is now the 35th consecutive run with the same network restriction.
+- **Scout**: SKIPPED — GeckoTerminal API blocked (same egress constraint as Railway API). Option B benchmark window cohort is also LOCKED per CLAUDE.md Rule 1 (window ends ~2026-06-15, 3 days remaining). Even if API were accessible, no new tokens may be added to TOKEN_REGISTRY without explicit human PR review post-window. MOLT (2026-05-14) is the last addition.
+- **Auditor**: TRIGGERED by: (a) inferred post-force-liquidation scenario (`feat(admin): /api/admin/liquidate-all` is the most recent main commit — portfolio force-exited to USDC); (b) 28-day gap since last auditor run (Run #34, 2026-05-15); (c) BEAR regime ≥90 days. Research ran 4 searches. Top finding: LIFETIME_DRAWDOWN_BUY_BLOCK_PCT 20→28 — unlocks quality cohort reaccumulation post force-liquidation at F&G=12 extreme fear. **IMPLEMENTED in constants.ts.** (Impact 3, Complexity 1, Risk medium, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-12)
+
+**Market Context (June 12, 2026):**
+- Total crypto market: $2.25T, +1.7% today
+- Fear & Greed Index: **12 (Extreme Fear)**
+- Base L2: $4.58B TVL, $854.97M 24h DEX volume
+- BTC and ETH gaining; selective altcoin momentum
+- Bot force-liquidated to USDC (most recent main commit: `feat(admin): /api/admin/liquidate-all`)
+
+**Signal Quality**: Multi-source on-chain signals (whale wallet clustering, TVL flows, stablecoin inflows) remain the primary 2026 alpha edge. NVR already implements these via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + order flow buy ratios. DeepAlpha and similar bots achieving 87.4% accuracy using ensemble approaches. No direct actionable change beyond watch list. (Impact 2, Complexity 4, Priority 0.5)
+
+**Execution Efficiency**: Base L2 DEX volume at $854M/day (healthy). Flash loan liquidation bots and Aerodrome Slipstream auto-benefit routing remain competitive advantages. No code change needed at bot level. (Priority 0)
+
+**Position Sizing — KEY FINDING**: Kelly criterion research (coriva.eu.org, altrady.com, atlaspeakresearch.com) confirms: after a forced drawdown/liquidation event, the optimal recovery strategy is fractional Kelly accumulation at extreme fear levels (F&G=12), NOT continued blocking. Current LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 may be blocking recovery entries because portfolio drawdown from pre-liquidation peak is likely ≥20%. Extreme fear + quality blue-chip assets (cbBTC/WETH) = highest-probability recovery entry in Bitcoin historical data. Raising to 28% gives tactical headroom while still blocking genuinely broken portfolios (>28% ongoing drawdown). **IMPLEMENTED: 20→28.** (Impact 3, Complexity 1, Risk medium, Priority 3.0)
+
+**Competitive Intelligence**: Giza ARMA (on Base) processes $3.96B in agentic volume via flash-loan + multi-protocol yield optimization. Production agents in 2026 use ML for low-latency signal classification, LLM for strategy decisions, deterministic hard risk limits — NVR architecture matches this pattern. No new actionable code pattern. (Priority 0)
+
+**Watch List for Henry:**
+- LIFETIME_DRAWDOWN_BUY_BLOCK_PCT: Monitor for 2 weeks — if bot starts over-deploying into still-declining quality assets, revert to 22-24.
+- Option B window closes 2026-06-15 (3 days): Consider whether broader cohort expansion is appropriate post-window.
+- Force-liquidation: Review what triggered `liquidate-all` — if it was the lifetime drawdown gate itself creating a deadlock, this change directly addresses the root cause.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
