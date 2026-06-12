@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-12T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-12T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-0welzy
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-12T UTC | ⚠️ OPTION B DAY 28/30. Scout ran (18 days since last run) — no qualifying tokens verified (GeckoTerminal API + all WebFetch blocked); per CLAUDE.md Rule 1 cohort locked until ~June 15 regardless. Auditor: production API unreachable — cannot check trigger conditions. Market signals (Base $13B TVL, VIRTUAL +6.78%, AERO Robinhood listing) suggest regime shift from bear. 30-day Option B window closes ~2026-06-15. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-12T UTC)
+
+### ⚠️ OPTION B WINDOW CLOSING IN 3 DAYS (~2026-06-15)
+Day 28 of the 30-day Option B benchmark window. Henry: this run found no critical failures but the window close is imminent. Manual review of production performance is strongly recommended before deciding on cohort expansion.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Run #35, same issue since Run #1.
+- **Scout**: RAN (18 days since last run — 2026-05-25). However, both `api.geckoterminal.com` and `api.geckoterminal.com` WebFetch returned 403; Bash curl also blocked by egress policy. Web searches returned only generic market data (no pool addresses, liquidity, or volume metrics verifiable). Per **CLAUDE.md Rule 1**, cohort is locked until ~2026-06-15 regardless — any qualifying tokens would have gone to a COHORT_PROPOSAL rather than TOKEN_REGISTRY.  `NVR-HQ` not in this checkout so no COHORT_PROPOSAL file written. Result: **no qualifying tokens added**.
+- **Auditor**: SKIPPED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (all 403). Cannot determine win_rate, drawdown, or losing_streak. However, web search signals (Base $13B TVL, VIRTUAL +6.78% on June 8, AERO Robinhood listing, Aerodrome cross-chain July catalyst) suggest the market regime may have shifted from the 70-day bear. Manual audit recommended before Option B window closes.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +217,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now Run #35 (18th month) with the same network restriction. Urgent — especially with Option B window closing ~2026-06-15:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
