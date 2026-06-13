@@ -1,6 +1,24 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from Claude Code egress sandbox). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED (dual block) — (1) GeckoTerminal API blocked by egress policy (same 403); (2) Option B benchmark window still active until ~2026-06-15 (2 days remaining). Even if GeckoTerminal were reachable, CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY during the window. Per the rules, any candidate found would require a COHORT_PROPOSAL file instead of a TOKEN_REGISTRY edit.
+- **Auditor**: SKIPPED — live portfolio API unreachable; trigger conditions (win_rate, drawdown, losing_streak, marketRegime) cannot be verified. Implementing constant changes without confirmed triggers would muddy Option B alpha attribution during the final 2 days of the benchmark window — the exact scenario Rule 2 was written to prevent. No code changes.
+
+### ⚠️ Option B Milestone Alert (for Henry)
+The 30-day Option B benchmark window opened **2026-05-15** and closes **~2026-06-15** (tomorrow). At window close:
+- Human review can compare NVR portfolio vs cbBTC/WETH 60/40 benchmark for the period
+- Cohort lock (COHORT_QUALITY_7) can be revisited via explicit human PR
+- Any COHORT_PROPOSAL files (if Scout had been able to run) become actionable
+
+---
+
+## History of this issue (previous runs)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -27,10 +45,10 @@ GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools        →
 
 The Claude Code execution sandbox has an **egress proxy** that only allows outbound connections to a fixed allowlist of domains. The Railway deployment domain and third-party on-chain APIs are **not on this allowlist**. This is a **persistent infrastructure constraint** — it does NOT indicate a bot failure.
 
-## History of this issue
-
 | Run # | Timestamp | Action |
 |-------|-----------|--------|
+| #35 | 2026-06-13T UTC | PATTERN D. Scout skipped (dual block: egress + Option B window, 2 days left). Auditor skipped (no trigger data, Option B attribution). Option B milestone alert added. |
+| #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, <48h ago); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps; completes hot-mover quality-gate set. |
 | #1  | 2026-04-14T19:12 UTC | First PATTERN D report filed |
 | #2  | 2026-04-15T00:00 UTC | PATTERN D re-confirmed |
 | #3  | 2026-04-15T18:38 UTC | PATTERN D update |
