@@ -1,6 +1,27 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Run #35 — 2026-06-13T08:03 UTC
+
+### Job 1 — MEDIC
+- `GET /api/errors` → blocked (network egress: host not in allowlist)
+- `GET /api/balances` → blocked (same)
+- **Cannot determine critical condition. No change pushed.**
+- This is the 35th consecutive run with this result — it is a sandbox infra constraint, not a bot failure.
+
+### Job 2 — TOKEN SCOUT
+- **SKIPPED — CLAUDE.md Rule 1 active.** Option B benchmark window (2026-05-15 → ~2026-06-15) is in effect. Today is 2026-06-13, 2 days before window close. Cohort is locked; no TOKEN_REGISTRY edits permitted by any automated agent until Henry explicitly merges a human-reviewed PR after the window closes. If scout finds candidates this cycle, they will be proposed in a COHORT_PROPOSAL file — not committed to the registry.
+
+### Job 3 — STRATEGY AUDITOR
+- **BLOCKED** — same network egress issue prevents access to `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`. Cannot calculate win_rate, drawdown, or losing_streak.
+
+### Action Item for Henry
+The root fix remains: **add `autonomous-trading-bot-production.up.railway.app` to the Claude Code remote execution environment's network egress allowlist.** Until then, Medic and Auditor are blind. See code.claude.com/docs for egress config.
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
