@@ -699,7 +699,7 @@ export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools bet
 export const TWAP_THRESHOLD_USD = 100;              // Orders > $100 get TWAP'd
 export const TWAP_NUM_SLICES = 5;                   // Split into 5 sub-orders
 export const TWAP_SLICE_INTERVAL_MS = 12_000;       // 12 seconds between slices
-export const TWAP_TIMING_JITTER_PCT = 20;           // Randomize ±20% to avoid pattern detection
+export const TWAP_TIMING_JITTER_PCT = 30;           // AI-on-AI MEV Jun-2026: 20→30 — Coinbase launched autonomous AI trading agent 2026-06-11; AI-on-AI MEV bots on Base grew significantly ($73M+ settled by AI agents May25-Apr26); wider ±30% jitter makes slice timing pattern recognition harder for adversarial agents (interval range: 8.4s–15.6s vs prior 9.6s–14.4s; well within TWAP_MAX_DURATION_MS=120s)
 export const TWAP_ADVERSE_MOVE_PCT = 1.0;           // Pause TWAP if price moves >1% against us
 export const TWAP_MAX_DURATION_MS = 120_000;        // Max 2 minutes total TWAP duration
 
