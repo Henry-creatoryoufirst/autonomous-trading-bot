@@ -1,8 +1,41 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
+- Run timestamp: 2026-06-13T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-wzyqh0
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403/egress-blocked on all endpoints). This is run #35 of the same issue.
+- **Scout**: RAN RESEARCH — last scout commit was 2026-05-16 (OPENX/VEIL, reverted), ~28 days elapsed. Network egress restrictions prevent direct GeckoTerminal/DexScreener API calls from this container. WebSearch found one potential candidate (BASED token, $61.7M 24h volume, $28.38M market cap) but cannot verify contract address, pool liquidity ($100k+ requirement), pool age (3-day+ requirement), or DEX listing. Without verified metrics, no COHORT_PROPOSAL filed. **NOTE: CLAUDE.md Rule 1 (cohort locked) still in effect until ~2026-06-15.** Recommend post-window scout with environment that has geckoterminal.com on egress allowlist.
+- **Auditor**: RESEARCH ONLY — Bot API unreachable; cannot verify win_rate/drawdown/streak. Inferred bear/volatile regime still likely (was 70+ day bear as of Run #34, 2026-05-15). However: **Option B window ends ~2026-06-15 (2 days from now).** Implementing constants changes in the final 48h would maximally muddy alpha attribution for the measurement window. Research ran 4 searches; all findings either already implemented or require post-window review. NO IMPLEMENTATION this run — research findings documented below.
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+
+**⚠️ Option B window ends ~2026-06-15. No constants changes implemented to preserve alpha attribution for the final measurement period.**
+
+- **Signal Quality** (Impact 2/5, Complexity 4/5, Risk medium → Priority 0.5): On-chain signals in 2026 (whale wallet activity, stablecoin inflows/outflows, liquidity movements, funding rate deviation). NVR already captures this via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + order flow buy-ratio pipeline. Full Nansen/Dune integration remains complex. **No new action.**
+- **Execution Efficiency** (Impact 2/5, Complexity 3/5, Risk low → Priority 0.67): Aerodrome launched upgrade suite March 2026 (new routing algorithm, expanded to Ethereum mainnet + Circle Arc, July 2026 AERO token launch). Bot auto-benefits from DEX-level routing improvements without code change. Permit2 batch approvals already implemented. Touching `executeDirectDexSwap` is prohibited. **No new action.**
+- **Position Sizing** (Impact 1/5, Complexity 1/5, Risk low → Priority 1.0): Quarter-Kelly (0.25×) confirmed again as optimal for sustained bear regimes. NVR already at KELLY_FRACTION=0.25. TRENDING_DOWN×0.75 multiplier already reduces effective per-trade ceiling to 9%. If market regime has shifted to BULL/RANGING (unverifiable without API), VOL_LOW_BOOST=1.25 and DEFAULT_REGIME_MULTIPLIERS.TRENDING_UP=1.3 handle it automatically. **No new action.**
+- **Competitive Intelligence** (Impact 2/5, Complexity 2/5, Risk low → Priority 1.0): MEV protection via private relays/sequencer-direct RPC already active. Hard limits via circuit breakers already in place. TWAP jitter at 20% already reduces front-running. AI-on-AI MEV growing but NVR's 15-minute cycles are not MEV-comparable to block-level bots. **No new action.**
+
+**Post-window watch list for Henry:**
+1. Market regime reassessment: Bear adjustments (KELLY_FRACTION=0.25, TRENDING_DOWN=0.75, GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT=72, HOT_MOVER_MIN_FDV_USD=1M) were calibrated for 70-day bear. After June 15 evaluation window closes, consider whether regime has normalized and whether any adjustments can be reversed.
+2. Scout with network access: After Option B window closes and egress allowlist is updated, run a proper scout against geckoterminal.com and dexscreener.com trending pools. BASED token ($61.7M 24h vol on 2026-06-13 search) is a potential candidate to evaluate properly.
+3. Aerodrome AERO token launch (July 2026): May create new DEFI sector opportunity. Current AERO position (already in registry) benefits from this.
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+
+## Environment (Run #34)
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
@@ -66,6 +99,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout ran research (28 days since last scout); network egress blocked GeckoTerminal/DexScreener; BASED token unverifiable — no COHORT_PROPOSAL filed (cohort locked per CLAUDE.md Rule 1, window ends ~2026-06-15). Auditor research-only: Option B window final 48h — no constants changes to preserve alpha attribution. 4 searches ran; no new implementation. Post-window watch list: regime reassessment, BASED token scout, Aerodrome AERO July launch. |
 
 ## Bot Health Evidence (from git history)
 
