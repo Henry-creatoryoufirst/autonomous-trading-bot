@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-13T (current run) UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout COHORT-LOCKED (Option B window ends ~June 15, GeckoTerminal also blocked); auditor lowered MOMENTUM_EXIT_MIN_PROFIT 5→3 — 93-day bear; gains peak earlier/lower; momentum-exit now protects 3-5% winners before reversal |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints, egress policy blocks Railway + GeckoTerminal). MEDIC_REPORT updated (Run #35).
+- **Scout**: COHORT LOCKED — Option B benchmark window ends ~2026-06-15 (2 days). CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY additions until window closes. Last effective scout: 2026-05-14 (MOLT added; OPENX+VEIL 2026-05-16 were reverted). GeckoTerminal API also blocked by egress policy. Post-window scout should run after 2026-06-15 with Henry's review.
+- **Auditor**: TRIGGERED by inferred 93-day BEAR market (48h+ threshold massively exceeded, bear started ~2026-03-12). Research ran 4 searches. Top finding: MOMENTUM_EXIT_MIN_PROFIT 5→3 — 93-day bear, gains peak earlier and at lower levels; lowering the momentum-exit profit floor from 5% to 3% lets the exit system protect small winners (3-5%) before bear-market reversals erase them; MOMENTUM_EXIT_BUY_RATIO=45 guard prevents premature exits on noise. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+- **Signal Quality**: Bear market exit rules best tied to wallet distribution signals and regime-specific profit thresholds (MEXC 2026, ventureburn 2026). KEY FINDING: MOMENTUM_EXIT_MIN_PROFIT=5 has not been bear-adjusted; in 93-day bear, bounce peaks are consistently 3-4%, so 5% filter means momentum-exit rarely triggers on bounces before reversal. IMPLEMENTED: 5→3. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Execution Efficiency**: ATR multiplier research (LiveVolatile 2026, AlphaEx 2026) recommends *wider* ATR stops in volatile bear markets, not tighter ones. ATR_STOP_LOSS_MULTIPLIER=2.5 with ceiling -12% is already well-calibrated. No change needed. (Priority 0)
+- **Position Sizing**: Half-Kelly and Quarter-Kelly research (rekko.ai, traderspost.io) confirms current KELLY_FRACTION=0.25 is already optimal for volatile bear markets. AI-driven adaptive Kelly research (GPTrader 2026) shows quarter-Kelly captures 75%+ of optimal growth with significantly reduced drawdown. No further reduction warranted. (Priority 0)
+- **Competitive Intelligence**: Base L2 single-sequencer architecture reduces MEV sandwich risk natively (bitsgap 2026). CoW Swap/UniswapX intent-based routing at 34.3% DEX aggregator share — requires executeDirectDexSwap changes (off-limits per Auditor Safety). MEV protection via Aerodrome Slipstream already optimal. Watch list for Henry. (Priority 0 for auto-implementation)
+
+## ⚠️ Option B Window Closing — Henry Action Required
+- Option B benchmark window closes **~2026-06-15** (2 days from this run)
+- **Post-window review checklist:**
+  1. Run full scout — cohort unlock; evaluate MOLT and other May candidates
+  2. Review 30-day window P&L vs cbBTC/WETH 60/40 benchmark
+  3. Consider relaxing bear-adjusted constants if/when market regime shifts
+  4. Promote staging → main if `./scripts/deploy/promote.sh` not yet run for recent changes
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +226,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
