@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T10:07 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T10:07 UTC | Scout skipped — CLAUDE.md Rule 1 active (cohort locked, Option B window closes ~2026-06-15, 2 days remaining); auditor held — no constant changes 2 days before benchmark close (attribution preservation); GeckoTerminal still blocked |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T10:07 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, host not in allowlist on all endpoints). MEDIC_REPORT updated (Run #35). 29 days since last run.
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 active. Cohort locked for Option B benchmark window; expires ~2026-06-15 (2 days). Last scout was 2026-05-14 (30 days ago) — qualifies on 48h timing but overridden by ground rules. GeckoTerminal API also blocked. Re-run on/after 2026-06-15.
+- **Auditor**: HELD — Option B window closes in 2 days. Research ran (4 WebSearches). All findings show NVR is already at parity with 2026 best practices (Slipstream V2 router ✅, Quarter-Kelly ✅, MEV-aware adaptive slippage ✅). No constant changes made to preserve benchmark attribution. Watch list items: on-chain unique-wallet-count filter (complexity 4/5), intent-based solver routing (off-limits).
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+- **Signal Quality**: Unique-wallet-count cross-reference on DEX volume spikes — distinguishes whale rebalancing from organic demand. Not implemented (Impact 3/Complexity 4/Risk medium) → Watch list. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome Slipstream V2 router already in use (`0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5`). Gas ~$0.017/swap ($0.002 L2 + $0.015 L1 data) — already minimal. No action. (Priority 0)
+- **Position Sizing**: Half-Kelly captures ~75% of optimal growth at dramatically lower drawdown. NVR already at Quarter-Kelly (0.25) with ALPHA_KELLY_MULTIPLIER=0.5. No action. (Priority 0)
+- **Competitive Intelligence**: 2026 best practices — hard risk limits in code (✅), MEV protection via private RPC (✅), 1-3% adaptive slippage (✅). NVR at parity. No action. (Priority 0)
+- **DECISION**: No auto-implementation. Option B closes 2026-06-15; any constant change 2 days before the window close would muddy alpha attribution and violate the spirit of CLAUDE.md Rule 1 (Option B ground rules).
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +219,17 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**⏰ OPTION B WINDOW CLOSES ~2026-06-15 (2 DAYS). Key actions:**
+
+1. **Review Option B benchmark results** — compare cbBTC/WETH 60/40 vs. NVR cohort performance over 30 days
+2. **Re-enable scout on/after 2026-06-15** — 30 days of backlog; run scout to discover new Base tokens for the post-benchmark cohort
+3. **Network egress still blocked** — 35th consecutive run. Add to Claude Code egress allowlist:
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+4. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
