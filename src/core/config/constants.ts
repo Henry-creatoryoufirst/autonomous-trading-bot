@@ -154,7 +154,7 @@ export const PRICE_CHANGE_THRESHOLD = 0.02; // 2%
 export const FG_CHANGE_THRESHOLD = 5; // 5 points
 
 /** Volume spike threshold (multiple of 7-day average) to trigger heavy cycle */
-export const VOLUME_SPIKE_THRESHOLD = 2.0;
+export const VOLUME_SPIKE_THRESHOLD = 2.5; // Bear-to-bull transition 2026-06-13: 2.0→2.5 — Base Flashblocks MEV (Jul-2025, 11mo mature) + AI-on-AI MEV intensification (cryptollia.com 2026) creates denser false volume spikes in transitioning markets; 2.5× filter ensures only genuine broad-market participation events surface in AI prompt
 
 // ============================================================================
 // v6.2: ADAPTIVE CYCLE ENGINE — Dynamic tempo based on market conditions

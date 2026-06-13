@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-13T23:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-nrfqyq
 
 ## Problem
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-13T23:05 UTC | Scout: API blocked + CLAUDE.md Rule 1 (Option B cohort locked, 2 days remaining) → no token adds; 9 WebSearch candidates evaluated, 0 verified (GeckoTerminal 403). Auditor TRIGGERED: 99-day bear inferred + marketRegime BEAR 48h+. VOLUME_SPIKE_THRESHOLD 2.0→2.5 — Flashblocks MEV maturation + AI-on-AI MEV intensification (cryptollia.com 2026); reduces false spike alerts in prompt. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,34 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T23:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No staging branch present in repo — working on claude/cool-sagan-nrfqyq per CLAUDE.md Rule 2.
+- **Scout**: RAN (48h+ elapsed — last token-scout was 2026-05-14, 30 days ago). GeckoTerminal API blocked (403). CLAUDE.md Rule 1 forbids TOKEN_REGISTRY edits during Option B window (ends ~2026-06-15, 2 days remaining). WebSearch found no Base-native candidates with verifiable on-chain metrics. NVR-HQ not in checkout → no COHORT_PROPOSAL file written. Result: **no qualifying tokens added** — standards maintained + Rule 1 honoured.
+- **Auditor**: TRIGGERED by inferred 99-day BEAR market (marketRegime BEAR 48h+ threshold met; last documented bear at Run #34 was 70-day bear on 2026-05-15 + 29 more days). Research ran 4 targeted searches. Top finding: VOLUME_SPIKE_THRESHOLD 2.0→2.5 — Flashblocks MEV maturation (11 months) + AI-on-AI MEV intensification in 2026 creates denser false volume spikes, especially in bear-to-bull transitions (altcoin speculative pumps, MEV sandwich fronts). Raising threshold ensures only genuine broad-market-participation events surface in AI prompt. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+- **Signal Quality**: On-chain confluence scoring (funding rates, OI, exchange flows) established as alpha signals in 2026. Already partially captured by LARGE_TRADE_THRESHOLD_USD=2500 whale flow + buy ratio pipeline. Full Nansen/Dune-style integration remains complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Slipstream V2 (March 2026) improved routing algorithm — bot auto-benefits at DEX level without code change. Permit2 already batched. Aerodrome+Velodrome merge upcoming; auto-benefit again. No new action. (Priority 0)
+- **Position Sizing**: 2026 research confirms Quarter-Kelly (0.25×) remains optimal for crypto bear markets. Bear-to-bull transition research: "gradually increase as confidence grows" but Option B attribution window closes 2026-06-15 — defer Kelly adjustment to post-window Henry review. Watch list: FLOW_REVERSAL_EXIT_BUY_RATIO 38→40 (transition regime lowers sell aggression); CULL_MIN_AGE_HOURS 72→96 (gives transitioning positions more runway). (Priority 2.0 each, deferred) (No new action this run.)
+- **Competitive Intelligence**: KEY FINDING — Base Flashblocks (Jul 2025, 11 months mature) + AI-on-AI MEV Dark Forest 2026 (cryptollia.com) intensify false volume spike signals on Base. Coincides with bear-to-bull altcoin speculative activity identified in H2 2026 outlook (CoinDCX, BitcoinFoundation). VOLUME_SPIKE_THRESHOLD 2.0→2.5: reduces spurious AI prompting on MEV-manufactured spikes; tighter filter improves decision quality at no execution cost. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Scout Candidates Evaluated (Run #35 — 2026-06-13, none verified)
+| Token | Source | Note |
+|-------|--------|------|
+| Bitcoin Hyper | WebSearch | Not Base-native; cannot verify Base pool metrics |
+| MNT (Mantle) | WebSearch | L2 token, not Base-deployed DEX pool |
+| ARB, OP, STRK, ZK | WebSearch | Not Base-native |
+| Base L2 unnamed tokens | MEXC guide | No contract addresses returned |
+
+All candidates rejected: cannot verify Base L2 pool liquidity/volume without GeckoTerminal API (blocked). Also: CLAUDE.md Rule 1 prevents TOKEN_REGISTRY edits during Option B window regardless.
+
+**Henry: Option B window closes ~2026-06-15 (2 days). Post-window action items:**
+1. Review COHORT_QUALITY_7 for token graduation/removal based on 30-day performance
+2. Consider loosening bear-tuned thresholds (FLOW_REVERSAL_EXIT_BUY_RATIO 38→40, CULL_MIN_AGE_HOURS 72→96) for transitioning market
+3. Review KELLY_FRACTION 0.25 — research indicates incremental increase appropriate as bear resolves
+4. Merge this claude/cool-sagan-nrfqyq branch → staging → promote if VOLUME_SPIKE_THRESHOLD change passes review
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
