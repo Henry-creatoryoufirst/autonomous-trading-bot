@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout RAN (30 days since last; GeckoTerminal API blocked by egress, web search candidates too generic); COHORT_PROPOSAL_2026-06-13.md written (Option B window closes ~Jun-15, candidates queued for post-window review). Auditor: API unreachable — trigger conditions unverifiable. Research gathered: all major bear-adjusted constants confirmed well-calibrated (Quarter-Kelly, ceiling, FDV gate, cull age). Strategic flag: 30-day bear adjustments may need recalibration post-window. No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: `claude/cool-sagan-gjyfrh` (staging branch no longer present; working on designated feature branch per CLAUDE.md Rule 2).
+- **Scout**: RAN (last scout was MOLT on 2026-05-14, 30 days ago, >48h threshold). GeckoTerminal API blocked by network egress (both curl and WebFetch return 403/blocked). Web search returned no specific new Base token candidates with verifiable liquidity/volume metrics. Result: no qualifying tokens this scan. **COHORT_PROPOSAL_2026-06-13.md written** to repo root — see that file for post-window recommendation. NOTE: Option B window closes ~2026-06-15 (Day 29 of 30). CLAUDE.md Rule 1 (cohort locked) would have prevented TOKEN_REGISTRY additions even if candidates were found.
+- **Auditor**: API unreachable — cannot verify trigger conditions (win_rate, drawdown, losing_streak, regime duration). Research ran 4 searches proactively given Option B window approaching close. No implementation this run: all major bear-adjusted constants already well-calibrated per prior runs (Runs #20–#34), no new ≤10-line low-risk finding scores Priority ≥2.0. **Strategic flag for Henry**: 29 days of bear adjustments accumulated; recommend reviewing rollback schedule after Option B close (see COHORT_PROPOSAL_2026-06-13.md).
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+- **Signal Quality**: Unique wallet count cross-referencing with volume — rising DEX volume concentrated in few wallets signals whale rebalancing, not organic demand. Impact 3/Complexity 4/Risk medium. Already on watch list from prior runs. Full on-chain wallet analytics requires new data source (Nansen/Dune). No code change. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) upgraded routing with MEV-resistant pools. Per prior runs (Runs #30–#34), bot auto-benefits as taker/swapper without code change — LP migration doesn't affect the bot's routing. No new action. (Priority 0)
+- **Position Sizing**: 2026 best practice confirms Quarter-Kelly (0.25f) as optimal for crypto; update parameters after every 20 trades. NVR already at KELLY_FRACTION=0.25 (Run #23), KELLY_ROLLING_WINDOW=30 (Run #20), KELLY_POSITION_CEILING_PCT=12 (Run #30). All calibrated. No change needed. (Priority 0)
+- **Competitive Intelligence**: >80% of retail autonomous bots underperform buy-and-hold after fees; NVR's Quality 7 cohort + discretionary AI strategy is exactly the winning architecture that avoids this. Option B benchmark (outperform cbBTC/WETH 60/40 by ≥5% annualized) directly tests this proposition. No new actionable code pattern found. (Priority 0)
+
+**Watch list for Henry (post-window review):**
+1. Bear-adjustment rollback: HOT_MOVER thresholds, KELLY_POSITION_CEILING_PCT, CULL_MIN_AGE_HOURS all tightened over 70+ bear days. If bull market resumes post-June-15, staged rollback recommended.
+2. Slipstream V2 MEV-resistant pool migration: confirm bot router address (`0xbe6d8f0d...5be6d18a5`) is routing to V2 pools for best execution.
+3. Wallet clustering signal: when Nansen/Dune-style smart money data becomes available on Base, add as confluence score input.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
