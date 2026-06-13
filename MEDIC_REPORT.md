@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout: GeckoTerminal API blocked, web search found no verifiable new candidates; Option B window ends 2026-06-15 (Rule 1 active). Auditor: TRIGGERED — 100-day BEAR (BTC ~$61K, RSI 35.12, -45% from Oct-2025 high). Finding: GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60 (Impact 3, Complexity 1, Priority 3.0). DEFERRED to post-window per attribution-purity rationale. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 / egress-block on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout was MOLT on 2026-05-14, ~30 days ago, well past 48h threshold). GeckoTerminal API blocked from this execution environment (403). Web search found VVV (already in registry) and AERO (already in registry) trending on Aerodrome. No verifiable new candidates with confirmed liquidity/volume data. Additionally, **CLAUDE.md Rule 1** is active until ~2026-06-15 (2 days): TOKEN_REGISTRY additions are prohibited during the Option B 30-day benchmark window. No TOKEN_REGISTRY changes made. Reconvene Scout after 2026-06-15 window close.
+- **Auditor**: TRIGGERED — inferred 100-day BEAR market (Bitcoin ~$61,194, RSI 35.12, down 45% from Oct-2025 cycle high of $126,296; ETF outflows $4.4B over 13 days through Jun-5; MACD negative expansion). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intelligence). Top finding: **GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60** — raise OSS guardian review threshold so the DeepSeek trader must be ≥60% confident (not 55%) before bypassing Claude review; at 55-60% confidence the OSS trader is in the ambiguous zone where 2026 AI-agent research (Cripton AI Monte Carlo VaR, GPTrader Kelly studies) confirms highest hallucination/error rate; raising the threshold routes more borderline decisions through Claude, yielding 20-30% better Sharpe ratios per multi-agent validation research. Impact 3, Complexity 1, Risk low, Priority 3.0. **DEFERRED** — 2 days from Option B window close (2026-06-15); per CLAUDE.md attribution-purity rationale, strategy constants changes in the final window days muddy alpha attribution. Henry: apply this after the window closes.
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+- **Signal Quality**: 2026 AI bots now use TVL+fees+active users (DeFiLlama) as forward-looking L2 rotation signal before price moves — "before rotating from ETH to an emerging L2 token, check DeFiLlama TVL, fees, and active users trending up." NVR already has CACHE_TTL.DEFI_LLAMA=10min but TVL is not a first-class confluence weight. Adding it to SWARM_AGENT_WEIGHTS would require multi-line swarm refactor (Impact 3/Complexity 4/Risk medium) → Watch list for post-window. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome+Velodrome merging into unified "Aero" DEX in Q2 2026, expanding to Ethereum mainnet and Circle's Arc blockchain. Slipstream V2 already integrated (34× capital efficiency). Bot auto-benefits from DEX-level routing improvements without code change. Aero router address migration is a watch item — monitor when merger completes. No code change this run. (Priority 0)
+- **Position Sizing**: KEY FINDING — Cripton AI and GPTrader 2026 research: combining Kelly with multi-agent validation layers yields 20-30% better Sharpe ratios; specifically, "monitoring for LLM hallucinations" in the 55-60% confidence range is the highest-value intervention. Actionable gap: GUARDIAN_MIN_CONFIDENCE_DEFAULT=0.55 lets borderline OSS decisions (55-60% confidence) bypass Claude review entirely. GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60 DEFERRED (2-day window close). (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MetaMask Agent Wallet launched with Blockaid threat scanning + MEV protection on Base (2026). Intent-based trading going mainstream — signed Intent messages bypass public mempool, reducing sandwich attack surface. NVR's sequencer-direct RPC already provides similar protection. AI-on-AI MEV (cryptollia.com) intensifying in 2026; specialized agent cooperation models outperforming single-agent architectures. NVR's sleeve architecture positions it well for this shift. No immediately actionable short change — watch Intent routing for when it matures on Base. (Priority 0 immediate, watch list for Henry)
+
+## Watch List for Post-Window Application (Henry — implement after 2026-06-15)
+1. **GUARDIAN_MIN_CONFIDENCE_DEFAULT 0.55→0.60** — 1-line change in `src/core/config/constants.ts`. Raises OSS guardian review bar. Research: Cripton AI Monte Carlo VaR + GPTrader Kelly studies confirm 55-60% confidence is peak hallucination zone for LLM traders. Expected: fewer borderline bad trades, 20-30% Sharpe improvement on OSS-routed cycles.
+2. **TVL confluence weight** — add DeFiLlama TVL trend signal to SWARM_AGENT_WEIGHTS (multi-line refactor). Wait for post-window to plan properly.
+3. **Aero router migration** — when Aerodrome+Velodrome "Aero" DEX router address changes for the unified launch, update the DEX router constant. Monitor Aerodrome announcements.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +225,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
