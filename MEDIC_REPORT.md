@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout BLOCKED: GeckoTerminal not reachable + CLAUDE.md Rule 1 Option B lock (window ends ~2026-06-15); Auditor: research ran 4 searches, forced-liquidation event 2026-05-28 noted, NO code change — Option B window too close (2 days) to muddy attribution; findings queued for Henry review post-window |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,24 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Run #35. No bot-level fix possible; infra-level: add `autonomous-trading-bot-production.up.railway.app` to network egress allowlist in environment settings.
+- **Scout**: BLOCKED (double-lock) — (1) `api.geckoterminal.com` not reachable from this environment so pool liquidity/volume cannot be verified; (2) CLAUDE.md Rule 1 Option B cohort lock active until ~2026-06-15 (2 days away). Scout last ran 2026-05-14 (MOLT, 30 days ago) — would normally qualify by the 48h threshold. No TOKEN_REGISTRY changes made. NVR-HQ vault not in checkout, COHORT_PROPOSAL not written.
+- **Auditor**: RESEARCH-ONLY — API unreachable so trigger conditions (win_rate, drawdown, streak) cannot be confirmed. Key inferred signal: admin forced full-exit to USDC on 2026-05-28 (commit f29798d) indicating significant drawdown or strategic reset. Option B window ends ~2026-06-15 (2 days). Ran 4 research searches. Top finding (Priority 3.0, Risk low): post-liquidation conservative position sizing. Decision: NO code change pushed — implementing automated parameter tuning 2 days before Option B benchmark close would muddy alpha attribution at the most critical moment. All findings queued for Henry to action post-window.
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+- **Signal Quality**: Multi-source confluence (2.5M+ signals/day combining price, on-chain, NLP sentiment) is 2026 standard. On-chain whale wallet clustering, stablecoin inflows/outflows identified as forward-looking vs NVR's price-reactive approach. Impact 2/Complexity 4/Risk medium → Watch list. NVR already has whale-flow detection; full Dune/Nansen integration out of scope. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) improved routing algorithm — NVR auto-benefits via existing Aerodrome router without code change. Permit2 batch approvals could save gas on multi-token allowances, but touches off-limits execution path (executeSingleSwap). No new action. (Priority 0.67)
+- **Position Sizing**: Fractional Kelly (25-50%) confirmed optimal; volatility-targeted sizing automatically reduces leverage during stress. KEY FINDING: Post-liquidation context (full USDC exit 2026-05-28) makes a conservative re-entry floor timely — lowering KELLY_POSITION_CEILING_PCT 12→10 would reduce first-cycle max effective position from ~2.25% to ~1.88%, limiting whipsaw risk on re-entry. Impact 3/Complexity 1/Risk low. Priority 3.0 — TOP FINDING. NOT IMPLEMENTED (Option B window 2 days from close). ← Henry: review and implement manually if re-deploying capital post-window.
+- **Competitive Intelligence**: ARMA (Giza) on Base: 25K+ instances yield-optimizing across Aave/Compound/Morpho/Moonwell ($35M+). NVR has aave-yield.ts; dynamic multi-protocol rate comparison would capture ARMA-style alpha. Impact 2/Complexity 3/Risk medium → Watch list. MEV bot activity dominates post-liquidation re-entry windows — consider TWAP slicing even for initial position builds. (Priority 0.67)
+
+## Watch List for Henry (post Option-B window, after ~2026-06-15)
+1. **KELLY_POSITION_CEILING_PCT 12→10** — post-liquidation conservative re-entry floor. 1-line change in constants.ts. Implement before next capital deployment.
+2. **Scout unblock** — once Option B closes, run scout fresh with GeckoTerminal allowlist added to environment egress.
+3. **Multi-protocol yield comparison** — dynamic Aave/Morpho/Moonwell rate chase (ARMA pattern) for idle USDC. Medium complexity.
+4. **Egress allowlist** — add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to network egress policy in environment settings so future medic/scout/auditor runs have full visibility.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
