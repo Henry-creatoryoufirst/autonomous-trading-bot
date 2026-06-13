@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-13T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-khq3i0
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout SKIPPED — cohort locked (Option B window closes ~2026-06-15, 2 days remaining); auditor ran 4 searches; no changes implemented — modifying constants in final 2 days of 30-day benchmark window muddies alpha attribution. Research watchlist written. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,45 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — Option B benchmark window cohort lock. CLAUDE.md Rule 1 prohibits `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` commits through ~2026-06-15. Window closes in 2 days. Last known scout was MOLT (2026-05-14, ~30 days ago). Scout will resume after window closes.
+- **Auditor**: TRIGGERED (inferred 99-day bear: last confirmed 70-day bear on 2026-05-15; no git evidence of regime change). Ran 4 research searches. NO CHANGES IMPLEMENTED — modifying strategy constants in the final 2 days of the 30-day Option B benchmark window would muddy alpha attribution. Research findings documented as watchlist for Henry's post-window review (~2026-06-15+).
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+
+**Context**: Option B window (2026-05-15 to ~2026-06-15) has 2 days remaining. Bot is at v21.30.0. Key event: `feat(admin): /api/admin/liquidate-all` added 2026-05-28 — Henry added operator forced-exit capability mid-window.
+
+**SEARCH 1 — Signal Quality** (wundertrading.com, nftplazas.com):
+- Multi-source signal integration (on-chain + price + sentiment) is the 2026 standard — advanced systems ingest 2.5M+ daily signals.
+- Whale wallet monitoring, stablecoin inflows/outflows, liquidity movements across protocols all used by leading bots.
+- NVR already has: LARGE_TRADE_THRESHOLD_USD=2500 whale flow, buy-ratio pipeline, confluence scoring.
+- No new actionable ≤10-line change — full Nansen/Dune integration remains complex (Impact 2, Complexity 4, Risk medium). Priority: 0.5. → Watch list.
+
+**SEARCH 2 — Execution Efficiency** (aerodrome-slipstream.com, openliquid.io):
+- Aerodrome March 2026 upgrade: improved routing algorithm for better swaps — bot auto-benefits at DEX level without code change.
+- Base gas costs extremely low: typical swap = $0.017 (L2 $0.002 + L1 data $0.015); computation-heavy data-light ops especially cheap.
+- Slipstream V2 34× capital efficiency improvement already active (TVL $1.24B, $1M weekly fees).
+- No new actionable change (Impact 0). Priority: 0.
+
+**SEARCH 3 — Position Sizing** (altrady.com, atlaspeakresearch.com, coriva.eu.org):
+- Fractional Kelly 25%-50% confirmed standard for crypto. NVR at KELLY_FRACTION=0.25 ✓.
+- NEW FINDING: Advanced Kelly tracks market regime using trend indicators + volatility + **Bitcoin dominance**. NVR doesn't currently use BTC dominance as regime signal. Could sharpen TRENDING_UP/DOWN classification.
+- BTC dominance as additional regime input: Impact 2, Complexity 3, Risk medium → Priority: 0.67. Below 2.0 threshold + Option B window → Watch list for post-window.
+
+**SEARCH 4 — Competitive Intelligence** (cryptodaily.co.uk, phemex.com/academy, dysnix.com):
+- KEY FINDING: "Production-grade DeFi bot must use **private transaction relays** (Flashbots Protect, Jito) to bypass public mempool — renders orders invisible to front-running bots until finalized on-chain."
+- NVR has sequencer-direct RPC but NOT a private relay service (Flashbots Protect API). This is the primary MEV-protection gap vs. top-tier bots in 2026.
+- Impact 3, Complexity 3, Risk medium → Priority: 1.0. Touches executeDirectDexSwap path (off-limits for auto-implementation). → **High-priority watch list for Henry post-window**.
+- ARMA (Giza) on Base: 25,000+ agent instances optimizing stablecoin yield across Aave/Compound/Morpho/Moonwell. NVR has aave-yield.ts — already competitive.
+- DeFAI narrative mature in 2026: AI agents essential. NVR's MirrorAgent (spec-036) and OSS-trader model aligned with market direction.
+
+**Post-Window Watch List for Henry (~2026-06-15+)**:
+1. **Flashbots Protect relay** — highest priority gap vs. competitive bots; reduces sandwich losses on all swaps. Requires executeDirectDexSwap changes. (Impact 3, Priority 1.0)
+2. **BTC dominance as regime signal** — sharpen TRENDING_UP/DOWN classification with macro regime indicator (Impact 2, Priority 0.67)
+3. **Multi-source signal fusion** — Nansen/Dune smart money signals as additional confluence input (Impact 2, Priority 0.5, Complexity 4)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +245,21 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now Run #35 (35th consecutive run with API unreachable). Option B window closes ~2026-06-15 (2 days).**
 
-1. **Add to Claude Code egress allowlist:**
+**Immediate (before window closes):**
+1. **Manually verify bot health**: https://autonomous-trading-bot-production.up.railway.app/health
+2. **Verify bot is still running** — the `/api/admin/liquidate-all` feature added 2026-05-28 raises question of whether Henry manually cleared positions. If so, confirm bot re-entered positions or is holding USDC reserve.
+3. **Document Option B results**: window closes ~June 15. Compare cbBTC/WETH 60/40 benchmark vs. actual portfolio performance over 30 days.
+
+**Post-window (~2026-06-15+):**
+1. **Unlock scout**: cohort and TOKEN_REGISTRY additions can resume after window closes.
+2. **Review watch list from this run**: Flashbots Protect relay (highest priority), BTC dominance regime signal, Nansen/Dune signal fusion.
+3. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
