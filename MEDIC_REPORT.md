@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout ran (>29 days since Run #34), but GeckoTerminal + DexScreener APIs both 403 (no data); TOKEN_REGISTRY changes also blocked by OPTION B cohort lock (window closes ~2026-06-15). No tokens evaluated. Auditor triggered (99-day inferred BEAR), ran 4 searches; top finding BREAKER_DAILY_DD_PCT 7→6 NOT implemented per Option B attribution rules — 2 days from window close, proposing for Henry's review post-June-15. |
 
 ## Bot Health Evidence (from git history)
 
@@ -101,6 +102,27 @@ Because the API is unreachable, the medic cannot determine:
 - **Execution Efficiency**: Aerodrome/Velodrome protocols set to merge in 2026; Slipstream V3 gas-aware routing auto-benefits NVR without code change. No new action. (Priority 0)
 - **Position Sizing**: Fidelity 2026 Kelly research — crypto bear year optimal Kelly ~10% portfolio; NVR effective max 3-4% (KELLY_FRACTION=0.25 × KELLY_POSITION_CEILING_PCT=12% × TRENDING_DOWN=0.75) already well-calibrated. No new action. (Priority 0)
 - **Competitive Intelligence**: KEY FINDING — MEV bots dominating micro-cap Base pumps in 2026. MEXC analysis: low-FDV tokens ($500K-$1M) are primary MEV sandwich targets in bear markets. HOT_MOVER_MIN_FDV_USD 500K→1M completes the quality-gate set. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (403 on all endpoints, same persistent constraint). MEDIC_REPORT updated (Run #35). GeckoTerminal + DexScreener also 403 from this sandbox.
+- **Scout**: RAN (29+ days since Run #34 / MOLT scout on 2026-05-14). GeckoTerminal trending_pools and new_pools both returned 403; DexScreener also 403. No token data retrievable via API. WebSearch confirmed Base L2 DEX volume hit record ~$2.9B with AerodromeFi at $1.68B — healthy ecosystem. However, no specific new token addresses/liquidity figures could be validated against quality filters without API access. **Additionally: Option B cohort lock active until ~2026-06-15** (2 days remaining) — TOKEN_REGISTRY changes require human PR regardless. Result: 🔍 no qualifying tokens this scan — data APIs blocked + cohort locked.
+- **Auditor**: TRIGGERED by inferred 99-day BEAR market (Run #34 was 70-day bear on 2026-05-15; +29 days = 99 days; well above 48h threshold). Ran 4 searches. Top finding: `BREAKER_DAILY_DD_PCT` 7→6 (industry research confirms 5-6% daily drawdown as optimal pause threshold; current 7% is 1-2% wider than best practice; continues prior audit pattern of 8→7 in April). **NOT IMPLEMENTED** — Option B attribution window closes 2026-06-15 (2 days); any automated constant change now would muddy final 48h of benchmark data. Proposing for Henry's immediate post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+
+- **Signal Quality**: Multi-signal confluence confirmed best practice (2.5M+ daily signals in modern bots). Wallet count cross-reference: "high volume concentrated among few wallets = whale rebalancing, not organic demand" is a genuine alpha filter NVR lacks. Impact 3/Complexity 4/Risk medium → Priority 0.75. **Watch list for Henry** — needs new API integration (on-chain wallet analytics).
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) gas-aware routing + batched settlement already in production. Bot auto-benefits without code change. MEV protection via sequencer-direct RPC already active. TWAP jitter at 20%. No new action.
+- **Position Sizing**: Research confirms quarter-Kelly (0.25f*) already optimal. Daily drawdown limits: KEY FINDING — industry standard 3-5% DAILY (weekly 7%). NVR `BREAKER_DAILY_DD_PCT=7` is 2-4% above industry floor. Continuing bear-adjusted tightening pattern: 8→7 (Apr-2026) → **proposed 7→6** (Jun-2026, 99-day bear). Impact 3/Complexity 1/Risk low → Priority 3.0. NOT implemented (Option B attribution lock).
+- **Competitive Intelligence**: Multi-agent specialization (analysis/security/execution separation) already live via sleeves architecture (v21.13). Intent-based solvers (CoW Swap at ~34% aggregator share) — requires executeDirectDexSwap changes (permanently off-limits). MEV protection via private RPCs already in place. No new action.
+
+## Watch List for Henry (post Option-B window, ~2026-06-15+)
+
+1. **`BREAKER_DAILY_DD_PCT` 7→6** — Priority 3.0. Industry standard 5-6% daily; bear-adjusted tightening continues the 8→7 pattern. 1-line change in `src/core/config/constants.ts`. Low risk.
+2. **Wallet-count filter on volume signals** — Priority 0.75. Cross-reference DEX volume with unique wallet count; high-volume / few-wallets = whale rebalancing. Needs new on-chain analytics API call.
+3. **Scout proposals** — Once cohort lock lifts post-June-15, next scout run with API access should re-evaluate Base L2 trending pools (AerodromeFi volume at $1.68B ATH suggests new high-quality pools emerging).
 
 ## Jobs Status This Run (Run #32 — 2026-05-07T04:05 UTC)
 
