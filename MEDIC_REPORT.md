@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Scout ran (MOLT last add 2026-05-14, >30 days, threshold exceeded) — Option B cohort LOCK active (window ends ~2026-06-15); COHORT_PROPOSAL_2026-06-13.md filed for STG (Stargate Finance, $364M cap, $101M global 24h vol, Base addr 0xE3B53AF74a4BF62Ae5511055290838050bf764Df, score 7/10) — TOKEN_REGISTRY NOT modified per CLAUDE.md Rule 1. Auditor: API unreachable, cannot calculate win_rate/drawdown/streak — skipped. |
 
 ## Bot Health Evidence (from git history)
 
