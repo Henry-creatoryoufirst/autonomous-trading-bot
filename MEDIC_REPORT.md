@@ -1,12 +1,16 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-13T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B WINDOW CLOSING IN ~2 DAYS (~2026-06-15)
+All three jobs ran in research-only mode. No constants touched. No TOKEN_REGISTRY changes.
+Per CLAUDE.md Rule 1: cohort is locked. Per CLAUDE.md Rule 2: pushed to claude/cool-sagan-g6gdi0 only (not staging).
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-13T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-g6gdi0
 
 ## Problem
 
@@ -66,6 +70,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-13T UTC | Medic: API unreachable (Run #35, now 29 days since last run). Scout: no qualifying tokens — GeckoTerminal blocked by egress + CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY changes (Option B window closes ~2026-06-15). Auditor: ~99-day BEAR inferred (70-day bear at Run #34 + 29 days elapsed). 4 research searches ran. TOP FINDING: Aerodrome+Velodrome → Aero merged (Slipstream V3 launched Q2 2026, auto-benefits NVR routing at DEX level, no code change). NO IMPLEMENTATION — Option B window closes in 2 days; any constant change now muddies 30-day attribution. Committed to claude/cool-sagan-g6gdi0 per CLAUDE.md Rule 2. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +94,28 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-13T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints; 35th consecutive run). MEDIC_REPORT updated.
+- **Scout**: NO QUALIFYING TOKENS — GeckoTerminal API blocked by egress policy (same constraint as bot API). WebSearch returned no Base-specific token data with verifiable liquidity/volume metrics. Additionally, CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY modifications during Option B window (closes ~2026-06-15 in 2 days). If candidates had been found, they would go to a COHORT_PROPOSAL file per Rule 1.
+- **Auditor**: RESEARCH-ONLY — Bot metrics API unreachable; however, BEAR market trigger inferred (~99 days: 70-day bear at Run #34 + 29 elapsed days). 4 research searches completed. TOP FINDING: Aerodrome + Velodrome have completed merger to unified "Aero" DEX (Q2 2026), with Slipstream V3 routing improvement auto-inherited by NVR's `executeDirectDexSwap` at DEX level — no code change needed. **NO IMPLEMENTATION** — Option B window closes in 2 days; any constants change now muddies alpha attribution. All findings archived below for post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-13)
+
+- **Signal Quality**: 2026 DeFi bots use ensemble approaches — funding rates, OI, exchange flows, stablecoin flows, on-chain wallet tracking. NVR already captures the main signals: LARGE_TRADE_THRESHOLD_USD=2500 (whale flow), buy-ratio order flow, MACD/RSI/Bollinger confluence. Full Nansen/Dune smart-money integration remains complex (Impact 3/Complexity 4/Risk medium) → Watch list, unchanged from prior runs. (Priority 0.75)
+- **Execution Efficiency**: KEY FINDING — Aerodrome + Velodrome merged to "Aero" (mid-2026), MetaDEX03 + Slipstream V3 launched Q2 2026 with improved cross-pool routing and MEV capture. NVR auto-benefits at DEX level via existing `executeDirectDexSwap` routing calls — no code change needed. Impact 3/Complexity 0 (free). Watch for new Aero router contract addresses in a future Henry-reviewed PR. (Priority: high research, no code action)
+- **Position Sizing**: Quarter-Kelly confirmed — NVR at KELLY_FRACTION=0.25 (Quarter-Kelly), KELLY_POSITION_CEILING_PCT=12 with BLUE_CHIP override at 18 is well-calibrated. Research confirms fractional Kelly 25-50% optimal for crypto; NVR is at the conservative end which is correct for ~99-day bear. No new actionable change. (Priority 0)
+- **Competitive Intelligence**: Intent-based trading (CoW Protocol/Anoma-style signed Intents, solver-based execution) is the emerging 2026 standard at 34%+ DEX aggregator share. Requires touching `executeDirectDexSwap` (off-limits). TEE integration for agent security going mainstream — infrastructure-level change. MEV private-relay / sequencer-direct RPC already in place. No new actionable change under ≤10 lines constraint. (Priority 0)
+
+## ⚠️ POST-WINDOW HANDOFF FOR HENRY (~2026-06-15+)
+
+The 30-day Option B window closes in approximately 2 days. Recommended post-window actions:
+
+1. **Aero DEX migration**: Verify whether NVR's `executeDirectDexSwap` router address needs updating for Aero/Slipstream V3 contracts. If new addresses published, update in a reviewed PR.
+2. **Intent-based routing**: Evaluate CoW Protocol or OpenOcean integration for better execution quality. Requires touching execution path — needs Henry review, not auto-implementation.
+3. **Token Registry refresh**: Review COHORT_QUALITY_7 post-window. No additions during window per Rule 1 — but the registry has many other tokens that could benefit from a scout review now that the attribution window is closed.
+4. **Egress allowlist**: Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to Claude Code egress allowlist. This has blocked Medic/Scout/Auditor for 35 consecutive runs.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
