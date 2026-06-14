@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-14T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-e9rmzx
 
 ## Problem
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-14T UTC | Scout ran — no qualifying tokens (GeckoTerminal blocked + AERO already in registry); no cohort proposal (window closes tomorrow, no new COHORT_QUALITY_7 candidates identified); auditor research complete — Aerodrome MEV-resistant pool migration catalyst noted; no code change (trigger unverifiable without API; market recovery signals from Base record volumes caution against bear-mode tightening) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from Claude Code sandbox egress proxy). MEDIC_REPORT updated (Run #35). No bot failure inferred — Railway deployment status unknown but git history shows active main branch (v21.30.0, last commit 2026-05-28).
+- **Scout**: RAN — last `feat(scout)` commit was 2026-05-16 (reverted per Option B lock), scout threshold exceeded (>48h). GeckoTerminal API blocked (403). WebSearch identified no new Base tokens not already in TOKEN_REGISTRY. AERO (primary research candidate from Aerodrome cross-chain DEX catalyst) already tracked in DEFI sector. **No tokens added — 0 qualifying candidates identified.** Option B cohort lock (CLAUDE.md Rule 1) expires TOMORROW (~2026-06-15). No COHORT_PROPOSAL written — no strong new COHORT_QUALITY_7 candidates found (existing 7 cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL remain the quality set).
+- **Auditor**: RESEARCH RAN — trigger unverifiable (API blocked). Inferred context: Base hit record DEX volumes (~$3B daily) and Aerodrome reached ATH volume ($1.68B) per June 2026 search data, suggesting possible bull recovery after the 70+ day bear documented in prior runs. Running bear-mode tightening without confirming the market is still BEAR would be counterproductive — no code change this run. Watch list items logged below.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+
+- **Signal Quality**: Friction-adjusted Kelly (next-day vol forecast from historical data) — more sophisticated sizing. Already well-approximated by VAPS + Quarter-Kelly combo. Impact 2, Complexity 4, Risk med → Watch list. No action.
+- **Execution Efficiency**: **KEY FINDING — Aerodrome MEV-resistant pool migration.** Aerodrome began mandatory liquidity migration to new MEV-resistant Slipstream pools (May 12, 2026). LPs who don't migrate lose emissions by July 2026 Aero launch. Bot routes through Aerodrome Slipstream — if old pool addresses are losing TVL, routing quality degrades. Henry should verify the bot's pool registry auto-discovers new pool addresses or confirm the migration doesn't affect bot routing. This is off-limits for the auditor (touches execution path) but is operationally important. Impact 4, Complexity 3, Risk high → **Human review required.** (Source: ainvest.com, cryptobriefing.com, theblock.co)
+- **Position Sizing**: Volatility-targeted Kelly already in place (VAPS, Quarter-Kelly 0.25f*, TRENDING_DOWN ×0.75). No new actionable improvement found in 2026 research. Impact 1, Complexity 3 → No action.
+- **Competitive Intelligence**: Intent-based trading (CoW Protocol, 1inch Intents) — batch auctions eliminate MEV sandwich risk by settling at uniform price. Aero's July 2026 protocol will use intent-based architecture. NVR could benefit from routing through an intent aggregator. Requires execution path changes — off-limits. Impact 3, Complexity 4 → Watch list for post-Option B strategy review. (Source: quicknode.com, cryptollia.com)
+
+## ⚠️ HENRY ACTION ITEM (from Run #35)
+**Aerodrome pool migration**: Verify bot's Aerodrome Slipstream routing auto-updates to new MEV-resistant pool addresses ahead of the July 2026 Aero launch. If pool addresses are hardcoded or cached stale, the bot may route through pools with degrading TVL/liquidity. Check Railway logs for routing failures or elevated slippage post-May 12.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
