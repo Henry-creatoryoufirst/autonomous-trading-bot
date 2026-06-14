@@ -1,4 +1,29 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code change.
+- **Scout**: TRIGGERED — last scout commit 2026-05-25 (~20 days ago, >48h threshold). GeckoTerminal API also 403 in this environment. Used WebSearch to identify BASE token (launched May 2026, Coinbase's own L2 token) as a candidate. Cannot verify pool metrics without API access. Written to `COHORT_PROPOSAL_2026-06-14.md` per CLAUDE.md Rule 1. No TOKEN_REGISTRY edit made (Option B window closes 2026-06-15).
+- **Auditor**: TRIGGERED by inferred sustained bear/recovery market (Option B window day 30 of 30). API unreachable so portfolio metrics unconfirmed. Research ran 4 searches. Top finding: Aerodrome Slipstream V2 routing (March 2026) already auto-benefits NVR without code change. Kelly is already at Quarter-Kelly optimal. No new actionable ≤10-line change with Priority ≥ 2.0 found. No code change. Full audit report: `NVR-Audit-2026-06-14.md`.
+
+⚠️  **CRITICAL TIMING**: Option B benchmark window closes TOMORROW 2026-06-15. Henry should review performance vs cbBTC/WETH 60/40 benchmark and decide on next steps.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+- **Signal Quality**: Whale wallet clustering, smart money on-chain signals (Impact 2/Complexity 4/Risk medium) → Watch list. Already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow buy-ratio). Full Nansen/Dune integration complex. No new action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) — improved pathfinding, gas-aware routing, batched settlement. Bot already uses Aerodrome as primary router. Auto-benefits without code change. No action needed.
+- **Position Sizing**: Half-Kelly research (75% of Full Kelly growth at <50% max drawdown). NVR already at Quarter-Kelly (KELLY_FRACTION=0.25) — more conservative than Half-Kelly. Confirmed optimal for sustained bear regimes with crypto fat tails. No change needed.
+- **Competitive Intelligence**: MEV protection via private mempool (Jito on Solana analogue). NVR uses sequencer-direct RPC on Base — equivalent protection already active. Multi-agent Kelly (20-30% better Sharpe): NVR Sleeves architecture already scaffolded (CoreSleeve). No new actionable change.
+
+## ⚠️  Option B Window Closing
+
+The 30-day Option B benchmark window (cohort locked, strategy shape locked) began 2026-05-15 and closes ~2026-06-15. Henry needs to:
+1. Pull final P&L comparison vs cbBTC/WETH 60/40 baseline
+2. Decide whether to extend, pivot, or graduate cohort
+3. Review any staged PRs before next automated cycle
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
