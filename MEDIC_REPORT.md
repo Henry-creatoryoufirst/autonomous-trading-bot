@@ -1,4 +1,20 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T19:05 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ TIME-SENSITIVE: Option B Window Ends Tomorrow (2026-06-15)
+
+The 30-day Option B benchmark window (started 2026-05-15) expires **tomorrow**. Key facts from git history:
+- **2026-05-28**: Henry executed `/api/admin/liquidate-all` — withdrew all real capital (~$2,850 total: $1,152 USDC already out, ~$1,700 WETH+Aave+cbLTC swept to USDC). Bot has been in paper/dry-run mode since then.
+- Only **~13 days** of real trading occurred in the 30-day window (2026-05-15 to 2026-05-28).
+- The cohort lock (COHORT_QUALITY_7, no auto-additions) expires tomorrow; scout can resume after Henry reviews.
+- **Action needed**: Review Option B results before/on 2026-06-15 and decide: re-fund, extend, or pivot.
+
+## Jobs Status This Run (Run #35 — 2026-06-14T19:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Run #35. No change since Run #34.
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY modifications during Option B window (expires ~2026-06-15, tomorrow). Scout is overdue (>48h; last actual token addition was MOLT on 2026-05-14, ~31 days ago). GeckoTerminal also unreachable from sandbox. Resume after Henry reviews Option B results.
+- **Auditor**: SKIPPED — Cannot reach `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (all 403). No live metrics available. Bot appears to be in dry-run mode since 2026-05-28 forced liquidation anyway.
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
