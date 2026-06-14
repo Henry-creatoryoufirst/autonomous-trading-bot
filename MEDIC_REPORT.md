@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: ⚠️ OPTION B WINDOW EXPIRES TOMORROW — API UNREACHABLE (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | ⚠️ OPTION B WINDOW EXPIRES TOMORROW (~2026-06-15). Scout pending: 29 days since last run (2026-05-16), GeckoTerminal blocked, cohort locked — COHORT_PROPOSAL_2026-06-14.md written. Auditor: trigger conditions unknown (API blocked); research ran 4 searches, no implementable finding (no trigger confirmed). No code changes. |
 
 ## Bot Health Evidence (from git history)
 
@@ -203,9 +204,28 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+**⚠️ CRITICAL CALENDAR ALERT: Option B 30-day benchmark window expires TOMORROW (~2026-06-15).**
+Time to evaluate cohort vs cbBTC/WETH 60/40 benchmark and decide on post-window strategy.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: PENDING (29 days since last scout 2026-05-16). GeckoTerminal API blocked. Option B cohort locked. Wrote `COHORT_PROPOSAL_2026-06-14.md` with research findings and post-window recommendations per Rule 1.
+- **Auditor**: Trigger conditions unknown (API blocked; cannot read /api/trades, /api/portfolio, /api/patterns, /api/adaptive). Research ran 4 searches. No finding met threshold (priority ≥ 2.0, risk low/med, ≤ 10 lines) without confirmed trigger. No code changes.
+  - Signal Quality: On-chain whale wallet + stablecoin inflow/outflow confluence (Impact 2/Complexity 4/Priority 0.5) → watch list
+  - Execution Efficiency: Slipstream V2 March 2026 routing — bot already benefits automatically. No action.
+  - Position Sizing: VIX-based volatility regime Kelly hybrid (Impact 3/Complexity 3/Priority 1.0) — below 2.0 threshold, watch list
+  - Competitive Intel: MEV private relay already active via CDP RPC. Multi-agent specialization too complex. No action.
+
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**⚠️ OPTION B WINDOW CLOSES ~JUNE 15 (TOMORROW). Do these now:**
+
+1. **Benchmark evaluation**: Compare cohort (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL) performance vs cbBTC 60% + WETH 40% baseline over the 30-day window (May 15 – June 15). ≥5% annualized outperformance = Option B vindicated.
+2. **Decide post-window strategy**: Option C (expand cohort)? Option D (full discretionary)? Review `COHORT_PROPOSAL_2026-06-14.md` for scout candidates.
+3. **Fix network egress** (this is now the 35th consecutive blocked run — urgent):
+
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
