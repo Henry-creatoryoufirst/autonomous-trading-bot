@@ -1,3 +1,45 @@
+# MEDIC REPORT — 2026-06-14 (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Run #35 — 2026-06-14
+
+### New Findings This Run
+
+**Bot deliberately parked since 2026-05-29 (16 days):**
+- PR #54 (merged 2026-05-29): Henry added `/api/admin/liquidate-all` and triggered a full USDC exit. PR description: "going paper until the system is proven." Liquid USDC ($1,152.88) was already withdrawn; endpoint sweeps remaining ~$1,700 (WETH + Aave + cbLTC).
+- Bot has been in dry-run mode for 16 days. Trade health metrics (win rate, drawdown, streak) are moot during dry-run.
+
+**PR #55 open 16 days — blocks SPEC-038 strategy tournament:**
+- Title: "fix(persistence): persist sleeve state — SPEC-038 Phase A0 + Alpha Hunter 0-trades root fix"
+- Branch: `fix/sleeve-state-persistence` → targeting `main`
+- Root cause fixed: `saveTradeHistory()` never serialized sleeveOwnership/sleeveAllocation/sleeveConfig → they reset on every Railway redeploy. Multi-week paper tournament was impossible.
+- Needs a staging deploy + redeploy test to verify survival before merge.
+
+**Option B window closes TOMORROW (~2026-06-15):**
+- Per CLAUDE.md, the 30-day Option B benchmark window runs from 2026-05-15 to ~2026-06-15.
+- During the window, `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` commits are prohibited.
+- Last scout ran 2026-05-16 (~29 days ago) — well past the 48h threshold.
+- Scout is ready to run again the next cycle after the window closes.
+
+**Staging has one commit not yet on main:**
+- `baf25a5` — "fix(strategy): composition frame is a yardstick, not a target — end the dead-cash ratchet (#53)"
+- Needs promotion to main before bot resumes live trading.
+
+### Jobs Status This Run
+- **Medic**: PATTERN D — API unreachable (egress allowlist; same persistent constraint). Run #35.
+- **Scout**: SKIPPED — Option B Rule 1 prohibits auto-adds during window (ends ~2026-06-15). Last scout 2026-05-16 (29 days ago). Ready to run once window closes.
+- **Auditor**: SKIPPED — cannot access `/api/portfolio`, `/api/trades`, `/api/patterns` (egress blocked). Bot in dry-run; no trading data to analyze.
+
+### Recommended Actions for Henry (time-sensitive)
+1. **Option B window closes tomorrow** — if you want the scout to resume, no action needed (it'll fire next cycle). If you want to extend the window, update CLAUDE.md.
+2. **Review and merge PR #55** (sleeve persistence) — required before the SPEC-038 strategy tournament can run.
+3. **Promote staging → main** — PR #53 (composition frame fix) is on staging but not main.
+4. **When ready to resume trading:** re-enable live mode and let the next scout cycle run.
+5. **Fix runner egress** — add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to egress allowlist so Medic/Scout/Auditor can do their jobs.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
