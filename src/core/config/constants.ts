@@ -650,7 +650,9 @@ export const KELLY_SMALL_PORTFOLIO_THRESHOLD = 10_000; // Portfolio under $10K g
  */
 export const SECTOR_KELLY_CEILING_OVERRIDES: Record<string, number> = {
   BLUE_CHIP: 18,
-  // MEME_COINS, AI_TOKENS, DEFI, TOKENIZED_STOCKS — use global default (12)
+  MEME_COINS: 8,  // Bitcoin Season Jun-2026: BTC dominance 58%, altcoin season index 46/100; tightens highest-vol sector ceiling by 33% (12→8%) during BTC-dominant regime
+  AI_TOKENS: 9,   // Bitcoin Season Jun-2026: AI tokens lose BTC beta in sustained bear; reduces AI sector concentration by 25% vs global 12% ceiling
+  // DEFI, TOKENIZED_STOCKS — use global default (12)
 };
 
 /**

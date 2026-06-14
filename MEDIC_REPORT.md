@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-14T UTC | Scout blocked (GeckoTerminal 403 persistent env constraint) + cohort locked per CLAUDE.md Rule 1 (Option B window ends ~2026-06-15); auditor: SECTOR_KELLY_CEILING_OVERRIDES MEME_COINS→8, AI_TOKENS→9 — Bitcoin Season (BTC dom 58%, altcoin idx 46/100, 100+ day bear) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,22 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from this environment). Railway production at `autonomous-trading-bot-production.up.railway.app` is inaccessible due to egress proxy allowlist restriction. No new bot code errors found. MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — Two constraints apply: (1) GeckoTerminal API returns 403 Forbidden from this env (persistent since Run #1, ~31 days since last successful scout); (2) CLAUDE.md Rule 1 cohort lock: Option B benchmark window ends ~2026-06-15 — no TOKEN_REGISTRY additions until Henry reviews post-window. WebSearch for trending Base tokens returned only generic L2 overviews, no specific token candidates with verifiable $100K liquidity / $50K vol data.
+- **Auditor**: TRIGGERED by inferred 100+ day BEAR market (48h+ threshold met). BTC at ~$70K on June 2, 2026 (-45% from Oct 2025 ATH of $126,296). BTC dominance 58%. CMC Altcoin Season Index 46/100 ("Bitcoin Season"). Research ran 4 searches. Top finding: SECTOR_KELLY_CEILING_OVERRIDES MEME_COINS→8, AI_TOKENS→9 — "Bitcoin Season" confirmed; existing BTC_DOMINANCE_SECTOR_BOOST already applies -5%/-3% allocation targets but Kelly ceiling (12%) unchanged for these sectors; tightening reduces max meme coin position by 33% and AI token position by 25% during BTC-dominant regime. IMPLEMENTED in constants.ts. (Impact 4, Complexity 1, Risk low, Priority 4.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+- **Signal Quality**: Multi-signal confluence scoring in 2026 DeFi bots integrates exchange inflow/outflow, stablecoin flows, and NLP sentiment as leading indicators (trendrider.net, wundertrading.com). Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + buy-ratio tracking. Full on-chain signal integration remains complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: KEY ALERT — Aerodrome is migrating to MEV-resistant pools ahead of July 2026 cross-chain launch (crypto.news, theblock.co). "LPs required to migrate to new MEV-resistant pools to continue earning emissions." If pool contract addresses change, NVR routing may need updating — but touching executeDirectDexSwap/executeSingleSwap is forbidden. Henry must monitor this proactively: pool migration impact on AERO, WELL, MORPHO, SEAM positions. Watch list (Impact 4/Complexity 5/Risk high). (Priority 0.8)
+- **Position Sizing**: KEY FINDING — Bitcoin Season confirmed (BTC dominance 58%, altcoin index 46/100, BTC -45% from ATH). Drawdown-aware Kelly research (Altrady 2026, Medium): "if bankroll drops 20% from peak, cut position sizes in half." SECTOR_KELLY_CEILING_OVERRIDES MEME_COINS→8, AI_TOKENS→9 IMPLEMENTED. Reduces max meme coin position by 33%, AI token position by 25% during BTC-dominant regime. Complements existing BTC_DOMINANCE_SECTOR_BOOST (-5%/-3% allocation targets). (Impact 4, Complexity 1, Risk low, Priority 4.0)
+- **Competitive Intelligence**: Aerodrome MetaDEX 03 expanding cross-chain July 2026; ElizaOS multi-agent framework standard in DeFi; cross-chain arbitrage via fast bridges active on Base. NVR already has MirrorAgent, sequencer-direct RPC MEV protection, TWAP jitter. No new actionable pattern. (Priority 0)
+
+## Watch List (for Henry's review — Run #35)
+1. **Aerodrome MEV-resistant pool migration (July 2026)**: Pool contract addresses may change. If Aerodrome migrates existing AERO/WETH, AERO/USDC, and other NVR-used pools to new MEV-resistant contracts, routing to old addresses will fail or incur higher slippage. Timeline: July 2026 (next month). Action needed: Henry should check Aerodrome docs and update DEX routing addresses pre-migration.
+2. **Option B window ends ~2026-06-15 (TOMORROW)**: Scout cohort proposals should be evaluated now. Last 30-day window performance should be vs cbBTC/WETH 60/40 benchmark. Post-window, TOKEN_REGISTRY additions can resume normal scout flow.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
