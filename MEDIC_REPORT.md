@@ -1,6 +1,25 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints including Railway bot API and GeckoTerminal). MEDIC_REPORT updated (Run #35). No code fix possible.
+- **Scout**: SKIPPED (CLAUDE.md Rule 1 override) — Option B benchmark window closes **2026-06-15 (TOMORROW)**. Token registry is cohort-locked until human review at window close. Last valid scout run was 2026-05-16 (OPENX+VEIL reverted). Wrote `COHORT_PROPOSAL_2026-06-14.md` with post-window candidates for Henry's review.
+- **Auditor**: TRIGGERED (inferred — cannot fetch metrics; bear regime persists >48h per market context). Production API unreachable so win_rate/drawdown/streak cannot be computed. Research ran 4 searches. Key finding: Aerodrome Slipstream MEV-resistant pool migration deadline July 2026 — LP rewards stop for non-migrated pools. NVR uses Slipstream for swap routing (not LP), so this does not break trading. **No code change this run** — all findings already addressed in prior runs or are watch-list only. Audit report written.
+
+## ⚠️ PRIORITY ACTION FOR HENRY — Option B Window Closes Tomorrow
+
+The 30-day Option B benchmark window started **2026-05-15** and closes **2026-06-15**.
+
+**Tomorrow is the window close.** Key decisions pending:
+1. Review final 30-day P&L vs cbBTC/WETH 60/40 benchmark — did we beat it by ≥5% annualized?
+2. Decide whether to maintain, expand, or rotate the 7-token cohort (CLAUDE.md Rule 1 lifts at window close)
+3. Review `COHORT_PROPOSAL_2026-06-14.md` for post-window token candidates
+
+---
+
+## Previous Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
