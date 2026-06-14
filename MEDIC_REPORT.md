@@ -1,4 +1,45 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: NO QUALIFYING TOKENS — GeckoTerminal blocked (same egress constraint); Option B cohort lock still in effect (window expires ~2026-06-15 TOMORROW). Research via WebSearch did not surface verifiable Base L2 pool data. No adds to TOKEN_REGISTRY. OETHb (Origin ETH Base) flagged as candidate to evaluate post-window if GeckoTerminal becomes accessible.
+- **Auditor**: TRIGGERED (inferred 100+ day BEAR market with June 2026 consolidation). Research ran 4 searches. TOP FINDING: Aerodrome Slipstream V2 MEV-resistant pool migration (March 2026) auto-benefits bot without code changes. Quarter-Kelly (0.25×) confirmed appropriate for current bear/consolidation regime. **NO IMPLEMENTATION THIS RUN** — Option B benchmark window expires TOMORROW (~2026-06-15); any constant change on day 30 would muddy alpha attribution. Henry should review post-window and decide which bear-adjusted constants to relax.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+
+### Market Context
+- Bitcoin: ~$69–75K (June 2026), down ~45% from Oct 2025 peak ($126K)
+- Monthly returns: Apr +11.87%, May -3.41%, Jun so far -0.21%
+- Regime: BEAR/CONSOLIDATION — 100+ day bear base-building; not a confirmed recovery
+
+### Signal Quality
+Multi-wallet Smart Money convergence (Nansen-style: multiple known-profitable wallets accumulating same token = high-confidence signal). MEXC 2026 confirms NVR's LARGE_TRADE_THRESHOLD_USD=2500 captures this partially. Full integration requires external API (complex). No action. (Impact 3, Complexity 4, Risk medium, Priority 0.75) → Watch list.
+
+### Execution Efficiency
+Aerodrome Slipstream V2 (March 2026) mandatory pool migration to MEV-resistant pools completed. Dynamic fee module (Flashblocks-aware) also deployed — lowers fees at start of each block. Bot auto-benefits from routing improvements without code change. Slipstream V3 cross-chain launch upcoming with Velodrome merger (Q3 2026). (Impact 2, Complexity 0, Risk low, Priority ∞ — auto-applied) No code change needed.
+
+### Position Sizing
+Quarter-Kelly (0.25×) confirmed optimal for continued BEAR/CONSOLIDATION per atlaspeakresearch.com 2026 and altrady.com. RegimeFolio (arXiv 2510.14986) confirms ATR-based regime-aware sizing reduces max drawdown from 40.4% to 16.6%. NVR's SECTOR_ATR_MULTIPLIERS + DEFAULT_REGIME_MULTIPLIERS already implement this. No immediate change warranted — TRENDING_DOWN=0.75 and VOLATILE=0.7 remain appropriate given unconfirmed recovery. (Impact 0, Complexity 1, Risk low, Priority 0)
+
+### Competitive Intelligence
+ARMA (Giza): 12.3% higher annualized returns vs manual strategies; 30% lower execution costs via intelligent order splitting (NVR already uses TWAP). 40% of all on-chain transactions by AI agents in 2026 — regime-aware exposure ceilings confirmed best practice. NVR already implements this. (Impact 1, Complexity 0, Risk low, Priority 0)
+
+### Watch List for Henry (post-Option-B)
+1. RANGING multiplier 0.9→1.0 — RegimeFolio confirms RANGING periods warrant aggressive momentum tilts; current 0.9 is conservative. Impact 3, Complexity 1, Risk low, Priority 3.0. **Review after window closes.**
+2. KELLY_FRACTION 0.25→0.30 — once recovery confirmed by live win_rate >0.50 for 2+ weeks. Impact 3, Complexity 1, Risk medium, Priority 1.5. **Do not auto-implement.**
+3. OETHb (Origin ETH Base, cbBTC/WETH Slipstream-integrated) — scout candidate for TOKEN_REGISTRY. Need GeckoTerminal access to verify liquidity/volume. **Evaluate post-window when egress fixed.**
+
+## ⚠️ OPTION B WINDOW EXPIRES TOMORROW (~2026-06-15)
+The 30-day benchmark window for comparing vs cbBTC/WETH 60/40 expires approximately tomorrow. Henry should:
+1. Pull the final benchmark numbers from the bot API
+2. Compare cumulative returns vs cbBTC/WETH 60/40 baseline
+3. Decide which bear-adjusted constants to relax for the next phase
+4. Review the Watch List above for immediate post-window improvements
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
