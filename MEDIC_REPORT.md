@@ -1,12 +1,17 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ CRITICAL NOTICE: OPTION B WINDOW CLOSES TOMORROW (~2026-06-15)
+The 30-day Option B benchmark window (started 2026-05-15) ends approximately tomorrow.
+**Henry should review the bot's 30-day P&L vs cbBTC/WETH 60/40 benchmark before the window closes.**
+Post-window: cohort additions and strategy changes can resume via normal human-PR workflow.
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-14T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-mmh8kc
 
 ## Problem
 
@@ -66,21 +71,21 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | Scout BLOCKED (GeckoTerminal/DexScreener/CoinGecko all 403 from this env); auditor research ran 4 searches — NO CHANGES IMPLEMENTED: Option B window closes tomorrow (~2026-06-15), implementing strategy changes in final 24h would muddy 30-day alpha attribution. Post-window proposals in Watch List below. |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, main branch is active. Since Option B pivot (2026-05-15):
 
-- `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
-- `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
-- `2026-04-23` — Scout: MOG + TYBG added to TOKEN_REGISTRY
-- `2026-04-23` — Auditor: LARGE_TRADE_THRESHOLD_USD 5000→2500
-- `2026-04-23` — Scout: OVPP + RAVE added to TOKEN_REGISTRY
-- `2026-04-23` — merge(staging): CRITIC Day-1 stub (feat/critic-stub-spec-018)
-- `2026-04-22` — fix(payout): accrue pendingFeeUSDC in CDP sell path
-- `2026-04-22` — fix(trade-counter): reconcile + derive live-exec timestamp
+- `2026-05-28` — feat(admin): /api/admin/liquidate-all — operator forced full-exit to USDC
+- `2026-05-25` — chore: bump version to v21.30.0 — force Railway redeploy (INV-1 round 5)
+- `2026-05-25` — fix(spec-035): INV-1 round 5 — align cost-basis tracker to wallet truth
+- `2026-05-22` — feat(execution): HOLD_ONLY_TOKENS — skip execution on thin-liquidity cohort tokens (cbLTC)
+- `2026-05-22` — chore(ci): green main + purge dead Option-B-pre-pivot code
+- `2026-05-21` — feat(spec-036): wire MirrorAgent into heavy-cycle prompt
+- `2026-05-21` — feat(spec-035): Anthropic Files API for auditor persistence (survives Railway redeploys)
 
-**Staging is substantially ahead of main** — v21.20.1+ queued with NVR-CRITIC, OSS trader model, P&L sanitizer improvements.
+**Note on liquidate-all (2026-05-28):** The /api/admin/liquidate-all endpoint was added and may have been triggered — this could indicate a forced USDC exit. Henry should verify current portfolio state before the window closes.
 
 ## What Is NOT Known
 
@@ -89,6 +94,24 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints; curl also blocked by egress policy). MEDIC_REPORT updated (Run #35). ⚠️ Option B window closes ~tomorrow.
+- **Scout**: BLOCKED — GeckoTerminal, DexScreener, CoinGecko all return 403 from this execution environment. Last scout was 2026-05-14 (>30 days ago). Cannot evaluate candidates without liquidity/volume data. Per CLAUDE.md Rule 1, cohort is locked until window closes anyway — scout would produce COHORT_PROPOSAL only.
+- **Auditor**: Research ran 4 searches. NO CHANGES IMPLEMENTED — Option B window closes tomorrow (~2026-06-15); implementing any strategy changes in the final 24h would muddy the 30-day alpha attribution that defines whether Option B outperformed. All findings queued to Watch List for post-window human review.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+- **Signal Quality** (Impact 2/Complexity 3/Risk med, Priority 0.67): Smart money confluence (Nansen wallet clustering) already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow + buy-ratio pipeline. Full integration remains complex. → Watch list. No action.
+- **Execution Efficiency** (Impact 3/Complexity 1/Risk low, Priority 3.0): **KEY FINDING** — Aerodrome is migrating ALL pools to MEV-resistant architecture for July 2026 "Aero" launch (unified Aerodrome+Velodrome). Slipstream V2 routing improvements auto-benefit NVR without code changes. However: NVR should verify routing post-migration in July. Flag for post-window monitoring check. No code change now.
+- **Position Sizing** (Impact 2/Complexity 1/Risk low, Priority 2.0): Research confirms Quarter-Kelly (KELLY_FRACTION=0.25) optimal for crypto fat-tails. New finding: practical rule "cut position sizes 50% if bankroll drops 20% from peak" — NVR has no explicit drawdown-halving logic (KELLY_POSITION_CEILING_PCT handles the ceiling but not a drawdown-proportional floor). Worth adding post-window. → Watch list.
+- **Competitive Intelligence** (Impact 2/Complexity 2/Risk med, Priority 1.0): AI bots lost $441K on Base from single errors in 2026 (Pump Parade Medium article) — validates NVR's constraint-based approach (Rule 1, GUARDIAN). ARMA (Giza's stablecoin DeFi agent on Base) focuses on yield optimization — NVR's Aave integration is already competitive. No new action.
+
+## Watch List for Post-Window Human Review (~2026-06-15+)
+1. **Drawdown-halving position sizing**: When portfolio drawdown >20% from peak, reduce Kelly sizing 50%. Candidate implementation: compare `state.peakPortfolioValue` vs current and apply multiplier in Kelly calc. ~5 lines, low risk. (Priority 2.0)
+2. **Aerodrome MEV-resistant pool migration**: July 2026 Aero launch migrates all pools. Monitor that bot's routing still gets MEV protection post-migration. Check Aerodrome docs when live. (Impact 3, no-code monitoring)
+3. **Cohort expansion post-window**: Scout has been blocked since Option B pivot. With window closing, evaluate trending Base pools using GeckoTerminal API. Candidates should pass $100K liquidity, $50K 24h volume, >3 days old filters. (Per CLAUDE.md: requires human PR)
+4. **Bear → neutral regime recalibration**: All constants were tightened during a 70-day bear. If market has recovered (AERO trading $0.33, Base DEX vol $1.19B/day, +8.14% L2 market cap), consider relaxing HOT_MOVER thresholds back toward pre-bear values. Requires win rate data from /api/trades to confirm.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
