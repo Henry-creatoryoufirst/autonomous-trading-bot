@@ -1,12 +1,17 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ CRITICAL NOTICE — Option B Window Closes ~2026-06-15 (TOMORROW)
+The 30-day Option B benchmark window opened 2026-05-15 and closes approximately 2026-06-15.
+**Henry: today is the day to pull the results and compare vs cbBTC/WETH 60/40 benchmark.**
+The cohort lock expires at window close — new cohort candidates are documented in COHORT_PROPOSAL_2026-06-14.md.
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
-- Medic agent: NVR Capital autonomous agent (hourly run)
+- Run timestamp: 2026-06-14T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run, Run #35)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-49vyrv
 
 ## Problem
 
@@ -66,6 +71,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | Medic: PATTERN D (API unreachable, 35th consecutive run). Scout: OVERDUE (>30 days) but cohort locked per CLAUDE.md Rule 1 — window closes TOMORROW (~June 15); COHORT_PROPOSAL_2026-06-14.md written with post-window candidates. Auditor: triggered by inferred 100-day BEAR; NO implementation — changing constants on eve of Option B window close would muddy alpha attribution; research summary below. |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +96,31 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (bot API blocked by egress policy in Run #35, 35th consecutive run). GeckoTerminal also blocked. WebSearch functional but insufficient for health assessment. MEDIC_REPORT updated.
+- **Scout**: OVERDUE — last qualifying scout ran ~2026-05-14 (~30 days ago, well past 48h threshold). However, cohort is LOCKED per CLAUDE.md Rule 1 until ~2026-06-15. GeckoTerminal API also blocked from this execution environment. Written COHORT_PROPOSAL_2026-06-14.md with research findings and post-window candidates for Henry's review. Did NOT touch token-registry.ts.
+- **Auditor**: TRIGGERED by inferred 100-day BEAR market (bear regime since ~Feb 2026, 48h+ threshold met, same logic as Runs #17–34). Research ran 4 WebSearches. NO IMPLEMENTATION this run — Option B 30-day window closes TOMORROW (~June 15, 2026). Changing strategy constants on the eve of the benchmark window close would undermine attribution. Research findings documented below for Henry's post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+- **Signal Quality**: TrendRider AI (trendrider.net) integrates funding rates + sentiment as macro veto conditions — F&G < 20 downgrades long signals even when technicals are perfect. NVR already has F&G integration + DERIVATIVES cache (5min). Whale wallet clustering partially implemented (LARGE_TRADE_THRESHOLD_USD=2500). Full on-chain flow integration (exchange inflow/outflow, stablecoin velocity) remains watch-list item (Impact 2/Complexity 4/Risk medium). **No new action.**
+- **Execution Efficiency**: Aerodrome announced migration to MEV-resistant pools ahead of July 2026 cross-chain DEX launch + Ethereum mainnet expansion. NVR auto-benefits from Aerodrome routing improvements without code change. Next token unlock June 11, 2026. **Watch: July routing migration may temporarily affect liquidity depth on some pairs.** No code action needed.
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) confirmed optimal. Atlas Peak Research 2026 confirms risk-constrained Bayesian/shrinkage Kelly is the institutional upgrade path — but requires separate volatility regime estimation module (>10 lines, medium risk). Watch list. Drawdown-aware sizing already active via LIFETIME_DRAWDOWN_CAUTION_PCT=12 + TRENDING_DOWN=0.75. **No new action.**
+- **Competitive Intelligence**: TEEs (trusted execution environments) + programmable wallet policies are the 2026 frontier for autonomous agents (Phemex/QuickNode 2026 research). MEV-protection mode going mainstream (private relays/block builder submission). NVR sequencer-direct RPC already covers this. "Smart money tracking" (multi-wallet clustering) is an established alpha signal — medium-complexity addition, watch list. **No new action.**
+
+**Top finding**: None qualifying (Priority ≥ 2.0, risk low/medium, ≤10 lines) that wouldn't muddy the Option B attribution on the eve of window close. Holding fire intentionally.
+
+**Post-window watch list for Henry:**
+1. Bayesian/shrinkage Kelly position sizing (replaces flat KELLY_FRACTION)
+2. Smart money wallet clustering as additional confluence signal  
+3. Aerodrome MEV-resistant pool routing check (July 2026)
+4. GeckoTerminal egress allowlist — agent has been blind for 35 runs
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
