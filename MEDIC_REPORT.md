@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | **⚠️ OPTION B WINDOW CLOSES ~TOMORROW (2026-06-15).** Scout DUE (29 days since last successful add — SYRUP 2026-05-08; MOLT reverted 2026-05-14; OPENX+VEIL reverted 2026-05-16) but COHORT LOCKED per CLAUDE.md Rule 1. Auditor: API blocked, cannot compute trigger conditions. No changes pushed (Option B alpha-attribution integrity preserved). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,20 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the **30th day of the Option B benchmark window** (started 2026-05-15, closes ~2026-06-15 tomorrow).
+- **Scout**: DUE (last successful scout: SYRUP 2026-05-08 — 37 days ago). BLOCKED by CLAUDE.md Rule 1 (cohort locked during Option B window). OPENX + VEIL additions on 2026-05-16 were both reverted same day. Scout will be eligible to run again after 2026-06-15 cohort unlock. Web research ran (GeckoTerminal API 403, DeFiLlama 403, Railway API 403 — all external APIs blocked from sandbox). No verifiable pool data retrieved. No COHORT_PROPOSAL written — NVR-HQ not present in this checkout.
+- **Auditor**: API blocked — cannot compute win_rate, drawdown, or losing_streak. Cannot determine if trigger conditions are met. No changes pushed. (Option B alpha-attribution integrity: automated constants edits during the 30-day window would muddy performance attribution — abstaining is correct.)
+
+## ⚠️ Action Required — Option B Window Closes Tomorrow
+
+**Henry: The 30-day Option B benchmark window ends ~2026-06-15.** This run can confirm:
+1. **Scout is ready to unlock**: 37 days of candidates queued — first run after 6/15 can resume normal token discovery and cohort additions.
+2. **Bot health unknown**: 35 consecutive runs without API access. Check https://autonomous-trading-bot-production.up.railway.app/health manually.
+3. **Auditor is blind**: No trade/portfolio data available in sandbox. Manual performance review needed to close out the Option B window.
+4. **Constants drift review**: Runs #18–#34 made significant constant adjustments (KELLY_FRACTION 0.35→0.25, KELLY_POSITION_CEILING_PCT 14→12, RIDE_THE_WAVE_SIZE_PCT 4→3, etc.) — most on `staging`, not main. Verify which staging commits were promoted.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
