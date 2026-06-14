@@ -661,7 +661,7 @@ export const VOL_TARGET_DAILY_PCT = 1.5;       // Bear-adjusted Apr-2026: 1.5% t
 export const VOL_HIGH_THRESHOLD = 6;           // >6% daily vol → reduce size by 60% (was 8; bear-adjusted Apr-2026: 6-8% vol common in bear markets, VAPS warrants earlier trigger)
 export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
 export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%
-export const VOL_LOW_BOOST = 1.25;             // Bear-adjusted May-2026: 1.5→1.25 — 65-day bear; low-vol periods (<1% daily) in sustained downtrends are pause-before-continuation, not green lights; Kelly+VAPS research confirms reducing the low-vol size boost in bear regimes controls overshoot risk
+export const VOL_LOW_BOOST = 1.35;             // Bull-recovery June-2026: 1.25→1.35 — Base DEX volume hit record $3B (June 2026); 90-day bear → bull regime transition; low-vol (<1% daily) in recovering markets is accumulation, not pause-before-continuation; partial unwind of May-2026 bear cut (was 1.5), cautious step; Kelly+VAPS research confirms low-vol size boost should scale up in bull transitions
 export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calculation
 
 /**
