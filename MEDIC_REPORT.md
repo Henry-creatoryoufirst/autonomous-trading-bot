@@ -1,4 +1,51 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
+
+## ⚠️ OPTION B WINDOW CLOSES TOMORROW — 2026-06-15
+
+The 30-day Option B benchmark window (started 2026-05-15) **closes tomorrow**. Henry must:
+1. Pull the NVR portfolio vs cbBTC/WETH 60/40 benchmark comparison
+2. Determine if ≥5% annualized outperformance was achieved
+3. Unlock the cohort for the next phase (see COHORT_PROPOSAL below)
+4. Review staging branch — 10+ constant changes queued from the bear-adjusted window
+
+---
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-14T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-pw9815
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED execution — GeckoTerminal not in egress allowlist, cannot verify pool metrics (liquidity, volume, pool age) required by quality filter. COHORT_PROPOSAL written as `COHORT_PROPOSAL_2026-06-14.md`. Per CLAUDE.md Rule 1, no TOKEN_REGISTRY modifications made.
+- **Auditor**: TRIGGERED by BEAR market (F&G=8 extreme fear, BTC ETF outflows $1.72B/week, confirmed June 2026). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). **NO IMPLEMENTATION** — Day 30/30 of Option B window. Any constant change today maximally muddles attribution analysis. Full findings below.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+
+### Signal Quality
+Key finding: 2026 competitive bots now combine funding rates, open interest, and exchange inflow/outflow into confidence scoring (-1 to +1). On-chain exchange flow (large inflows = sell pressure, outflows = accumulation) is actionable. NVR partially implements via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration (Nansen/CryptoQuant-style) requires dedicated data pipeline (Impact 3/Complexity 4/Risk medium → Watch list for post-window). No implementation.
+
+### Execution Efficiency
+**KEY FINDING**: Aerodrome migrating all LPs to MEV-resistant pools ahead of July 2026 cross-chain Aero launch (Aerodrome + Velodrome merger). MetaDEX 03 + Slipstream V3 intercept MEV auction revenue at DEX level. NVR trades through Aerodrome; as a *trader* (not LP), will auto-benefit from improved routing once pools migrate. New dynamic fee module: lower fees at block start, standard fees after first trade — auto-benefits NVR without code change. (Impact 3/Complexity 1/Risk low — DEFERRED, auto-benefit, no code needed.)
+
+### Position Sizing
+Quarter-Kelly (0.25×) confirmed optimal for crypto bear markets with drawdown risk. Half-Kelly captures 75% of growth rate with dramatically lower variance. NVR at 0.25f* is MORE conservative than Half-Kelly, appropriate for current extreme fear regime. With TRENDING_DOWN×0.75 modifier, effective max per trade ~2.25% of portfolio — well within 1-2% risk-per-trade research consensus. No action needed.
+
+### Competitive Intelligence
+**KEY FINDING 1**: Coinbase launched AI agent trading accounts June 11, 2026 (3 days ago). 69,000 active agents already processing 165M transactions, $50M USDC, 85% on Base. NVR is swimming with more AI bots than ever. Signal quality from pure technical indicators will degrade as MEV and bot noise increases. Post-window priority: stronger on-chain confirmation signals.
+
+**KEY FINDING 2**: Fear & Greed = 8 (extreme fear, lowest since April 1). Historically extreme fear is a contrarian buy signal. Bot should be positioned to deploy USDC reserve if F&G recovers toward 20-30. Review current cash_deployment_confluence_discount=15 threshold after window closes.
+
+Top candidate for post-window implementation: **fund_rate+OI confluence addition** (exchange inflow/outflow scoring). Impact 3, Complexity 4, Risk medium — requires Henry review before implementing.
+
+## History (Run #34 and earlier)
+*(Previous run entries preserved below)*
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
