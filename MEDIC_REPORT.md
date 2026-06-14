@@ -1,6 +1,42 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ CRITICAL TIMING: Option B Window Closes TOMORROW (~2026-06-15)
+
+The 30-day Option B benchmark window opened 2026-05-15 and closes ~2026-06-15 (tomorrow).
+- **Cohort lock expires** — new token additions via PR become eligible after tomorrow
+- **Auditor changes paused this run** — last day of window; no constant changes to preserve attribution
+- **Recommended Henry action**: After window closes, review staged auditor changes and unlock cohort
+- `COHORT_QUALITY_7` additions should go through explicit human PR once window is clear
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No bot health data available — 30-day gap since Run #34 (2026-05-15).
+- **Scout**: BLOCKED — GeckoTerminal API not in egress allowlist (`api.geckoterminal.com` → "Host not in allowlist"). Additionally, CLAUDE.md Rule 1 cohort lock still active until tomorrow (~2026-06-15). No token candidates evaluated. After window: unlock cohort, whitelist `api.geckoterminal.com` in egress settings.
+- **Auditor**: RESEARCH-ONLY (no implementation) — Cannot fetch live trigger conditions (API blocked). Research ran 4 searches. IMPLEMENTATION PAUSED: final day of Option B window; automated constant changes would muddy 30-day alpha attribution on the last measurement day. Findings queued for post-window review below.
+
+## Auditor Research Findings (Run #35 — 2026-06-14, POST-WINDOW ACTION QUEUE)
+
+### Signal Quality
+**Finding**: Modern 2026 DeFi bots (TrendRider, DeepAlpha) now integrate funding rates, open interest, and stablecoin inflows/outflows as confluence scoring signals. Exchange inflows signal sell pressure before price moves.
+**Assessment**: NVR already captures whale flow (LARGE_TRADE_THRESHOLD_USD=2500) and buy-ratio. Adding funding rate / OI signals would require GeckoTerminal or external API — blocked egress. Complex (Impact 3/Complexity 4/Risk medium). → **Watch list for Henry**.
+
+### Execution Efficiency
+**Finding**: Aerodrome Slipstream V2 (March 2026) gas-aware routing confirmed active. Cross-chain expansion (Eth, Polygon, Base) now live. Bot auto-benefits at DEX level without code change.
+**Assessment**: No new action needed. (Priority 0)
+
+### Position Sizing
+**Finding**: LBank 2026 and GPTrader research confirm Quarter-Kelly (0.25f*) remains optimal for crypto volatility. Post-bear recovery signal: when market exits sustained bear, Kelly fraction can be gradually stepped UP (0.25→0.30→0.35) as win rates recover. NVR KELLY_FRACTION=0.25 was set during 70+ day bear (Run #23). If bear has ended, this is now over-conservative.
+**Assessment**: CANDIDATE for post-window implementation — raise KELLY_FRACTION 0.25→0.28 (one step toward recovery Kelly) IF win_rate > 0.50 over last 20 trades. Requires live API confirmation first. (Impact 3, Complexity 1, Risk low, Priority 3.0) → **Queued for Run #36 if API data available**.
+
+### Competitive Intelligence
+**Finding**: May 2026 Chainlink/Ark Invest report: AI agents now manage ~30% of TVL in top DeFi pools. Giza's ARMA on Base ($3.96B agentic volume). Key technique: "intelligent order splitting" for 30% lower execution costs. NVR already implements TWAP slicing — competitive parity.
+**Assessment**: No structural gap found. (Priority 0)
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +102,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | Scout blocked (GeckoTerminal egress + cohort lock, final day Option B window ~2026-06-15); auditor research-only (no implementation — last day of window, attribution preservation). **Option B window closes TOMORROW.** |
 
 ## Bot Health Evidence (from git history)
 
