@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | Scout skipped (Option B cohort lock HARD rule, window ends ~2026-06-15); wrote COHORT_PROPOSAL_2026-06-14.md with AERO candidate for post-window review. Auditor triggered (90-day BEAR) — 4 searches ran, NO implementation (window ends tomorrow, attribution preserved). Watch list + bull-restore recommendations committed to feature branch. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,28 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints + curl network-blocked). MEDIC_REPORT updated (Run #35). No new bot failure detected — known infrastructure constraint.
+- **Scout**: SKIPPED — Option B cohort lock HARD rule (CLAUDE.md) blocks TOKEN_REGISTRY edits until ~2026-06-15 (TOMORROW). GeckoTerminal also network-blocked (403). Wrote `COHORT_PROPOSAL_2026-06-14.md` per CLAUDE.md guidance — AERO (Aerodrome Finance) flagged for post-window human review.
+- **Auditor**: TRIGGERED by inferred 90-day BEAR market (48h+ threshold; bear ongoing since ~2026-03-15, last auditor was Run #34 on 2026-05-15 = 30 days ago). 4 searches ran. **NO IMPLEMENTATION** — Option B window ends tomorrow (2026-06-15); any constant change in the final 24h muddies attribution. Research findings + watch list + bull-restore recommendations in this report for Henry's post-window review.
+
+## Auditor Research Summary (Run #35 — 2026-06-14)
+
+- **Signal Quality**: On-chain smart money clustering (funding rates + sentiment confidence scoring) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome MEV-resistant pool migration (May 2026) — pool contracts migrated but bot auto-routes through Slipstream router (0xbe6d8f...) which adapts automatically. Slipstream V2 +34x capital efficiency (March 2026) auto-benefits without code change. No new action. (Priority 0)
+- **Position Sizing**: ATR-based volatility targeting would reduce sizes dynamically in dangerous periods. Impact 3, Complexity 3, Risk medium → Priority 1.0. NOT qualifying (< 2.0 threshold). NVR's KELLY_FRACTION=0.25 × TRENDING_DOWN×0.75 × KELLY_POSITION_CEILING_PCT=12 already approximates this. No new action.
+- **Competitive Intelligence**: DeFAI 2026 — cross-chain arbitrage (Base/Arbitrum/Optimism) emerging. MEVX MEV protection on Base (complements NVR's sequencer-direct RPC). ElizaOS plugin framework — major refactor out of scope. No new action. (Priority 0)
+
+**Top finding**: NONE qualifying at priority ≥ 2.0, risk low/medium, ≤ 10 lines. Previous bear-calibration runs (#17–#34) have tightened all obvious thresholds. Next opportunity is post-Option-B bull-restore sweep (see watch list below).
+
+## Watch List for Henry (post-2026-06-15 — Option B window closes)
+
+1. **Cohort expansion**: AERO (Aerodrome Finance) — dominant Base DEX token, $1.68B ATH volume, Slipstream V2 active, upcoming Velodrome merger. See COHORT_PROPOSAL_2026-06-14.md. Verify liquidity/vol/pool-age via GeckoTerminal before adding.
+2. **Bull-restore thresholds**: When market regime turns TRENDING_UP, these bear-calibrations from the 90-day bear run are the first levers to adjust: KELLY_FRACTION 0.25→0.30, GUARDIAN_NOVEL_TOKEN_HOURS 72→48, NORMAL_CONFLUENCE_BUY 27→25. Do as human-reviewed PR, not auto.
+3. **MORPHO position**: Already in TOKEN_REGISTRY + DEX_SWAP_TOKENS. TVL +1906% YTD to $966M on Base — strong confirmation that current cohort includes the right DeFi exposure.
+4. **Slipstream V2 router verification**: Confirm bot's hardcoded Aerodrome router address matches the migrated MEV-resistant pools (May 2026 migration). Low complexity, low risk — verify on BaseScan (0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5).
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
