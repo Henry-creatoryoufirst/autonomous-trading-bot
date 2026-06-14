@@ -1,6 +1,46 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-14T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B WINDOW CLOSES TOMORROW (~2026-06-15)
+
+**30-day benchmark window ends approximately June 15, 2026.** After that date:
+- Scout additions to `TOKEN_REGISTRY` are permitted (with human PR review)
+- `COHORT_QUALITY_7` changes are permitted (with human PR review)
+- The three reverted auto-adds (MOLT 2026-05-14, OPENX + VEIL 2026-05-16) can be reconsidered
+- Auditor constant changes resume (CLAUDE.md Rule 1 restriction lifts)
+
+Henry: please review staging branch state and consider a post-window strategic review.
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-14T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Option B window closes tomorrow.
+- **Scout**: RAN (last scout was 2026-05-14, ~31 days ago). GeckoTerminal API and website BLOCKED by egress policy — cannot fetch pool data directly. WebSearch research conducted. Candidates identified (see below) but cannot verify Base contracts/liquidity. CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY additions until window closes ~2026-06-15. No changes made. Proposals documented below.
+- **Auditor**: SKIPPED — production API (trades, portfolio, patterns, adaptive) unreachable. Cannot verify win_rate, drawdown, or losing_streak. Market context from WebSearch documented below.
+
+## Scout Research — Token Candidates (Post-Window Review Queue)
+
+The following emerged from WebSearch as potentially qualifying. Require GeckoTerminal verification after egress policy is updated:
+
+| Token | Category | Notes | Needs Verification |
+|-------|----------|-------|-------------------|
+| STRATO | DeFi/RWA | Precious metals tokenized DeFi (ICO June 3, 2026), Base-native. Very new — fails >3 day pool age filter until ~Jun 7. Monitor. | Base contract, liquidity, volume |
+| HOME (DeFi.app) | DeFi | Rocket Perps launch June 4, 2026. 132.9% growth May 2026. | Base contract, liquidity/pool age |
+| BOSON | DeFi | Boson Protocol mainnet June 8, 2026. $3.4M 24h vol globally but primary chain may not be Base. | Confirm Base deployment, pool age |
+
+**Cannot qualify any of the above without verified Base contracts and GeckoTerminal pool data.** Recommend Henry checks GeckoTerminal directly after window closes tomorrow.
+
+## Market Context (from WebSearch — June 2026)
+
+- **Base DEX volume**: ATH ~$3B daily (AerodromeFi at $1.68B ATH volume alone)
+- **Base TVL**: ~$4.5B — up significantly
+- **AERO**: $453M TVL, 60%+ Base DEX share, expanding to ETH mainnet + Circle Arc (July 2026)
+- **Market regime**: Aerodrome platform upgrade (MEV-resistant pools migration). Cross-chain launch in July 2026 could be major catalyst for AERO.
+- **RWA tokenization**: BlackRock BUIDL, Goldman Sachs real estate fund on-chain — RWA sector accelerating (strong for `deSPXA`, `bCOIN` positioning)
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +106,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-14T UTC | Scout ran (31 days since last scout) — GeckoTerminal API blocked, candidates STRATO/HOME/BOSON identified via WebSearch but unverifiable without API. Option B window closes TOMORROW (~2026-06-15). Auditor skipped (API unreachable). No code changes. |
 
 ## Bot Health Evidence (from git history)
 
