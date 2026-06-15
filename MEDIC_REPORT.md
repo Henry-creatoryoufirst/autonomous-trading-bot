@@ -1,3 +1,26 @@
+# MEDIC REPORT — 2026-06-15T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-15T04:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN ANALYSIS — last scout was 2026-05-16 (VEIL add, reverted), 30 days ago, >48h threshold. GeckoTerminal API also blocked. WebSearch data: VELVET ($7M 24h vol, $2.8M liq on Aerodrome) REJECTED due to -77.9% crash in 24h (catastrophic red flag). CTR ($5.8M vol, $571K liq) insufficient data to confirm pool age, address, or stability. Per CLAUDE.md Rule 1 (cohort locked through Option B window close ~2026-06-15), NO TOKEN_REGISTRY changes. COHORT_PROPOSAL_2026-06-15.md written to repo root with partial findings for Henry's review.
+- **Auditor**: TRIGGERED by inferred ~100-day BEAR market (BTC ~$70-75K post $126K Oct-2025 peak; recovery expected H2 2026 per CryptoQuant/Pantera). Option B benchmark window closes TODAY (~2026-06-15) per CLAUDE.md. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). NO IMPLEMENTATION — making automated strategy changes on window-close day would directly violate CLAUDE.md Rule 1 spirit ("muddy alpha attribution"). All findings documented in COHORT_PROPOSAL_2026-06-15.md for Henry's intentional review and merge decision.
+
+## Auditor Research Summary (Run #35 — 2026-06-15)
+
+- **Signal Quality**: DeFi bots increasingly integrate funding rates + OI + macro sentiment (TrendRider 2026: Fear & Greed as veto condition on momentum signals). NVR already has F&G integration. New: funding rate divergence as independent signal (rising OI with flat price = squeeze risk). Impact 2/Complexity 3/Risk medium → Watch list. (Priority 0.67)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) routing improvements (gas-aware pathfinding, multi-hop batching) — bot auto-benefits from DEX-level improvements without code change. No new action. (Priority 0)
+- **Position Sizing**: Atlas Peak Research 2026 production Kelly sequence: "estimate edge → shrink for confidence → compute volatility with regime stress → apply drawdown-probability constraint → re-underwrite when regime changes." NVR's bear-adjusted calibrations (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, KELLY_ROLLING_WINDOW=30) already match this framework. As market exits bear phase, consider incremental KELLY_FRACTION recovery: 0.25→0.30 would be the first step on confirmed regime shift. BUT: do not implement today — window close. (Impact 3, Complexity 1, Risk low, Priority 3.0) → DEFERRED to Henry's post-window review.
+- **Competitive Intelligence**: Base Flashblocks (July 2025) reshaped MEV economics — created shorter pre-confirmation windows that reduce sandwich profitability. This is inherently good for NVR without code change. KEY FINDING: AI-on-AI MEV dark forest (cryptollia.com) — autonomous bots now target other autonomous bots by pattern-detecting 15-min cycle timing. Consider TWAP jitter increase (currently 20%) to 25-30% or variable cycle offset. Impact 3/Complexity 2/Risk low → Priority 1.5. Deferred to Henry.
+
+## OPTION B WINDOW STATUS (Run #35 — 2026-06-15)
+
+This run falls on the approximate close of the 30-day Option B benchmark window (2026-05-15 to ~2026-06-15). The medic has made no automated strategy changes this run, preserving clean alpha attribution for the window evaluation. Henry: please review the full window performance and decide whether to continue Option B parameters, rotate strategy, or expand the cohort. See COHORT_PROPOSAL_2026-06-15.md for scout candidates and auditor findings awaiting your review.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
