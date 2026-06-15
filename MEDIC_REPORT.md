@@ -1,12 +1,39 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T16:06 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE + SCOUT DATA SOURCES BLOCKED (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-15T16:06 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-7py53r
+
+## ⚠️ NEW FINDING — Run #35 (2026-06-15)
+
+**GeckoTerminal is now ALSO blocked by the egress proxy**, in addition to the bot API.
+This means the Scout job CANNOT run even when the 48h threshold is met:
+
+```
+GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools   → 403
+GET https://api.geckoterminal.com/api/v2/networks/base/new_pools        → 403
+GET https://www.geckoterminal.com/base/pools                            → 403
+GET https://defillama.com/chain/base                                    → 403
+GET https://api.llama.fi/protocols                                      → 403
+```
+
+**ALL three jobs are now blocked by the same root cause: the egress proxy allowlist.**
+
+Henry — to fix this, add these hosts to the network egress allowlist in your Claude Code on the web session settings:
+- `autonomous-trading-bot-production.up.railway.app` (Medic + Auditor)
+- `api.geckoterminal.com` (Scout)
+- `www.geckoterminal.com` (Scout)
+- `api.llama.fi` (Auditor)
+
+Without these, no hourly run can do useful work on any job.
+
+## Additional Context — Option B Window
+
+The 30-day Option B benchmark window (started 2026-05-15) **completes today (2026-06-15)**. After Henry reviews and merges the window results, the cohort lock (CLAUDE.md Rule 1) can be lifted and Scout adds can resume normally.
 
 ## Problem
 
@@ -66,6 +93,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-15T16:06 UTC | ALL JOBS BLOCKED — bot API unreachable (persistent), GeckoTerminal now also blocked by egress proxy (new). Scout cannot run despite 32-day gap since last scan. Option B window completes today. Action: Henry must add GeckoTerminal + bot API to egress allowlist. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +117,16 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-15T16:06 UTC)
+
+- **Medic**: PATTERN D — bot API unreachable (persistent, 403 on all bot endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — GeckoTerminal API + website both return 403 from egress proxy. Last successful scout was MOLT (2026-05-14), 32 days ago — far past the 48h threshold, but data collection is impossible without egress access.
+- **Auditor**: BLOCKED — bot API unreachable; cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive to evaluate trigger conditions.
+
+**Root cause for all three**: Egress proxy in Claude Code on the web blocks all outbound connections except WebSearch. Fix: add `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com`, and `api.llama.fi` to egress allowlist in session network settings.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
