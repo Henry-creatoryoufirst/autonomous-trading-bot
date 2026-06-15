@@ -1,6 +1,19 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35) ⚠️ OPTION B WINDOW ENDS TODAY
+
+## Run #35 Jobs Status (2026-06-15T UTC)
+
+**🔔 MILESTONE: The 30-day Option B benchmark window (~2026-05-15 → ~2026-06-15) ends today.**
+Per CLAUDE.md: cohort changes are now eligible for human-reviewed PRs. No auto-adds. Scout proposals should be submitted as `COHORT_PROPOSAL_<DATE>.md` for Henry's review.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints, Run #35). All outbound network blocked by egress policy.
+- **Scout**: BLOCKED — network egress blocks GeckoTerminal AND cohort is locked per CLAUDE.md (ends today but requires human PR to open). No auto-adds made.
+- **Auditor**: BLOCKED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, or `/api/adaptive` via network.
+
+---
+
+## Previous Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
