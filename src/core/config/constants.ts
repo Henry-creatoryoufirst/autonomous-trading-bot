@@ -657,7 +657,7 @@ export const SECTOR_KELLY_CEILING_OVERRIDES: Record<string, number> = {
  * Volatility-Adjusted Sizing
  * Size = BaseSize × (TargetVol / CurrentVol)
  */
-export const VOL_TARGET_DAILY_PCT = 1.5;       // Bear-adjusted Apr-2026: 1.5% target tightens VAPS multiplier in 2-4% vol range by ~25% (was 2%; matches 46-day bear-market realized-vol reality)
+export const VOL_TARGET_DAILY_PCT = 1.2;       // Bear-adjusted Jun-2026: 1.5→1.2 — 100-day bear; Kelly/VAPS 2026 research confirms further vol-target reduction in sustained extreme-bear narrows position sizes ~20% (at typical 4% daily vol: VAPS multiplier 0.375→0.30×); volatility targeting improves risk-adjusted returns in prolonged high-vol regimes
 export const VOL_HIGH_THRESHOLD = 6;           // >6% daily vol → reduce size by 60% (was 8; bear-adjusted Apr-2026: 6-8% vol common in bear markets, VAPS warrants earlier trigger)
 export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
 export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%

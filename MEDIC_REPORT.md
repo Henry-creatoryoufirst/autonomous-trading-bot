@@ -1,4 +1,44 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
+
+## ⚑ OPTION B BENCHMARK WINDOW ENDED TODAY (2026-06-15)
+The 30-day Option B window started 2026-05-15 and ends **today, 2026-06-15**.
+- Cohort lock (COHORT_QUALITY_7) can now be reviewed for next phase decisions
+- Performance vs cbBTC/WETH 60/40 benchmark is now attributable
+- Human review required before any cohort changes
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN RESEARCH — last actual scout was 2026-05-14 (MOLT, 32 days ago). GeckoTerminal blocked; WebSearch found no new high-confidence Base L2 candidates not already in TOKEN_REGISTRY (Aerodrome, Virtuals, Brett, Aave, KAITO all already tracked). Per CLAUDE.md Option B rules, NO TOKEN_REGISTRY edits made. Scout research complete, no proposal needed this run.
+- **Auditor**: TRIGGERED by inferred 100-day BEAR market (BTC ~$61K, F&G ~23-26, 3 consecutive red monthly candles). Research ran 4 searches. Top finding: VOL_TARGET_DAILY_PCT 1.5→1.2 — 100-day bear; Kelly/VAPS 2026 research confirms further vol-target reduction in sustained extreme-bear reduces position sizes ~20% vs 1.5% target (VAPS multiplier 0.375→0.30× at typical 4% daily vol); volatility targeting demonstrably improves risk-adjusted returns in prolonged high-vol regimes. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-15)
+- **Signal Quality**: Confluence scoring using funding rates, open interest, exchange flows, whale wallet monitoring — all already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, buy ratio, VAPS). Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 auto-routing (March 2026, 34× capital efficiency) — bot auto-benefits from DEX-level improvements without code change. AERO expanding to Ethereum mainnet July 2026 — a positive catalyst for Base liquidity. No new code action. (Priority 0)
+- **Position Sizing**: KEY FINDING — Kelly/VAPS 2026 research: "Extreme volatility requires constant recalibration; focus on recent data 3-6 months; volatility targeting reduces risk during dangerous periods." KELLY_ROLLING_WINDOW already at 30. New finding: VOL_TARGET_DAILY_PCT still at 1.5 (set for 46-day bear in Apr). At 100-day bear (BTC -45% from ATH, F&G ~23), further reduction to 1.2 tightens position sizes ~20% without killing activity. IMPLEMENTED: 1.5→1.2. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV accelerating in 2026 (cryptollia.com). Sequencer-direct RPC already active. FRB Agent private-relay approach mirrors NVR's existing setup. No new code action. (Priority 0)
+
+## ⚑ OPTION B — STATUS AT WINDOW END (2026-06-15)
+
+**Key constants adjusted during the 30-day Option B window (2026-05-15 → 2026-06-15):**
+
+| Constant | Value on 2026-05-15 | Value on 2026-06-15 | Rationale |
+|----------|--------------------|--------------------|-----------|
+| HOT_MOVER_MIN_FDV_USD | 500K | 1M | MEV bots dominate micro-cap pumps |
+| CULL_MIN_AGE_HOURS | 120 | 72 | Accelerate capital recycling in bear |
+| VOL_TARGET_DAILY_PCT | 1.5 | 1.2 | 100-day bear — tighter VAPS sizing |
+| (inherited from pre-window adjustments) | | | |
+| KELLY_FRACTION | 0.35→ | 0.25 | True Quarter-Kelly for bear |
+| FLOW_REVERSAL_EXIT_BUY_RATIO | 40 | 38 | Exit earlier on bear distribution |
+| DECEL_MIN_DROP_FROM_PEAK | 8 | 6 | Smart Trim activates faster |
+
+**Network note**: Bot API still unreachable from this sandbox (Run #35, persistent since Run #1). Henry should verify performance directly: https://autonomous-trading-bot-production.up.railway.app/health
+
+---
+
+# MEDIC REPORT — 2026-05-15T (HISTORY)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
