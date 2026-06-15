@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-15T20:04 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-15h9g5
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-15T UTC | **OPTION B WINDOW ENDS TODAY (2026-06-15)**. Scout: no TOKEN_REGISTRY additions (CLAUDE.md Rule 1 lock; COHORT_PROPOSAL_2026-06-15.md written instead). Auditor: skipped (API blocked + bot likely in USDC since 2026-05-28 liquidate-all commit). Market: VOLATILE/BEAR (BTC ~$63K, -50% from Oct-2025 ATH of $126K; June 8 crash w/ $2.8B ETF outflows). GeckoTerminal API also 403 — no token data. |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +91,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **CRITICAL CONTEXT**: last repo commit (2026-05-28) was `feat(admin): /api/admin/liquidate-all` — operator-initiated forced full-exit to USDC. Bot is likely 100% in USDC. Market context: BTC $63K (-50% from ATH), June 8 crash with $2.8B ETF outflows. No active bot failure detected — but health unverifiable.
+- **Scout**: NO TOKEN ADDITIONS — CLAUDE.md Rule 1 prohibits `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` commits through end of Option B window (~2026-06-15, which is TODAY). GeckoTerminal API also returning 403 (no pool data). Wrote `COHORT_PROPOSAL_2026-06-15.md` per CLAUDE.md instructions ("write a COHORT_PROPOSAL to the Cathedral vault"). Post-window additions can proceed once Henry ratifies window closure.
+- **Auditor**: SKIPPED — cannot satisfy trigger check (API 403 for /api/trades, /api/portfolio, /api/patterns, /api/adaptive). With bot likely in USDC post-liquidate-all, no active trading positions to optimize.
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
@@ -203,22 +210,33 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
-## Recommended Action for Henry
+## Recommended Action for Henry (Updated Run #35 — 2026-06-15)
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Option B window ends TODAY.**
 
-1. **Add to Claude Code egress allowlist:**
+### Immediate (today — Option B window close)
+1. **Verify bot status manually:** https://autonomous-trading-bot-production.up.railway.app/health
+   - Confirm if `feat(admin): /api/admin/liquidate-all` (2026-05-28) was actually triggered — if so, bot is 100% USDC.
+   - If bot ran through the June 8 BTC crash (~$63K), assess drawdown and P&L.
+2. **Review Option B benchmark results** — compare portfolio vs cbBTC/WETH 60/40 from 2026-05-15 to 2026-06-15.
+3. **Review `COHORT_PROPOSAL_2026-06-15.md`** — this run's scout findings (written per CLAUDE.md Rule 1; waiting for human ratification before any TOKEN_REGISTRY adds).
+
+### Infrastructure (persistent gap — 35 runs)
+4. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+5. **Or** expose a lightweight read-only status endpoint on an already-allowed domain.
+
+### Post-window actions (after Henry ratifies)
+6. Scout can resume normal TOKEN_REGISTRY additions.
+7. Auditor can resume strategy tuning once portfolio data is accessible.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
 - No changes to agent-v3.2.ts
+- No changes to token-registry.ts (CLAUDE.md Rule 1 honored)
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- Pushed to claude/cool-sagan-15h9g5 only (CLAUDE.md Rule 2 honored)
