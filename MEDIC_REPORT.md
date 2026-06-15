@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-15T UTC | **Option B window end date reached (~30 days).** Scout ran (>48h since last), but GeckoTerminal + all pool data APIs blocked (403) — no pool-specific liquidity/volume/age data obtainable; also cohort locked per CLAUDE.md Rule 1 until Henry's explicit PR. Auditor: API blocked, cannot compute win_rate/drawdown/streak trigger conditions. All 3 jobs constrained by persistent egress policy. |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,7 +91,24 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: API unreachable (persistent 403 on all endpoints — known infrastructure constraint). No new bot failure detected. Git history shows main at v21.30.0 (feat(admin): liquidate-all endpoint added — recent activity confirms bot is operational).
+- **Scout**: RAN (last scout commit >48h ago). GeckoTerminal trending_pools, new_pools → 403; CoinGecko → 403; DexPaprika → 403; Blockscout pools → 403. WebSearch returned only generic L2 market overviews — no pool-specific liquidity/volume/age data. Cannot qualify any candidate against required thresholds (liq >$100k, vol >$50k, age >3d). Additionally: **CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY changes during the Option B window regardless of qualification.** No additions made. Standards maintained.
+- **Auditor**: SKIPPED — cannot compute trigger conditions (win_rate, drawdown, losing_streak) without API access. API returns 403 on /api/trades, /api/portfolio, /api/patterns, /api/adaptive.
+
+## ⚠️ KEY DATE: Option B Window Reached End (~2026-06-15)
+
+The 30-day Option B benchmark window (started 2026-05-15) has reached its end date today. **Action required by Henry:**
+1. Review portfolio performance vs cbBTC/WETH 60/40 benchmark
+2. Determine if ≥5% annualized outperformance threshold was met
+3. Decide on cohort changes — they are now unlocked for explicit human PRs
+4. Update COHORT_QUALITY_7 in token-registry.ts if adding/removing tokens
+5. Remove CLAUDE.md Rule 1 lock once satisfied with the window review
+
+The agent cannot determine benchmark performance (API blocked). Henry must review via Railway dashboard or Telegram reports.
+
+## Jobs Status Previous Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
