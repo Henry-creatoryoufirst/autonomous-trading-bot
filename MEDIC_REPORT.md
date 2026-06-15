@@ -1,4 +1,60 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Environment
+- Run timestamp: 2026-06-15T UTC
+- Medic agent: NVR Capital autonomous agent (scheduled run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-5g7k1z
+
+## ⚠️ CRITICAL MILESTONE: Option B Window Closes Today (2026-06-15)
+
+The 30-day Option B benchmark window started 2026-05-15 and closes **today, 2026-06-15**.
+Henry must manually review bot health and P&L to assess whether the strategy outperformed
+the cbBTC/WETH 60/40 benchmark by ≥5% annualized. The medic agent cannot retrieve this
+data due to persistent network egress restrictions.
+
+## Jobs Status This Run (2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
+- **Scout**: RAN research via WebSearch (GeckoTerminal direct API blocked). Option B Rule 1 prevents TOKEN_REGISTRY additions today. Candidates flagged below for Henry's post-window review. No commit to TOKEN_REGISTRY.
+- **Auditor**: TRIGGERED (inferred BEAR/VOLATILE regime 48h+ — 100+ day bear as of run date). 4 research searches completed. NO code changes implemented — Option B window closes today; any threshold change now would muddy benchmark attribution. See research summary below.
+
+## Auditor Research Summary (2026-06-15)
+
+### Signal Quality
+On-chain confluence via smart money wallet clustering (Nansen/Arkham/Dune) — AI layers now classify wallets and detect accumulation/distribution cycles. When multiple Smart Money wallets accumulate the same token, AI generates a confluence signal. Bot partially implements this via LARGE_TRADE_THRESHOLD_USD=2500 whale flow tracking. Full integration requires Nansen/Dune API keys (Impact 3, Complexity 4, Risk medium, Priority 0.75). Watch list for Henry. No code change.
+
+### Execution Efficiency
+Aerodrome Slipstream V2 (March 2026) active: gas-aware routing, improved pathfinding, batched settlement. Bot auto-benefits from DEX-level routing improvements without code change. Priority 0. No action.
+
+### Position Sizing
+Kelly criterion research (June 2026): Quarter-Kelly (0.25×) confirmed optimal for crypto; "position sizes should be reduced for new tokens." NVR already at KELLY_FRACTION=0.25, GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT=72, KELLY_ROLLING_WINDOW=30 (within the "update every 20 trades" best practice). No gap found. Priority 0. No action.
+
+### Competitive Intelligence
+KEY FINDING: Giza's ARMA autonomous agent (Base-deployed) processed $3.96B in agentic volume with ~15% net yield on USDC via stablecoin yield optimization across Aave/Compound/Morpho/Moonwell. NVR has yield-optimizer.ts and aave-yield.ts already scaffolded. Opportunity: verify the USDC 25% dry-powder reserve is actively earning Aave yield while waiting to deploy. Impact 4, Complexity 2, Risk low, Priority 2.0. **DEFERRED** — Option B closes today; implement next window as first post-benchmark improvement.
+
+## Scout Candidates (unverified — API blocked, cannot confirm addresses/liquidity)
+
+Found via WebSearch (June 2026). NVR-HQ/Cathedral vault not in this checkout — flagged here for Henry's post-window review:
+
+| Candidate | Notes | Quality Score | Status |
+|-----------|-------|--------------|--------|
+| Russell (RUSSELL) | Breakout Base meme mascot, June 2026 surge | Unverified — no address | Investigate post-window |
+| $BASE token | Network token launched May 2026 | Very new, no liquidity data | Monitor |
+| Aster (perps DEX token?) | Overtook Hyperliquid in daily volume May 2026 | Cross-chain, unclear Base token | Investigate |
+
+All three need on-chain verification (address, liquidity >$100K, vol >$50K/day, pool age >3 days) before consideration. GeckoTerminal API access required.
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
+- Medic: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
+- Scout: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
+- Auditor: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+---
+
+# MEDIC REPORT — 2026-05-15T (previous) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
