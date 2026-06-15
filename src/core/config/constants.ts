@@ -826,7 +826,7 @@ export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v20.3.1: 25% → 20% (match 
  *  CASH_DEPLOY_FEAR_THRESHOLDS removed — threshold is always CASH_DEPLOYMENT_THRESHOLD_PCT. */
 
 /** Legacy — still used as the URGENT tier's confluence discount for directive stacking */
-export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 15; // Bear-adjusted May-2026: 20→15 — 63-day bear; effective buy threshold for cash deployment 27-20=7→27-15=12; research: capital preservation critical in sustained bear; excess cash should require stronger signal before deployment
+export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 11; // Bear-adjusted Jun-2026: 15→11 — 101-day bear, F&G 23-26 (Extreme Fear); effective threshold 27-15=12→27-11=16; research (nftplazas.com, walletfinder.ai): in extreme fear, sentiment filters act as veto conditions — longs require 33% higher confluence because false breakouts statistically likely; aligns with Flashblocks-era MEV landscape where thin-signal pumps get front-run
 
 /** Legacy — kept for reference; tiers now define per-tier deploy percentages */
 export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 80;

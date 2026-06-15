@@ -1,12 +1,32 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-15T UTC (Option B window day 30 — benchmark closes today)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-l6g6c9
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the 35th consecutive run with the same constraint; it is NOT a bot failure.
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT), 32 days elapsed, well beyond 48h. GeckoTerminal API blocked (403). COHORT IS LOCKED per CLAUDE.md Rule 1 (Option B window day 30). WebSearch found no verifiable qualifying Base token addresses. No TOKEN_REGISTRY changes made. COHORT_PROPOSAL_2026-06-15.md written to repo root for Henry's post-window review.
+- **Auditor**: TRIGGERED — 101-day bear (BEAR regime 48h+ threshold). F&G 23-26 (Extreme Fear). Bitcoin ~$69K (~45% off ATH). Research finding: extreme fear = false breakouts statistically likely; cash deployment requires higher confluence. IMPLEMENTED: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→11 (effective threshold 12→16 confluence). Pushed to claude/cool-sagan-l6g6c9 per CLAUDE.md Rule 2 (no auto-push to staging during Option B window).
+
+## ⚠️ OPTION B WINDOW CLOSES TODAY
+
+Today is 2026-06-15 — the 30-day Option B benchmark window (started 2026-05-15) closes today.
+
+**Henry needs to:**
+1. Pull /api/portfolio to get final 30-day P&L vs cbBTC/WETH 60/40 benchmark
+2. Confirm whether NVR outperformed benchmark by ≥5% annualized
+3. Formally declare the Option B window closed (this unlocks cohort expansion + staging push rights)
+4. Review COHORT_PROPOSAL_2026-06-15.md and merge `claude/cool-sagan-l6g6c9` if auditor change looks good
+
+---
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Problem
 
