@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -89,6 +89,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: NO NEW REGISTRY TOKENS — all Base L2 quality candidates (AERO, MORPHO, ZORA, WELL, MFER, GAME, SEAM) already in TOKEN_REGISTRY. EURC (Circle Euro stablecoin) identified as new candidate. COHORT_PROPOSAL_2026-06-15.md written per CLAUDE.md Rule 1 (no auto-add to cohort). ⚠️ **OPTION B WINDOW CLOSES TODAY** — discovery scanner is frozen pending Henry's verdict.
+- **Auditor**: TRIGGERED by inferred 100-day bear market. Research ran 4 searches. Top finding: `LIFETIME_DRAWDOWN_MILD_PCT = 5, LIFETIME_DRAWDOWN_MILD_MULT = 0.85` — fills the 0-12% drawdown sizing gap where full Kelly currently applies even at 11.9% below peak. Three-tier system now: 0-5%=1.0×, 5-12%=0.85×, 12-20%=0.5×, ≥20%=buys blocked. IMPLEMENTED in constants.ts + agent-v3.2.ts sizing path. (Research finding 3B, Impact 5, Complexity 2, Risk low, Priority 2.5)
+
+## ⚠️ CRITICAL FLAG FOR HENRY — Option B Window Ends Today
+
+- The 30-day benchmark window opened 2026-05-15, **closes 2026-06-15 (today)**
+- The discovery scanner has been frozen (`COHORT_LOCKED=true`) pending this date
+- A forced full-exit to USDC occurred on **2026-05-28** — bot may be >90% USDC for 18 days
+- **Action required:** Check `/api/benchmark` for performance vs cbBTC/WETH 60/40, then decide cohort/discovery-scanner unlock
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

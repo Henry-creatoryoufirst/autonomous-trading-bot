@@ -460,6 +460,8 @@ import {
   CAPITAL_FLOOR_ABSOLUTE_USD,
   LIFETIME_DRAWDOWN_BUY_BLOCK_PCT,
   LIFETIME_DRAWDOWN_CAUTION_PCT,
+  LIFETIME_DRAWDOWN_MILD_PCT,
+  LIFETIME_DRAWDOWN_MILD_MULT,
   SECTOR_STOP_LOSS_OVERRIDES,
   // v8.0: Phase 1 — Institutional Position Sizing & Capital Protection
   KELLY_FRACTION,
@@ -9572,8 +9574,10 @@ async function runTradingCycle() {
           decision.amountUSD = Math.min(decision.amountUSD, remainingUSDC);
           console.log(`   ⚡ DEPLOY SIZING: $${decision.amountUSD.toFixed(2)} (floor: $${deployFloor.toFixed(0)}, Kelly would be: $${instSizeCycle.sizeUSD.toFixed(2)})`);
         } else {
-          // NORMAL MODE: Kelly cap with ATR adjustment. Apply 0.5× when drawdown ≥ 12% (circuitBreakerActive) — enforces the halving that was logged but never wired at line 7293.
-          const breakerMult = circuitBreakerActive ? 0.5 : 1.0;
+          // NORMAL MODE: Kelly cap with ATR adjustment. Three-tier drawdown sizing:
+          // ≥20% → buys blocked upstream; ≥12% → 0.5×; ≥5% → 0.85×; <5% → 1.0×
+          const mildBreaker = drawdown >= LIFETIME_DRAWDOWN_MILD_PCT && !circuitBreakerActive;
+          const breakerMult = circuitBreakerActive ? 0.5 : mildBreaker ? LIFETIME_DRAWDOWN_MILD_MULT : 1.0;
           const kellyMax = Math.min(instSizeCycle.sizeUSD * breakerMult, remainingUSDC);
           decision.amountUSD = Math.min(decision.amountUSD, kellyMax);
           console.log(`   🎰 Kelly Cap: $${kellyMax.toFixed(2)} (${instSizeCycle.kellyPct.toFixed(1)}%)${circuitBreakerActive ? ' | ⚠️ DRAWDOWN 50% CUT' : ''}`);

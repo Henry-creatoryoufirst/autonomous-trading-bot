@@ -533,6 +533,13 @@ export const LIFETIME_DRAWDOWN_BUY_BLOCK_PCT = 20;
 /** Lifetime drawdown threshold at which position sizes are halved. */
 export const LIFETIME_DRAWDOWN_CAUTION_PCT = 12;
 
+/** Mild early-warning drawdown tier: apply 85% Kelly size multiplier when 5-12% below ATH.
+ *  2026-06-15 auditor (research finding 3B, priority 2.5): fills the sizing gap where
+ *  full Kelly fires up to 11.9% drawdown but the 50% cut only kicks in at 12%.
+ *  Asymmetric math: a 10% loss needs 11.1% to recover — an early brake is warranted. */
+export const LIFETIME_DRAWDOWN_MILD_PCT = 5;
+export const LIFETIME_DRAWDOWN_MILD_MULT = 0.85;
+
 // ============================================================================
 // SECTOR RISK LIMITS — v6.2 Per-Sector Stop-Loss Overrides
 // ============================================================================
