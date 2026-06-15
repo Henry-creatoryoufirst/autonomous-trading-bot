@@ -1,3 +1,30 @@
+# MEDIC REPORT — 2026-06-15T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC) — OPTION B WINDOW CLOSE
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, egress-blocked on all endpoints). MEDIC_REPORT updated (Run #35). **CRITICAL CONTEXT**: `feat(admin): /api/admin/liquidate-all` committed 2026-05-28 (18 days ago) — bot has been 100% USDC since then. Option B 30-day window ends **today (2026-06-15)**. Henry must review window performance and decide next strategy.
+- **Scout**: RAN (DEGRADED) — last scout was 2026-05-14 (MOLT, ~32 days ago), well past 48h threshold. GeckoTerminal API unreachable (egress-blocked). Ran WebSearch-only discovery. Found no new Base tokens with verifiable liquidity/volume thresholds. **Cohort lock expired today** — COHORT_PROPOSAL_2026-06-15.md written with strategic notes and ecosystem context for Henry's post-Option-B review. Per CLAUDE.md Rule 1: no direct TOKEN_REGISTRY edits; proposal file written instead.
+- **Auditor**: CONDITIONS UNKNOWN — cannot verify win_rate, drawdown, or losing_streak (all API endpoints blocked). Bot has been 100% USDC for 18 days so no active trading to audit. Strategic note: Option B window closes today — the next cycle warrants a human-led strategy review before re-deployment. Aerodrome migrating to MEV-resistant pools (July 2026 MetaDEX launch) — bot's DEX routing may need forward-looking attention.
+
+## Run #35 Scout Summary — 2026-06-15 (DEGRADED — WebSearch only, GeckoTerminal blocked)
+
+**Ecosystem context found:**
+- Base DEX daily volume: ~$3B+ (healthy)
+- Aerodrome "Aero" MetaDEX Q2/July 2026 launch: AERO + VELO merging into unified cross-chain DEX; migrating to MEV-resistant pools now. **Action needed**: monitor for liquidity migration disruption in July.
+- Top Base ecosystem tokens remain: AERO, VIRTUAL, AAVE, BRETT — all already in TOKEN_REGISTRY
+- No new Base tokens found with verified $100K+ liquidity / $50K+ 24h volume / 3+ day age (data not available in egress-blocked environment)
+- COHORT_PROPOSAL_2026-06-15.md written for human review
+
+**Table of candidates evaluated:**
+| Token | Source | Verified Liquidity | Verified Volume | Pool Age | Status |
+|-------|--------|-------------------|-----------------|----------|--------|
+| Aero MetaDEX | WebSearch | BLOCKED | BLOCKED | N/A | Watch — July 2026 launch; already in registry as AERO |
+| (No new candidates) | — | — | — | — | GeckoTerminal unreachable; no new proposals possible |
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
@@ -66,6 +93,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-15T UTC | **OPTION B WINDOW CLOSE.** Bot 100% USDC since 2026-05-28 (admin liquidate-all). Scout ran degraded (GeckoTerminal blocked, WebSearch only) — no new tokens verified, COHORT_PROPOSAL_2026-06-15.md written. Auditor: API blocked, no trading data, Option B review required from Henry. No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
