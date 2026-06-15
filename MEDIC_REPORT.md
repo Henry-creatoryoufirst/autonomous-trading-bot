@@ -1,12 +1,16 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
-## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+## ⚠️ Option B Window Complete — 2026-06-15
+
+Today marks the projected end of the 30-day Option B benchmark window (~2026-06-15). The cohort (COHORT_QUALITY_7) has remained locked per CLAUDE.md Rule 1. Henry should now review performance vs cbBTC/WETH 60/40 benchmark and decide whether to open cohort changes via explicit PR.
+
+## Environment (Run #35)
+- Run timestamp: 2026-06-15T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ka9qtv
 
 ## Problem
 
@@ -66,6 +70,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-15T UTC | **OPTION B WINDOW END** — Scout ran (>48h since MOLT 2026-05-14); per CLAUDE.md Rule 1, found candidates written to COHORT_PROPOSAL_2026-06-15.md (VELVET, TEA) instead of auto-adding; auditor blocked (API 403, cannot check trigger metrics); Aerodrome→Aero migration July 2026 flagged as critical watch item (router addresses will change) |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +94,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No critical bot failure assessable.
+- **Scout**: RAN (last scout 2026-05-14, ~32 days ago, well past 48h threshold). Per CLAUDE.md Rule 1, cohort locked through Option B window — wrote COHORT_PROPOSAL_2026-06-15.md with candidates VELVET and TEA instead of modifying TOKEN_REGISTRY. See proposal for quality scores.
+- **Auditor**: BLOCKED — API 403 prevents metric check (win_rate, drawdown, losing_streak, marketRegime). Cannot determine trigger condition. Research ran opportunistically; key findings documented in auditor summary below. No constants change implemented (data required for responsible tuning).
+
+## Auditor Research Summary (Run #35 — 2026-06-15)
+
+- **Signal Quality**: Smart money wallet clustering continues to show 65% win rate vs 41% standalone (BingX 2026, TrendRider 2026). NVR partially implements via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration remains complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action.
+- **Execution Efficiency**: **CRITICAL WATCH** — Aerodrome is merging into "Aero" (unified cross-chain DEX with Velodrome) with July 2026 launch. LPs must migrate to new pools; new router address will be deployed. NVR's Aerodrome Slipstream router address (`0xBE6D8f0d05cC4be24d5167a3ef062215bE6d18a5` on BaseScan) will need updating to the new Aero router before July 2026. This is too significant to change autonomously — requires Henry's review and explicit PR. (Impact 4/Complexity 3/Risk high) → Flagged for Henry.
+- **Position Sizing**: Fractional Kelly (25-50%) confirmed optimal for crypto 2026 (TradingView/Cointelegraph). NVR at KELLY_FRACTION=0.25 (Quarter-Kelly). Well-calibrated. No change needed.
+- **Competitive Intelligence**: TEEs (Trusted Execution Environments) + private relay MEV protection going mainstream. NVR already uses sequencer-direct RPC for MEV protection. No new actionable code pattern found. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
