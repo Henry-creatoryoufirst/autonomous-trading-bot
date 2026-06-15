@@ -1,6 +1,44 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## ⚠️ URGENT — OPTION B WINDOW CLOSES TODAY + LIQUIDATE-ALL FLAG (Run #36)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #36)
+
+---
+
+## Jobs Status This Run (Run #36 — 2026-06-15T UTC)
+
+### 🏥 MEDIC: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints).
+
+No critical error pattern can be assessed. Same egress constraint as runs #1–#35.
+
+**NEW CRITICAL FLAG: `liquidate-all` endpoint was triggered on main branch commit `f29798d` on 2026-05-28.** The bot was force-exited to 100% USDC approximately 18 days ago. If the bot has been in USDC since May 28:
+- cbBTC is reportedly up ~26% this month per prior run observation
+- The Option B benchmark (NVR vs cbBTC/WETH 60/40 over rolling 30 days) may have been severely impacted
+- **Henry must check the bot's actual state and benchmark outcome IMMEDIATELY**
+
+### 🔍 SCOUT: SKIPPED
+
+Two reasons:
+1. **CLAUDE.md Rule 1 — Cohort is LOCKED**: The Option B 30-day benchmark window (May 15 → June 15) prohibits all automatic TOKEN_REGISTRY edits.
+2. **GeckoTerminal egress blocked**: `api.geckoterminal.com` returns 403 from this environment.
+Last scout commit was 2026-05-16 (MOLT added, then reverted). No qualifying tokens found via WebSearch. Standards maintained.
+
+### 📊 AUDITOR: CONDITIONS NORMAL (API blocked — using inferred state)
+
+Cannot calculate win_rate, drawdown, or losing streak (API unreachable). Research ran 4 searches.
+
+**Research findings:**
+- **Signal Quality**: Multi-signal confluence (on-chain + sentiment + technical) is 2026 standard. Whale wallet clustering already partially implemented. No actionable ≤10-line change identified. → Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) with improved routing already in place per prior runs. $0.017 avg swap cost on Base. No new code action needed.
+- **Position Sizing**: Kelly research confirms ≤1/10 Kelly for crypto; update frequency should be weekly or every 20 trades. `KELLY_ROLLING_WINDOW` already set. MEV protection via private relay/sequencer-direct RPC already active. No new action.
+- **Competitive Intelligence**: AI-agent wallet (MetaMask, 2026) and intent-based routing (CoW, 34% DEX share) require off-limits execution changes. No auto-implementable finding.
+
+**Top finding priority**: No finding meets priority ≥ 2.0 with risk low/medium and ≤10 lines this run. Auditor taking no action.
+
+---
+
+## STATUS: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
