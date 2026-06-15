@@ -1,12 +1,15 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B WINDOW CLOSES TODAY (2026-06-15)
+The 30-day Option B benchmark window (2026-05-15 → 2026-06-15) ends today. Henry must evaluate: did cbBTC/WETH 60/40 + quality cohort outperform by ≥5% annualized? See "Recommended Action for Henry" section.
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-15T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-i29wq4
 
 ## Problem
 
@@ -66,6 +69,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-15T UTC | ⚠️ OPTION B WINDOW CLOSES TODAY. Scout researched (>48h elapsed, GeckoTerminal blocked) — cbDOGE candidate written to COHORT_PROPOSAL_2026-06-15.md; TOKEN_REGISTRY unchanged per Rule 1. Auditor: no implementation — cannot confirm triggers (API blocked) AND Option B window end requires clean benchmark data. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +93,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints, 35th consecutive run). No bot-side code change. MEDIC_REPORT updated.
+- **Scout**: RAN RESEARCH (>48h since last scout). GeckoTerminal API blocked — used web search. Key candidate: **cbDOGE** (Coinbase Wrapped DOGE, Base L2, 1:1 DOGE-backed, $1.9M in circulation, Coinbase custody). Cannot verify liquidity/volume/age thresholds without GeckoTerminal access. Per CLAUDE.md Rule 1, TOKEN_REGISTRY unchanged during Option B window. Proposal written to `COHORT_PROPOSAL_2026-06-15.md` for Henry's post-window review.
+- **Auditor**: NO IMPLEMENTATION — Two blocking reasons: (1) Cannot confirm trigger conditions without API access (win_rate/drawdown/streak unknown). (2) Option B 30-day window ends TODAY — any auto-parameter changes would muddy the final benchmark attribution. Research ran 4 searches (see summary below). No findings qualify (no Priority ≥2.0 low/med risk ≤10-line change that doesn't require confirmed triggers). Full bear-parameter review deferred to post-window human decision.
+
+## Auditor Research Summary (Run #35 — 2026-06-15)
+
+- **Signal Quality**: 2026 AI bots combine price + on-chain + NLP sentiment (2.5M+ daily signals, wundertrading.com). NVR gap: no social graph scanning (X/Farcaster/Lens). Full integration complex (Impact 3/Complexity 5/Risk med) → Watch list for Henry. Priority 0.6 — no action.
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) improved routing algorithm — better prices, less slippage, auto-benefits NVR without code change. Gas: $0.017/swap total ($0.002 L2 + $0.015 L1). No action needed. Priority 0.
+- **Position Sizing**: Kelly research confirms Quarter-Kelly (25%) optimal for crypto; "update Kelly every 20 trades" — NVR already has KELLY_MIN_TRADES=20 and KELLY_FRACTION=0.25. Already well-calibrated. Impact 1/Complexity 1 → no new action. Priority 1.0 (not ≥2.0, no change).
+- **Competitive Intelligence**: AI-on-AI MEV at $3B+ annually (cryptollia.com). Base included via MevX. Social graph scanning for early trend detection gaining traction ("Alpha-Hunter" pattern in top bots). NVR already uses sleeve architecture + sequencer-direct RPC. Complex architecture change (Impact 3/Complexity 5) → Watch list. Priority 0.6 — no action.
+
+## Watch List for Henry (post-Option B window)
+
+1. **Social graph scanning** (X/Farcaster/Lens): Alpha-Hunter pattern in leading 2026 DeFi bots. High impact but complex integration — consider after window evaluation.
+2. **Bear→Bull parameter reversion**: All constants were tuned for 70-day bear (May 2026). If market has recovered since Option B started, KELLY_POSITION_CEILING_PCT, HOT_MOVER thresholds, STALE_POSITION_MIN_AGE_HOURS etc. may need re-calibration. Needs win_rate + drawdown data to confirm.
+3. **cbDOGE cohort consideration**: See COHORT_PROPOSAL_2026-06-15.md — only if post-window human PR approved.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
