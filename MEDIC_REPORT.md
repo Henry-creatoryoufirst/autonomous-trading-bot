@@ -1,4 +1,16 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-15T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-15T UTC) ⚠️ OPTION B WINDOW CLOSES TODAY
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is first run since the Option B scout lockdown (2026-05-16).
+- **Scout**: NO QUALIFYING TOKENS — TOKEN_REGISTRY locked per CLAUDE.md Rule 1 (Option B window active). Research conducted via WebSearch only (GeckoTerminal API also 403 blocked). Only candidate found: MANTRA OM on Base with ~$8k/24h volume — fails $50k threshold. No additions made.
+- **Auditor**: SKIPPED — API blocked; cannot retrieve /api/trades, /api/portfolio, /api/patterns, /api/adaptive to calculate win_rate or drawdown.
+
+⚠️ **OPTION B WINDOW STATUS**: The 30-day benchmark window opened 2026-05-15 and closes approximately **TODAY (2026-06-15)**. Per CLAUDE.md, cohort changes now require Henry's explicit review and PR. Scout research found no strong candidates anyway.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
