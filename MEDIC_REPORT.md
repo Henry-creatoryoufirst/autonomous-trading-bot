@@ -1,12 +1,20 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ MILESTONE: OPTION B 30-DAY WINDOW COMPLETE
+
+The Option B benchmark window (cbBTC/WETH 60/40 vs NVR strategy, ≥5% annualized outperformance target) **started 2026-05-15 and ended ~2026-06-15**. Today is 2026-06-16 — **the window has closed.** Henry must review bot performance and make deliberate decisions about:
+1. Whether the strategy outperformed cbBTC/WETH 60/40 by ≥5% annualized
+2. Whether to modify the cohort (first opportunity since the Option B pivot — requires explicit human PR)
+3. Whether to relax the automated-agent ground rules in CLAUDE.md now that benchmark attribution is locked in
+4. Whether to reset bear-market-tuned constants (cbBTC recovered from ~$80K in May to ~$108K in June — market regime may have shifted)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
-- Medic agent: NVR Capital autonomous agent (hourly run)
+- Run timestamp: 2026-06-16T (UTC)
+- Medic agent: NVR Capital autonomous agent (hourly run, Run #35)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-frbwrp
 
 ## Problem
 
@@ -66,6 +74,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-16T UTC | **⚠️ OPTION B WINDOW COMPLETE** — 30-day benchmark period ended ~2026-06-15. Scout could not run: external APIs (GeckoTerminal, DexScreener) return 403 from this environment. Auditor could not run: production API returns 403. Market signals (web search): cbBTC ~$108K (was ~$80K in May), Base 24h DEX vol $931.9M (+68%). Bear regime may have ended — bull market constants review recommended. Henry action required. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +98,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-16T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **KEY FLAG: Option B window has completed.**
+- **Scout**: BLOCKED — GeckoTerminal and DexScreener APIs both return 403 from this environment. Web search showed Base 24h DEX vol $931.9M (+68%). Cannot verify individual token liquidity/volume to pass quality filters. Last legitimate non-reverted scout was SYRUP (Run #33, 2026-05-08, 39 days ago — well beyond 48h threshold). No COHORT_PROPOSAL written because NVR-HQ Cathedral vault is not present in this repo checkout. Recommend: add external API egress or run scout manually.
+- **Auditor**: BLOCKED — Production API returns 403. Cannot read win_rate, drawdown, or losing_streak. Cannot confirm trigger condition. Inferred market context (web search): cbBTC recovered from ~$80K (May 11) to ~$108K (June 16), Base volume surging. Bear-market constants from Runs #17–#34 (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, etc.) may be overly conservative if regime has shifted to BULL. **Recommend Henry manually verify market regime and consider whether bear-era constants need resetting.**
+
+## Watch List for Henry (Run #35)
+1. **Option B result review** (URGENT): Manually check bot P&L vs cbBTC/WETH 60/40 baseline at Railway URL. Did NVR outperform by ≥5% annualized?
+2. **Cohort unlock**: Option B window is closed — first opportunity to update COHORT_QUALITY_7 via human PR. Consider cbSOL liquidity improvements, newer Coinbase Wrapped assets.
+3. **Bear-to-bull constant reversion**: Runs #17–#34 progressively tightened KELLY_FRACTION (0.35→0.25), KELLY_POSITION_CEILING_PCT (14→12), SURGE_MAX_CAPITAL_PET_TOKEN_PCT (25→20), etc. With cbBTC at $108K, market may warrant loosening these back toward pre-bear levels.
+4. **Egress allowlist**: Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to Claude Code egress — this is the 35th consecutive blocked run.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
