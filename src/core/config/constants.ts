@@ -769,7 +769,7 @@ export const HOT_MOVER_MIN_BUY_RATIO = 0.60; // Bear-adjusted May-2026: 0.55→0
 export const ICU_STOP_LOSS_PCT = 15;
 
 /** Hours a position must survive at > ICU_STABLE_THRESHOLD_PCT before graduating to ESTABLISHED */
-export const ICU_GRADUATION_HOURS = 4;
+export const ICU_GRADUATION_HOURS = 6; // Volatile-adjusted Jun-2026: 4→6 — post-$122K ATH correction (BTC -49%); new positions in volatile regime need 50% longer ICU protection before graduating to ESTABLISHED; -15% hard stop active 2h longer per entry during bot re-entry from paper mode
 
 /** Minimum P&L % required to graduate out of ICU (position must not be deeply underwater) */
 export const ICU_STABLE_THRESHOLD_PCT = -5;
