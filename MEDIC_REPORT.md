@@ -1,3 +1,48 @@
+# MEDIC REPORT — 2026-06-16T02:04 UTC (latest — Run #35)
+
+## Run #35 Status — 2026-06-16T02:04 UTC
+
+### Jobs This Run
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all
+  endpoints + network egress block on curl). MEDIC_REPORT updated (Run #35).
+  Note: **Option B 30-day benchmark window ended ~2026-06-15 (yesterday).**
+- **Scout**: RAN — last confirmed scout-tagged commit was 2026-05-25 (>30 days
+  ago, well past 48h threshold). However, all scout data sources also blocked:
+  GeckoTerminal API → 403, CoinGecko → 403, DexPaprika → 403. No token data
+  with verifiable liquidity/volume could be obtained. **No tokens added —
+  standards maintained.** Intelligence gathered (see below).
+- **Auditor**: SKIPPED — cannot assess win_rate/drawdown/losing_streak without
+  API access. Market signals from web search suggest mixed/recovering conditions
+  (Base L2 hit record $2.9B daily DEX volume), so inferred-BEAR trigger not
+  applicable this run.
+
+### Scout Intelligence Gathered (2026-06-16)
+
+Despite token data sources being blocked, web search revealed:
+
+| Finding | Source | Relevance |
+|---|---|---|
+| Aerodrome/Velodrome merger planned for July 2026 | cryptodaily.co.uk/2026/06 | Bot routing via Aerodrome will change; DEX address/routing updates may be needed post-merge |
+| Aerodrome TVL declined $501M → $312M; Grayscale removed AERO from DeFi Fund (May 7) | cryptodaily/coinmarketcap | AERO itself may be a weakening hold |
+| Hyperliquid (HYPE) top DeFi performer in June 2026, TVL $5.88B | crypto-economy.com | HYPE is NOT on Base (own L1); not a scout candidate but signals flow away from Base DeFi |
+| Base L2 hit record $2.9B daily DEX volume (Aerodrome $1.68B ATH) | itiger.com | Base ecosystem healthy despite AERO TVL drop |
+| BASE network token: conflicting signals (some claim May 2026 launch, official sources deny) | multiple | Do NOT add until contract verified; likely scam/unofficial |
+| Uniswap V3 on Base: 300K txns/$117M vol in 24h (+169%) | search metadata | UNI on Base gaining ground vs Aerodrome |
+
+### Recommendation for Henry (Run #35)
+
+**Option B window ended yesterday (~2026-06-15).** The 30-day benchmark is
+complete. Henry should now:
+1. Evaluate Option B performance vs cbBTC/WETH 60/40 benchmark
+2. Review any staged scout candidates or auditor changes from the claude/* branch
+3. **Aerodrome/Velodrome merger (July 2026)**: Review whether routing address
+   `src/core/services/` needs updating before the merge deadline to avoid
+   missed trades
+4. Resolve the egress policy to allow API health checks (see below)
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
