@@ -1,4 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-16T UTC)
+
+- **Medic**: PATTERN D — API unreachable for 35th consecutive run (persistent constraint, 403 on all endpoints from Railway egress allowlist). No bot health data available. MEDIC_REPORT updated.
+- **Scout**: RAN — 33 days since last qualifying token addition (MOLT 2026-05-14). Three candidates evaluated:
+  - **HOME (DeFi.app)**: Pool liquidity $799k ✅, pool age 6 days ✅, but 750M token unlock on June 10 triggered 63% price crash ($0.0758→$0.0276). Score 5/10 — REJECTED (fails 6+ threshold).
+  - **TEA (Tea Protocol)**: Launched June 4 on Aerodrome, but CEO has stopped committing (GitHub went dark Nov 2025), testnet participants dispute airdrop eligibility, official blog concedes "launch did not go the way we wanted." Score 2/10 — REJECTED.
+  - **STRATO**: Community ICO June 3-9; TGE in Q4 2026. Not yet live on Base. Score N/A — REJECTED.
+  - Result: **No qualifying tokens** — standards maintained.
+  - Note: CLAUDE.md Rule 1 (cohort locked) was observed. Option B 30-day window closed ~2026-06-15. Even post-window, auto-adds require explicit human PR. Proposal would go to NVR-HQ vault if checked out.
+- **Auditor**: SKIPPED — cannot calculate win_rate, drawdown, or losing_streak without API access (all endpoints 403). Market regime unknown (last known: BEAR ~2026-05-15). Human review recommended.
+
+## Scout Candidate Table (Run #35 — 2026-06-16)
+
+| Token | Symbol | Base Pool Liq | 24h Vol (est) | Pool Age | Score | Decision |
+|-------|--------|--------------|---------------|----------|-------|----------|
+| DeFi.app | HOME | $799k | $27M+ | 6 days | 5/10 | REJECTED — unlock pressure |
+| Tea Protocol | TEA | Unknown | Unknown | 12 days | 2/10 | REJECTED — troubled launch |
+| STRATO | STRATO | None | None | Not live | N/A | REJECTED — pre-TGE |
+
+## Recommended Action for Henry (Run #35 — 2026-06-16)
+
+**Option B 30-day window has now closed (~2026-06-15).** Time to review:
+1. **Review cohort performance**: Did the 7-token quality cohort (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL) outperform cbBTC/WETH 60/40 by ≥5% annualized?
+2. **Cohort update (human PR)**: If adding HOME post-window, note the 750M unlock headwind — wait for price stabilization.
+3. **Fix egress allowlist** (still #1 urgent action — 35 runs blocked):
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
