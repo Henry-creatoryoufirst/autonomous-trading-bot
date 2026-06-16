@@ -1,6 +1,31 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-16T UTC)
+
+⚠️ **MILESTONE: Option B 30-day benchmark window completed 2026-06-15.** Henry: manual review needed.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Bot appears healthy: last human-authored commit 2026-05-28 (`feat(admin): /api/admin/liquidate-all`); 18-day quiet period suggests bot is operating without issues, or Henry has paused operations deliberately (liquidate-all endpoint was added, may have been used). No code changes made.
+- **Scout**: SKIPPED — GeckoTerminal API (api.geckoterminal.com) also returns 403 from this environment. Cannot retrieve pool data for quality filter. Cannot evaluate candidates without liquidity/volume numbers.
+- **Auditor**: TRIGGER UNVERIFIABLE — API blocked, cannot check win_rate/drawdown/streak. Inferred: bear market was 70+ days as of Run #34 (2026-05-15); current state unknown. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). **NO constant change implemented this run** — without verified market state, auto-adjusting bear-calibrated constants risks regression. See research summary below.
+
+## Auditor Research Summary (Run #35 — 2026-06-16)
+- **Signal Quality**: 2026 DeFi bots use 2.5M+ daily signals (price + on-chain + NLP sentiment). NVR already well-implemented: whale flow (LARGE_TRADE_THRESHOLD=2500), buy-ratio pipeline, RSI/MACD/BB confluence. No new simple action available. (Impact 2/Complexity 4/Risk med → Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) achieved 34x capital efficiency + Flashblocks 10x faster execution. NVR auto-benefits at DEX level without code change. No action needed. (Priority 0)
+- **Position Sizing**: Fractional Kelly + dynamic regime adjustment confirmed as 2026 best practice. NVR already at KELLY_FRACTION=0.25 + regime multipliers. **Key question for Henry**: Now that Option B window ended, many bear-adjusted constants (CULL_MIN_AGE_HOURS=72, KELLY_FRACTION=0.25, HOT_MOVER_MIN_BUY_RATIO=0.60, etc.) may need relaxation if market has recovered. Cannot auto-implement without current market data. (Watch list for Henry review)
+- **Competitive Intelligence**: MEV protection via private relay is mainstream. NVR already has sequencer-direct RPC + 20% TWAP jitter. MetaMask Agent Wallet + Intent-based trading (CoW Protocol) is next-gen architecture — requires major refactor (off-limits). (Priority 0 for auto-implementation)
+
+## ⚠️ Action Required from Henry (Post-Option-B)
+1. **Verify bot health**: https://autonomous-trading-bot-production.up.railway.app/health (manual check — API blocked from agent environment)
+2. **Review liquidate-all**: Was `/api/admin/liquidate-all` invoked? Is the bot currently deployed and trading? Last commit: 2026-05-28.
+3. **Post-window constant review**: Bear-adjusted constants tightened throughout April–May 2026. If market has recovered, consider relaxing: CULL_MIN_AGE_HOURS (72→120), HOT_MOVER_MIN_BUY_RATIO (0.60→0.55), KELLY_FRACTION (0.25→0.30), STALE_POSITION_MIN_AGE_HOURS (36→48). Agent cannot determine current regime without API access.
+4. **Cohort review**: Option B window complete. COHORT_QUALITY_7 locked for 30 days. Now eligible for human-reviewed changes via explicit PR. Candidates to evaluate: any quality Base L2 tokens with $100K+ liquidity, $50K+ 24h volume, 3+ days old.
+5. **Egress allowlist**: Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to Claude Code network egress allowlist to enable future agent runs.
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
