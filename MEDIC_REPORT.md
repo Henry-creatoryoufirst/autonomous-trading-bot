@@ -1,4 +1,37 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Run #35 — 2026-06-16T UTC
+
+### ⚑ Option B Window Completed Yesterday (2026-06-15)
+
+The 30-day Option B benchmark window (2026-05-15 → 2026-06-15) has completed.
+Henry should pull the Option B performance results and evaluate whether the strategy
+outperformed cbBTC/WETH 60/40 by ≥5% annualized over the rolling 30-day window.
+
+### Bot Status (from git history — API still unreachable)
+
+Last main commit: 2026-05-29 `feat(admin): /api/admin/liquidate-all` (~18 days ago).
+The commit message confirms Henry pulled all real capital from efficient-peace:
+> "Henry is pulling all real capital out of efficient-peace to run the system on
+> paper until it's proven."
+
+Bot has likely been in paper/dry-run mode (TRADING_ENABLED=false) for ~18 days.
+No new commits to main or staging since 2026-05-29.
+
+### Medic — PATTERN D (persistent): API 403 on all endpoints
+### Scout — BLOCKED: All external data APIs 403 (GeckoTerminal, DexScreener, CoinGecko)
+  - Last scout was 2026-05-16 (31 days ago, well past 48h threshold)
+  - CLAUDE.md cohort lock prevented scout adds during Option B window
+  - Window now complete — Henry should decide whether to re-open cohort (human PR)
+### Auditor — SKIPPED: No portfolio data available (API unreachable)
+
+### LunarCrush MCP — available but requires interactive OAuth (can't complete in automated run)
+
+---
+
+## Previous: Run #34 — 2026-05-15T UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
