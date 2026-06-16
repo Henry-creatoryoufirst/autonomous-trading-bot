@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-16T UTC | **MILESTONE: Option B 30-day window closed ~2026-06-15.** Scout ran (32 days since MOLT) — TEA token found, watchlisted (12 days old, too early; re-evaluate 2026-07-04). No TOKEN_REGISTRY change per CLAUDE.md Rule 1 — COHORT_PROPOSAL_2026-06-16.md filed instead. Auditor: no trigger data (API blocked), documented Aerodrome V2 migration deadline (July 2026), bear-regime reversion candidates (KELLY_FRACTION 0.25→0.30, CULL/STALE hours) pending Henry's regime confirmation. No code changes. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-16T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **This is Run #35 — 35 consecutive medic-blind runs.**
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT), 32 days elapsed. GeckoTerminal API also blocked (403); used WebSearch + alternative sources. TEA token (tea.xyz) found: launched 2026-06-04 on Aerodrome Ignition, contract `0x7ea7ea50ed58bc4d0a9194bcd328e21f7be80c2b`, 24h vol $678K, pool age 12 days. Watchlisted — too young for reliable volume consistency. VVV confirmed healthy ($10.23M liq, $2.17M 24h vol). Per CLAUDE.md Rule 1 (cohort locked, Option B window just closed), filed `COHORT_PROPOSAL_2026-06-16.md` instead of touching token-registry.ts.
+- **Auditor**: TRIGGERED by 32+ day elapsed since last run (well past 48h). API blocked — cannot verify win_rate/drawdown/regime. Key finding: Aerodrome V2 migration deadline July 2026 (Henry should verify router address). Bear-regime constants may warrant reversion if bot confirms RECOVERY regime. No code changes (cannot verify trigger conditions; changes need Henry's regime confirmation). Full research in COHORT_PROPOSAL_2026-06-16.md.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
