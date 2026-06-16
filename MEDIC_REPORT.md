@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -89,6 +89,30 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-16T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: OVERDUE (last actual token addition 2026-05-14, 33 days ago). BLOCKED — `api.geckoterminal.com` returns 403. WebSearch results too generic for address/liquidity data. CLAUDE.md Rule 1 also prohibits auto-adds to TOKEN_REGISTRY; post-window changes require explicit human PR.
+- **Auditor**: BLOCKED — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all return 403. Cannot compute win_rate or drawdown. No audit triggered.
+
+### ⚠️ NEW THIS RUN: Option B 30-Day Window Has Ended
+
+The 30-day Option B benchmark window (started 2026-05-15) ended **~2026-06-15**.
+- CLAUDE.md Rule 1 stated: "Cohort changes happen only via explicit human PR **after** the 30-day window completes (~2026-06-15)."
+- **Window is now complete.** Henry should review performance attribution and decide:
+  1. Did the cohort + strategy outperform cbBTC/WETH 60/40 by ≥5% annualized?
+  2. Authorize any cohort or strategy changes via human PR
+
+### Staging Status (Run #35)
+
+One commit on `staging` not yet in `main`:
+```
+baf25a5 fix(strategy): composition frame is a yardstick, not a target — end the dead-cash ratchet (#53)
+```
+Henry: review and promote this fix if staging looks healthy.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
