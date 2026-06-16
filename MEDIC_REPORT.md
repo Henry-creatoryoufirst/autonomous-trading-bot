@@ -1,4 +1,22 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-16T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-16T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: NO DATA — GeckoTerminal API also blocked (403 egress). WebSearch returned general market context only; no on-chain liquidity/volume data verifiable. No TOKEN_REGISTRY additions made. NOTE: The Option B 30-day benchmark window completed ~2026-06-15 (yesterday). Normal scout operations can resume once GeckoTerminal egress is unblocked or run from an environment with API access.
+- **Auditor**: SKIPPED — Cannot calculate win_rate/drawdown/streak without bot API access. Market context from WebSearch: HYPE/Hyperliquid ATH $75.52 on June 2; Aerodrome preparing July 2026 MetaDEX 03 upgrade; Base DEX volume at all-time highs (~$3B daily). Bot likely running in improved market conditions vs. the 70-day bear logged in Run #34.
+
+## ⚠️ OPTION B WINDOW COMPLETED — Action Required
+
+The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has now completed. Per CLAUDE.md Rule 1, automated cohort/TOKEN_REGISTRY changes were frozen during this window. Henry should:
+1. Review the 30-day benchmark results (cbBTC/WETH 60/40 vs. NVR cohort performance)
+2. Decide whether Option B outperformed the benchmark by ≥5% annualized
+3. Authorize cohort changes / scout resumption if the window results are satisfactory
+4. Consider unblocking GeckoTerminal + Railway API egress in the Claude Code remote environment so the Medic/Scout/Auditor can actually run
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +84,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-16T UTC | Scout: GeckoTerminal blocked + CLAUDE.md Rule 1 (Option B window completed June 15); no auto-add. Auditor: skipped (no API). ⚠️ Option B window complete — Henry review needed. |
 
 ## Bot Health Evidence (from git history)
 
