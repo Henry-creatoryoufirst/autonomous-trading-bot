@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-17T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-17T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-qjfwb6
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-17T UTC | Scout: 34+ days since last token add (MOLT 2026-05-14), GeckoTerminal blocked (403), no verifiable pool data — no additions this run; Auditor: 103-day BEAR triggered (BTC ~$63K, ETH ~$1,673, market cap -48%, 10 days BTC ETF outflows, US-Iran macro risk). HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — last untightened HOT_MOVER quality gate; closes full quality-gate set. CLAUDE.md: pushed to claude/cool-sagan-qjfwb6 per Rule 2 (not to staging). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-17T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Note: Option B window closed ~2026-06-15; CLAUDE.md still governs.
+- **Scout**: ATTEMPTED — 34 days since last token add (MOLT 2026-05-14); GeckoTerminal API returning 403 (persistent network egress block); CoinGecko also blocked. WebSearch found Base TVL $4.5B, top projects (AERO, VIRTUAL, Aave, Brett) all already in registry. No qualifying NEW tokens with verifiable pool data found. No additions this run.
+- **Auditor**: TRIGGERED by confirmed 103-day BEAR (BTC ~$63K, ETH ~$1,673, total crypto market cap -48% from peak, 10 consecutive days of BTC ETF outflows, US-Iran macro risk). Research ran 4 searches. Top finding: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — last untightened HOT_MOVER quality gate; LP withdrawal in extended 103-day bear depletes pool depth (2-3× slippage vs bull markets in thin pools); closes full quality-gate set (change ✓ volume ✓ FDV ✓ pool-age ✓ buy-ratio ✓ liquidity ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0). Pushed to claude/cool-sagan-qjfwb6 per CLAUDE.md Rule 2.
+
+## Auditor Research Summary (Run #35 — 2026-06-17)
+- **Signal Quality**: On-chain wallet mirroring (65% win rate vs 41% standalone per 2026 research) — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 (March 2026) auto-benefits routing; cross-chain DEX launch upcoming under "Aero" brand (Q3 2026). Bot auto-benefits at DEX level without code change. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear/volatile markets (2026 research). Already at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12. Max 25% per position recommendation already exceeded (NVR at 9% effective). No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K: Last untightened quality gate. LP withdrawal over 103-day bear depletes thin pools; $75K pools carry 2-3× realized slippage risk. Closes quality-gate set. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
