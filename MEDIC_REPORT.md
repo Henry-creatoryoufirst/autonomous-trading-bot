@@ -1,6 +1,23 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-17T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B BENCHMARK WINDOW CLOSED — 2026-06-15
+
+The 30-day Option B benchmark window (2026-05-15 → 2026-06-15) has now closed.
+**Today is 2026-06-17 — the window ended 2 days ago.**
+Henry should review performance vs. the cbBTC/WETH 60/40 benchmark and decide
+whether to continue, adjust, or pivot strategy. Cohort lock (CLAUDE.md Rule 1)
+should be reassessed — auto-scout additions to TOKEN_REGISTRY remain blocked
+until Henry explicitly lifts the restriction.
+
+## Jobs Status This Run (Run #35 — 2026-06-17T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is now the **35th consecutive run** with the same network restriction. Urgent action required (see Recommended Action section below).
+- **Scout**: RAN — last scout was 2026-05-25 (23 days ago, well past 48h threshold). Research complete. Per CLAUDE.md Rule 1 (Option B cohort lock), no auto-add to TOKEN_REGISTRY. Scout findings written to `COHORT_PROPOSAL_2026-06-17.md` for Henry's review. TEA Protocol (Tea Protocol, new Aerodrome Ignition launch) identified as top candidate.
+- **Auditor**: CANNOT ASSESS — trigger conditions (win_rate, drawdown, losing_streak) require API access. API blocked (403). No audit performed. NVR-HQ not present in this checkout — report file skipped per instructions.
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
