@@ -661,7 +661,7 @@ export const VOL_TARGET_DAILY_PCT = 1.5;       // Bear-adjusted Apr-2026: 1.5% t
 export const VOL_HIGH_THRESHOLD = 6;           // >6% daily vol → reduce size by 60% (was 8; bear-adjusted Apr-2026: 6-8% vol common in bear markets, VAPS warrants earlier trigger)
 export const VOL_HIGH_REDUCTION = 0.4;         // Multiplier when vol > threshold (1 - 0.6 = 0.4)
 export const VOL_LOW_THRESHOLD = 1;            // <1% daily vol → increase size by 50%
-export const VOL_LOW_BOOST = 1.25;             // Bear-adjusted May-2026: 1.5→1.25 — 65-day bear; low-vol periods (<1% daily) in sustained downtrends are pause-before-continuation, not green lights; Kelly+VAPS research confirms reducing the low-vol size boost in bear regimes controls overshoot risk
+export const VOL_LOW_BOOST = 1.35;             // Bear-adjusted Jun-2026: 1.25→1.35 — 103-day bear approaching institutional bottom forecast ($56K-$68K zone, BTC ~$69K per KuCoin/IG Jun-2026 research); low-vol near an expected bottom is statistically accumulation, not pause-before-continuation; partial reversal of May-2026 reduction; stays below pre-bear 1.5 to preserve downside caution
 export const VOL_LOOKBACK_DAYS = 7;            // Rolling window for vol calculation
 
 /**

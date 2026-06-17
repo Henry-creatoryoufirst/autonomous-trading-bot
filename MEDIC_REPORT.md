@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-17T UTC | Scout attempted but GeckoTerminal API blocked (403); no qualifying tokens — web research insufficient to verify liquidity/volume; COHORT_PROPOSAL_2026-06-17.md written to repo root; auditor raised VOL_LOW_BOOST 1.25→1.35 — 103-day bear approaching institutional bottom forecast ($56K-$68K zone, BTC ~$69K); low-vol near expected bottom = accumulation signal |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-17T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints including root). MEDIC_REPORT updated (Run #35). Run #35 is the first run after the 30-day Option B window ended (~2026-06-15).
+- **Scout**: RAN (last scout: 2026-05-25, 23 days ago — threshold met). GeckoTerminal API and DexScreener both returned 403. WebSearch used as fallback: Base L2 volume $931.9M/24h (+68% vs prior day), DeFi summer 2026 narrative confirmed, no specific tokens verifiable without pool liquidity/volume data. Result: no qualifying tokens this scan — standards maintained. COHORT_PROPOSAL_2026-06-17.md written to repo root with DeFi summer context for Henry's review. Per CLAUDE.md Rule 1, TOKEN_REGISTRY not modified.
+- **Auditor**: TRIGGERED by inferred 103-day BEAR market (48h+ threshold clearly met; BTC ~$69K, 45% below Oct-2025 ATH of $126K, BTC dominance 58%). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: VOL_LOW_BOOST 1.25→1.35 — 103-day bear approaching institutional bottom forecast ($56K-$68K zone, BTC at ~$69K per KuCoin/IG/Pantera Jun-2026 research); low-vol periods near an expected bottom are statistically accumulation signals, not pause-before-continuation; stays below pre-bear 1.5 to preserve caution. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-17)
+- **Signal Quality**: "AI confluence scoring in 2026 uses 2.5M+ daily signals including on-chain data and NLP sentiment; macro sentiment acts as veto condition." NVR already implements: F&G (sentiment), order-flow buy-ratio (on-chain), SWARM multi-agent scoring. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 routing upgrade (March 2026) — bot auto-benefits at DEX level. MetaDEX03 merger (Aerodrome + Velodrome Q2 2026 catalyst) will auto-improve routing depth. Permit2 batch already implemented. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — "Institutional research (KuCoin, IG, Pantera Jun-2026) forecasts bear bottom at $56K-$68K; BTC currently ~$69K (top of expected bottom range). Reduce sizes in high-vol but increase slightly on low-vol accumulation at bottom." VOL_LOW_BOOST 1.25→1.35 IMPLEMENTED. Stays below pre-bear 1.5; partial reversal appropriate at 103-day mark with bottom signals emerging. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: "AI-on-AI MEV growing in 2026; sequencer-direct RPC and TWAP jitter already in NVR." MevX multi-chain MEV bots active on Base. No actionable new code — MEV protection already active. CoW Protocol batch auctions require touching executeDirectDexSwap (off-limits). Watch list for Henry. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
