@@ -1,4 +1,37 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-17T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Environment
+- Run timestamp: 2026-06-17 UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-m5q7xl
+
+## Jobs Status This Run (2026-06-17)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on ALL endpoints). Bot health UNKNOWN. `autonomous-trading-bot-production.up.railway.app` still not in egress allowlist.
+- **Scout**: OVERDUE — last scout was MOLT on 2026-05-14 (~34 days ago, far beyond 48h threshold). GeckoTerminal API also blocked (403). WebSearch partial results only (see below). Per CLAUDE.md Rule 1, no TOKEN_REGISTRY changes made; proposal flagged below.
+- **Auditor**: BLOCKED — bot API unreachable. Cannot fetch trade/portfolio/patterns/adaptive data to evaluate trigger conditions. No strategy changes made.
+
+**Option B window note:** The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has now ENDED. Cohort changes still require explicit human PR per CLAUDE.md Rule 1. CLAUDE.md Rule 2 remains in effect (no auto-push to staging/main).
+
+## Scout Partial Research (2026-06-17 — WebSearch only, GeckoTerminal blocked)
+
+Trending tokens identified via WebSearch that are NOT yet in TOKEN_REGISTRY. Cannot verify liquidity/volume/pool-age thresholds without GeckoTerminal API access. These are candidates only — a full quality check requires API access.
+
+| Symbol | Pool (Aerodrome Slipstream) | Available Data | Registry Status |
+|--------|---------------------------|----------------|-----------------|
+| AWP | AWP/USDC (0.3% fee) | $252.2K 24h vol | NOT in registry — needs liquidity/age verification |
+| SUMR | SUMR/USDC (2% fee) | Unknown volume | NOT in registry — SummerToken |
+| AAA | AAA/USDC (0.3% fee) | Unknown volume | NOT in registry — Arcadia |
+| RAVE | RAVE/USDC (0.3% fee) | $5.29M 24h vol spike | Already in TOKEN_REGISTRY — large volume spike, may warrant Henry review |
+
+**Action needed**: None auto-applied (CLAUDE.md Rule 1 + no verified quality metrics). If Henry wants a COHORT_PROPOSAL filed, please add `api.geckoterminal.com` to egress allowlist and re-run.
+
+---
+
+# PREVIOUS RUN HISTORY (Run #34 and earlier)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
