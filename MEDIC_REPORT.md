@@ -1,4 +1,21 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-17T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-17T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent infrastructure constraint, 403 on all endpoints, Railway domain + api.geckoterminal.com both not in egress allowlist). No bot failure inferred. MEDIC_REPORT updated (Run #35). Continued to Scout and Auditor per established precedent.
+- **Scout**: RAN (research only) — last scout commit was 2026-05-16 (MOLT added 2026-05-14, OPENX+VEIL reverted), >48h threshold met by over a MONTH. GeckoTerminal API blocked — cannot verify pool metrics. CLAUDE.md Rule 1 in effect (cohort locked during Option B, human PR required post-window). COHORT_PROPOSAL_2026-06-17.md written to dev branch (`claude/cool-sagan-qo6l4d`) for Henry's review. No TOKEN_REGISTRY changes.
+- **Auditor**: PARTIAL — API blocked (cannot fetch trades/portfolio/patterns/adaptive). Market research ran 4 WebSearch queries. KEY FINDING: Option B benchmark window ended ~2026-06-15. Crypto recovery signals: HYPE hit ATH $76.90 on 2026-06-16, Base L2 TVL $11.2B (April 2026), Aerodrome $602M TVL. Bear-calibrated constants (KELLY_FRACTION=0.25, CONFLUENCE_BUY=27, HOT_MOVER_MIN_FDV_USD=1M, etc.) set during 70-day bear may now be suppressing returns. No code changes pushed (trigger conditions unverifiable without API). Findings in transcript; Henry review recommended.
+
+## Auditor Research Summary (Run #35 — 2026-06-17)
+
+- **Signal Quality**: On-chain wallet mirroring achieves 65% win rate vs 41% for technical-only bots (trendrider.net 2026). NVR already has whale flow (LARGE_TRADE_THRESHOLD_USD=2500) and order-flow buy ratio. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream V2 upgraded March 2026 with improved routing algorithm. Bot auto-benefits at DEX level. Uniswap now 64% of Base DEX volume — the bot's Aerodrome-first routing is still valid given Aerodrome's $602M TVL and ve(3,3) incentive structure. No code change needed. (Priority 0)
+- **Position Sizing**: CRITICAL CONTEXT SHIFT — The 70-day bear that drove bear-calibrated constants (KELLY_FRACTION 0.35→0.25, CONFLUENCE_BUY 25→27, etc.) may have ended. HYPE hit ATH $76.90 June 16. Bull regime would call for relaxing some restrictions. However, without confirmed win_rate/drawdown data from API, cannot determine trigger conditions. Defer to Henry for threshold normalization review post-Option-B. (Impact 4/Complexity 2/Risk med — too high complexity for auto-implement without trigger confirmation)
+- **Competitive Intelligence**: AI-on-AI MEV growing in 2026. Coinbase launched AI trading agents June 11, 2026 (cryptodaily.co.uk). MEV protection via sequencer-direct RPC already active in NVR. SpaceX perpetual futures on Hyperliquid hit 30% of volume June 16 — divergence from NVR's spot-only Base focus is reasonable. No new action. (Priority 0)
+
+## ---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
