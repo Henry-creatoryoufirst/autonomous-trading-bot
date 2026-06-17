@@ -738,7 +738,7 @@ export const HOT_MOVER_MIN_CHANGE_H1_PCT = 7; // Bear-adjusted Apr-2026: 5→7 �
 export const HOT_MOVER_MIN_VOLUME_H1_USD = 200_000; // Bear-adjusted May-2026: 150K→200K — 65-day bear; total Base DEX vol suppressed (~$673M/day vs bull peaks); $150K/h threshold no longer filters thin MEV-sandwich pumps; $200K floor requires broader market participation
 
 /** Min pool liquidity — below this is a rug risk, skip it */
-export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
+export const HOT_MOVER_MIN_LIQUIDITY_USD = 100_000; // Bear-adjusted Jun-2026: 75K→100K — 95-day bear + Aerodrome mandatory MEV-resistant pool migration (June 2026); LP providers shifting liquidity between pool versions temporarily reduces depth; F&G at 5 (Extreme Fear); $75K floor set pre-migration at 63-day bear; $100K floor cuts compounded slippage tail risk during migration window
 
 /** How often to scan GeckoTerminal trending pools (ms) — reuses cached data, free */
 export const HOT_SCAN_INTERVAL_MS = 90_000;

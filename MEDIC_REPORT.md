@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-17T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-17T UTC | ⭐ OPTION B WINDOW CLOSED (2026-05-15 → 2026-06-15, ~33 days). Scout: GeckoTerminal blocked (403) — no qualifying candidates verifiable; COHORT_PROPOSAL_2026-06-17.md written for Henry review. Auditor: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — 95-day bear + Aerodrome mandatory MEV-resistant pool migration June 2026; F&G: 5 (Extreme Fear, Bitcoin ~$64K, -50% from $126K Oct 2025 peak). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,20 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-17T UTC)
+
+⭐ **MILESTONE: Option B Benchmark Window Closed** — The 30-day Option B performance window ran 2026-05-15 → 2026-06-14/15 (33 days). Henry: this is the moment to review 30-day P&L vs cbBTC/WETH 60/40 benchmark and decide on cohort evolution. See COHORT_PROPOSAL_2026-06-17.md.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: GeckoTerminal blocked (403, same as bot API). WebSearch did not surface specific qualifying tokens with verifiable on-chain data (liquidity/volume/pool age). Per CLAUDE.md Rule 1, TOKEN_REGISTRY not modified. COHORT_PROPOSAL_2026-06-17.md written in repo root with post-window guidance.
+- **Auditor**: TRIGGERED — market regime BEAR for 95+ days (well above 48h threshold). Bitcoin at ~$64K (down 50% from $126K Oct 2025 high), Fear & Greed: 5 (Extreme Fear). Aerodrome mandatory MEV-resistant pool migration in progress (June 2026). **Top finding implemented**: `HOT_MOVER_MIN_LIQUIDITY_USD` 75,000 → 100,000 in `src/core/config/constants.ts`. Pool migration temporarily reduces LP depth; $75K floor was set pre-migration; $100K floor cuts compounded slippage tail risk during migration window. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-17)
+- **Signal Quality**: Funding rates + open interest increasingly used alongside technicals in 2026 bots. Stablecoin inflow/outflow monitoring cited as strong bear-reversal predictor. NVR already captures buy-ratio order flow. Full cross-asset signal integration complex (Impact 2/Complexity 4/Risk med) → Watch list for Henry. No new action.
+- **Execution Efficiency**: **KEY FINDING** — Aerodrome mandatory platform upgrade requiring LP migration to new MEV-resistant pools (June 2026). During migration, old pool liquidity depth decreases as LPs shift funds. HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K directly addresses this. (Impact 3, Complexity 1, Risk low, Priority 3.0) **IMPLEMENTED**.
+- **Position Sizing**: Wikipedia/Kelly sources confirm effective sizing is well-calibrated at KELLY_FRACTION=0.25 × KELLY_POSITION_CEILING_PCT=12 × TRENDING_DOWN=0.75 = ~2.25% effective max. Research cites 5% hard limit as common standard; NVR already below that. Cooldown intervals (30 min after loss) are similar to NVR circuit breakers. No new action.
+- **Competitive Intelligence**: Cross-chain arb using atomic intents (Across/Stargate) — complex, touches off-limits execution path. TEE-based agent infrastructure — out of scope. Base "corporate agent" positioning (compliant, deep liquidity) aligns with NVR's existing quality-gate philosophy. No new action.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
