@@ -1,5 +1,26 @@
 # MEDIC REPORT — 2026-06-18T (latest) UTC
 
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #36)
+
+## Jobs Status This Run (Run #36 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). No bot error data accessible.
+- **Scout**: SKIPPED — GeckoTerminal also blocked (403). Cannot verify pool liquidity/volume/age. CLAUDE.md Rule 1 requires human PRs for cohort changes. No candidates proposed.
+- **Auditor**: TRIGGERED — Confirmed BEAR regime via WebSearch (BTC ~$61K, -50% from Oct-2025 $126K peak, ~8 months). Top finding: CULL_MIN_AGE_HOURS 72→48 (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #36 — 2026-06-18)
+- **Signal Quality**: MVRV Z-Score / NUPL for market-cycle detection confirmed as top alpha signals in 2026 DeFi bot research. Requires external API (Glassnode/LookIntoBitcoin). Impact 3, Complexity 5, Risk medium → Priority 0.6. Watch list.
+- **Execution Efficiency**: Aerodrome METADEX03 upgrade embeds MEV auction into Slipstream V3 router — bot auto-benefits at DEX level without code change. No action needed. Priority 0.
+- **Position Sizing**: Quarter-Kelly (0.25×) already implemented and confirmed optimal by current research. Half-Kelly captures 75% of growth while cutting drawdown, but NVR at 0.25× (true Quarter-Kelly) is already more conservative. No further reduction warranted. Priority 0.5.
+- **Competitive Intel**: ARMA/Giza yield-chasing in bear (Aave/Morpho/Moonwell rotation) — NVR already has yield-optimizer.ts and aave-yield.ts. KEY FINDING: Grid bot research confirms in 8-month ranging bear ($60-70K BTC), dead sub-$100 positions with no momentum are statistical zeros. CULL_MIN_AGE_HOURS 72→48 accelerates capital recycling by 33%. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Notable Context (Run #36)
+- **Option B window CLOSED** (ended ~2026-06-15, now 3 days past). Henry should review cohort performance vs cbBTC/WETH 60/40 and decide next strategic phase.
+- **BTC context**: ~$61K on 2026-06-10 per market data. Down 50%+ from $126K Oct-2025 peak. Bottom expected Q3-Q4 2026. Market in "divergence" regime — BTC recovers, altcoins may not follow prior-cycle patterns.
+- **Bot state unknown**: Last main commit was 2026-05-28 (admin/liquidate-all). Railway API inaccessible from this environment (403 on all endpoints, 36 consecutive runs).
+
+---
+
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
