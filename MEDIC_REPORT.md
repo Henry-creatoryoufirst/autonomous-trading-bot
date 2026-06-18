@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -90,11 +90,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
+## ⚠️ CRITICAL MILESTONE — Option B Window Completed
 
-- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
-- **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+The **30-day Option B benchmark window has ended**:
+- Window start: 2026-05-15 (strategic pivot, COHORT_QUALITY_7 locked)
+- Window end: ~2026-06-15 (target)
+- Today: **2026-06-18** — window is 3 days past completion
+
+**Action required from Henry:**
+1. Evaluate whether cbBTC/WETH 60/40 was outperformed by ≥5% annualized over the 30-day window
+2. Decide whether to unlock the cohort for new additions (requires explicit human PR per CLAUDE.md Rule 1)
+3. Scout has been blocked for 33 days — TOKEN_REGISTRY has not been updated since 2026-05-14 (MOLT)
+4. A forced full-liquidation to USDC occurred on 2026-05-28 (staging commit `feat(admin): /api/admin/liquidate-all`) — verify if this was intentional and what happened post-liquidation
+
+Also notable: last staging commit was 2026-05-28; 21 days of no code changes — either the bot is running stable or something changed outside the repo.
+
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **35th consecutive run** with network egress blocking all production API access.
+- **Scout**: BLOCKED — last successful scout was 2026-05-14 (MOLT added, 33 days ago). GeckoTerminal API also blocked by egress policy. Additionally, CLAUDE.md Rule 1 prohibits automated TOKEN_REGISTRY additions until Henry explicitly unlocks post-Option-B-window.
+- **Auditor**: BLOCKED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (all 403). Cannot compute win_rate, drawdown, or losing streak without production data.
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
