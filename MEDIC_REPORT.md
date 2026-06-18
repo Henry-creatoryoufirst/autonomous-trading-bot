@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T19:07Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-18T19:07Z | Scout OVERDUE (last scout 2026-05-16, 33 days ago) but market data APIs all 403 — GeckoTerminal, CoinGecko, DappRadar, Blockscout all blocked. No token evaluation possible. **CRITICAL: Option B 30-day benchmark window closed ~2026-06-15 (3 days ago).** Human review of performance vs cbBTC/WETH 60/40 is now due. Cohort lock (CLAUDE.md Rule 1) can now be relaxed via explicit human PR. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,16 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-18T19:07Z)
+
+- **Medic**: PATTERN D — API unreachable (35th consecutive; Railway 403, curl allowlist block). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — last scout was 2026-05-16 (33 days ago, >48h threshold met). GeckoTerminal API, GeckoTerminal site, CoinGecko, DappRadar, Blockscout all returning 403. No pool data retrievable for quality filtering. Scout cannot execute.
+- **Auditor**: BLOCKED — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all 403. Cannot compute win_rate, drawdown, or losing_streak. Audit triggers unknown.
+
+**CRITICAL MILESTONE THIS RUN:** Option B 30-day benchmark window closed ~2026-06-15 (3 days ago). The entire point of the cohort lock (CLAUDE.md Rule 1) was this window. Henry's manual review of cbBTC/WETH 60/40 outperformance ≥5% annualized is now overdue. The cohort can be updated via explicit human PR once Henry signs off on the attribution analysis.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +216,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
