@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -89,6 +89,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints + "Host not in allowlist" for `autonomous-trading-bot-production.up.railway.app`). Run #35.
+- **Scout**: BLOCKED by CLAUDE.md Rule 1 (cohort locked — no auto-adds regardless of network). Option B window nominally ended 2026-06-15 (today is 2026-06-18); cohort unlock requires explicit Henry action per CLAUDE.md ("cohort changes happen only via explicit human PR after the 30-day window completes").
+- **Auditor**: BLOCKED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (network policy). Audit trigger condition cannot be evaluated. Additionally, CLAUDE.md Rule 2 spirit prohibits automated constant changes during/immediately after Option B window (attribution clarity).
+
+**⚠️ Option B window update**: The 30-day window started 2026-05-15 and nominally ended ~2026-06-15. Today (2026-06-18) is 3 days past the window. If you are ready to evaluate the results and unlock the cohort / resume auditor tuning, please:
+1. Update CLAUDE.md Rule 1 to remove the cohort lock
+2. Add the API hosts to the egress allowlist (see below)
+3. The next automated run will then execute all three jobs normally
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +216,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
