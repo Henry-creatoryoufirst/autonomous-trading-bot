@@ -1,12 +1,17 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T17:05 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ MILESTONE FLAGS (Run #35)
+1. **Option B window has ended** — 30-day benchmark ran 2026-05-15 → ~2026-06-15. Today is 2026-06-18 (3 days post-window). Cohort lock can now be reviewed via explicit human PR per CLAUDE.md Rule 1.
+2. **Bot in paper trade mode** — Capital withdrawn 2026-05-28 (21 days ago). `feat(admin): /api/admin/liquidate-all` pulled ~$2,850 to USDC for withdrawal. Bot running TRADING_ENABLED=false on efficient-peace since then. No re-deployment observed in git history.
+3. **34-day gap since last run** — Run #34 was 2026-05-15; this is Run #35 on 2026-06-18.
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-18T17:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-c47jkh
 
 ## Problem
 
@@ -66,6 +71,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-18T17:05 UTC | **⚠️ Option B window ended ~2026-06-15. Bot in paper trade since 2026-05-28. 34-day gap since Run #34.** Scout: GeckoTerminal blocked, no qualifying candidates with verified data. Auditor: API blocked, no trigger confirmed, research only — drawdown-probability Kelly constraint added to watch list. No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +95,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-18T17:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from Claude Code remote sandbox egress policy). MEDIC_REPORT updated (Run #35). Bot health unknown; no circuit-breaker or trade-failure data available.
+- **Scout**: GeckoTerminal API blocked (403, same egress constraint). WebSearch returned no specific Base pool liquidity/volume data for quality filter. COHORT_QUALITY_7 is locked per CLAUDE.md Rule 1; post-window changes require explicit human PR. No candidates with verified on-chain data → no `TOKEN_REGISTRY` edit, no `COHORT_PROPOSAL` filed this run (insufficient data).
+- **Auditor**: API unreachable — cannot check win_rate, drawdown, or losing_streak trigger conditions. Bot in paper trade mode since 2026-05-28. Research ran 4 searches. Key findings: (1) Signal quality: 9/12 confluence = 68–72% win rate industry benchmark — NVR's multi-indicator approach aligns. No action. (2) Execution efficiency: Permit2 batch approvals standard; Aerodrome auto-routes. No new action. (3) Position sizing: Quarter-Kelly + drawdown-probability constraint is 2026 best practice; NVR already at Quarter-Kelly. Drawdown-constraint addition is watch-list (Impact 3, Complexity 3, Risk medium). No auto-implement. (4) Competitive: multi-agent specialization is current architecture norm; NVR sleeves align. No action. No code change this run (no trigger confirmed; no qualifying low-complexity finding).
+
+## Auditor Research Summary (Run #35 — 2026-06-18)
+- **Signal Quality**: 9+ signal confluence posts 68–72% win rate; 6–7/12 posts 55–62% (walletfinder.ai, trendrider.net). NVR's multi-indicator confluence scoring architecture already aligns. Macro sentiment veto (Fear & Greed already wired). (Priority 0 — already implemented)
+- **Execution Efficiency**: Permit2 batch approvals eliminate separate approve() per contract — NVR already uses Permit2. Aerodrome Slipstream auto-routes CL/stable/multi-hop. No additional gas savings available without touching execution path (off-limits). (Priority 0)
+- **Position Sizing**: 2026 best practice production sequence: raw edge → confidence shrinkage → volatility/covariance → raw Kelly → drawdown-probability constraint. NVR has all steps except the drawdown-probability ceiling (dynamic, not static KELLY_POSITION_CEILING_PCT). Drawdown-probability constraint: Impact 3/Complexity 3/Risk medium → Priority 1.0 → Watch list. (Priority 1.0, below 2.0 auto-implement threshold)
+- **Competitive Intelligence**: Polystrat (Olas) completed 4,200+ trades in Feb 2026 with 376% peak returns on Polymarket. Multi-agent specialization is best practice. NVR sleeves architecture aligns. AI agents settled $73M in May 2025–Apr 2026. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
