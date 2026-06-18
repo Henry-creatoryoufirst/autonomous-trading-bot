@@ -1,4 +1,20 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — GeckoTerminal API also blocked by egress (403). Cannot fetch pool data for quality filter. Last actual scout token add was 2026-05-14 (MOLT), which is >48h; scout would run if API were accessible. **NOTE: Option B 30-day benchmark window ended ~2026-06-15. CLAUDE.md still requires human PRs for cohort changes post-window.**
+- **Auditor**: SKIPPED — Bot trade/portfolio API unreachable. Cannot compute win rate, drawdown, or losing streak. Cannot trigger or run full audit.
+
+## Notable Context (Run #35)
+- **Option B window closed** (~2026-06-15, 3 days ago). Benchmark period is complete. Henry should review cohort performance vs cbBTC/WETH 60/40 before deciding next steps.
+- **Last main branch commit**: 2026-05-28 — `feat(admin): /api/admin/liquidate-all` operator forced full-exit to USDC. **Unknown if this was ever triggered in production.** Bot state unknown.
+- **Gap since last monitoring commit**: Run #34 was 2026-05-15. 34-day gap with no monitoring output (Option B hard rules prevented scout/auditor commits during the window).
+- **Egress fix still needed**: See "Recommended Action for Henry" below — same request as 34 prior runs.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
