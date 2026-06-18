@@ -1,3 +1,41 @@
+# MEDIC REPORT — 2026-06-18T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — GeckoTerminal API also returning 403 (same egress restriction). Additionally, CLAUDE.md Rule 1 prohibits `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` commits (requires explicit human PR). Last actual scout token add was 2026-05-14 (MOLT). Scout is 35 days overdue but cannot run until egress is resolved.
+- **Auditor**: RESEARCH RAN (API unavailable for trigger check — cannot compute live win_rate/drawdown). 4 web searches executed. **No code change implemented this run.** See findings below.
+
+## Auditor Research Summary (Run #35 — 2026-06-18)
+
+### Key Context: Option B 30-Day Window Has Ended
+The Option B benchmark window (~2026-05-15 to ~2026-06-15) has now concluded. This is the first run post-window. Bitcoin is at ~$63,349 (-49.7% from $126K peak), market described as "cautiously constructive" — bear technically ongoing but showing stabilization signs.
+
+### Signal Quality
+DeFi's recovery indicator: sustained TVL inflows (1.6M ETH added in recent week) signal accumulation phase beginning. NVR already uses flow-based signals — this is a directional confirmation, not a new signal type. Full TVL monitoring integration remains complex (Impact 2/Complexity 4/Risk medium) → Watch list. **No code change.** (Priority 0.5)
+
+### Execution Efficiency
+Aerodrome-Velodrome merger Q2 2026 proceeding. Slipstream V3 ships internal MEV auction baked into AMM (accrues to LPs/operators). Bot auto-benefits from DEX-level improvement without code change. **No code change.** (Priority 0)
+
+### Position Sizing
+KEY FINDING — Bear-to-bull transition guidance: research confirms Quarter-Kelly (25%) is optimal for the *transition* phase. Do NOT immediately ramp up KELLY_FRACTION when market recovers — "historical win rates don't transfer; 60% backtested → 50% live during regime change." Current KELLY_FRACTION=0.25 is correct for the transition. **Wait for 10+ confirmed consecutive profitable trades before considering 0.25→0.30 stepup.** No change now. (Impact 3, Complexity 1, Risk high if changed too early → No action)
+
+### Competitive Intelligence
+40% of all on-chain transactions now from autonomous agents (Q1 2026). AI bots showing 12.3% outperformance vs manual. MEV competition intensifying — confirms NVR's HOT_MOVER_MIN_FDV_USD=1M and 48h pool age gate are correct defenses. ERC-8004 trustless AI agent standard emerging (future architecture consideration). **No code change.** (Priority 0)
+
+## Action Taken
+No changes implemented. All bear parameters are fully calibrated (17+ auditor runs of bear-adjustment). Market is transitioning — premature loosening of bear parameters could hurt Option B post-window performance. Henry should review staging branch for accumulated auditor changes before any parameters are loosened.
+
+## Watch List for Henry
+1. **KELLY_FRACTION unwind plan**: When market regime confirms TRENDING_UP for 5+ consecutive days, consider 0.25→0.30 (not more) as first step. Do not automate — requires visual confirmation.
+2. **Scout token discovery**: 35 days since last scout. Egress allowlist fix needed to unlock. Or review manually: GeckoTerminal Base trending pools for new quality tokens since 2026-05-14.
+3. **Option B benchmark evaluation**: Window closed ~2026-06-15. Compare NVR portfolio return vs cbBTC 60% + WETH 40% benchmark over the 30-day window to assess Option B result.
+4. **Aerodrome-Velodrome merger**: When complete, verify NVR's Slipstream router address still works on the merged protocol.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
