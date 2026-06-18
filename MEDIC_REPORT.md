@@ -1,4 +1,35 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Environment
+- Run timestamp: 2026-06-18T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-loui4l (CLAUDE.md Rule 2: no staging pushes from automated agent)
+
+## Jobs Status This Run (2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
+- **Scout**: SKIPPED — GeckoTerminal API also 403 (network policy blocks it). No verifiable pool data. WebSearch found no specific new Base tokens with confirmed $100k+ liquidity. CLAUDE.md Rule 1 remains: cohort changes require explicit human PR even after the Option B window. No TOKEN_REGISTRY changes.
+- **Auditor**: SKIPPED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (all 403). Win rate, drawdown, and market regime unknown.
+
+## ⚠️ KEY CONTEXT CHANGE SINCE LAST UPDATE (2026-05-15)
+
+**The Option B 30-day benchmark window closed ~2026-06-15 (3 days ago).**
+
+The window ran 2026-05-15 → ~2026-06-15. This is the moment the medic/scout/auditor were operating in restricted mode for.
+
+**Additional significant event (2026-05-28 — from git history):**
+Commit `f29798d feat(admin): /api/admin/liquidate-all` was merged to main. The code comment reads: *"2026-05-28 (full-exit): operator-forced liquidation of every non-USDC, non-gas, non-yield-receipt holding to USDC."* This indicates Henry executed a full portfolio liquidation. The bot may have been in dry-run mode since then, or restarted with a fresh capital allocation post-window.
+
+**Henry should:**
+1. Review Option B window performance (the benchmark closed — was cbBTC/WETH 60/40 outperformed by ≥5%?)
+2. Decide whether to extend the 7-token cohort (window is over — CLAUDE.md Rule 1 lifts if you choose)
+3. Confirm bot's current state (dry-run vs live, current portfolio after liquidation)
+4. Review the COHORT_QUALITY_7 and TOKEN_REGISTRY for post-window strategy
+
+## Previous Run Summary — 2026-05-15T UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
