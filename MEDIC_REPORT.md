@@ -1,3 +1,19 @@
+# MEDIC REPORT — 2026-06-18T12:08 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-18T12:08 UTC)
+
+**Context since last run (#34):** Henry pulled all real capital from efficient-peace (~2026-05-28–29) via the new `/api/admin/liquidate-all` endpoint. Bot is in dry-run / paper-trade mode with `TRADING_ENABLED=false`. No positions at risk. Option B benchmark window ended ~2026-06-15 (30 days complete).
+
+- **Medic**: PATTERN D — API unreachable (persistent sandbox egress constraint — 35th consecutive run, 403 on all endpoints). Bot responds to HTTP (not timing out), confirming Railway container is live. 403 on paper-mode bot is consistent with intentional auth protection. Not a trading emergency.
+- **Scout**: RAN (last scout was 2026-05-14/MOLT, >35 days ago, well past 48h threshold). GeckoTerminal API blocked from sandbox; WebSearch used as fallback. Per CLAUDE.md standing policy, cohort changes require human PR even post-window. Candidate research written to `COHORT_PROPOSAL_2026-06-18.md` for Henry's review. TOKEN_REGISTRY not modified.
+- **Auditor**: CANNOT TRIGGER (API unreachable — win_rate/drawdown/streak all unknown). Research findings written to `NVR-HQ/Research/audit-2026-06-18-12.md`. Key finding: bear-market tightened constants may need recalibration for post-window redeploy. No code changes — all proposals in Watch List for Henry.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
