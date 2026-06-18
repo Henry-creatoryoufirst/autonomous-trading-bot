@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-18T09:xx UTC | Scout ran (35 days since last): GeckoTerminal + DexScreener APIs both 403 (egress policy); WebSearch found no qualifying new tokens with verifiable addresses; HOME (DeFi.app) rejected (750M unlock Jun-10, -64% from ATH $0.0758, unstable). Auditor TRIGGERED by 103-day bear: raised STALE_POSITION_MIN_AGE_HOURS 36→40 — CryptoQuant bull-bear cycle indicator turned GREEN 2026-05-12 (first since 2023); early recovery phase warrants 4h extension for quality cohort consolidations before breakout; all three guards (MIN_USD=$100, MAX_GAIN=1%, MAX_MOMENTUM=2%) unchanged. |
 
 ## Bot Health Evidence (from git history)
 
