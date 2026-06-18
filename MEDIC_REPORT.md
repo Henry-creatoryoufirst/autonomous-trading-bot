@@ -1,11 +1,35 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-18T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
+
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: `claude/cool-sagan-s4xw88` (per CLAUDE.md Rule 2 — no auto-push to staging/main).
+- **Scout**: SKIPPED — Two reasons: (1) GeckoTerminal API blocked (403, same network egress constraint); (2) CLAUDE.md Rule 1 prohibits auto-adds to COHORT_QUALITY_7. Last successful non-reverted scout was SYRUP ~2026-05-08 (41 days ago, >48h threshold met, but cannot run). NVR-HQ not in repo checkout so COHORT_PROPOSAL file cannot be written either.
+- **Auditor**: TRIGGERED — inferred 104-day BEAR market (Option B window 2026-05-15 → ~2026-06-15 now complete; last bear-context audit was Run #34 at 70-day bear; 34 more days elapsed). Research ran 4 searches. Top finding: BREAKER_DAILY_DD_PCT 7→6 — completes the 8→7 (Apr-2026) → 6 (Jun-2026) progression; industry practice 5-6% for sustained bear markets confirmed (cryptonews.net mastering risk-adjusted strategies 2026). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-18)
+- **Signal Quality**: DeFi bots in 2026 use Nansen/Dune smart money signals, TVL trends, exchange outflows. Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full on-chain signal integration complex (Impact 3/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome+Velodrome merge in 2026 — bot auto-benefits without code change. Permit2 batch approvals already in place. Slipstream MEV auction (v3) already built in; bot routes through it automatically. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — cryptonews.net (2026): "risk-constrained Kelly can help avoid trading during unfavorable market conditions; industry standard daily drawdown pause in sustained bear = 5-6%" (altrady.com, lbank.com Kelly criterion confirm). Current BREAKER_DAILY_DD_PCT=7 was set Apr-2026 at 46-day bear. Now at 104-day bear, 7→6 completes the progression. DEPLOYMENT_BREAKER_OVERRIDE (min cash 40%) still allows crash-buying through the breaker. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MEV private relay (sequencer-direct RPC) already active. OpenOcean cross-DEX requires off-limits execution changes. AI-on-AI MEV growing in 2026 — NVR's HOT_MOVER_MIN_FDV_USD=1M and SCOUT_UPGRADE_BUY_RATIO=60 gates already defend against this. No new action. (Priority 0)
+
+## Option B Window Status
+- Window: 2026-05-15 → ~2026-06-15 (30 days)
+- Today: 2026-06-18 (3 days past close)
+- Attribution attribution window is closed. Post-window cohort changes require explicit human PR per CLAUDE.md.
+
+## Branch Note
+This run pushed to `claude/cool-sagan-s4xw88` per CLAUDE.md Rule 2 ("You may NOT push to main, staging, or any other branch a human or deploy script reads"). Henry: cherry-pick or PR-merge the constants.ts change to staging to deploy.
+
+---
+
+## Previous Run (Run #34 — 2026-05-15T UTC)
 - Current branch: staging
 
 ## Problem
