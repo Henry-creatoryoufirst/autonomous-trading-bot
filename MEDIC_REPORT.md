@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-18T UTC | Scout BLOCKED — GeckoTerminal/DexScreener both 403 (network egress). Auditor RESEARCH ONLY — API unreachable, conditions unverifiable; research ran 4 searches, no implementation warranted (constants well-calibrated, execution path off-limits). **Option B 30-day window has now completed (~2026-06-15).** |
 
 ## Bot Health Evidence (from git history)
 
@@ -203,9 +204,30 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from this execution environment). MEDIC_REPORT updated (Run #35). **⚠️ 30-day Option B benchmark window has completed (~2026-06-15).**
+- **Scout**: BLOCKED — GeckoTerminal API (`api.geckoterminal.com`) and DexScreener both return 403 Forbidden (same egress policy blocking production bot API). Cannot evaluate token candidates this run. Last successful token scout: 2026-05-14/16 (MOLT, pre-pivot reverts of OPENX/VEIL). Threshold: 48h elapsed — scout is overdue but cannot execute without data source access.
+- **Auditor**: RESEARCH ONLY (conditions unverifiable — no API access). Ran 4 research searches. Findings: (1) Signal Quality — Ensemble ML voting (LightGBM/XGBoost/RandomForest) is 2026 standard; NVR covers this with confluence scoring + AI discretionary. High complexity, no auto-implement. (2) Execution Efficiency — Permit2 batch approvals already implemented; Aerodrome/Velodrome merge (Aero unified brand, July 2026) auto-benefits NVR routing. No code change needed. (3) Position Sizing — Quarter-Kelly (0.25×) confirmed optimal; NVR already at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, VOL_TARGET_DAILY_PCT=1.5. No new action. (4) Competitive Intelligence — MEV private relay protection mainstream; NVR already uses sequencer-direct RPC. "30-min rest after losses" pattern in market — NVR has 6h FAILURE_COOLDOWN_HOURS (more conservative). No implementation warranted. **No changes committed.**
+
+## Auditor Research Summary (Run #35 — 2026-06-18)
+- **Signal Quality**: Ensemble ML consensus (LightGBM/XGBoost/RandomForest voting) is 2026 DeFi bot standard per Phemex/Blockster research. NVR confluence scoring + AI discretionary approximates ensemble. Full ML integration: Impact 3/Complexity 5/Risk med → Watch list. (Priority 0.6)
+- **Execution Efficiency**: Aerodrome+Velodrome merge into "Aero" unified cross-chain DEX targeted July 2026 — NVR routing auto-benefits at DEX layer without code change. Permit2 already batched. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed as 2026 crypto standard; "Half-Kelly cuts volatility 50% while reducing expected growth only 25%". NVR at KELLY_FRACTION=0.25 with TRENDING_DOWN×0.75 → ~3.5% effective max. Already optimally calibrated for bear regime. (Priority 0)
+- **Competitive Intelligence**: MEV private relay / wallets with MEV-protection mode going mainstream 2026. NVR sequencer-direct RPC already in place. TEE-based agent signing (NEAR/Phala pattern) — major architecture change, off-limits. "30-min rest after any loss" industry standard; NVR 6h after 3 consecutive failures is MORE conservative. (Priority 0)
+
+## ⚠️ Option B Benchmark Window — Complete as of ~2026-06-15
+
+The 30-day Option B benchmark (COHORT_QUALITY_7 on `cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL`, started 2026-05-15) has now completed. Per CLAUDE.md: cohort changes after the window require explicit human PRs. Automated agents (this routine) remain constrained to the feature branch — no staging or main pushes.
+
+**Henry: please review the 30-day benchmark results and decide:**
+1. Did the quality cohort outperform cbBTC/WETH 60/40 by ≥5% annualized?
+2. Should the cohort be updated via PR?
+3. Should the Token Scout resume adding to TOKEN_REGISTRY?
+
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Persistent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,12 +235,12 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window complete** — review 30-day benchmark results and decide next steps for cohort
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
-- No changes to agent-v3.2.ts
+- No changes to agent-v3.2.ts or constants.ts
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- MEDIC_REPORT.md updated; committed to feature branch `claude/cool-sagan-935s44` only
