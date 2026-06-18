@@ -1,6 +1,52 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-18T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ POST-OPTION-B MILESTONE — Action Required (Run #35 — 2026-06-18)
+
+**The 30-day Option B benchmark window closed ~2026-06-15.** This is the first agent run AFTER that window. Three items need Henry's attention:
+
+1. **Review Option B results**: The cohort (cbBTC/WETH 60/40 baseline) ran for 34 days. Human review and alpha-attribution analysis is now due.
+2. **Normalize bear-market constants**: 15 bear-specific tunings were applied to `constants.ts` during the April-May 2026 70-day bear (Kelly fraction 0.35→0.25, HOT_MOVER FDV 500K→1M, CULL_MIN_AGE 168→72h, etc.). If the market has recovered, these ultra-conservative settings may be suppressing alpha. Review `src/core/config/constants.ts` with current market regime in mind.
+3. **Scout re-authorization**: Last scout ran 2026-05-14 (34 days ago). Rule 1 blocked all scout additions during the Option B window. Post-window, Henry can authorize the scout to resume adding to TOKEN_REGISTRY via explicit PR. The agent cannot fetch pool data anyway (GeckoTerminal blocked).
+
+## Jobs Status This Run (Run #35 — 2026-06-18T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — GeckoTerminal and DexScreener APIs blocked by network egress policy. Additionally, COHORT_QUALITY_7 Rule 1 prohibited TOKEN_REGISTRY additions during the Option B window (2026-05-15 to ~2026-06-15). Window has now closed; scout can resume after Henry re-authorizes. Last scout: MOLT added 2026-05-14 (34 days ago).
+- **Auditor**: SKIPPED — Cannot calculate trigger metrics (win_rate, drawdown, losing_streak) without bot API access. Research conducted; see findings below. Top finding already implemented (ALPHA_KELLY_MULTIPLIER=0.5 Half-Kelly already in agent-v3.2.ts). No new implementation this run — auditor should not tune constants further without current market regime data.
+
+## Auditor Research Summary (Run #35 — 2026-06-18)
+- **Signal Quality**: Ensemble ML signal confluence (LightGBM, XGBoost, Random Forest voting) — complex infra change (Impact 3/Complexity 5/Risk high) → Watch list. No action.
+- **Execution Efficiency**: Aerodrome/Velodrome merger to "Aero" multi-chain DEX scheduled Q2 2026. NVR's router address `0xbe6d8f0d...5be6d18a5` may need updating post-merge. **Henry: verify Slipstream router address remains valid post-merger.**
+- **Position Sizing**: Half-Kelly (0.5× Kelly) already implemented (`ALPHA_KELLY_MULTIPLIER = 0.5`). Quarter-Kelly (`KELLY_FRACTION = 0.25`) already applied from bear tunings. Both already in place. No new action.
+- **Competitive Intelligence**: MEV protection via private relays + tight slippage already implemented. TWAP execution for large trades already active. No actionable gap found.
+
+## Bear-Market Constants — Review Checklist for Henry
+
+All of the following were tuned DOWN during April-May 2026 bear. Recommend reviewing each against current market regime:
+
+| Constant | Original | Bear-Tuned | Run # | Rationale to Revert if Bull |
+|----------|----------|-----------|-------|----------------------------|
+| `KELLY_FRACTION` | 0.35 | **0.25** | #22/#23 | Quarter-Kelly was bear-specific; Half-Kelly (0.35) may be appropriate in recovery |
+| `KELLY_POSITION_CEILING_PCT` | 14 | **12** | #30 | Bear ceiling; may limit upside in bull |
+| `KELLY_ROLLING_WINDOW` | 50 | **30** | #20 | Faster window was for bear decay; may overfit bull noise |
+| `HOT_MOVER_MIN_CHANGE_H1_PCT` | 5 | **7** | #18 | High bar was for bear; bull 5% moves are more valid |
+| `HOT_MOVER_MIN_VOLUME_H1_USD` | 150K | **200K** | #34 | Raised for suppressed bear volumes |
+| `HOT_MOVER_MIN_FDV_USD` | 500K | **1M** | #34 | MEV sandwich protection in bear; may over-filter in bull |
+| `HOT_MOVER_MIN_POOL_AGE_HOURS` | 24 | **48** | #33 | Bear caution; 24h may be fine for established bull tokens |
+| `SURGE_MAX_CAPITAL_PER_TOKEN_PCT` | 25 | **20** | #21 | Bear cap; surges are more valid in bull |
+| `STALE_POSITION_MIN_AGE_HOURS` | 48 | **36** | #31 | Fast exit for bear dead money; 48h may preserve bull rallies |
+| `CULL_MIN_AGE_HOURS` | 168 | **72** | #27 | Aggressive culling for bear; 120h may be better in bull |
+| `DECEL_MIN_DROP_FROM_PEAK` | 8 | **6** | #25 | Earlier trim in bear; 8pp may be better in bull |
+| `DECEL_MIN_PROFIT_PCT` | 3 | **2** | #26 | Lower profit floor for bear; 3% in bull |
+| `RIDE_THE_WAVE_SIZE_PCT` | 4 | **3** | #31 | Bear sizing; 4% may be appropriate in bull |
+| `FLOW_REVERSAL_EXIT_BUY_RATIO` | 40 | **38** | #29 | Tighter in bear; 40% baseline in bull |
+| `GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT` | 48 | **72** | #28 | Extended oversight for bear; 48h fine in bull |
+
+**Recommendation**: Restore constants to original values (or intermediate targets) if market regime is now BULL or NEUTRAL. A human-reviewed PR is the right mechanism — do not auto-revert.
+
+
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
