@@ -1,3 +1,62 @@
+# MEDIC REPORT — 2026-06-19T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B WINDOW COMPLETE — Henry Action Required
+
+The 30-day Option B benchmark window (started 2026-05-15, expected completion ~2026-06-15) is now **COMPLETE** as of today 2026-06-19. Per CLAUDE.md: "Cohort changes happen only via explicit human PR after the 30-day window completes." Henry should:
+1. Review Option B benchmark results vs cbBTC/WETH 60/40 baseline
+2. Decide whether to extend, modify, or pivot the cohort strategy
+3. Consider relaxing bear-adjusted thresholds (see Auditor section below)
+
+## ⚠️ MARKET CONTEXT CHANGE — Bear Market Appears Over
+
+Base DEX hit **ALL-TIME HIGH** volumes ($2.9B daily, Aerodrome $1.68B ATH, Aerodrome TVL $453.8M). The 70+ day bear market that drove all defensive adjustments from Apr–May 2026 has likely ended. Current constants are calibrated for deep bear and may be too conservative. See Auditor findings below.
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Network egress policy blocks Railway domain and GeckoTerminal. MEDIC_REPORT updated (Run #35). No bot health data available.
+- **Scout**: CRITERIA MET (last scout commit 2026-05-16, 34 days ago, >48h threshold). However GeckoTerminal API also blocked — cannot verify candidate liquidity/volume/age data. Also Rule 1 (Option B cohort lock) prohibits auto-adding to TOKEN_REGISTRY. No additions. Recommend Henry manually check GeckoTerminal for Base trending pools now that Option B window is complete.
+- **Auditor**: API unreachable — live metrics unavailable (cannot verify win_rate/drawdown/losing_streak trigger conditions). Research completed. Key finding: Base market appears to have RECOVERED significantly. Bear-adjusted thresholds from Apr–May 2026 warrant human review and potential relaxation. No code changes made (data-blind changes would be unsafe).
+
+## Auditor Research Summary (Run #35 — 2026-06-19)
+
+**Market Recovery Evidence:**
+- Base DEX volume: $2.9B daily (all-time high, per itiger.com May 2026)
+- Aerodrome TVL: $453.8M, 30-day volume $12.39B (DefiLlama)
+- WETH 24h volume surged 160.70% to $568.18M on Base
+- Base MCP launched 2026-05-26, AI agents now driving on-chain activity
+
+**Signal Quality:** Ensemble methods (LightGBM/XGBoost/Random Forest voting) are the 2026 best practice — NVR's swarm architecture (momentum/flow/risk/sentiment/trend agents) already implements this pattern. No new action.
+
+**Execution Efficiency:** Aerodrome Slipstream v3 includes internal MEV auction; AERO/VELO merge progressing. Bot auto-benefits from DEX-level improvements. No code change needed.
+
+**Position Sizing:** Quarter-Kelly (0.25×) remains appropriate per research. However, regime-adaptive Kelly research confirms: **once market regime shifts from BEAR to BULL, the Kelly fraction and position ceiling should be relaxed**. With market recovery underway, these thresholds are candidates for human-reviewed loosening:
+  - `KELLY_FRACTION` 0.25 → consider 0.30 (pre-bear level)
+  - `KELLY_POSITION_CEILING_PCT` 12 → consider 14 (pre-bear level)
+  - `RIDE_THE_WAVE_SIZE_PCT` 3 → consider 4 (pre-bear level)
+  - `SCALE_UP_SIZE_PCT` 3 → consider 4 (pre-bear level)
+  - `HOT_MOVER_MIN_CHANGE_H1_PCT` 7 → consider 5 (pre-bear level)
+  - `HOT_MOVER_MIN_BUY_RATIO` 0.60 → consider 0.55 (pre-bear level)
+  - `NORMAL_CONFLUENCE_BUY` 27 → consider 25 (pre-bear level)
+  - `CULL_MIN_AGE_HOURS` 72 → consider 120+ (pre-bear level was 168)
+
+**Competitive Intelligence:** MEV protection modes going mainstream. AI-on-AI MEV growing. NVR's sequencer-direct RPC + TWAP jitter already provide protection. No new action.
+
+**Note re: `/api/admin/liquidate-all` endpoint added in PR #54:** This suggests Henry may have force-liquidated positions at some point. Context would help understand current portfolio state and what regime the bot is now operating in.
+
+## Recommended Action for Henry (Run #35)
+
+**URGENT — 35th consecutive run with same network restriction:**
+
+1. **Add to Claude Code egress allowlist** (network policy settings):
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+2. **Option B window complete** (~Jun 15) — review benchmark results vs cbBTC/WETH 60/40 baseline
+3. **Manually check bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+4. **Consider relaxing bear-adjusted thresholds** (see Auditor section above) — market recovery evidence is strong
+5. **Scout manually** now that Option B cohort lock period is over
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
