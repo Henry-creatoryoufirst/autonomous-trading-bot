@@ -1,6 +1,12 @@
-# MEDIC REPORT — 2026-06-18T (latest) UTC
+# MEDIC REPORT — 2026-06-19T09:06 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #36)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #37)
+
+## Jobs Status This Run (Run #37 — 2026-06-19T09:06 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 37 consecutive runs, 403 on all endpoints). MEDIC_REPORT updated (Run #37).
+- **Scout**: SKIPPED — GeckoTerminal blocked by egress policy + CLAUDE.md Rule 1 (cohort changes via explicit human PR only, Option B window closed 2026-06-15).
+- **Auditor**: TRIGGERED by inferred BEAR market (8-month bear, 48h+ threshold met). Top finding: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K — completes hot mover quality-gate tightening set. All other hot mover filters were bear-adjusted in prior runs (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓, buy ratio 55→60% ✓, H1 change 5→7% ✓); liquidity floor was the last unadjusted gate. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Jobs Status This Run (Run #36 — 2026-06-18T UTC)
 

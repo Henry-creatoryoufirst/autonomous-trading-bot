@@ -738,7 +738,7 @@ export const HOT_MOVER_MIN_CHANGE_H1_PCT = 7; // Bear-adjusted Apr-2026: 5→7 �
 export const HOT_MOVER_MIN_VOLUME_H1_USD = 200_000; // Bear-adjusted May-2026: 150K→200K — 65-day bear; total Base DEX vol suppressed (~$673M/day vs bull peaks); $150K/h threshold no longer filters thin MEV-sandwich pumps; $200K floor requires broader market participation
 
 /** Min pool liquidity — below this is a rug risk, skip it */
-export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
+export const HOT_MOVER_MIN_LIQUIDITY_USD = 100_000; // Bear-adjusted Jun-2026: 75K→100K — 8-month bear; LP withdrawal thins pools below $100K in sustained downtrends; completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓, buy ratio 55→60% ✓, H1 change 5→7% ✓, liquidity ✓)
 
 /** How often to scan GeckoTerminal trending pools (ms) — reuses cached data, free */
 export const HOT_SCAN_INTERVAL_MS = 90_000;
