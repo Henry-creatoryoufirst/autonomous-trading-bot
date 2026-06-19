@@ -1,12 +1,17 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚡ IMPORTANT: Option B Benchmark Window Completed ~2026-06-15
+The 30-day Option B window (started 2026-05-15) closed approximately 2026-06-15 — 4 days ago.
+Henry should manually check production P&L to determine whether cbBTC/WETH 60/40 +5% annualized hurdle was cleared.
+Access: https://autonomous-trading-bot-production.up.railway.app/api/portfolio
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-19T20:03 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-3spqmd
 
 ## Problem
 
@@ -66,6 +71,28 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | ⚡ OPTION B WINDOW COMPLETED ~2026-06-15. Scout ran (>48h since MOLT 2026-05-14): top candidate EDEL already in registry; no new tokens to add; GeckoTerminal API blocked. Auditor: skipped (API unreachable, trigger conditions unverifiable). No code changes. |
+
+## Jobs Status This Run (Run #35 — 2026-06-19T20:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints, 35th consecutive run). No critical condition confirmed. Continuing to Scout and Auditor.
+- **Scout**: RAN (last scout was MOLT added 2026-05-14, ~35 days ago, >48h threshold met). WebSearch surfaced EDEL (Edel, tokenized-stock lending protocol on Base, $598K liquidity, $218K 24h vol, FDV $7.67M, pool age ~4 months) as top Aerodrome trending pool — but EDEL is **already in TOKEN_REGISTRY** (address 0xfb31f85a8367210b2e4ed2360d2da9dc2d2ccc95). GeckoTerminal API blocked (403). No new qualifying candidates confirmed. Per CLAUDE.md Rule 1, no TOKEN_REGISTRY edit would be made even if found — cohort locked until explicit human PR. Scout result: no qualifying new tokens.
+- **Auditor**: SKIPPED — API unreachable, cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive. Win rate, drawdown, and losing streak are unverifiable. Trigger conditions cannot be confirmed. Note: Option B benchmark window completed ~2026-06-15; strategy audit is warranted post-window but requires live data.
+
+## ⚡ Action Required (Henry)
+
+**Option B Window is Over:**
+- Window: 2026-05-15 → 2026-06-15 (30 days)
+- Today: 2026-06-19 (4 days post-window)
+- **Review production P&L now** to determine if cbBTC/WETH 60/40 +5% annualized hurdle was cleared.
+- Dashboard: https://autonomous-trading-bot-production.up.railway.app/api/portfolio
+- If hurdle cleared: cohort expansion PRs now welcome (post your review)
+- If hurdle missed: strategy review meeting recommended before expanding cohort
+
+**Persistent egress block (35 runs):**
+Add these to Claude Code environment network allowlist:
+- `autonomous-trading-bot-production.up.railway.app`
+- `api.geckoterminal.com`
 
 ## Bot Health Evidence (from git history)
 
