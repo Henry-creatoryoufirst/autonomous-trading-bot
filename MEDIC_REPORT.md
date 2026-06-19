@@ -1,9 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B WINDOW COMPLETED (~2026-06-15) — Action required from Henry
+The 30-day Option B benchmark window has ended. Cohort expansion is now available via explicit human PR. See Run #35 notes below.
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-19T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -66,6 +69,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | ⚠️ OPTION B WINDOW ENDED ~2026-06-15. Scout attempted — GeckoTerminal API still blocked, WebSearch insufficient for quality thresholds, no additions (Rule 1: human PR required). Auditor raised RANGING_MAX_TRADES_PER_CYCLE 2→3 — 100+day bear; Q1 2026 research: ranging oscillation phases systematically harvested by grid-style higher-frequency trades (ETH −45%→+38% recovery cycle data). Market: BTC ~$69K, F&G 23-26 (extreme fear). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +93,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **⚠️ OPTION B WINDOW COMPLETED ~2026-06-15 — cohort expansion now available via explicit human PR.**
+- **Scout**: ATTEMPTED — last scout was 2026-05-14 (MOLT, 36+ days ago). GeckoTerminal API blocked (403). WebSearch cannot provide precise liquidity/volume/pool-age data needed for quality filters. No tokens added. Rule 1 still requires explicit human PR for TOKEN_REGISTRY changes. **Action for Henry: cohort expansion is now unlocked — create a PR to add new tokens if benchmark results support it.**
+- **Auditor**: TRIGGERED by inferred 100+ day BEAR market (BTC ~$69K down 45%, F&G 23-26 extreme fear, 3 red monthly candles per web research). Research ran 4 searches. Top finding: RANGING_MAX_TRADES_PER_CYCLE 2→3 — Q1 2026 data shows ranging oscillation phases (ETH −45% correction + 38% recovery cycle) are systematically harvested by grid-style higher-frequency trades; current limit of 2 was the only constant below the general MAX_TRADES_PER_CYCLE=3 cap, and underexploits oscillation alpha; confluence + Kelly still gate each individual trade. IMPLEMENTED in constants.ts on claude/cool-sagan-wguo4j. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

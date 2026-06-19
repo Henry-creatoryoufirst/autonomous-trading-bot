@@ -974,8 +974,8 @@ export const NORMAL_DEDUP_WINDOW_MINUTES = 30;
  *  v18.0: Kept at 3 for trending markets, but RANGING regime caps to 2 (see RANGING_MAX_TRADES_PER_CYCLE) */
 export const MAX_TRADES_PER_CYCLE = 3;
 
-/** v18.0: Max trades per cycle in RANGING regime — fewer, higher-conviction trades */
-export const RANGING_MAX_TRADES_PER_CYCLE = 2;
+/** v18.0: Max trades per cycle in RANGING regime; Jun-2026: 2→3 — Q1 2026 research: ranging oscillation phases are systematically harvested by higher-frequency grid-style trades; confluence + Kelly still gate each individual trade */
+export const RANGING_MAX_TRADES_PER_CYCLE = 3;
 
 /** Max position percent override for tokens showing strong momentum */
 export const MOMENTUM_MAX_POSITION_PERCENT = 15;
