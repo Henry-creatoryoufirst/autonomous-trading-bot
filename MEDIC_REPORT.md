@@ -1,4 +1,24 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Network egress blocks both `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`. MEDIC_REPORT updated (Run #35).
+- **Scout**: ATTEMPTED but BLOCKED — Last scout commit 2026-05-25 (25 days ago, threshold cleared). GeckoTerminal API blocked by egress policy; WebSearch returned only general Base L2 macro info, not verifiable per-pool liquidity/volume data needed for quality filtering. No COHORT_PROPOSAL written (cannot verify >$100K liquidity, >$50K 24h vol, >3-day pool age without GeckoTerminal or DexScreener access). NVR-HQ directory absent from this checkout — if it were present, proposals would go there per CLAUDE.md Rule 1.
+- **Auditor**: BLOCKED — Cannot calculate win_rate, drawdown, or losing_streak without `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`. No auditor action taken.
+
+## ⚠️ KEY ALERT — Option B Window Closed (4 days ago)
+
+The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) **closed 4 days ago**. Per CLAUDE.md: "when the window closes, we won't be able to tell whether outperformance came from the strategy or from drift. Human-reviewed PRs are different."
+
+**Henry: this is the moment to review Option B results.** Suggested actions:
+1. Pull the P&L data from Railway/Basescan for the window period
+2. Compare against cbBTC/WETH 60/40 benchmark
+3. Decide whether to continue Option B cohort, revert, or evolve the strategy
+4. The CLAUDE.md ground rules (cohort locked, no auto-merge) remain in effect until you explicitly lift them
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
