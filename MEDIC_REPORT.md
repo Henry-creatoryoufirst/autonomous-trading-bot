@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-19T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-xynbuo
 
 ## Problem
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-19T UTC | Scout ran (36 days since MOLT added 2026-05-14); cohort LOCKED per CLAUDE.md Rule 1 (Option B window ended ~2026-06-15) — no additions made; COHORT_PROPOSAL skipped (no verifiable Base addresses from web-only research); auditor triggered (105-day bear, BTC ~$61K, F&G 23-26 extreme fear); CULL_MIN_AGE_HOURS 72→60 — extended bear capital recycling acceleration |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,19 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No critical conditions can be assessed from this environment.
+- **Scout**: RAN (36 days since MOLT added 2026-05-14 — well past 48h threshold). COHORT LOCKED per CLAUDE.md Rule 1 (Option B window ended ~2026-06-15; cohort changes still require explicit human PR). GeckoTerminal API blocked (403) from this sandbox; WebSearch returned no specific token candidates with verifiable Base addresses and pool liquidity data. No COHORT_PROPOSAL filed (insufficient on-chain data to recommend responsibly). Standards maintained.
+- **Auditor**: TRIGGERED by confirmed 105-day BEAR market (BTC ~$61,165, -45% from Oct-2025 peak of $126,296; F&G 23-26 extreme fear; 3 consecutive red monthly candles — CoinDCX, Bitget, CryptoNews June 2026). Option B window ended ~2026-06-15 — automated constant tuning no longer muddies alpha attribution. Research ran 6 searches (token discovery, market regime, signal quality, execution efficiency, Kelly sizing, competitive intel). Top finding: CULL_MIN_AGE_HOURS 72→60 — 105-day bear (40% longer than 65-day bear when 72h was set); same capital recycling research basis, extended timeline justifies further reduction; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards protect genuine winners. IMPLEMENTED in constants.ts. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-19)
+- **Market Regime**: Bear confirmed. BTC ~$61,165 (-45% from $126,296 Oct-2025 peak). F&G 23-26 (extreme fear). Analysts expect Q3-Q4 2026 bottom with $60-68K BTC support. Crypto tracking macro (84% Dow correlation). Fear & Greed and BTC dominance signals already wired into NVR's signal pipeline. No new action needed on signal architecture. (Priority 0)
+- **Signal Quality**: 2026 DeFi bots use macro sentiment as veto conditions (F&G ≥95 downgrades longs). At extreme fear (F&G 23-26), contrarian accumulation signal is statistically positive but too speculative to implement without confirmed bottom. Funding rate tracking already in NVR (FUNDING_RATE_STD_DEV_THRESHOLD=2.0). No new actionable change. (Impact 2, Complexity 4, Priority 0.5 → Watch list)
+- **Execution Efficiency**: KEY FINDING (watch list) — Aerodrome "Predictive Allocation" launching July 2026 (CoinDesk 2026-06-12). Replaces weekly gauge voting with real-time anticipatory liquidity allocation. "Minimizing temporal gap between demand fluctuations and liquidity positioning — reduce price slippage while enhancing execution quality." NVR auto-benefits from DEX-level routing improvement without code change. AERO token jumped 22% on announcement — already in registry. Merger with Velodrome into "Aero" cross-chain (Base + Optimism + Ethereum) planned. Consider raising VWS_MIN_LIQUIDITY_USD from 20K→30K post-Predictive-Allocation launch (thin pools will get thinner as liquidity concentrates in anticipatory-demand pools). Flag for Henry review in July. (Auto-benefit: Complexity 0; future VWS adjustment: Impact 3, Complexity 1, Risk low)
+- **Position Sizing**: Friction-adjusted Kelly — account for DEX fee (0.3%) + slippage (~0.5-1%) = ~1-1.5% round-trip cost in Kelly formula. NVR already at KELLY_FRACTION=0.25 + VAPS + ceiling. Full friction-adjusted Kelly requires modifying the Kelly calculator (Impact 2, Complexity 3, Risk low, Priority 0.67) → Watch list. KEY IMPLEMENTED FINDING: CULL_MIN_AGE_HOURS 72→60 — 105-day bear capital recycling acceleration. (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED.
+- **Competitive Intelligence**: Base Flashblocks (July 2025) reshaped MEV economics. Intent-based trading (keeps trades off mempool) provides MEV protection. NVR already uses sequencer-direct RPC. Layer-2 cyclic-arbitrage probes = >50% of Base gas. No actionable code change (execution path off-limits). (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
