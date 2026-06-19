@@ -673,7 +673,7 @@ export const BREAKER_DAILY_DD_PCT = 7;         // 7% daily drawdown → pause (a
 export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
-export const BREAKER_SIZE_REDUCTION = 0.7;     // 30% size reduction for 24h after breaker
+export const BREAKER_SIZE_REDUCTION = 0.60;    // Bear-adjusted Jun-2026: 0.7→0.60 — 100+-day bear; Kelly research confirms 40% post-consecutive-loss size cut optimal in sustained bear (vs 30%); aligns with LIFETIME_DRAWDOWN_CAUTION_PCT=12 halving philosophy
 export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
 
 // ============================================================================

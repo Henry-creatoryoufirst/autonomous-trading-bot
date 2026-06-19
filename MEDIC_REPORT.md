@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | Scout blocked (GeckoTerminal 403 in this env); wrote COHORT_PROPOSAL_2026-06-19.md for $BASE token. Auditor triggered (BTC ~$61K, ~45% off Oct-2025 ATH, 100+-day confirmed bear). BREAKER_SIZE_REDUCTION 0.70→0.60 — Kelly research confirms 40% size cut post-consecutive-loss streak optimal in sustained bear (vs current 30%); tightens post-breaker sizing without touching execution logic. Option B 30-day window completed 2026-06-15. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on Railway + GeckoTerminal). MEDIC_REPORT updated (Run #35). Option B 30-day window has completed (window: 2026-05-15→2026-06-15; today: 2026-06-19 +4 days past close).
+- **Scout**: RAN (last scout 2026-05-14, 36 days ago, >48h threshold). GeckoTerminal API blocked (403), so quality-filter pipeline could not run. WebSearch confirms Base DEX at record $3B+ daily volume; identified $BASE (Coinbase L2 native ecosystem token) as candidate. Per CLAUDE.md Rule 1 (cohort changes require explicit human PR post-window), wrote `COHORT_PROPOSAL_2026-06-19.md` instead of modifying TOKEN_REGISTRY.
+- **Auditor**: TRIGGERED — confirmed BEAR market, BTC ~$61K (~45% below Oct-2025 ATH of $126K, 100+ day bear). Win-rate/drawdown data unavailable (API blocked). Ran 4 research searches. Top finding implemented: `BREAKER_SIZE_REDUCTION 0.70→0.60` — Kelly criterion research (2026) confirms 40% post-consecutive-loss size cut optimal in sustained bear vs current 30%; 1-line change in constants.ts, risk: low.
+
+## Auditor Research Summary (Run #35 — 2026-06-19)
+- **Signal Quality**: CryptoQuant exchange inflow/outflow + DeFiLlama TVL trending — already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Multi-model ensemble (LightGBM/XGBoost) → complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome+Velodrome merging into "Aero" July 2026 (METADEX03, predictive allocation, MEV auctions, MetaSwaps). NVR auto-benefits from routing improvements; MetaSwaps cross-chain touches execution path (off-limits). (Priority 0.33)
+- **Position Sizing**: KEY FINDING — Kelly research (altrady.com, medium.com) confirms: "if bankroll drops 20% from peak, cut position sizes in half; if 40%, stop trading." NVR's LIFETIME_DRAWDOWN_CAUTION_PCT=12 (more conservative) already halves at 12%. Actionable gap: `BREAKER_SIZE_REDUCTION=0.70` (30% cut after 5 consecutive losses) is too mild — research supports 40% cut. Changed 0.70→0.60. (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED.
+- **Competitive Intelligence**: MetaMask Agent Wallet (June 8, 2026) — AI agents with self-custody + Blockaid + MEV protection on 9 EVM chains. NVR already has CDP Smart Wallet + sequencer-direct RPC. Batch auctions (CoW Protocol) → touches execution path (off-limits). AI-on-AI MEV >$3B/year extracted — NVR's TWAP 20% jitter helps. No new action. (Priority 0.33)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
