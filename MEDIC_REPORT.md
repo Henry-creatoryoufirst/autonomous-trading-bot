@@ -1,12 +1,13 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-19T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-p21lm0
+- **⚠️ OPTION B WINDOW COMPLETED ~2026-06-15 (30 days from 2026-05-15) — review cohort + results**
 
 ## Problem
 
@@ -66,6 +67,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | **OPTION B WINDOW COMPLETED** (~35 days from 2026-05-15). Scout: GeckoTerminal API 403 blocked — data unavailable; CLAUDE.md Rule 1 still in effect (auto-registry-adds require explicit human PR). Auditor: triggered (bear market 100+ days, Extreme Fear confirmed). 4 research searches run. NO code change — market at potential inflection (ETH RSI 42.5 neutral, Extreme Fear = contrarian), wrong-direction tune at Option B transition outweighs any gain. Watch list updated. See full run summary below. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +91,68 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+### ⚠️ CRITICAL MILESTONE: Option B Window Completed (~2026-06-15)
+
+The 30-day Option B benchmark window started 2026-05-15 and completed ~2026-06-15. Today is 2026-06-19. Henry needs to:
+1. **Review Option B performance**: Did COHORT_QUALITY_7 (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL) outperform cbBTC/WETH 60/40 by ≥5% annualized?
+2. **Decide on next cohort iteration**: Any additions/removals now go through explicit human PR. CLAUDE.md Rule 1 remains in effect even post-window.
+3. **Review staging branch**: Multiple auditor + fix changes queued since May 15.
+
+### Medic (Run #35)
+**PATTERN D — API unreachable** (persistent constraint, same as all previous runs).
+- `https://autonomous-trading-bot-production.up.railway.app` → blocked by network egress
+- All endpoints (errors, balances, health, trades, portfolio) return connection refused
+- Cannot assess bot health, circuit breaker state, or trade failure rates
+- This is an infrastructure constraint — NOT a bot failure signal
+
+### Scout (Run #35)
+**ATTEMPTED — blocked on both fronts:**
+1. GeckoTerminal API (`api.geckoterminal.com`) → 403 Forbidden (network egress blocked)
+2. DexScreener API (`api.dexscreener.com`) → 403 Forbidden (network egress blocked)
+3. Even if data were available: **CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY** "under any circumstance" — "Cohort changes happen only via explicit human PR after the 30-day window completes."
+4. NVR-HQ vault not in this checkout — COHORT_PROPOSAL write is not possible
+5. Last scout with actual adds: MOLT (2026-05-14), 36+ days ago (well past 48h threshold)
+
+**Result**: No qualifying token candidates evaluated this run. Data pipeline blocked.
+
+### Auditor (Run #35)
+**TRIGGERED** — confirmed bear market 100+ days, Extreme Fear sentiment. 4 web searches ran.
+
+**Market Context (as of 2026-06-19):**
+- BTC: ~$61,165 (−45% from Oct 2025 ATH of $126,296)
+- ETH: ~$1,617–$1,670 (RSI 14d ≈ 42.5 = neutral/mild selling; MACD negative)
+- Sentiment: Extreme Fear
+- Multiple analysts noting "divergence" vs. clean bear — potential bottoming process
+
+**Research Findings:**
+
+**Signal Quality** (Impact 2, Complexity 4, Risk medium → Priority 0.5): Ensemble ML (LightGBM/XGBoost/RF voting) and on-chain metrics (CryptoQuant exchange inflows/outflows, TVL via DeFiLlama) are the 2026 alpha signal standard. NVR already captures whale flow (LARGE_TRADE_THRESHOLD_USD=2500) and SWARM_AGENT_WEIGHTS routes flow at 0.35 weight (dominant). Full on-chain signal integration too complex for <10 lines. Watch list for Henry.
+
+**Execution Efficiency** (Impact 3, Complexity 0, Risk none → watch): Aerodrome Predictive Allocation launches July 2026 — replaces weekly gauge voting with demand-forecasting LP incentives. AERO +22% on announcement (June 14). Bot auto-benefits from DEX-level improvements without code changes. AERO already in TOKEN_REGISTRY (DEFI, MEDIUM). The upcoming Aerodrome+Velodrome → "Aero" cross-chain merger (Base+Optimism+Mainnet) consolidates liquidity further — routing auto-improves. No code change needed.
+
+**Position Sizing** (Impact 3, Complexity 4, Risk medium → Priority 0.75): 2026 arxiv/research shows Kelly-VIX hybrid (combines Quarter-Kelly with volatility regime scaling) "consistently balances return generation with robust drawdown control." NVR already implements Quarter-Kelly (KELLY_FRACTION=0.25) + TRENDING_DOWN×0.75 + KELLY_POSITION_CEILING_PCT=12. Full hybrid would require live VIX/IV proxy — too complex for <10 lines. No code change.
+
+**Competitive Intelligence** (Impact 2, Complexity 3, Risk medium → Priority 0.67): Base Flashblocks (July 2025) reshaped MEV economics. Intent-based MEV protection going mainstream (CoW Protocol, 34.3% DEX aggregator share). NVR already uses sequencer-direct RPC. "Custom paths and unpopular pairs" = where edge lives in 2026. Touches executeDirectDexSwap (off-limits). Watch list.
+
+**Audit Decision: NO CODE CHANGE this run.**
+
+Rationale:
+- Market is at a potential inflection point: Extreme Fear is historically a contrarian buy signal; ETH RSI 42.5 is neutral, not oversold capitulation; multiple analysts see divergence/bottoming rather than clean continuation
+- All aggressive bear-mode settings from previous runs (Runs #18–34) are already in place
+- The Option B window just completed — Henry should review holistically and decide direction before the next auditor tuning round
+- A wrong-direction change at this juncture (e.g., loosening if bear continues, or failing to loosen if bull starts) costs more than waiting
+- No finding met the priority ≥ 2.0, low/med risk, ≤10 lines criteria
+
+**Watch List for Henry (post-Option B review):**
+1. AERO catalyst: Predictive Allocation July 2026 = potential short-term alpha. Already in registry.
+2. If market confirms bottoming: consider raising STALE_POSITION_MIN_AGE_HOURS 36→48 and CULL_MIN_AGE_HOURS 72→120 to reduce premature exits in early recovery
+3. If bear continues: Kelly-VIX hybrid sizing for extreme-vol regimes (requires >10 lines, needs Henry's design input)
+4. Ensemble ML signal scoring: LightGBM/XGBoost voting layer (Impact 4, Complexity 5, needs separate R&D PR)
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +269,28 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**Run #35 — June 19, 2026 — Option B window completed June 15. Three actions needed:**
 
-1. **Add to Claude Code egress allowlist:**
-   - `autonomous-trading-bot-production.up.railway.app`
-   - `api.geckoterminal.com`
-   - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+### 🏁 Option B Review (PRIORITY 1 — window just closed)
+1. Pull the 30-day P&L attribution from Telegram hourly reports or `/api/portfolio` history
+2. Compare COHORT_QUALITY_7 returns vs. cbBTC/WETH 60/40 benchmark
+3. Decide: extend Option B, run Option B+, or expand cohort via explicit human PR
+4. Any cohort changes need a human-reviewed PR — CLAUDE.md Rule 1 is still in effect
+
+### 🩺 Fix the Agent's Data Access (PRIORITY 2 — 35 consecutive blind runs)
+**Add to Claude Code web session egress allowlist:**
+- `autonomous-trading-bot-production.up.railway.app`
+- `api.geckoterminal.com`
+- `api.dexscreener.com`
+
+**Or** expose a lightweight proxy endpoint on an already-allowed domain.
+
+Until this is fixed, the agent is flying blind: no Medic health check, no Scout data, no Auditor triggers based on actual performance.
+
+### 🚀 Staging Review (PRIORITY 3)
+- Manually verify bot health: https://autonomous-trading-bot-production.up.railway.app/health
+- Review `claude/cool-sagan-p21lm0` and `staging` branches for queued changes
+- Consider promoting staged fixes: `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
