@@ -1,4 +1,28 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: 35+ days since last scout (MOLT added 2026-05-14). COHORT LOCKED per CLAUDE.md Rule 1 — no TOKEN_REGISTRY edits permitted without explicit human PR. GeckoTerminal + DexScreener also blocked from this environment. Market intelligence gathered via WebSearch: Base hit $931.9M 24h volume +68.39% spike (2026-06-18/19); Aerodrome/Velodrome merging into "Aero" unified brand targeting July 2026. No token candidates proposed (data sources blocked; any proposal requires human review per cohort-lock rules).
+- **Auditor**: SKIPPED — cannot verify trigger conditions (API blocked). Bot confirmed in intentional dry-run mode (all capital liquidated 2026-05-29). No live trading data to analyze. Note: Base market indicators suggest regime may have shifted from BEAR to BULL/VOLATILE — Option B window completed ~2026-06-14.
+
+## Critical Context Since Run #34 (New Development — Human Review Warranted)
+
+**Bot Status Change (2026-05-29):** Henry intentionally liquidated all capital to USDC and switched to dry-run/paper mode. Commit `f29798d` added `/api/admin/liquidate-all` and confirms: "Henry is pulling all real capital out of efficient-peace to run the system on paper until it's proven." The bot is running on paper, not live capital.
+
+**Option B Window Complete:** The 30-day benchmark window (2026-05-15 to ~2026-06-14) has now elapsed. Today is 2026-06-19 — 5 days past the window close. Cohort review, performance assessment, and potential go/no-go on re-deploying capital are now in scope for human review.
+
+**Market Conditions (2026-06-19):** Base is seeing extreme volume (+68.39%, $931.9M 24h). Aerodrome handling $12.4M/day. HYPE (Hyperliquid) reached ATH $75.52 on June 1. Market appears to have shifted significantly since the 70-day bear market referenced in Run #34.
+
+**Aerodrome Merger (July 2026):** Aerodrome + Velodrome merging into unified "Aero" brand with cross-chain DEX. This directly affects the AERO position in TOKEN_REGISTRY. Predictive Allocation model launching July 2026 (rewards forecasting future liquidity demand over historical).
+
+---
+
+## Original Report (Run #34 and Prior)
+
+# MEDIC REPORT — 2026-05-15T (previous) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +90,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | Scout blocked (cohort locked per CLAUDE.md Rule 1; GeckoTerminal 403 from cloud env); auditor skipped (API blocked + bot in dry-run mode). KEY: Option B window completed ~2026-06-14. Bot liquidated to paper mode 2026-05-29. Base $931.9M volume +68% spike. Aerodrome→Aero merger July 2026. Human review warranted. |
 
 ## Bot Health Evidence (from git history)
 
