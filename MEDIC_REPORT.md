@@ -1,4 +1,24 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T14:03:46Z (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-19T14:03:46Z)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — GeckoTerminal also blocked (403). Last scout was 2026-05-25 (~25 days ago). Scout is overdue but cannot run without GeckoTerminal access.
+- **Auditor**: SKIPPED — bot portfolio/trade APIs blocked. Cannot calculate win rate, drawdown, or losing streak.
+
+### ⚠️ New This Run (Run #35 — 2026-06-19)
+
+1. **Option B window has ended.** The 30-day benchmark window started 2026-05-15; it completed ~2026-06-15. Henry: this is the appropriate moment to review Option B outcomes and decide on next steps. The cohort (`COHORT_QUALITY_7`) remains locked per CLAUDE.md until an explicit human PR ratifies the post-window strategy.
+
+2. **Bot appears to be in paper-trade/dry-run mode.** Last main commit (`f29798d`, 2026-05-28): `feat(admin): /api/admin/liquidate-all` — per the commit message, Henry pulled real capital out of efficient-peace to run the system on paper until it's proven. The bot has been unmonitored by this routine for ~22 days since that commit.
+
+3. **Scout is 25 days overdue.** Last scout activity was 2026-05-25 (>48h threshold). However, without GeckoTerminal access, no quality-filter verification is possible and no tokens can be responsibly added.
+
+### ⚠️ Status: 35 consecutive blocked runs — same root cause since 2026-04-14
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -205,7 +225,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,7 +233,8 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window completed ~2026-06-15** — review results, decide on cohort/strategy for next window
+5. **Bot is in paper-trade mode** (real capital withdrawn 2026-05-28) — determine when to re-capitalize
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
