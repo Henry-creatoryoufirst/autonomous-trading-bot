@@ -1,12 +1,30 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-19T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-m2zxat
+
+---
+
+## Jobs Status This Run (2026-06-19T UTC)
+
+**⚠️ NOTE: Option B 30-day benchmark window ended ~2026-06-15. CLAUDE.md scout guard ("cohort is locked") was written for that window. Henry: please advise whether to re-enable automatic scout additions to TOKEN_REGISTRY or whether human-PR-only policy continues post-window.**
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated on `claude/cool-sagan-m2zxat`.
+- **Scout**: SKIPPED — GeckoTerminal API is blocked by the same egress policy. Additionally, CLAUDE.md Rule 1 ("cohort is locked — human PR only") was still in effect during this run. Last genuine scout action was 2026-05-14 (MOLT), >36 days ago. Once Henry clarifies post-window scout policy, scout can run.
+- **Auditor**: CANNOT TRIGGER — bot metrics API (`/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`) all return 403 from this environment. Research was completed via WebSearch (4 searches). Summary: all high-priority findings are already implemented (volatility targeting ✓, Quarter-Kelly ✓, multi-agent swarm ✓, Aerodrome Slipstream ✓). No unimplemented finding met the Priority ≥ 2.0 + Risk low/medium + ≤10 lines criteria — no code changes made.
+
+### Auditor Research Findings (2026-06-19)
+- **Signal Quality**: Ensemble ML / multi-agent voting — already implemented via SWARM_AGENT_WEIGHTS. On-chain Dune/CryptoQuant signals (Impact 3/Complexity 5, Priority 0.6) → Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream optimal auto-routing — already integrated. Permit2 already batched. No new action.
+- **Position Sizing**: Volatility targeting (auto-reduce high-vol, boost low-vol) — already implemented (VOL_HIGH_THRESHOLD=6, VOL_HIGH_REDUCTION=0.4, VOL_LOW_BOOST=1.25). Quarter-Kelly already at KELLY_FRACTION=0.25. Drawdown-probability constraint (Impact 3/Complexity 2, Priority 1.5) → below threshold, watch list.
+- **Competitive Intelligence**: Intent-based MEV protection (CowSwap, 34% DEX share) — Impact 4/Complexity 5/Risk high → touches off-limits execution path. Watch list for Henry.
+
+---
 
 ## Problem
 
@@ -66,6 +84,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35+ | 2026-06-19T UTC | API unreachable (same persistent constraint). Option B window ended ~2026-06-15. Scout skipped per CLAUDE.md Rule 1 (human PR only) + GeckoTerminal blocked. Auditor research completed: all high-priority findings already implemented. No code changes. Henry: clarify post-window scout policy. |
 
 ## Bot Health Evidence (from git history)
 
