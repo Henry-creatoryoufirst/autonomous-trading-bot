@@ -1000,7 +1000,7 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // ============================================================================
 
 /** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear) */
-export const CULL_MIN_AGE_HOURS = 72; // Bear-adjusted May-2026: 120→72 — 65-day bear; dead sub-$100 research positions recycle 40% faster; Kelly criterion research confirms sustained bear regimes require accelerated capital rotation out of non-performing positions to reduce portfolio drag; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards prevent culling genuine winners
+export const CULL_MIN_AGE_HOURS = 84; // Bear/recovery-transition Jun-2026: 72→84 — BTC at $65K (RSI near historical bottom after 40% peak-to-trough decline); at bear-to-recovery transitions, flat sub-$100 research positions may be in early accumulation; 84h (3.5 days) gives one extra work-day of runway; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards still prevent culling genuine winners
 
 /** Only cull positions under this USD value — don't touch meaningful holds */
 export const CULL_MAX_USD = 100;

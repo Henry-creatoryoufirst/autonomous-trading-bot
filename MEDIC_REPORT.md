@@ -1,6 +1,44 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ OPTION B WINDOW CLOSED — Action Required for Henry
+
+The Option B 30-day benchmark window opened 2026-05-15 and closed **~2026-06-15** (today is 2026-06-19, 4 days past close). CLAUDE.md ground rules were specifically for this window. **Henry must review and update CLAUDE.md** to define post-window operating rules:
+1. Can the Scout now add to TOKEN_REGISTRY again?
+2. Can Auditor push directly to staging (vs. feature branch only)?
+3. Should COHORT_QUALITY_7 be expanded/rebalanced based on Option B results?
+4. What was the Option B outcome vs. cbBTC/WETH 60/40 benchmark?
+
+Until Henry updates the rules, automated agent continues operating under the window constraints (no TOKEN_REGISTRY writes, feature branch only).
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last actual scout: 2026-05-14, MOLT, 36 days ago — well past 48h threshold). WebSearch research completed; no Base L2 token candidates could have their contract addresses or liquidity verified without GeckoTerminal access. Per CLAUDE.md Rule 1 (cohort locked during Option B window, window now closed but rules not yet updated by Henry), no TOKEN_REGISTRY commit made. COHORT_PROPOSAL_2026-06-19.md written to repo root with verified-pending candidates.
+- **Auditor**: TRIGGERED by inferred 75-day BEAR market (48h+ threshold clearly met). 4 research searches completed (signal quality, execution efficiency, position sizing, competitive intel). Top finding: CULL_MIN_AGE_HOURS 72→84h — BTC at $65K showing RSI approaching historically important bottom levels (down 40% from $105K peak); at bear-to-recovery transitions, small research positions need one extra day of runway before culling. Priority 2.0 (Impact 2, Complexity 1, Risk low). IMPLEMENTED in constants.ts. Committed to feature branch `claude/cool-sagan-hd4vif`.
+
+## Auditor Research Summary (Run #35 — 2026-06-19)
+- **Signal Quality**: Market at potential bottom — BTC RSI approaching historical bottom levels, cautiously optimistic regime. Virtuals Protocol AI agents still strong on Base with deep liquidity on graduated tokens (Uniswap V3 pools). No new indicator combinations identified beyond current implementation. Watch list: on-chain smart money clustering (whale wallet convergence within time window). (Impact 2/Complexity 4/Risk medium → watch list. Priority 0.5)
+- **Execution Efficiency**: KEY FINDING — Aerodrome launched Predictive Allocation (June 14, 2026) replacing weekly gauge voting with forward-looking prediction market for liquidity. AERO token surged 22% on announcement. Aerodrome + Velodrome cross-chain merger into "Aero" planned July 2026 — unified DEX will consolidate Base + Optimism + Ethereum mainnet liquidity. NVR auto-benefits from DEX-level improvements without code change. (Priority 0 — no action needed, architecture already optimal)
+- **Position Sizing**: KEY FINDING — CULL_MIN_AGE_HOURS 72→84h IMPLEMENTED. BTC at $65K (down 40% from $105K peak), weekly RSI approaching historically important bottom levels (multiple analysts consensus for $100K+ by year-end 2026). At bear/recovery transitions, research positions under $100 that have been flat for 72h may be in early accumulation phase rather than dead money. Raising from 3 days to 3.5 days (84h) reduces premature culling while CULL_MAX_USD=$100 and CULL_MIN_PNL_PCT=-5% guards remain in place. (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED.
+- **Competitive Intelligence**: Aerodrome/Velodrome merger into "Aero" (July 2026) will be the dominant cross-chain DEX — NVR's existing Aerodrome Slipstream routing auto-benefits. AI trading bots in 2026 combine Kelly Criterion with price lag detection; NVR already at Quarter-Kelly (0.25×) with multi-timeframe flow signals. No new actionable pattern found. (Priority 0)
+
+## Scout Research Summary (Run #35 — 2026-06-19)
+| Token | Chain | Liquidity | Vol 24h | Verified? | Score | Decision |
+|-------|-------|-----------|---------|-----------|-------|---------|
+| FARTCOIN | Solana (not Base!) | Unknown | High | No | N/A | REJECTED — wrong chain |
+| AERO | Base (existing) | High | $12.4M | Already in registry | — | SKIP |
+| TAO (Bittensor) | Not Base | Unknown | High | No | N/A | REJECTED — wrong chain |
+| VIRTUAL | Base (existing) | $500M cap | High | Already in registry | — | SKIP |
+
+**WebSearch limitation**: Without GeckoTerminal access, cannot confirm Base L2 contract addresses, exact pool liquidity ($100K+ requirement), or 24h volume ($50K+ requirement) for any new token candidates. Cannot safely add to TOKEN_REGISTRY without verified on-chain data. Henry should manually check GeckoTerminal /networks/base/trending_pools for current candidates.
+
+---
+
+## Previous Run Status (Run #34 — 2026-05-15T UTC)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +104,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | **⚠️ OPTION B WINDOW CLOSED** (June 15). Scout ran research but no TOKEN_REGISTRY commit per CLAUDE.md Rule 1 (rules not yet updated by Henry post-window). COHORT_PROPOSAL_2026-06-19.md written. Auditor TRIGGERED (75-day bear). Top finding: CULL_MIN_AGE_HOURS 72→84h — BTC at $65K RSI approaching historical bottom; partial cull relaxation at bear/recovery transition. (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED. |
 
 ## Bot Health Evidence (from git history)
 
