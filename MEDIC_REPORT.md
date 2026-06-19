@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | Scout skipped (GeckoTerminal API blocked; CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY auto-adds — cohort changes require human PR even post-window); auditor raised HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K — Base DEX vol recovered to ~$3B/day from $673M/day bear floor; $200K/h1 filter proportionally weaker at 4.5× higher market volume; $250K restores ~0.5% hourly-vol filter strength |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,30 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). 35th consecutive run with same network restriction.
+- **Scout**: SKIPPED — GeckoTerminal API blocked (403). Additionally, CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY auto-adds regardless of window status — cohort changes require explicit human PR.
+- **Auditor**: TRIGGERED by inferred BEAR market (BTC ~$69K, -45% from Oct 2025 peak of $126K; 48h+ BEAR threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K — Base DEX vol recovered to ~$3B/day from $673M/day bear floor; restores original ~0.5% hourly-vol filter strength at 4.5x higher market volume. IMPLEMENTED in constants.ts on `claude/cool-sagan-m1qelm` branch. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-19)
+- **Signal Quality**: On-chain confluence (funding rates, OI, exchange flows) as explicit confirmation layer. Already partially implemented via LARGE_TRADE_THRESHOLD_USD=2500 whale flow and DEX buy-ratio signal. Full integration complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome+Velodrome merge ongoing. Slipstream concentrated liquidity evaluates hundreds of routing paths — bot auto-benefits without code change. No new action. (Priority 0)
+- **Position Sizing**: Adaptive Kelly criterion confirms "reduce position sizes during high volatility; update weekly or after 20 trades." KELLY_FRACTION=0.25 + KELLY_ROLLING_WINDOW=30 + TRENDING_DOWN×0.75 already correct for current uncertain market. No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — Base DEX volume recovered to ~$3B/day (June 2026, near record); AI-linked tokens posting double-digit gains while BTC bleeds; AI agents ($73M+ settled, 176M+ transactions May 2025-Apr 2026) dominating on-chain execution. Primary actionable: HOT_MOVER_MIN_VOLUME_H1_USD 200K→250K (restores relative filter strength at recovered DEX volumes). Cross-chain arbitrage by AI agents — watch list for Henry (requires major architecture change). (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+
+## ⚠️ Henry's Review Notes (Run #35 — Post-Option-B-Window)
+
+The Option B 30-day benchmark window closed ~2026-06-15. Key items for human review:
+
+1. **Bear-adjusted constants**: Runs #17-34 (Apr–May 2026) tightened 15+ constants for bear market. With BTC recovering (even at -45% from peak, the "cautiously constructive" short-squeeze rebound per June 6 data), consider reviewing: KELLY_ROLLING_WINDOW 30→40, HOT_MOVER_MIN_CHANGE_H1_PCT 7→6, RIDE_THE_WAVE_MIN_MOVE 7→6 now that the acute bear phase may be easing.
+
+2. **AI sector outperformance**: Research confirms AI tokens posting double-digit gains in June 2026 while BTC bleeds. Consider reviewing ALTSEASON_SECTOR_BOOST.AI_TOKENS (currently 0.05) if regime detection classifies current market as altseason.
+
+3. **Cohort expansion**: Option B window closed. If performance met the ≥5% annualized vs cbBTC/WETH 60/40 hurdle, consider scheduling human PRs to expand COHORT_QUALITY_7. Candidates queued from earlier scout sessions (cbDOGE, KAITO, UP, SYRUP, MOLT — already in TOKEN_REGISTRY as non-cohort entries).
+
+4. **Staging promotion**: Significant work queued on `claude/cool-sagan-m1qelm` and previously on `claude/*` branches. Review staging workflow.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
