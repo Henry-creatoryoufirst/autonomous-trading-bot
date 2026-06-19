@@ -1,12 +1,31 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ CRITICAL NEW CONTEXT (2026-06-19)
+
+**Bot is in paper mode. All real capital withdrawn.**
+
+Commit `f29798d` (2026-05-28): Henry executed `feat(admin): /api/admin/liquidate-all` —
+all real capital pulled from `efficient-peace`. Liquid USDC ($1,152.88) already withdrawn;
+remaining ~$1,700 (WETH + Aave + cbLTC) swept to USDC for withdrawal. Bot is now running
+with `TRADING_ENABLED=false` (dry-run / paper mode). **No live trades are being executed.**
+
+**Implication:** The Medic/Scout/Auditor loop is effectively in maintenance-only mode.
+The Option B 30-day benchmark window ended ~2026-06-15 (today: 2026-06-19).
+Henry should decide whether to restart live trading, and if so, which constants to
+reset/update before re-enabling `TRADING_ENABLED=true`.
+
+**Market context (as of 2026-06-19):**
+- Fear & Greed Index: 18–23 (Extreme Fear)
+- Bitcoin: ~$64K after 3 consecutive red monthly candles
+- Regime: BEAR / Extreme Fear — sustained for 48+ hours (threshold met for Auditor)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-19T UTC (Run #35)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-gw9c2u (per CLAUDE.md Rule 2 — NOT pushing to staging)
 
 ## Problem
 
@@ -66,6 +85,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | **CRITICAL**: Bot in paper mode since 2026-05-28 (liquidate-all + TRADING_ENABLED=false). Option B window ended ~2026-06-15. Scout: 36 days since last scout (MOLT 2026-05-14), but GeckoTerminal blocked + CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY edits without human PR. Auditor: Bear/Extreme Fear (F&G 18-23) triggered research — no implementation (bot in paper mode; CLAUDE.md Rule 2 prohibits pushing to staging). Research documented below. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +109,39 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints — both direct curl [host not in egress allowlist] and WebFetch return 403). NEW: Bot is in paper mode since 2026-05-28; all real capital withdrawn. No code fix possible — cannot even assess bot error state remotely. MEDIC_REPORT updated (Run #35).
+- **Scout**: ATTEMPTED RESEARCH — last scout was 2026-05-14 (~36 days ago, well over 48h threshold). GeckoTerminal API blocked by network egress (403). WebSearch too general for reliable pool liquidity/volume/age verification. No tokens added to TOKEN_REGISTRY (CLAUDE.md Rule 1: prohibited without explicit human PR). Research flagged: AERO restructuring with prediction market incentive layer (July 2026 launch), Virtuals/AI agent ecosystem active. If Henry wants a scout run, needs to either (a) allow `api.geckoterminal.com` in egress settings, or (b) run scout manually with GeckoTerminal access.
+- **Auditor**: TRIGGERED (BEAR regime, Fear & Greed 18–23, 3+ red monthly candles, sustained >48h). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). NO IMPLEMENTATION — bot is in paper mode; would be meaningless to tune constants while TRADING_ENABLED=false. Findings documented below for Henry's review when live trading resumes.
+
+## Auditor Research Summary (Run #35 — 2026-06-19)
+
+### Signal Quality
+**Finding:** 2026 leading bots use macro sentiment as a veto condition — if F&G is in Extreme Fear (sub-25), the AI downgrades ALL long signals even if technicals look perfect. NVR already integrates F&G into AI prompt. No new action needed. (Impact 2, Complexity 1, Priority 2.0 — already implemented)
+
+### Execution Efficiency
+**Finding:** Aerodrome Slipstream auto-routes through CL pools, stable pools, and multi-hop paths without code change. The planned Aerodrome+Velodrome merger (Q2-2026 "Aero" unified DEX) will auto-benefit NVR routing at the DEX level. No code change required. (Impact 2, Complexity 0, Priority N/A — already handled at DEX layer)
+**Slippage finding:** Research suggests 0.5% slippage tolerance "better on liquid pairs" vs current generous settings. However, touching slippage is off-limits per Auditor Safety (in executeDirectDexSwap/executeSingleSwap). → Watch list for Henry.
+
+### Position Sizing
+**Finding:** Quarter-Kelly (25%) confirmed as optimal for crypto volatile/bear markets (Atlas Peak Research 2026, Altrady). "Position sizes should be reduced for high-volatility periods and new tokens with limited history." NVR already at KELLY_FRACTION=0.25. No further reduction needed — at the recommended level. (Impact 0, Priority 0 — already at optimal)
+
+### Competitive Intelligence
+**Finding:** Coinbase launched autonomous AI trading agents (June 11, 2026) natively connecting to Coinbase accounts. This is directly relevant to NVR's CDP-based architecture — NVR is ahead of this curve already. CoW Protocol batch auctions (34%+ DEX aggregator share, $9B/mo) continue to be the most effective MEV mitigation but require touching executeDirectDexSwap (off-limits). MEV landscape: AI-on-AI MEV accelerating in 2026; NVR's sequencer-direct RPC + TWAP slicing remains the correct defense. (Impact 1, Priority 0 — watch list for Henry)
+
+**Top finding for implementation (when bot returns to live mode):** Slippage tightening (0.5% on liquid pairs) — but requires Henry to modify `executeDirectDexSwap` directly. Not auto-implementable.
+
+## Recommended Actions for Henry (Run #35)
+
+1. **Decide on live trading restart**: Option B window ended 2026-06-15. Is the bot returning to live trading? If yes, re-enable `TRADING_ENABLED=true` and review current constants (many were tuned down during the bear window).
+2. **Scout run needed**: 36 days since last scout. Either add `api.geckoterminal.com` to egress allowlist, or run a manual scout with GeckoTerminal access. The Aerodrome prediction market launch (July 2026) may bring new tokens worth watching.
+3. **Egress allowlist (still needed)**:
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+4. **Consider slippage tightening**: 0.5% on liquid pairs vs current generous settings — touches off-limits functions so needs direct human edit.
+5. **Post-window strategy review**: Now that Option B data is complete, what did the 30-day window show? Did the 7-token cohort outperform cbBTC/WETH 60/40 by ≥5% annualized?
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
