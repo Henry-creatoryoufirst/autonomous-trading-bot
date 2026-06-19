@@ -1,4 +1,14 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints + egress policy blocks `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`). MEDIC_REPORT updated (Run #35). No changes to agent code. **This is now 35+ consecutive blocked runs — the egress allowlist action below is urgent.**
+- **Scout**: RAN (research only) — last scout commit was 2026-05-25 (~25 days ago, well past 48h threshold). GeckoTerminal API blocked; used WebSearch instead. Per CLAUDE.md Rule 1 (cohort locked, Option B benchmark window), auto-add to TOKEN_REGISTRY is PROHIBITED. Scout findings written to `COHORT_PROPOSAL_2026-06-19.md` for Henry's review. Candidates identified: SPK (Spark Protocol, $6.5B TVL DeFi), HOME (DeFi.app, multi-chain including Base), and AERO (Aerodrome upgrade — already in registry). None verified against $100k liquidity / $50k vol / 3-day pool age criteria due to API block — human verification required before any addition.
+- **Auditor**: SKIPPED — cannot assess trigger conditions (API blocked). Market WebSearch signals suggest possible BULL recovery (Bitcoin bounce, AERO +30% June 16-18); cannot infer BEAR trigger as previous runs did. Skipping to avoid spurious parameter changes.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -65,6 +75,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-19T UTC | Scout ran (research-only, API blocked) — COHORT_PROPOSAL_2026-06-19.md written; per CLAUDE.md Rule 1 no TOKEN_REGISTRY edit. Auditor skipped (API blocked, possible BULL recovery). |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
