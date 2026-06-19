@@ -1,12 +1,16 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
-## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+⚠️ **OPTION B WINDOW CLOSED** — The 30-day benchmark window ended ~2026-06-15. Today is 2026-06-19. Agent has been unable to access the bot API for all 35 runs since 2026-04-14. Henry's review is needed.
+
+⚠️ **AERODROME ARCHITECTURE CHANGE (July 2026)** — Dromos Labs announced June 14, 2026: Aerodrome will replace weekly gauge voting with "Predictive Allocation" in July 2026. Aerodrome + Velodrome merging into unified cross-chain DEX "Aero". AERO rallied ~22% on announcement. NVR uses Aerodrome Slipstream for 50%+ of routing — this infrastructure change warrants Henry's review before July.
+
+## Environment (Run #35)
+- Run timestamp: 2026-06-19T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ehc39s
 
 ## Problem
 
@@ -66,6 +70,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | **NEW: Option B window closed ~2026-06-15. Scout threshold exceeded (36 days since MOLT, last non-reverted add). Scout BLOCKED: GeckoTerminal blocked + CLAUDE.md Rule 1 requires human PR post-window. Auditor BLOCKED: API unreachable. Key Intel: Aerodrome Predictive Allocation (July 2026) — affects NVR routing. Requires Henry review.** |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +95,46 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code changes made. Option B window has now closed.
+- **Scout**: BLOCKED — two reasons: (1) GeckoTerminal API (`api.geckoterminal.com`) unreachable from this environment (network egress); (2) per CLAUDE.md Rule 1, any TOKEN_REGISTRY additions post-Option-B require explicit human PR, not auto-commit. WebSearch research ran; key finding: Aerodrome "Predictive Allocation" July 2026 launch (see below). Scout research documented here — no TOKEN_REGISTRY change made.
+- **Auditor**: BLOCKED — cannot retrieve `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` metrics. Cannot assess win_rate, drawdown, or losing_streak without API access.
+
+## Scout Research — Run #35 (WebSearch only, GeckoTerminal blocked)
+
+### Key Finding: Aerodrome Predictive Allocation (July 2026)
+
+**Source:** Dromos Labs announcement June 14, 2026 (cryptodaily.co.uk)
+**Impact on NVR:** HIGH — Aerodrome handles 50%+ of NVR's DEX routing via Slipstream
+
+- Aerodrome replacing weekly gauge voting with "Predictive Allocation" — rewards LPs who predict where future trading demand will be highest (prediction-market mechanics)
+- Aerodrome + Velodrome merging into unified cross-chain "Aero" DEX targeting July 2026
+- AERO token +22% on announcement, derivatives volume $46.25M
+- Existing Slipstream V3 pools require LP migration to MEV-resistant pools
+
+**What this means for NVR:**
+- Bot auto-routes through Aerodrome Slipstream — swap routing itself is unchanged in July (DEX handles it)
+- If pool migrations cause temporary liquidity gaps, some tokens may have higher slippage transiently
+- AERO token (already in TOKEN_REGISTRY) may have elevated volatility through July launch
+- Worth watching: does `executeDirectDexSwap` need pool address updates after migration?
+
+**Recommendation for Henry:** Monitor Aerodrome migration timeline; consider reading Dromos Labs July release notes before pool migrations complete.
+
+### Base Ecosystem Status (June 2026)
+- Base DeFi TVL: ~$4.5B (May 2026)
+- Base surpassed Ethereum and BNB Chain in weekly DEX volume for first time
+- 85%+ of new Base token launches use Aerodrome for primary liquidity
+- Top projects: Aerodrome, Virtuals Protocol, Farcaster, Aave, Brett (all already in registry)
+
+### No New Token Candidates
+Could not verify liquidity (>$100k), volume (>$50k), or pool age (>3 days) for any specific candidates — GeckoTerminal blocked. WebSearch returns market commentary, not structured pool data. No additions to TOKEN_REGISTRY this run.
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
@@ -203,17 +243,35 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
-## Recommended Action for Henry
+## Recommended Action for Henry (Run #35 — Updated 2026-06-19)
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run (since 2026-04-14) with the same network restriction. The Option B window has closed. Critical items:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Network egress — fix the environment (most important):**
+   Add to Claude Code web environment egress allowlist:
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+   Guide: https://code.claude.com/docs/en/claude-code-on-the-web (Network policy settings)
+
+2. **Manually verify bot health now that Option B is closed:**
+   - Check: https://autonomous-trading-bot-production.up.railway.app/api/errors
+   - Check: https://autonomous-trading-bot-production.up.railway.app/api/portfolio
+   - Telegram bot @Neverrestcapital_bot also shows live status
+
+3. **Review Aerodrome July 2026 changes:**
+   Aerodrome "Predictive Allocation" launches July 2026 (announced June 14).
+   NVR uses Aerodrome for 50%+ of routing — monitor if pool migrations affect slippage.
+   AERO is already in TOKEN_REGISTRY; volatility may be elevated through launch.
+
+4. **Post-Option-B scout:**
+   Scout has 36+ days of backlog (last non-reverted add: MOLT, 2026-05-14).
+   Per CLAUDE.md Rule 1, new TOKEN_REGISTRY additions need explicit human PR.
+   Once egress is fixed, the Scout can gather GeckoTerminal data and you can review a proper cohort proposal.
+
+5. **Option B benchmark review:**
+   Window closed ~2026-06-15. Recommend pulling the performance report from:
+   `/api/portfolio` and signal-service `/outcomes` to assess vs cbBTC/WETH 60/40 benchmark.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
