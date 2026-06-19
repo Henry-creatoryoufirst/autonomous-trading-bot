@@ -1,4 +1,14 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Note: Option B benchmark window closed ~2026-06-15 (35 days elapsed); Henry should review benchmark vs cbBTC/WETH 60/40 and decide on next strategy iteration.
+- **Scout**: SKIPPED — GeckoTerminal API blocked by egress policy (same constraint). Last successful scout: 2026-05-14 (MOLT), 36 days ago. NOTE: The CLAUDE.md cohort rules (Rule 1 + Rule 2) remain in effect post-window until Henry explicitly lifts them.
+- **Auditor**: SKIPPED — Cannot fetch bot API metrics (win_rate, drawdown, losing_streak all require /api/trades and /api/portfolio which are blocked).
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +76,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | Scout skipped (GeckoTerminal blocked); auditor skipped (no API data). **Option B window closed ~2026-06-15** — 35 days elapsed. Henry should review benchmark results. |
 
 ## Bot Health Evidence (from git history)
 
