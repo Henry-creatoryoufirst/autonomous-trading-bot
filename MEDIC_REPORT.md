@@ -1,6 +1,18 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-19T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-19T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **Gap note: 35 days since last run (#34 was 2026-05-15).**
+- **Scout**: BLOCKED (dual reason): (1) `api.geckoterminal.com` not in egress allowlist — cannot fetch pool data for quality filter. (2) Option B cohort lock still requires explicit human PR to unlock even though window ended ~2026-06-15. Last scout commit: 2026-05-25 (25 days ago, well past 48h). **Action needed: Henry must either unlock Scout via explicit PR or add GeckoTerminal to egress allowlist — or both.**
+- **Auditor**: BLOCKED — cannot reach `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` to check trigger conditions (all 403). No inferred trigger used this run; real data required to avoid noise.
+
+## ⚠️ Option B Window Status
+
+The Option B 30-day benchmark window started 2026-05-15 and was projected to complete **~2026-06-15**. Today is **2026-06-19** — the window has ended. Per CLAUDE.md Rule 1, cohort changes now require an explicit human PR. **Henry: if Option B results are in, this is the moment to ratify the Scout unlock.**
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +78,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-19T UTC | **35-day gap since last run.** Scout blocked (GeckoTerminal egress + cohort lock). Auditor blocked (no bot API). Option B window ended ~2026-06-15 — cohort unlock requires Henry's explicit PR. No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,8 +218,14 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run blocked by the same network restriction. Three new urgent items:**
 
+### 🔴 NEW — Option B Window Ended
+- Window was ~2026-05-15 → ~2026-06-15. Today is 2026-06-19. **Window closed 4 days ago.**
+- Scout has been waiting 25 days (last run 2026-05-25).
+- To unlock: open a PR to `token-registry.ts` explicitly adding new cohort candidates (review + merge = human ratification per CLAUDE.md Rule 1).
+
+### 🔴 PERSISTENT — Network Egress Fix Required (35 runs blocked)
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
