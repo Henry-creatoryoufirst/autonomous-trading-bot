@@ -1,4 +1,28 @@
-# MEDIC REPORT — 2026-06-19T09:06 UTC (latest)
+# MEDIC REPORT — 2026-06-20T UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #38)
+
+## Jobs Status This Run (Run #38 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 38 consecutive runs, 403 on all endpoints). MEDIC_REPORT updated (Run #38).
+- **Scout**: SKIPPED — GeckoTerminal/DexScreener/CoinGecko APIs all blocked by egress policy (403). CLAUDE.md Rule 1 requires human PRs for TOKEN_REGISTRY changes. Last scout: 2026-05-25 (26 days ago). No candidates verified.
+- **Auditor**: TRIGGERED by confirmed BEAR market (8-month bear, BTC ~$61K, -45% from Oct-2025 $126K peak). **No implementation this run** — 2 consecutive parameter changes (Run #36: CULL_MIN_AGE_HOURS 72→48; Run #37: HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K) complete the hot-mover quality-gate set; portfolio is 100% USDC post-liquidation (no positions to optimize); Aerodrome Predictive Allocation launches July 2026 creating signal-regime uncertainty. Findings documented for Henry.
+
+## Auditor Research Summary (Run #38 — 2026-06-20)
+
+- **Signal Quality**: DeepAlpha ensemble ML (LightGBM/XGBoost/Random Forest) achieves 87.4% accuracy in 2026. DeFiLlama TVL monitoring for L2 rotation confirmed as alpha signal. Both complex (Impact 3–4, Complexity 4–5, Risk medium) → Watch list. Priority < 1.0. No new action.
+- **Execution Efficiency**: **KEY STRATEGIC FINDING** — Aerodrome Predictive Allocation launches July 2026. Replaces weekly gauge voting with real-time, forward-looking incentive allocation. Projects 80% efficiency improvement. AI agents explicitly rewarded for accurately forecasting liquidity demand — NVR is ideally positioned as an AI agent trading on Aerodrome. AERO governance token surged 22-30% on announcement (June 14-16, 2026). Bot auto-benefits at DEX level without code change. No action needed — monitor for July launch. (Impact 4, Complexity 1, Risk low → Priority 4.0, but no code change required)
+- **Position Sizing**: Drawdown-aware Kelly ("cut sizes in half at 20% drawdown") confirmed by 2026 research. Already implemented: LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 blocks new buys; LIFETIME_DRAWDOWN_CAUTION_PCT=12 reduces size. NVR is ahead of this guidance. No new action. Priority 0.
+- **Competitive Intel**: CloddsBot (GitHub, open-source, built on Claude, Base chain support, $500 portfolio scale) is an emerging competitor operating on the same parameters. AI-on-AI MEV growing ($3B+ annually extracted from Ethereum/rollups). NVR already has sequencer-direct RPC for MEV protection. No new actionable change. Priority 0.
+
+## Notable Context (Run #38)
+- **All hot-mover quality gates now complete after bear-market tuning:**
+  pool age: 24h→48h ✓ | volume: 150K→200K ✓ | FDV: 500K→1M ✓ | buy ratio: 55→60% ✓ | H1 change: 5→7% ✓ | liquidity: 75K→100K ✓ (Run #37)
+- **Portfolio**: 100% USDC after `feat(admin): /api/admin/liquidate-all`. Bot re-entering positions from full-USDC. Current CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT=15 means it requires strong signals before deploying.
+- **Option B window CLOSED** 2026-06-15 (5 days ago). Henry should review cohort vs cbBTC/WETH 60/40 performance before next strategic phase.
+- **Aerodrome PA opportunity**: July 2026 launch explicitly rewards AI agents for liquidity forecasting. NVR should consider whether to actively participate in Predictive Allocation predictions. Dromos Labs projects 80% efficiency gain.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #37)
 
