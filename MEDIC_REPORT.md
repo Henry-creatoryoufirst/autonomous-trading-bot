@@ -90,6 +90,13 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: 37 DAYS OVERDUE — last scout ran 2026-05-14 (MOLT added). GeckoTerminal blocked; could not verify quality metrics. WebSearch ran but no tokens not already in TOKEN_REGISTRY were found. Notable strategic finding: Dromos Labs is merging Aerodrome + Velodrome into unified DEX "Aero" (launching ~July 2026). New AERO/VELO replacement token TBD — contract not yet confirmed on Base mainnet. No tokens added (quality metrics unverifiable). Scout remains overdue.
+- **Auditor**: BLOCKED — cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive. Win rate, drawdown, and streak unknown. Trigger conditions cannot be evaluated. No changes made.
+- **NEW MILESTONE**: Option B 30-day benchmark window closed ~2026-06-15. Today (2026-06-20) is 5 days past window close. Henry should review window performance vs cbBTC/WETH 60/40 benchmark and decide on cohort next steps per CLAUDE.md.
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
