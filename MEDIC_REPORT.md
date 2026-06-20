@@ -1,5 +1,40 @@
 # MEDIC REPORT — 2026-06-20T UTC (latest)
 
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #39)
+
+## Jobs Status This Run (Run #39 — 2026-06-20T ~17:30 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 39 consecutive runs, 403 on all endpoints). MEDIC_REPORT updated (Run #39).
+- **Scout**: ATTEMPTED via WebSearch (GeckoTerminal/pool APIs still blocked; last real scout 2026-05-25, >26 days ago). No new candidates confirmed — WebSearch returns general market overviews, not structured pool data (liquidity/volume/age) required for quality filtering. Scout standards maintained. See Scout Notes below.
+- **Auditor**: TRIGGERED by confirmed BEAR market (8-month bear, BTC ~$61K). **No implementation this run** — same reasoning as Run #38; additionally, Aero merger (July 2026) creates contract-address uncertainty for AERO token, making parameter changes riskier. **NEW finding: AERO token migration event** — see Notable Context below.
+
+## Scout Notes (Run #39)
+
+WebSearch for "Base L2 trending tokens high volume June 2026" and "Base chain new tokens Aerodrome" returned no specific new candidates with verifiable pool metrics. General Base ecosystem remains active (Aerodrome TVL $312M, stablecoin TVL $3.9B), but no new tokens identified with >$100K liquidity, >$50K 24h volume, and >3 days pool age that are absent from the current registry. No additions proposed.
+
+## Auditor Research Notes (Run #39)
+
+- **Aerodrome PA LAUNCHED**: Predictive Allocation model unveiled **June 17, 2026** (3 days ago, not "July" as previously reported). Already live. AI agents explicitly rewarded for forecasting liquidity demand. AERO governance +22% on announcement.
+- **Aero Merger — July 2026 TOKEN MIGRATION**: Aerodrome + Velodrome merge into unified "Aero" protocol in July 2026. **Current AERO contract (0x9401...98631) will be REPLACED by new token**. Distribution: 94.5% to current AERO holders, 5.5% to VELO holders. Migration deadline: July 2026 — failure to migrate = loss of rewards. NVR holds AERO in registry. **No code action needed yet** (new contract address unknown), but Henry should monitor and update TOKEN_REGISTRY AERO entry when new address is announced.
+- No additional parameter changes warranted (hot-mover quality gates complete as of Run #37; portfolio 100% USDC post-liquidation; Aero migration uncertainty).
+
+## Notable Context (Run #39)
+
+- **⚠️ AERO TOKEN MIGRATION — JULY 2026**: Current AERO (0x940181...98631) replaced by new unified "Aero" token. Henry must update TOKEN_REGISTRY address after migration or bot will trade defunct contract. Watch Aerodrome/Dromos Labs announcements for new address.
+- **Portfolio**: 100% USDC post `feat(admin): /api/admin/liquidate-all`. Bot re-entering from flat slate.
+- **Option B window**: CLOSED 2026-06-15 (5 days ago). Review cohort vs cbBTC/WETH 60/40 benchmark.
+- **Staging → Main pending**: 5 commits on staging not in main — see table below. Henry's action: review staging diff → merge to main → Railway auto-deploys.
+
+| Commit | Description | Impact |
+|--------|-------------|--------|
+| `baf25a5` | fix(strategy): composition frame = yardstick, not target — end dead-cash ratchet (#53) | Stops bot from over-holding USDC beyond MIN_DRY_POWDER_PCT |
+| `9a98770` | improve(auditor): CULL_MIN_AGE_HOURS 72→48 | Faster capital recycling in 8-month bear |
+| `aac4683` | improve(auditor): HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K | Completes hot-mover quality gate set |
+| `478fd66` | fix(medic): Run #35 docs | Documentation |
+| `e485af7` | docs(medic): Run #38 docs | Documentation |
+
+---
+
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #38)
 
 ## Jobs Status This Run (Run #38 — 2026-06-20T UTC)
