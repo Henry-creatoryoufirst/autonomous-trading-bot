@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-20T (current) UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-i615q7
 
 ## Problem
 
@@ -65,7 +65,21 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-20T UTC | Scout ran (37 days since last real scout). GeckoTerminal blocked; market recovery confirmed via WebSearch (Base DEX ATH $1.68B/day Aerodrome). No TOKEN_REGISTRY changes — CLAUDE.md Rule 1 requires human PR; COHORT_PROPOSAL_2026-06-20.md written. Auditor triggered (90+ day bear → bull recovery). Top finding: CULL_MIN_AGE_HOURS 72→96 — bull-recovery calibration (Base ATH volumes). IMPLEMENTED in constants.ts. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **Note: Option B 30-day benchmark window ended ~2026-06-15. Henry: please add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to Claude Code egress allowlist to unblock Medic checks going forward.**
+- **Scout**: RAN — last real scout was MOLT added 2026-05-14 (~37 days ago, well over 48h threshold). GeckoTerminal API blocked (403 from egress proxy), so no on-chain liquidity/volume verification possible. WebSearch confirms market recovery: Base DEX at ATH ($3B/day, Aerodrome alone $1.68B). Per CLAUDE.md Rule 1 and post-window rule ("explicit human PR for cohort changes"), no TOKEN_REGISTRY edits made. COHORT_PROPOSAL_2026-06-20.md written to repo root with market context and post-window readiness notes.
+- **Auditor**: TRIGGERED — inferred 90+ day bear market transitioning to bull recovery (no API trigger data available; inference from git history: BEAR confirmed through May 2026, now Base DEX at ATH in June 2026). 4 searches completed. Top finding: CULL_MIN_AGE_HOURS 72→96 — bull-recovery calibration; gives recovering sub-$100 positions one extra day before culling as market conditions improve. (Impact 2, Complexity 1, Risk low, Priority 2.0). IMPLEMENTED in `src/core/config/constants.ts`.
+
+## Auditor Research Summary (Run #35 — 2026-06-20)
+
+- **Signal Quality**: Multi-factor confluence scoring with funding rates + OI + exchange flows is 2026 standard (SaintQuant 2.5M signals/day). NVR already has: buy-ratio confluence, F&G Index veto, whale flow (LARGE_TRADE_THRESHOLD_USD=2500). Funding rate integration would require CEX API work (Impact 3/Complexity 4/Risk medium). Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream hit ATH volume ($1.68B/day on Base). Auto-routes through CL pools, stable pools, multi-hop — NVR benefits without code change. No action needed. (Priority 0)
+- **Position Sizing**: Kelly research confirms "gradually increase from quarter-Kelly as confidence grows" — market recovery supports relaxing one bear tightening. Best candidate: CULL_MIN_AGE_HOURS 72→96. (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED.
+- **Competitive Intelligence**: 80%+ of retail bots underperform buy-and-hold after fees (pumpparade.medium.com Apr-2026). Validates Option B cohort pivot (cbBTC/WETH-dominant = effectively aligned with the buy-and-hold benchmark). ARMA (Giza) is primary competitor on Base — yield-only strategy vs NVR's full trading. KEY FINDING: Post-bear recovery, remaining too conservative (over-culling positions) creates unnecessary churn. CULL_MIN_AGE_HOURS 72→96 addresses this directly. (Priority 2.0) IMPLEMENTED.
 
 ## Bot Health Evidence (from git history)
 
