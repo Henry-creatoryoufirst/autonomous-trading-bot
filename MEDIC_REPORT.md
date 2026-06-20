@@ -1,9 +1,9 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-20T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | Scout ran (37d since MOLT) — GeckoTerminal blocked, no verified new tokens; AERO +22% on Predictive Allocation (already registered). Auditor: API blocked, cannot verify triggers; research found Aerodrome Predictive Allocation AI-agent rewards (July 2026) — watch list. **Option B window closed ~June 15 — Henry should review benchmark results.** |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## ⚠️ Notable: Option B Benchmark Window Closed
+
+The 30-day Option B window (started 2026-05-15) ended approximately **2026-06-15**. Today is 2026-06-20 — 5 days past the close. Henry should:
+1. Pull production performance vs. cbBTC/WETH 60/40 benchmark — determine if ≥5% annualized outperformance was achieved
+2. Decide: continue Option B cohort / reopen cohort expansion / adjust strategy shape
+3. Per CLAUDE.md: cohort changes now allowed via explicit human PR (no longer in the lock period)
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). 35th consecutive run with this constraint.
+- **Scout**: RAN (37 days since last scout — MOLT added 2026-05-14, well past 48h). GeckoTerminal API blocked (403). Web search results: Aerodrome (AERO) +22% on Predictive Allocation announcement June 14 (already in TOKEN_REGISTRY), Aerodrome+Velodrome "Aero" merger in progress, no new Base token candidates surfaced with verified contract addresses/liquidity data. Per CLAUDE.md Rule 1: auto-adds to TOKEN_REGISTRY prohibited. NVR-HQ not in this repo checkout — cannot file COHORT_PROPOSAL to Cathedral vault. **Result: no qualifying candidates identified (insufficient verifiable data).**
+- **Auditor**: CANNOT TRIGGER — API blocked, cannot verify win_rate, drawdown, or losing_streak. Research completed (4 searches). Key finding: Aerodrome Predictive Allocation (launched July 2026) rewards AI agents for forecasting liquidity demand — potential future NVR revenue/alpha stream (watch list, complex). No constants.ts changes implemented without confirmed trigger.
+
+## Auditor Research Summary (Run #35 — 2026-06-20)
+- **Signal Quality**: On-chain funding rates + OI as confluence signals — already partially captured via order flow buy-ratio. Full integration complex (Impact 3, Complexity 3, Priority 1.0) → Watch list.
+- **Execution Efficiency**: KEY FINDING — Aerodrome Predictive Allocation (Dromos Labs, June 14 announcement, July 2026 launch) replaces gauge voting; rewards AI agents for accurately forecasting liquidity demand. NVR auto-benefits from Slipstream V3 MEV internalization without code change. Predictive Allocation participation = potential future alpha/revenue stream. (Impact 4, Complexity 4 → watch list for Henry.)
+- **Position Sizing**: Grid bots 15-25% ROI, momentum bots 18% in Q1 2026 per Phemex report. "Fewer better signals" principle aligns with NVR's confluence approach. No new auto-implementable finding.
+- **Competitive Intelligence**: Base exploring native token (no confirmed launch). MEXC Base farming guide confirms airdrop farming active — no specific NVR-actionable finding.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +225,17 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Option B window closed ~June 15** — review benchmark performance vs. cbBTC/WETH 60/40; decide on cohort expansion (now unlocked per CLAUDE.md)
+2. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+3. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
+4. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+5. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+6. **Watch list — Aerodrome Predictive Allocation** (July 2026): AI agents can earn rewards by forecasting liquidity demand on Aerodrome; evaluate NVR participation as a future alpha/revenue stream
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
