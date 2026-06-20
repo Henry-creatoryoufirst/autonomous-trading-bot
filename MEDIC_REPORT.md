@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | **⚠️ OPTION B WINDOW COMPLETED 2026-06-15** — 35 days elapsed; Henry must pull benchmark results. Scout blocked (GeckoTerminal 403 + CLAUDE.md Rule 1 cohort lock — even though 30-day window done, cohort changes still require human PR). Auditor research completed: top finding = Aerodrome "Aero" unification migration **July 2026** — router address change risk (Impact 4/5). No code changes this run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **35th consecutive blocked run.**
+- **Scout**: BLOCKED — GeckoTerminal 403; CLAUDE.md Rule 1 cohort lock (manual PR required even post-window). Last real scout was 2026-05-14 (MOLT, 37 days ago). No tokens added this run.
+- **Auditor**: API blocked; trigger conditions unknown. Research completed (4 searches). Top finding: Aerodrome "Aero" migration July 2026 — router address change risk (Impact 4/5, Complexity 3/5, Priority 1.33). **Not implemented — needs Henry review before July.** No code changes.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +214,30 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
+### 🚨 NEW THIS RUN (2026-06-20) — Option B Benchmark Window Complete
+The 30-day Option B window started 2026-05-15 and ended ~2026-06-15. Today is 2026-06-20.
+**Five days past close — pull the benchmark results now.** Compare total return vs cbBTC/WETH
+60/40. If outperformance ≥5% annualized, Option B succeeded. This requires manual on-chain
+review of the smart wallet (0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1) vs benchmark.
+
+### ⚠️ July 2026 — Aerodrome "Aero" Unification (Execution Risk)
+Aerodrome and Velodrome are merging into a single cross-chain DEX called "Aero" in July 2026
+(Dromos Labs, CoinDesk 2025-11-13). The SlipStream router address **may change**.
+Check `executeDirectDexSwap()` and `AERODROME_ROUTER` constants in agent-v3.2.ts before July.
+If the router address changes and the bot isn't updated, all DEX-fallback trades will silently
+fail. This is a ~3-4 week countdown item.
+
+### Infrastructure (Persistent)
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Consider cohort review:** CLAUDE.md Rule 1's 30-day lock ended ~2026-06-15. If Option B
+   was successful, the cohort shape and strategy can now be revised via intentional human PR.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
