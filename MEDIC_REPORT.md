@@ -1,4 +1,25 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 / egress-blocked on all endpoints). MEDIC_REPORT updated (Run #35). Working branch: `claude/cool-sagan-np4prr`.
+- **Scout**: DUE (last scout was MOLT added 2026-05-14, ~37 days ago, well past 48h threshold). However: (1) GeckoTerminal blocked by egress policy; (2) Option B window closed ~2026-06-15 — cohort unlock now possible per human PR per CLAUDE.md. Scout CANNOT execute this run due to egress block. Henry: please add `api.geckoterminal.com` to egress allowlist AND review cohort for post-Option-B additions.
+- **Auditor**: TRIGGERED by inferred 8-month BEAR market (BTC ~$69K, down ~45% from Oct-2025 ATH of $126K; analysts expect Q3-Q4 2026 bottom). 36 days since last auditor run (Run #34, 2026-05-15). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: VOLUME_SPIKE_THRESHOLD 2.0→2.5 — peak MEV activity on Base (two searchers capturing >50% new gas capacity per QuickNode 2026 research); 2× spikes are increasingly MEV-manufactured fake pumps on OP-Stack rollups; raising to 2.5× requires genuine broad-market volume confirmation before heavy-cycle trigger. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0). Pushed to `claude/cool-sagan-np4prr`.
+
+## Auditor Research Summary (Run #35 — 2026-06-20)
+- **Signal Quality**: Modern DeFi bots combine exchange flow (exchange inflow/outflow), TVL trends, funding rates, and Fear & Greed veto conditions. NVR already has F&G integration and LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merging into "Aero" MetaDEX with Slipstream V3 (first DEX-level MEV auction revenue interception). Bot auto-benefits from routing improvements without code change. MetaDEX 03 not yet live. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear. Research recommends updating "weekly or after every 20 trades" — KELLY_ROLLING_WINDOW=30 is close. Already at KELLY_FRACTION=0.25. No meaningful further reduction available. (Priority 0.5)
+- **Competitive Intelligence**: KEY FINDING — MEV activity on Base at peak: "two searchers absorbing >50% of new gas capacity" on OP-Stack rollups (QuickNode 2026). VOLUME_SPIKE_THRESHOLD 2.0→2.5 filters MEV-manufactured fake volume spikes from triggering heavy cycles. Consistent with e807de4 finding (never merged — now proposing again post-Option-B window close). IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Post-Option-B Notes (Run #35 — 2026-06-20)
+
+The 30-day Option B benchmark window (~2026-05-15 to ~2026-06-15) has now closed. Key implications:
+1. **Scout**: Cohort lock from Rule 1 is lifted. Henry can now review and merge cohort additions via explicit human PR. Scout agent is ready to run once egress allows GeckoTerminal.
+2. **Auditor**: Strategy tuning changes are no longer subject to alpha-attribution concerns from the Option B window. All changes still go through human review on staging before main.
+3. **Action needed**: Henry should review the Option B performance window results and decide on strategy shape for the next period.
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +87,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | Scout DUE but blocked (GeckoTerminal egress-blocked; Option B window now closed ~2026-06-15 — cohort unlock possible via human PR); auditor raised VOLUME_SPIKE_THRESHOLD 2.0→2.5 — 8-month bear; peak MEV on Base (two searchers >50% new gas capacity, QuickNode 2026); fake 2× volume spikes filter out at 2.5×. Branch: claude/cool-sagan-np4prr |
 
 ## Bot Health Evidence (from git history)
 

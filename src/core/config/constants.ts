@@ -154,7 +154,7 @@ export const PRICE_CHANGE_THRESHOLD = 0.02; // 2%
 export const FG_CHANGE_THRESHOLD = 5; // 5 points
 
 /** Volume spike threshold (multiple of 7-day average) to trigger heavy cycle */
-export const VOLUME_SPIKE_THRESHOLD = 2.0;
+export const VOLUME_SPIKE_THRESHOLD = 2.5; // Bear-adjusted Jun-2026: 2.0→2.5 — 8-month bear; peak MEV on Base (two searchers capturing >50% of new gas capacity, QuickNode 2026); 2× spikes are increasingly MEV-sandwich manufactured on OP-stack rollups; 2.5× requires genuine broad-market volume confirmation before heavy-cycle trigger
 
 // ============================================================================
 // v6.2: ADAPTIVE CYCLE ENGINE — Dynamic tempo based on market conditions
