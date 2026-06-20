@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | Scout skipped — CLAUDE.md cohort-locked (Option B window ended ~2026-06-15; cohort changes require explicit human PR per Rule 1); GeckoTerminal API also blocked. Auditor: no implementation — bot API unreachable, cannot verify performance metrics, regime transition underway (BTC $60K→$67K recovery, F&G still Extreme Fear). Research summary filed below. **⚠️ Option B window ended 2026-06-15. Human review of bear-adjusted constants recommended.** |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,57 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Note: no staging branch available in this checkout — working on `claude/cool-sagan-8o1iqk`.
+- **Scout**: SKIPPED — CLAUDE.md Rule 1 (cohort locked; cohort changes require explicit human PR). Option B window ended ~2026-06-15. GeckoTerminal API also blocked (403). Last clean scout: SYRUP added 2026-05-08 (~43 days ago). Candidate proposals require Henry to open a PR per CLAUDE.md.
+- **Auditor**: Research-only — no implementation. Bot API unreachable prevents verifying performance trigger conditions (win rate, drawdown, streak). Market regime is transitioning (BTC $60K→$67K recovery, F&G recovering from extreme fear, NOT confirmed bull). Auto-implementing bear-to-bull constant rollback without confirmed metrics risks over-optimism. Full research summary below. **Henry action required: review bear-adjusted constants for post-Option-B rollback as recovery confirms.**
+
+## Auditor Research Summary (Run #35 — 2026-06-20)
+
+### ⚠️ KEY CONTEXT: Option B Window Ended (2026-06-15)
+
+The 30-day benchmark window closed 5 days ago. All 18+ bear-adjusted constants in `constants.ts` were tuned for a 70-day bear market (Feb–May 2026). Market regime as of 2026-06-20:
+- **Bitcoin**: Recovering from $60K bear bottom → $67K consolidation (off 47% from $126K peak)
+- **Bitcoin dominance**: 58% (altcoins still suppressed)
+- **Fear & Greed**: Recovering from extreme fear, but NOT yet at neutral (50). Still structurally bearish.
+- **Verdict**: Bear-to-bull **transition**, not confirmed bull. Quarter-Kelly (KELLY_FRACTION=0.25) is exactly right for this uncertainty per Kelly research.
+
+### Signal Quality
+- Market still in "extreme fear to fear" zone — buy-ratio thresholds (HOT_MOVER_MIN_BUY_RATIO=0.60, FLOW_REVERSAL_EXIT_BUY_RATIO=38) remain appropriate.
+- Altcoins with AI/GameFi narrative showing selective strength (LINK in cohort benefits from AI narrative).
+- No new indicator combination found that beats current stack in transition regimes. **No action.** (Impact 2/Complexity 4/Risk med → Watch list)
+
+### Execution Efficiency
+- Aerodrome+Velodrome merger ongoing in 2026; Slipstream V3 MEV auction revenue routing live.
+- Bot auto-benefits from V3 routing without code changes (same as Run #34 finding).
+- **No action.** (Priority 0)
+
+### Position Sizing — WATCH LIST for Henry
+Bear-adjusted constants that become candidates for rollback when F&G sustains above 50 and BTC reclaims 200-day MA (~$72K):
+- `STALE_POSITION_MIN_AGE_HOURS`: 36 → consider 42-48h (give recovering positions more time)
+- `CULL_MIN_AGE_HOURS`: 72 → consider 96-120h (recovery positions need time)
+- `FLOW_REVERSAL_EXIT_BUY_RATIO`: 38 → consider 40 (bear baseline no longer as suppressed)
+- `DECEL_MIN_DROP_FROM_PEAK`: 6 → consider 7 (buy ratio peaks are recovering)
+- `DECEL_MIN_PROFIT_PCT`: 2 → consider 3 (recovery gains extend further before reversal)
+- Kelly research: "reduce position sizes below theoretical Kelly optimum during regime transitions." KELLY_FRACTION=0.25 is already Quarter-Kelly and correct for this period.
+
+### Competitive Intelligence
+- Base L2 daily DEX volume recovering but still below bull peaks.
+- Altcoins with AI narrative (LINK) showing selective strength vs. broad altcoin weakness.
+- MEV sandwich risk on micro-cap pools remains elevated (HOT_MOVER_MIN_FDV_USD=1M stays justified until confirmed bull).
+- **No action.** (Priority 0)
+
+### Action Taken
+No implementation. Reasons: (1) bot API unreachable — cannot verify actual win rate, drawdown, or streak; (2) regime transition creates high uncertainty — premature bull-mode adjustments risk over-exposure during potential dead-cat bounce; (3) Option B window just ended — Henry should intentionally review and ratify any post-window strategy shifts.
+
+### Watch List for Henry's Review
+1. **Bear constant rollback plan**: When F&G sustains >50 AND BTC reclaims $72K 200-day MA, roll back the 5 constants listed above toward pre-bear values. Suggest doing this as a single human-authored PR with clear rationale.
+2. **Scout cohort review**: 43+ days since last scout. Option B window ended. Henry may want to review the cohort and either add candidates (SYRUP, UP, B3 from earlier scouts) or consider rotating underperformers.
+3. **Network egress fix**: The monitoring routine has been blind to the bot API for 35+ runs. Adding `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to the Claude Code remote execution egress allowlist would restore full Medic + Auditor capability.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
