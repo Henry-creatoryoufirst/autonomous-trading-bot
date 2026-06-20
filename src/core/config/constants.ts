@@ -461,7 +461,7 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  */
 export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
 export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
-export const NORMAL_CONFLUENCE_BUY = 27;    // Bear-adjusted May-2026: 25→27 — 46-day bear market; false-positive entry rate elevated; unify with re-entry threshold for equal caution on all buys.
+export const NORMAL_CONFLUENCE_BUY = 25;    // Recovery-phase Jun-2026: 27→25 — bear 100+ days; Option B window closed Jun-15; BTC ~$61K in analyst support range ($60–68K); restores 2-pt fresh-entry discount vs REENTRY_CONFLUENCE_BUY (27); begins cautious recovery positioning from the bottom range.
 export const NORMAL_CONFLUENCE_SELL = -18;  // Bear-adjusted May-2026: -20→-18 — 51-day bear; sell-side was the last untouched threshold; lower magnitude allows exits on weaker sell signals, reducing position overhang in sustained downtrend.
 
 // ========================================================================

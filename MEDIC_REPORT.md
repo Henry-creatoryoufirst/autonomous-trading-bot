@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-20T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-p5x0ja
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | Scout skipped (GeckoTerminal blocked; CLAUDE.md Rule 1 — cohort changes require human PR even post-window); auditor eased NORMAL_CONFLUENCE_BUY 27→25 — Option B window closed Jun-15; BTC ~$61K in $60-68K analyst support range; restores 2-pt fresh-entry discount vs REENTRY (27); recovery positioning phase begins |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No new bot error patterns can be assessed.
+- **Scout**: SKIPPED — GeckoTerminal/DexScreener blocked (403) from this environment. CLAUDE.md Rule 1 also prohibits auto-adding to TOKEN_REGISTRY (cohort changes require explicit human PR, even post-Option-B-window). No COHORT_PROPOSAL filed (no qualifying token data available without API access).
+- **Auditor**: TRIGGERED by inferred 100+ day BEAR market + Option B window closure (June 15). Research ran 4 searches. Top finding: NORMAL_CONFLUENCE_BUY 27→25 — restores pre-bear baseline to begin recovery positioning; bear at 100+ days with BTC in $60-68K analyst support range and Q3/Q4 recovery broadly expected; also restores intended 2-pt fresh-entry discount vs REENTRY_CONFLUENCE_BUY (stays at 27). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+⚠️ **CRITICAL WATCH ITEMS FOR HENRY:**
+1. **Option B window CLOSED ~June 15** — benchmark period over; evaluate vs cbBTC/WETH 60/40 target
+2. **Aerodrome → Aero merger July 2026** — Dromos Labs merging Aerodrome+Velodrome into "Aero" with MetaDEX03 + Slipstream V3; NVR swaps should auto-route but router contract addresses WILL change; verify compatibility before July launch
+3. **Liquidation-all on 2026-05-28** — Henry's /api/admin/liquidate-all call was the last major activity; bot has been rebuilding since
+
+## Auditor Research Summary (Run #35 — 2026-06-20)
+- **Signal Quality**: AIXBT on Base generating narrative signals; 30% of top DeFi TVL managed by autonomous agents (Chainlink/Ark Invest May-2026). NVR's whale flow + confluence already captures key signals. Full AIXBT integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: KEY CRITICAL — Aerodrome/Velodrome merging to "Aero" in July 2026 (MetaDEX03 OS, Slipstream V3, verified pools). LPs must migrate by deadline; NVR is a swapper not LP so swap routing may auto-update, but router contract addresses will change. HIGH impact but HIGH complexity (architecture change, touches off-limits execution path). Henry must verify Aero compatibility before July launch. Watch list. (Impact 5, Complexity 5, Risk high — cannot auto-implement)
+- **Position Sizing**: Bear at 100+ days with BTC in $60-68K analyst support range ($61K current). Q3/Q4 2026 recovery broadly expected. Kelly research (Medium/altrady/stratbase): Quarter-Kelly (0.25×) remains optimal for crypto fat tails; at potential bottom, ease the most aggressive bear-tightening first. KEY FINDING: NORMAL_CONFLUENCE_BUY 27→25 restores pre-bear baseline and 2-pt fresh-entry discount vs REENTRY (27). IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV growing; TWAP_TIMING_JITTER_PCT=20% already in place. MevX multi-chain bots active on Base. Intent-based trading (CoW-style) still requires off-limits execution changes. No new actionable code pattern. (Priority 0.67)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
