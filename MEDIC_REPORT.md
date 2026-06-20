@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T05:07 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35) | ⚠️ OPTION B WINDOW CLOSED
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-20T05:07 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-gjwo7w
 
 ## Problem
 
@@ -65,7 +65,45 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-20T05:07 UTC | **⚠️ OPTION B WINDOW CLOSED** (~2026-06-15). Bot in dry-run/zero-capital since 2026-05-29 (Henry's liquidation). Scout RAN (>48h since last valid scout): VELVET identified ($3.2M liq, Aerodrome-integrated DeFAI) — written to COHORT_PROPOSAL_2026-06-20.md (CLAUDE.md cohort lock honored; no TOKEN_REGISTRY edit). Auditor: skipped (cannot fetch API + bot in dry-run mode). |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+
+## Jobs Status This Run (Run #35 — 2026-06-20T05:07 UTC)
+
+### ⚠️ CRITICAL CONTEXT: OPTION B WINDOW HAS CLOSED
+
+The 30-day Option B benchmark window started **2026-05-15** and formally closed **~2026-06-15**. Today is **2026-06-20** — the window ended 5 days ago. Henry pulled all real capital from `efficient-peace` on **2026-05-29** (22 days ago) via the `/api/admin/liquidate-all` endpoint (commit `f29798d`). The bot has been parked in dry-run mode with zero live capital since then. **No agent run has fired between Run #34 (2026-05-15) and this Run #35 (2026-06-20), a 36-day gap.**
+
+Henry needs to decide:
+1. Were the Option B results captured before liquidation? (Check BaseScan for on-chain history.)
+2. Does NVR re-fund `efficient-peace` and return to live trading?
+3. Does the cohort lock lift now that the window has closed? (CLAUDE.md says explicit human PR required.)
+4. Are the many auditor/staging changes (34+ commits since last prod deploy context) ready for promotion?
+
+### Medic (Run #35)
+- **Status:** PATTERN D — API unreachable (persistent egress constraint, 35th consecutive run)
+- Bot is additionally in intentional dry-run / zero-capital mode since 2026-05-29
+- No trade errors to diagnose; no circuit breaker data available
+- Production URL: `autonomous-trading-bot-production.up.railway.app` → 403 on ALL endpoints
+
+### Scout (Run #35)
+- **Status:** RAN — last valid (non-reverted) scout was 2026-05-08 (SYRUP, Run #33), >43 days ago
+- GeckoTerminal API blocked (same egress constraint); WebSearch used instead
+- Base DEX volume: $931.9M in 24h (+68% vs yesterday). Aerodrome TVL: ~$453M. Ecosystem healthy.
+- **Candidate identified: VELVET** (Velvet Capital, DeFAI portfolio OS)
+  - Liquidity: $3.2M on Aerodrome (migrated protocol-owned liquidity to Aerodrome)
+  - Market cap: ~$195M
+  - Listed on MEXC, KuCoin, Bitget, Gate (established)
+  - Category: AI_TOKENS / DEFI hybrid — AI-powered on-chain portfolio management
+  - Not currently in TOKEN_REGISTRY ✓
+  - Base contract address: not confirmed via blocked APIs (needs Henry verification on Basescan)
+  - Score: 6/10 (liquidity ✓, age likely ✓, volume uncertain, cat-fit ✓, contract unverified)
+- **ACTION:** Per CLAUDE.md Rule 1 (cohort locked, human PR required after window), NOT added to TOKEN_REGISTRY. Written to `COHORT_PROPOSAL_2026-06-20.md` for Henry's review.
+
+### Auditor (Run #35)
+- **Status:** SKIPPED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` (403)
+- Bot in dry-run mode; no live trade data to analyze
+- Last known auditor action: Run #34 (2026-05-15) raised HOT_MOVER_MIN_FDV_USD 500K→1M
 
 ## Bot Health Evidence (from git history)
 
