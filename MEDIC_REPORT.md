@@ -1,4 +1,25 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint). Both `autonomous-trading-bot-production.up.railway.app` (egress not in allowlist) and `api.geckoterminal.com` (403 Forbidden) blocked. Bot health cannot be assessed.
+- **Scout**: BLOCKED by egress — GeckoTerminal returning 403. Scout last ran successfully 2026-05-14 (MOLT added); 37 days elapsed. NOTE: Option B 30-day benchmark window closed ~2026-06-15. Per CLAUDE.md ground rules, any new cohort additions now require an explicit human PR — the scout would write a `COHORT_PROPOSAL_<date>.md` for Henry's review, not auto-add to TOKEN_REGISTRY.
+- **Auditor**: BLOCKED — Cannot reach `/api/trades`, `/api/portfolio`, or `/api/patterns`. Trigger condition cannot be evaluated.
+
+## Action Required (Henry) — Run #35
+
+The monitoring routine has been blind for every run since April. To fix:
+
+1. **Add to Claude Code environment egress allowlist:**
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+2. **Review:** https://code.claude.com/docs/en/claude-code-on-the-web
+3. **Scout backlog:** 37 days since last scout run. After fixing egress, the next run will generate a `COHORT_PROPOSAL_2026-06-20.md` for your review (no auto-adds per CLAUDE.md Rule 1 since Option B window has closed).
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
