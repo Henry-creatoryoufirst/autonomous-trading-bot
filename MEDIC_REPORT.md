@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | Scout DUE (last run 2026-05-25, 26 days ago) — BLOCKED by egress proxy. Option B window ended ~2026-06-15 (5 days ago). All jobs blocked; CLAUDE.md Rule 1 applies — any scout candidates need COHORT_PROPOSAL file, not TOKEN_REGISTRY edit. |
 
 ## Bot Health Evidence (from git history)
 
@@ -203,17 +204,25 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from Anthropic egress proxy). MEDIC_REPORT updated (Run #35).
+- **Scout**: DUE (last scout was 2026-05-25, 26 days ago) — BLOCKED because `api.geckoterminal.com` is not on the egress allowlist. Note: per CLAUDE.md Rule 1, scout output must now go to `COHORT_PROPOSAL_<date>.md` even when unblocked — TOKEN_REGISTRY edits require explicit human PRs. Option B window ended ~2026-06-15.
+- **Auditor**: BLOCKED — bot API not reachable from this environment. Cannot compute win_rate / drawdown / streak to determine trigger.
+
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist** (via environment network policy settings):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+2. **Expose `API_AUTH_TOKEN`** as an env var in the scheduled session (required to auth against bot API)
+3. **Option B window ended 2026-06-15** — manual cohort review + PR is now appropriate
+4. **Scout is 26 days overdue** — GeckoTerminal data refresh needed by human or once unblocked
+5. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app (requires your API_AUTH_TOKEN)
+6. **Docs:** https://code.claude.com/docs/en/claude-code-on-the-web (environment + network policy config)
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
