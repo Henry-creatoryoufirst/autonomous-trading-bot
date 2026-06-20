@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -89,6 +89,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint). Bot API at railway.app blocked by network egress policy (host not in allowlist). GeckoTerminal API + website also returning 403. Cannot assess critical conditions. NVR/LunarCrush MCP servers did not provide API access tools.
+- **Scout**: BLOCKED — GeckoTerminal API (api.geckoterminal.com) and website both return 403. Last scout was 2026-05-16 (~35 days ago, well past 48h threshold). Would have run but data source inaccessible.
+- **Auditor**: BLOCKED — Cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive (railway.app blocked). Trigger conditions unknown.
+
+**NOTE: Option B 30-day benchmark window ended ~2026-06-15 (today is 2026-06-20). Window is complete — post-window period.**
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
