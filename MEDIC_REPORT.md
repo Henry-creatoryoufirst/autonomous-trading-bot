@@ -1,3 +1,26 @@
+# MEDIC REPORT — 2026-06-20T09:04Z (latest)
+
+## Run #36 — 2026-06-20T09:04 UTC (branch: claude/cool-sagan-s5xv2y)
+
+### Jobs Status
+- **Medic**: PATTERN D — API unreachable (network egress block, 36th+ consecutive run). `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` both blocked.
+- **Scout**: BLOCKED — GeckoTerminal egress blocked + CLAUDE.md Rule 1 (cohort lock; Option B window ended ~2026-06-15 but no explicit human unlock yet).
+- **Auditor**: BLOCKED — cannot verify win rate / drawdown without bot API.
+
+### New Finding This Run
+Verified the Aerodrome Slipstream router migration risk flagged in issue #66 (08:09 UTC today):
+- Router `0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5` confirmed **still active** on BaseScan
+- Hardcoded in `src/core/config/chain-config.ts:114`, no dynamic lookup
+- No Slipstream V3 / Aero migration announcement found in June 2026 — risk is forward-only (watch July 2026)
+- Comment added to issue #66 with this verification
+
+### Context
+- 8 open GitHub issues about this egress block (issues #56–#66), none resolved
+- Option B window closed ~2026-06-15 (5 days ago) — awaiting Henry's explicit unlock before Scout can resume
+- Issue #66 (filed 54 min before this run) already covers all key action items — no new issue filed this run
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
