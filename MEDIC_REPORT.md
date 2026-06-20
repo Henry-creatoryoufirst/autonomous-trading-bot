@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-20T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-20T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-r4092f
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-20T UTC | Scout skipped (GeckoTerminal blocked, no verified token data); auditor raised NORMAL_CONFLUENCE_BUY + REENTRY_CONFLUENCE_BUY 27→29 — 106-day bear, F&G 23-26 extreme fear; Option B window closed 2026-06-15 |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-20T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Option B 30-day benchmark window closed ~2026-06-15.
+- **Scout**: SKIPPED — GeckoTerminal still blocked (403). WebSearch for Base L2 trending tokens insufficient for address/volume/liquidity verification. No qualifying tokens confirmed. Standards maintained.
+- **Auditor**: TRIGGERED by confirmed 106-day BEAR market (Bitcoin ~$61K, F&G 23-26 extreme fear, down 48% from Oct 2025 peak). Research ran 4 searches. Top finding: NORMAL_CONFLUENCE_BUY + REENTRY_CONFLUENCE_BUY 27→29 — at F&G 23-26 (extreme fear, deepest bear reading since pivot), research confirms macro sentiment at extremes acts as a veto condition on buy signals (signal quality research 2026). 27 was set for the 46-day bear; 106-day bear at extreme fear elevates false entry rate further. Implemented in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-20)
+- **Signal Quality**: KEY FINDING — At F&G 23-26 (extreme fear), research confirms macro sentiment veto conditions apply equally at both extremes (extreme greed AND extreme fear). Platforms using 2.5M+ daily signals systematically downgrade entries at sentiment extremes. NORMAL_CONFLUENCE_BUY + REENTRY_CONFLUENCE_BUY 27→29 adds 2pp confirmation floor to all entries. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Execution Efficiency**: Aerodrome "Predictive Allocation" upgrade announced June 17, 2026 (liquidity incentives → prediction market). Aero merged platform (Aerodrome + Velodrome) launching July 2026. Bot auto-benefits at DEX level without code change. Permit2 already batched. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for volatile/uncertain crypto bear markets (arxiv 2026, altrady.com, lbank.com). NVR fully calibrated. No new action. (Priority 0)
+- **Competitive Intelligence**: Base Flashblocks (July 2025) already reshaped MEV economics; sequencer-direct RPC already active. Slippage tightening (0.5% on liquid pairs) requires touching executeDirectDexSwap (off-limits). 70% of Uniswap trades are bots; cyclic-arbitrage >50% of gas on Base in Q1 2025. No new actionable code change. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
