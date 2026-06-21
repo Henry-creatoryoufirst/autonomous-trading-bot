@@ -1,3 +1,49 @@
+# MEDIC REPORT — 2026-06-21T UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #40)
+
+## Jobs Status This Run (Run #40 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 40 consecutive runs, 403/egress-blocked on all endpoints). Same root cause as runs #1–39: `autonomous-trading-bot-production.up.railway.app` not in network egress allowlist. MEDIC_REPORT updated (Run #40).
+- **Scout**: No qualifying tokens. GeckoTerminal still blocked. WebSearch for Base L2 trending tokens (June 2026) returned general ecosystem overviews (Aerodrome TVL ~$312M, Base stablecoin TVL $3.9B) but no verifiable pool data (address/liquidity/volume/age). Standards maintained — no additions.
+- **Auditor**: TRIGGERED by inferred BEAR market (8-month bear, BTC ~$61K per prior runs). Research conducted (see below). **No implementation this run** — all bear-market hot-mover quality gates are complete (set in Runs #36–37); portfolio is 100% USDC (no positions to optimize); AERO migration July 2026 creates contract uncertainty; no finding meets priority ≥ 2.0 AND ≤ 10 lines AND no external API dependency.
+
+## Auditor Research Notes (Run #40 — 2026-06-21)
+
+### Signal Quality
+- **Finding**: Dune/DeFiLlama TVL monitoring + bridge inflows as alpha L2 rotation signals (Impact 3, Complexity 4, Risk medium → Priority 0.75). Requires external API integration. Watch list.
+- **Not implemented**: Complexity too high, external API dependency, portfolio in full USDC.
+
+### Execution Efficiency
+- **Finding**: Aerodrome Slipstream V3 MEV auction now built directly into AMM (MEV revenue captured by LPs/protocol, not external bots). Bot auto-benefits at DEX routing layer without code change. (Impact 3, Complexity 1, Risk low → Priority 3.0 — but no code change required.)
+- **⚠️ AERO MERGER — NOW ~10 DAYS AWAY**: Aerodrome + Velodrome merge into unified "Aero" protocol in July 2026. Current AERO contract (`0x940181a94A35A4569E4529A3CDfB74e38FD98631` in TOKEN_REGISTRY) will be REPLACED. Distribution: 94.5% to AERO holders, 5.5% to VELO holders. Henry must update TOKEN_REGISTRY AERO entry with new contract address after announcement. Bot will trade defunct contract if not updated.
+- **Aerodrome Predictive Allocation**: Confirmed LIVE June 17, 2026 (not July as initially reported). AI agents rewarded for forecasting liquidity demand. NVR auto-benefits as an AI trading agent on Aerodrome — no code change needed.
+
+### Position Sizing
+- **Finding**: 2026 institutional Kelly: regime-stress vol adjustment → drawdown constraints → liquidity caps. NVR is ahead: LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20, LIFETIME_DRAWDOWN_CAUTION_PCT=12 already implement drawdown-aware sizing. Quarter-Kelly (0.25×) confirmed optimal for crypto fat tails. (Priority 0 — already implemented.)
+- **Not implemented**: NVR ahead of current research guidance.
+
+### Competitive Intelligence
+- **Finding**: RL-based DeFi bots achieving Sharpe > 2.0 in 2026. ARMA/Giza managing $35M+ across Aave/Morpho/Moonwell on Base. CloddsBot open-source Base competitor still active. NVR has yield-optimizer.ts and MEV-sequencer-direct RPC; no new gap. (Impact 2, Complexity 5 → Priority 0.4.)
+- **Not implemented**: Out of scope for ≤ 10-line change.
+
+## Notable Context (Run #40)
+
+- **⚠️ AERO TOKEN MIGRATION — JULY 2026 (~10 days)**: Current AERO contract will be replaced. Holders who don't migrate lose rewards. Henry: watch Dromos Labs/Aerodrome announcements for new contract address, then update `src/core/config/token-registry.ts` AERO entry. Deadline: July 2026.
+- **Staging → Main: 5 commits pending review (2+ runs)**: `baf25a5` dead-cash ratchet fix (stops bot over-holding USDC beyond MIN_DRY_POWDER_PCT) is the most impactful. Henry: review staging diff → merge to main → Railway deploys. Bot is re-entering from 100% USDC — this fix matters now.
+- **Option B window**: CLOSED 2026-06-15 (6 days ago). cohort vs cbBTC/WETH 60/40 benchmark review pending.
+- **Portfolio**: 100% USDC post `feat(admin): /api/admin/liquidate-all` (May 28). Bot re-entering from flat slate.
+
+| Staging Commit | Description | Impact |
+|----------------|-------------|--------|
+| `baf25a5` | fix(strategy): dead-cash ratchet — composition frame = yardstick, not target | Stops bot over-holding USDC; critical now that bot re-enters |
+| `9a98770` | improve(auditor): CULL_MIN_AGE_HOURS 72→48 | Faster capital recycling |
+| `aac4683` | improve(auditor): HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K | Completes hot-mover quality set |
+| `478fd66` | fix(medic): Run #35 docs | Documentation |
+| `e485af7` | docs(medic): Run #38 docs | Documentation |
+
+---
+
 # MEDIC REPORT — 2026-06-20T UTC (latest)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #39)
