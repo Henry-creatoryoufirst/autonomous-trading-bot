@@ -1,3 +1,59 @@
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Egress proxy blocks both `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`.
+
+- **Scout**: RAN (48h+ threshold met: last scout 2026-05-14, MOLT, 38 days ago). GeckoTerminal API blocked — fell back to WebSearch. WebSearch returned only general landing pages (DexScreener, GeckoTerminal pool indexes) with no token-level address/liquidity/volume data. Cannot verify addresses or liquidity thresholds without API access. COHORT is LOCKED per CLAUDE.md Rule 1 (Option B window ended ~2026-06-15 but no human PR authorizing changes). Key contextual discovery: Aerodrome is launching **"Predictive Allocation"** in July 2026 — replaces weekly gauge voting with AI-agent-friendly forecasting system; rewards accurate liquidity demand prediction; AERO holders receive 94.5% of the new Aerodrome/Velodrome unified token. No tokens added (cohort locked + API blocked prevents quality verification).
+
+- **Auditor**: TRIGGERED — historical BEAR market (70+ days as of 2026-05-15; further 37 days elapsed without confirmation of regime change; liquidate-all forced 2026-05-28 is notable operational event). Option B window complete (~2026-06-15). API blocked so win_rate/drawdown/streak unverifiable. 4 research searches ran. **No implementation this run** — all qualifying findings require current regime confirmation (can't verify recovery vs. continued bear). Full research below.
+
+## Auditor Research Summary (Run #35 — 2026-06-21)
+
+**Trigger context:** 107+ day bear inferred (70-day confirmed at Run #34 + 37 more days). Option B window complete. Liquidate-all 2026-05-28 — bot restarted from all-USDC 24 days ago. Current regime UNKNOWN (API blocked).
+
+### Signal Quality
+WebSearch: DeFi confluence scoring, on-chain signals Base L2 2026.
+- Ensemble ML (LightGBM, XGBoost, Random Forest voting) is the 2026 institutional standard — no single model decides. NVR already routes through Claude's multi-indicator confluence, approximating this. Full on-chain signal integration (Nansen, Dune smart money clustering) remains complex (Impact 2/Complexity 4/Risk medium → Priority 0.5). No new action.
+
+### Execution Efficiency
+WebSearch: Aerodrome Slipstream routing, Permit2 batch 2026.
+- **KEY DISCOVERY (Watch List):** Aerodrome launching "Predictive Allocation" (July 2026) — replaces gauge voting with forecasting-based liquidity rewards. AI agents that hold AERO and accurately forecast liquidity demand earn rewards. NVR's AERO position may gain additional yield stream without code changes. AERO/Velodrome merge (Q2 2026): AERO holders receive 94.5% of new unified token. Permit2 already batch-implemented. Bot auto-benefits from DEX-level improvements. Impact 3 / Complexity 1 / Risk low — but no code change required. (Priority 3.0, Watch List — Henry review)
+
+### Position Sizing
+WebSearch: Kelly criterion bull market recovery 2026 position sizing.
+- "Most professional traders use 25-50% of Kelly recommendation; Quarter-Kelly captures ~75% of Kelly's growth with significantly less volatility." → KELLY_FRACTION=0.25 confirmed correct.
+- "Update Kelly calculations weekly or after every 20 trades" → KELLY_ROLLING_WINDOW=30 already optimized for this.
+- "Increase sizes slightly for established cryptocurrencies with more predictable patterns" → Bears on regime confirmation. **Cannot implement without current regime data** (bear-adjusted constants at KELLY_FRACTION=0.25 correct if still in bear; too conservative if recovery). (Impact 3/Complexity 1/Risk medium without regime confirmation → no implementation)
+
+### Competitive Intelligence
+WebSearch: DeFi bot alpha strategy 2026, bull market regime signals.
+- AI agents on Base have gone mainstream — ElizaOS + Virtuals Protocol hosting 15,800+ agents. Cross-chain arbitrage (Base↔Arbitrum↔Optimism) dominant alpha source in 2026.
+- Aerodrome "Predictive Allocation" July 2026 — explicitly rewards AI agents for accurately forecasting where future liquidity demand arises. (Same as Execution Efficiency above — primary watch-list item for Henry.) Impact 3/Complexity 4 (implementation would require participating in Aerodrome gauge voting logic) → Watch list. No auto-implementation.
+
+## Action Taken (Run #35)
+No code changes. Key reason: all regime-sensitive constants were bear-calibrated during a 65-70 day bear; current regime is unknown (API blocked). Implementing a change that moves constants back toward bull-market values without regime confirmation risks degrading performance if the bear is ongoing. See Watch List below.
+
+## Watch List for Henry
+
+1. **REGIME CHECK (URGENT after API access restored):** Verify current marketRegime. If market has recovered/neutral, consider: KELLY_FRACTION 0.25→0.28 (partial recovery from Quarter-Kelly), CULL_MIN_AGE_HOURS 72→96, HOT_MOVER_MIN_FDV_USD 1M→750K. If still bear, hold current constants.
+
+2. **AERODROME PREDICTIVE ALLOCATION (July 2026):** New gauge system rewards AI agents that accurately forecast liquidity demand. AERO holding provides dual upside: DEX fees + participation in new reward stream. Consider whether to increase AERO sector weighting after reviewing the technical specs at aerodrome.finance. The Aerodrome+Velodrome merge means AERO holders get 94.5% of the new unified token.
+
+3. **SCOUT COHORT REVIEW (NOW ELIGIBLE):** Option B benchmark window completed ~2026-06-15. Cohort changes now require only a human PR per CLAUDE.md. Recommended post-window review: cbDOGE (added auto-discovered, scout quality unknown), MOLT (added 2026-05-14, last auto-add that wasn't reverted — verify performance).
+
+4. **EGRESS ALLOWLIST:** 35+ consecutive runs blocked from API access. Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to Claude Code egress settings. Docs: https://code.claude.com/docs/en/claude-code-on-the-web
+
+## History Log (updated)
+| Run # | Timestamp | Action |
+|-------|-----------|--------|
+| #35 | 2026-06-21T UTC | Scout: API blocked + cohort locked → no adds. Auditor: API blocked, cannot confirm regime. Research ran 4 searches. Aerodrome Predictive Allocation July 2026 key watch-list item. No code changes. |
+| #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
