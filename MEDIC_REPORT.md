@@ -1,8 +1,27 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T06:15 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
+- Run timestamp: 2026-06-21T06:15 UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-8tcuu7
+
+## Jobs Status This Run (Run #35 — 2026-06-21T06:15 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 host_not_allowed on all endpoints). Option B window completed ~2026-06-15. Bot has been live on v21.30.0 since 2026-05-28 (24 days unchanged). No code changes made.
+- **Scout**: RAN — last scout was 2026-05-16 (VEIL/OPENX, both reverted), >48h threshold met. GeckoTerminal API blocked (403 host_not_allowed). WebSearch used as fallback. Key finding: Aerodrome+Velodrome "Aero" merger launching July 2026 — router contracts may change, bot Slipstream routing may need update. CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY auto-adds; NVR-HQ vault absent from repo checkout. No tokens added. See COHORT_PROPOSAL_2026-06-21.md for July watch items.
+- **Auditor**: TRIGGERED by inferred 80-day BEAR market (BTC -45% from Oct-2025 ATH $126K → ~$61K, ETH ~$1,617; 80+ days sustained bear; 4 searches run). Top finding: CULL_MIN_AGE_HOURS 72→48 — bear deepened (65-day→80-day) since last constants adjustment in May 2026; sub-$100 research positions now recycled in 48h minimum instead of 72h. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-21)
+
+- **Signal Quality**: Modern DeFi bots in 2026 use 9-12 indicator confluence (68-72% win rate at 9+/12). NVR already uses RSI, MACD, BB, SMA, F&G, volume, buy ratio, whale flow — solid coverage. On-chain funding rate / OI signals partially wired (DERIVATIVES cache 5min TTL). No new action; existing setup is competitive.
+- **Execution Efficiency**: KEY FINDING — Aerodrome+Velodrome merger launching July 2026 as unified "Aero" platform (Base + Optimism + ETH mainnet + Circle Arc chain). SlipStream router contract addresses may change. Bot uses hardcoded Slipstream router `0xbe6d8f0d...5be6d18a5` in agent-v3.2.ts. Impact 4, Complexity 3, Risk medium — watch list for Henry (not auto-implemented, requires router address verification and executeDirectDexSwap changes which are off-limits). See COHORT_PROPOSAL_2026-06-21.md.
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) confirmed optimal. Research benchmark: "cut positions in half at 20% drawdown" — NVR already halves at 12% (LIFETIME_DRAWDOWN_CAUTION_PCT) and blocks buys at 20% (LIFETIME_DRAWDOWN_BUY_BLOCK_PCT). Current setup is MORE conservative than research recommendation. No change needed.
+- **Competitive Intelligence**: ARMA (Giza) processes $3.96B in agentic volume, 15% yield on USDC via multi-protocol rotation (Aave/Compound/Morpho/Moonwell). Moonwell (Base lending protocol) not yet integrated — potential yield optimization. Impact 3, Complexity 4 (new protocol integration) → Watch list for Henry. Best auto-implementable finding: CULL_MIN_AGE_HOURS 72→48. IMPLEMENTED.
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
