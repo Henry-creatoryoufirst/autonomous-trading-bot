@@ -1,4 +1,18 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T10:03:56Z (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T10:03:56Z UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` both blocked by egress allowlist. MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — network egress blocks GeckoTerminal API. Note: last genuine un-reverted feat(scout) commit was SYRUP (Run #33, 2026-05-08). Option B 30-day window ended ~2026-06-15 per CLAUDE.md — cohort lock status unknown. Scout is overdue but cannot run.
+- **Auditor**: BLOCKED — all bot metric endpoints (`/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`) blocked by network egress. Cannot assess win rate, drawdown, or regime duration.
+
+**Note:** This is Run #35 with the identical network block. Option B window was ~2026-06-15. If the window has closed, Henry should also clarify new cohort guidance (CLAUDE.md still shows lock). Priority action remains: add egress allowlist entries.
+
+---
+
+## Previous Run: 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
