@@ -1,12 +1,14 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ MILESTONE: Option B Benchmark Window Completed (~2026-06-15) — Henry Review Required
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-21T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-lbx2b1
 
 ## Problem
 
@@ -66,6 +68,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-21T UTC | Scout ran (>48h since last add); no qualifying tokens — GeckoTerminal API blocked, web-search only (see COHORT_PROPOSAL_2026-06-21.md). Auditor: cannot trigger (API unreachable, no win_rate/drawdown data); research complete — critical finding: Aerodrome→Aero merger July 2026 (routing model change, operational risk). Option B benchmark window completed ~2026-06-15 — Henry review required. |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +93,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-lbx2b1.
+- **Scout**: RAN (last scout add: SYRUP 2026-05-08 / MOLT 2026-05-14, >48h threshold). GeckoTerminal API blocked — used web search only. No qualifying tokens with verified on-chain data. Candidates noted in COHORT_PROPOSAL_2026-06-21.md per CLAUDE.md Rule 1 (cohort locked; no auto-add to TOKEN_REGISTRY). NO changes to token-registry.ts.
+- **Auditor**: RESEARCH COMPLETE, NO IMPLEMENTATION. Cannot confirm trigger conditions (win_rate/drawdown/streak unavailable — API blocked). Research found CRITICAL operational finding: Aerodrome→Aero merger with Predictive Allocation routing launching July 2026. No constants change applied (Option B window just completed — preserving attribution integrity per CLAUDE.md Rule 2). Full audit summary below.
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
 - **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-21)
+
+**Trigger status**: Cannot confirm (API unreachable). No implementation made. Option B window completed ~2026-06-15 — preserving attribution integrity.
+
+- **Signal Quality**: Confluence scoring with 9+ independent signals → 68-72% win rate per 2026 AI trading research. NVR already implements multi-signal confluence. No gap identified. Watch list: Nansen/Dune-style smart money clustering (Impact 2/Complexity 4/Risk medium). (Priority 0.5)
+- **Execution Efficiency**: **CRITICAL OPERATIONAL FINDING** — Aerodrome Finance and Velodrome are merging into unified "Aero" protocol targeting July 2026 launch. Routing model changing from weekly gauge voting to "Predictive Allocation" (real-time liquidity incentive direction). Expected 80% efficiency gain in incentives BUT pool structure and routing APIs may change. NVR uses Aerodrome Slipstream as primary router (50%+ Base volume). Henry should: (1) monitor Aerodrome docs/Discord for breaking changes to Slipstream swap router address, (2) confirm `executeDirectDexSwap` router address remains valid post-merge. Impact 4/Complexity 1/Risk medium → Watch list (requires Henry action, not auto-implementable). (Priority 4.0 — HIGHEST THIS RUN)
+- **Position Sizing**: Quarter-Kelly (0.25×) remains optimal for crypto per 2026 research. NVR at KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12 — well-calibrated. Drawdown-probability constraint sequence confirmed. No new action. (Priority 0)
+- **Competitive Intelligence**: Multi-agent execution architectures (Analyst + Auditor + Executor pattern) gaining traction on Base in 2026. MEV protection via sequencer-direct RPC already active on NVR. ElizaOS framework spreading but NVR's Claude-native approach is differentiated. No actionable code change found within 10-line constraint. (Priority 0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
@@ -203,17 +221,25 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
-## Recommended Action for Henry
+## Recommended Action for Henry (Run #35 — 2026-06-21)
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Three actions are urgent:**
 
-1. **Add to Claude Code egress allowlist:**
+### 1. Option B Benchmark Window — Review Required (HIGH PRIORITY)
+The 30-day Option B benchmark window completed ~2026-06-15 (started 2026-05-15). The strategy ran `COHORT_QUALITY_7` against a cbBTC/WETH 60/40 benchmark for the full window. Henry must manually review P&L vs benchmark to determine if Option B outperformed by ≥5% annualized. Dashboard: https://autonomous-trading-bot-production.up.railway.app/dashboard
+
+### 2. Aerodrome→Aero Merger — July 2026 Operational Risk (HIGH PRIORITY)
+Aerodrome Finance and Velodrome are merging into "Aero" in July 2026 with a new Predictive Allocation routing model. NVR routes ~50%+ of Base volume through Aerodrome Slipstream. Before July: verify that `executeDirectDexSwap()` Slipstream router address (`0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5` per BaseScan) remains valid post-merge, and monitor Aerodrome Discord/docs for any ABI changes.
+
+### 3. Fix Claude Code Egress Allowlist (PERSISTENT — 35 runs)
+Add to Claude Code web environment egress settings:
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+Or expose a lightweight read-only `/api/health-public` endpoint on an already-allowed domain so medic can check circuit breaker status.
+
+### 4. Manually Verify Bot Health
+https://autonomous-trading-bot-production.up.railway.app/health
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
