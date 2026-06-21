@@ -1163,13 +1163,17 @@ export const SIGNAL_ENGINE: 'swarm' | 'classic' = (process.env.SIGNAL_ENGINE as 
 /** Agent weights — how much each micro-agent's vote counts (must sum to 1.0)
  *  v19.0: Reweighted to reflect capital flow physics thesis.
  *  Flow is the dominant signal — where money moves, price follows.
- *  Momentum confirms flow, doesn't lead. Sentiment near-zero. */
+ *  Momentum confirms flow, doesn't lead. Sentiment near-zero.
+ *  Jun-2026 MEV adjustment: flow 0.35→0.30, trend 0.15→0.20. DEX buy/sell ratio
+ *  increasingly polluted by MEV bots on Base (MEXC research; extends Run#34
+ *  HOT_MOVER_MIN_FDV_USD fix to general signal weighting). Trend (ADX/price
+ *  direction) is structurally MEV-resistant — bots can't fake multi-hour moves. */
 export const SWARM_AGENT_WEIGHTS = {
   momentum:  0.20,  // RSI, MACD, Bollinger — confirms flow direction
-  flow:      0.35,  // DEX buy/sell ratio, volume — THE core signal
+  flow:      0.30,  // DEX buy/sell ratio, volume — core signal (MEV-adjusted Jun-2026: 0.35→0.30)
   risk:      0.25,  // Position sizing, portfolio exposure, drawdown
   sentiment: 0.05,  // BTC/ETH trend, market regime — minor context only
-  trend:     0.15,  // ADX, price direction — structural trend confirmation
+  trend:     0.20,  // ADX, price direction — structural trend (MEV-resistant; Jun-2026: 0.15→0.20)
 } as const;
 
 /** Numeric score for each action (used in weighted voting) */
