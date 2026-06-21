@@ -1,4 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **Strategic milestone: Option B 30-day window completed ~2026-06-15.**
+- **Scout**: BLOCKED — GeckoTerminal API unreachable (same egress proxy constraint, 403). Cannot qualify tokens by liquidity/volume. No additions made. CLAUDE.md Rule 1 also mandates human-reviewed PRs for cohort changes regardless of window status.
+- **Auditor**: TRIGGERED by regime shift: bear→recovery (AERO +30% Jun-16, BTC bounce; Option B window closed Jun-15; 37 days since last tuning). Top finding: FLOW_REVERSAL_EXIT_BUY_RATIO 38→40 — bear baseline 45-50% normalises to 55-60% in recovery; restoring bull-calibrated exit threshold reduces false exits in uptrend. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-21)
+- **Signal Quality**: 9/12 signal confluence achieves 68-72% win rate vs 55-62% at 6-7/12 (wundertrading/nftplazas 2026). NVR's multi-indicator confluence approach is already aligned. No actionable threshold change without portfolio win-rate data. (Impact 2, Complexity 3, Priority 0.67) → Watch list.
+- **Execution Efficiency**: KEY CONTEXT — Aerodrome/Velodrome merged into "Aero" platform launching July 2026. MetaDEX03 + Slipstream V3 now include MEV capture at DEX level and cross-chain routing. AERO surged 30% Jun-16. NVR auto-benefits from Slipstream V3 without code change. Monitor for July Aero launch to ensure AERO contract address/routing still valid. (Impact 4, Complexity 1, Risk low — observation only) → **Henry: review Aero July launch impact on NVR routing.**
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto; meme tokens capped at 2-5% portfolio (already achieved: 0.25 × 12% ceiling × 0.75 = 2.25%). Drawdown-probability constraint post-Kelly would improve sizing further (Impact 2, Complexity 3, Risk low) → Watch list.
+- **Competitive Intelligence**: KEY FINDING — FLOW_REVERSAL_EXIT_BUY_RATIO 38→40 recovery adjustment. Bear baseline 45-50% normalises to 55-60% in recovery regime. The 38% threshold (calibrated for 57-day bear) now triggers premature exits during normal corrective dips in an uptrend. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## ⚠️ Strategic Milestone: Option B Window Complete
+
+**The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has completed.** Today is 2026-06-21. Henry should:
+1. Pull the Option B performance data from Railway dashboard
+2. Compare vs cbBTC/WETH 60/40 benchmark over the 30-day window
+3. Decide on cohort evolution (any additions to COHORT_QUALITY_7 now require explicit human PR)
+4. Review the Aero (Aerodrome+Velodrome merger) July 2026 launch impact on routing
+
+## Recommended Action for Henry (Run #35)
+1. Review `claude/cool-sagan-1kvif3` branch → merge `constants.ts` change (FLOW_REVERSAL_EXIT_BUY_RATIO 38→40) to staging → promote to main
+2. Pull Option B 30-day benchmark results from Railway dashboard
+3. **Add to Claude Code egress allowlist**: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` (persistent blocker for 35 runs)
+4. Monitor Aerodrome → Aero migration July 2026 (contract address/routing changes possible)
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
