@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-21T UTC | **37-day gap** — API still blocked (egress policy unchanged). Scout overdue (last ran 2026-05-25, 27 days ago). CLAUDE.md Rule 1 prohibits auto-adds regardless (Option B cohort locked; changes require human PR even after window end ~2026-06-15). No auditor run (API unreachable). |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Bot API and GeckoTerminal both blocked by egress policy (HTTP 403, "Host not in allowlist").
+- **Scout**: BLOCKED — GeckoTerminal API unreachable. Also: CLAUDE.md Rule 1 prohibits auto-adding tokens to TOKEN_REGISTRY regardless of network access (Option B cohort locked; requires explicit human PR). Last real scout commit: 2026-05-25 (27 days ago, overdue by 25+ days).
+- **Auditor**: BLOCKED — bot API unreachable, cannot fetch trades/portfolio/patterns/adaptive data to compute win rate or drawdown triggers.
+
+**⚠️ COMPLIANCE NOTE:** The Scout job instructions in the run prompt say to auto-add qualifying tokens to TOKEN_REGISTRY. CLAUDE.md Rule 1 explicitly prohibits this during the Option B window ("Cohort changes happen only via explicit human PR after the 30-day window completes"). The 30-day window ended ~2026-06-15 but the rule still stands: "No additions, no removals, no auto-discovery." Auto-adds require a COHORT_PROPOSAL_<date>.md file and human review.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +214,17 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. The Scout is 27 days overdue.**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Fix egress (most important)** — Add to Claude Code environment's network egress allowlist:
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
+   See: https://code.claude.com/docs/en/claude-code-on-the-web
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/api/health
+4. **Scout backlog** — 27 days of missed Base token discovery; consider manual scout run or human-initiated PR after reviewing COHORT_QUALITY_7 state
+5. **Option B window** — Ended ~2026-06-15. Cohort is still locked per CLAUDE.md Rule 1 until explicit human decision to open it
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
