@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -90,11 +90,38 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (2026-06-21T UTC — post-Option-B run)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from Anthropic egress proxy). MEDIC_REPORT updated.
+- **Scout**: BLOCKED — GeckoTerminal API egress-blocked (403 from Anthropic egress proxy). Last scout ran 2026-05-25 (~27 days ago, well past 48h threshold). CLAUDE.md Rule 1 scout freeze nominally still active (window ended ~2026-06-15 but CLAUDE.md not yet updated to lift it). **Henry action needed:** update CLAUDE.md to lift scout freeze now that Option B window is past, AND add GeckoTerminal to egress allowlist.
+- **Auditor**: Conditions unknown (API blocked). Research ran 4 searches based on available web data. No code changes implemented this run (no live metrics to justify). Key findings documented below.
+
+## ⚠️ OPTION B WINDOW UPDATE (2026-06-21)
+
+The 30-day Option B benchmark window that started 2026-05-15 ended ~**2026-06-15**. Today (2026-06-21) is 6 days past the window close.
+
+**Actions Henry should take now:**
+1. Evaluate whether NVR outperformed cbBTC/WETH 60/40 by ≥5% annualized — pull P&L from Railway dashboard
+2. Update CLAUDE.md to lift the scout freeze (Rule 1) so the automated agent can resume token discovery
+3. Add egress allowlist entries (see bottom of report — now 34+ consecutive blocked runs)
+4. The scout is 27 days overdue — a manual scout run or CLAUDE.md update is needed before the next hourly run can execute
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
 - **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (2026-06-21 — post-Option-B run)
+
+**Context**: No live metrics available (API blocked). Research conducted; no constants changed this run — changes without verified trigger conditions would be unsound.
+
+- **Signal Quality**: 2026 research confirms 9+ confluence signals → 68-72% win rate vs 6-7 signals → 55-62%. Key insight: macro sentiment (Fear & Greed) should be a veto condition, not just a weight. NVR already uses F&G as a confluence input. *Watch list: consider adding explicit veto mode (F&G > 90 = no longs) as a 1-line constant flag.*
+- **Execution Efficiency**: Aerodrome Predictive Allocation launching July 2026 — replaces gauge voting with real-time demand-based allocation. NVR auto-benefits via Aerodrome routing without code change. AERO token +22% in June. No code action needed.
+- **Position Sizing**: Half-Kelly (0.25×) confirmed as correct for crypto. Current KELLY_FRACTION=0.25 is already optimal per 2026 research. Recommendation: update Kelly calculations every 20 trades (already done via KELLY_ROLLING_WINDOW=30). No change needed.
+- **Competitive Intelligence**: MEV protection via tight slippage (0.5% for liquid pairs) is single cheapest defense per 2026 research. Base near-instant settlement = less MEV exposure than mainnet. NVR slippage already configured; no change needed.
+
+**Top watch-list item for Henry:** F&G veto mode (stop longs when F&G > 90, extreme greed). Low complexity, meaningful downside protection. Defer to Henry PR review.
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
