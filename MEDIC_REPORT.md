@@ -1,4 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-21T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-jxwewj
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is now 36 days since Run #34.
+- **Scout**: RAN (research only) — Last successful non-reverted scout was SYRUP on 2026-05-08 (~44 days ago, well past 48h threshold). GeckoTerminal API also blocked (403). Per CLAUDE.md Rule 1 (cohort is locked, no auto-adds to TOKEN_REGISTRY), wrote `COHORT_PROPOSAL_2026-06-21.md` to repo root instead of modifying token-registry.ts. **Option B window ended ~2026-06-15 — human review of proposal now appropriate.**
+- **Auditor**: CONDITIONS UNKNOWN (API blocked — cannot confirm win_rate, drawdown, losing_streak). Key research findings: (1) Aerodrome introduced "Predictive Allocation" upgrade — auto-benefits routing without code change. (2) Bear-adjusted constants from May 2026 may need post-bear review: NORMAL_CONFLUENCE_BUY=27 (was 25), VWS_MIN_LIQUIDITY_USD=20K (was 10K), HOT_MOVER_MIN_FDV_USD=1M (was 500K), KELLY_FRACTION=0.25 (was 0.30). No code change implemented — cannot confirm market regime without API. **Recommend Henry verify current regime and consider relaxing bear-adjusted constants if bull/recovery confirmed.**
+
+## Auditor Research Summary (Run #35 — 2026-06-21)
+- **Signal Quality**: Confluence scoring with 9+ independent indicators historically posts 68-72% win rates vs 55-62% for 6-7. NVR's existing multi-indicator system is well-aligned. No new action. (Priority 0)
+- **Execution Efficiency**: Aerodrome "Predictive Allocation" upgrade turns LP into a prediction market — auto-improves routing on Base without code change. Base Flashblocks (200ms, Oct-2025) already active. No new action. (Priority 0)
+- **Position Sizing**: Bear-adjusted Kelly settings (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12) are research-optimal for bear regimes. Watch list: if market regime has shifted to BULL or NEUTRAL, consider KELLY_FRACTION 0.25→0.28 and KELLY_POSITION_CEILING_PCT 12→14. Cannot implement without live metric confirmation. (Impact 3, Complexity 1, Risk low, Priority 3.0 — pending regime confirmation)
+- **Competitive Intelligence**: Intent-based execution (CoW Protocol, 34%+ DEX aggregator share) remains highest-impact improvement — requires touching executeDirectDexSwap (permanently off-limits). MEV protection via sequencer-direct RPC already active. No new action.
+
+## Critical Action Required for Henry (36-Day Backlog)
+
+The Option B 30-day benchmark window ended ~2026-06-15. Actions needed:
+1. **Manually check bot health**: https://autonomous-trading-bot-production.up.railway.app/health
+2. **Review COHORT_PROPOSAL_2026-06-21.md** in this repo — Option B lock is expired, human PR now appropriate.
+3. **Assess market regime**: If BULL or NEUTRAL, consider relaxing the May-2026 bear-adjusted constants (CONFLUENCE_BUY 27→25, VWS_MIN_LIQUIDITY 20K→10K, HOT_MOVER_MIN_FDV 1M→500K).
+4. **Add to Claude Code egress allowlist**: `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` — this has been blocked for 35+ consecutive runs since April 14, 2026.
+
+---
+
+# MEDIC REPORT — 2026-05-15T (previous) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
