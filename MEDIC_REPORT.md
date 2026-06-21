@@ -1,4 +1,32 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## ⚠️ OPTION B BENCHMARK WINDOW HAS COMPLETED
+
+The 30-day Option B benchmark window started 2026-05-15 and ended ~2026-06-15.
+**Today is 2026-06-21 — 6 days past the window close.**
+
+Henry: time to review NVR performance vs. cbBTC/WETH 60/40 benchmark (≥5% annualized target).
+The CLAUDE.md cohort-lock and no-auto-merge rules were scoped to this window.
+Post-window cohort changes and strategy decisions can now proceed via human PR.
+
+---
+
+## Jobs Status This Run (Run #36 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Run #36.
+  Hosts blocked: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com`.
+  Cannot assess trade failure rate, circuit breakers, or portfolio balance. (See history below.)
+- **Scout**: BLOCKED — last scout commit was 2026-05-25 (~27 days ago, well over 48h threshold).
+  GeckoTerminal API is blocked from this environment (403). WebSearch returned only general L2
+  market data (ARB, OP, MNT, HYPE) — no verifiable Base pool liquidity/volume numbers.
+  Per CLAUDE.md Rule 1, TOKEN_REGISTRY is locked regardless; a COHORT_PROPOSAL would be
+  required even if candidates were found. Cannot write proposal without confirmed metrics.
+- **Auditor**: BLOCKED — portfolio/trade/pattern APIs all 403. Cannot assess win_rate, drawdown,
+  or losing streak. WebSearch finding noted: Aerodrome/Velodrome merger (Q2 2026) completed or
+  imminent — NVR auto-benefits from improved routing at the DEX level without code changes.
+  No trigger conditions could be confirmed; no code change made.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +94,8 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-05-25T UTC | Scout ran (27+ days since #34 — git commit `git log --grep="scout"` shows 2026-05-25 07:19 EDT); API still 403; auditor/medic blocked. OPENX + VEIL reverted per CLAUDE.md Rule 1 (scout auto-adds prohibited during Option B window). |
+| #36 | 2026-06-21T UTC | **OPTION B WINDOW COMPLETED** (~2026-06-15). All three jobs blocked: API 403 (medic/auditor), GeckoTerminal 403 (scout). 27 days since last scout. Aerodrome/Velodrome merger completed Q2 2026 — NVR auto-benefits without code change. Notification sent to Henry re: window completion + API allowlist. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,15 +235,27 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 36th consecutive run with the same network restriction. Also: Option B window complete.**
 
-1. **Add to Claude Code egress allowlist:**
+### 🏆 Option B Review (Priority 1 — new)
+- Window ran 2026-05-15 → ~2026-06-15 (30 days). Today is 2026-06-21.
+- Review NVR actual performance vs. cbBTC/WETH 60/40 benchmark: ≥5% annualized outperformance?
+- If window passed: CLAUDE.md cohort-lock rules can be relaxed via explicit PR.
+- Scout has been frozen for 27 days (last: 2026-05-25). Post-window, consider unlocking scout.
+- Check BaseScan for smart wallet `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1` P&L.
+
+### 🔧 Fix API Access (Priority 2 — persistent)
+1. **Add to Claude Code egress allowlist** (Settings → Network → Egress):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
+2. **Or** expose a read-only proxy on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+
+### 📋 Post-Window Actions (Priority 3)
+- Review staging branch — constants.ts has 30+ bear-market tunings queued since April
+- Consider running `./scripts/deploy/promote.sh` if staging looks good
+- Unlock scout for new token discovery if Option B review is satisfactory
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
