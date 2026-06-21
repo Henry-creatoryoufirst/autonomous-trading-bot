@@ -1,4 +1,20 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T15:06:14Z (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T15:06:14Z)
+
+- **Medic**: PATTERN D — Railway API unreachable from network egress policy (`Host not in allowlist: autonomous-trading-bot-production.up.railway.app`). GeckoTerminal/DexScreener/CoinGecko also blocked (HTTP 403). MEDIC_REPORT updated (Run #35). Scout is 27 days overdue (last: 2026-05-25 07:19 EDT). Auditor cannot trigger without live portfolio data.
+- **Scout**: BLOCKED — GeckoTerminal API returns 403 Forbidden. No specific pool data (liquidity, volume, age) obtainable. Web searches confirm Base ecosystem is healthy (Aerodrome 60%+ DEX volume share, $453M TVL, Aero+Velodrome merger July 2026 announced) but per-pool numbers needed for quality filter are unavailable. Standards maintained — no tokens added without verified data.
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`. Trigger conditions unknown. No implementation possible.
+
+---
+
+## ⚠️ Option B Window Note
+
+The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has now completed as of this run (2026-06-21). The ground rules around cohort lock and no-auto-merge-to-staging remain in effect per CLAUDE.md until Henry explicitly lifts them. This report is committed to `claude/cool-sagan-btfzsb` only.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
