@@ -1,4 +1,25 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code changes.
+- **Scout**: RAN (research only, no auto-add). Last token add was MOLT on 2026-05-14 — 38 days ago, well past 48h threshold. Option B benchmark window closed ~2026-06-15. Scout ran 4 web searches; GeckoTerminal and production bot APIs both blocked (403). Candidates found via web research: **CAS** (Caspius — AI data infra, $16.6M mktcap, +220% 24h, too new/volatile to confirm $100k+ stable liquidity), **POD** (Dolphin — AI/DePIN, $76.4M mktcap, $2.9M 24h vol, +130% 24h, too speculative), **TRX-on-Base** (TRON native bridged via LayerZero — large potential but no confirmed Base pool data). No tokens passed all quality filters with verifiable on-chain data from this environment. Per CLAUDE.md Rule 1 (cohort changes require explicit human PR even post-window), no TOKEN_REGISTRY commits made. Candidates written to MEDIC_REPORT for Henry's review.
+- **Auditor**: SKIPPED — cannot check win_rate, drawdown, or losing_streak without API access.
+
+## Scout Candidate Summary (Run #35 — for Henry's review)
+
+| Token | Reason | Status | Action Needed |
+|-------|--------|--------|---------------|
+| CAS (Caspius) | AI data infra on Base, $16.6M mktcap, +220% 24h | Too new/volatile — cannot verify >$100k stable liquidity or pool age >3 days | Monitor for 1–2 weeks; if liquidity stabilizes, propose PR |
+| POD (Dolphin) | AI/DePIN, $76.4M mktcap, $2.9M 24h vol, +130% 24h | Recent pump detected — fails volatility filter | Monitor; if vol normalizes, may qualify for AI_TOKENS HIGH risk |
+| TRX-on-Base | TRON bridged via LayerZero to Base, massive TRON stablecoin pool ($81B backing) | Cannot confirm Base-specific pool liquidity from this env | Henry to check aerodrome.finance for wTRX/USDC pool depth |
+| B20 standard | Base Beryl upgrade June 25 enabling cheaper token issuance | No tradeable token — ecosystem development | Track post-June-25 for new B20-standard launches |
+
+**Note:** Option B window closed ~2026-06-15. CLAUDE.md now permits cohort changes via explicit human PR. The above candidates are proposed for Henry's review — not auto-committed.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -65,6 +86,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-21T UTC | Scout ran (38 days since MOLT, Option B window closed ~2026-06-15). No qualifying tokens with verified data — CAS/POD too new/volatile, TRX-on-Base unconfirmed. No TOKEN_REGISTRY changes per CLAUDE.md. Auditor skipped (API blocked). |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
