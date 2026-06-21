@@ -1,6 +1,41 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T21:07Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## ⚠️ NEW STATUS — RUN #35 — 2026-06-21T21:07Z
+
+### OPTION B WINDOW HAS CLOSED — ACTION REQUIRED
+
+The 30-day Option B benchmark window closed **~2026-06-15**. Today is **2026-06-21** — **6 days past the window**. Per CLAUDE.md: *"Cohort changes happen only via explicit human PR after the 30-day window completes (~2026-06-15)."*
+
+**Henry: the window is done. Time to review results and decide next steps.**
+
+### BOT IS INTENTIONALLY PARKED
+
+Per commit `f29798d` (2026-05-29): *"Henry is pulling all real capital out of efficient-peace to run the system on paper until it's proven. The liquid USDC ($1,152.88) was already withdrawn; this sweeps the remaining ~$1,700 (WETH + Aave + cbLTC) to USDC so it can be withdrawn too."*
+
+All production API endpoints return HTTP 403 — consistent with the Railway service being stopped or protected post-liquidation:
+- `/` → 403, `/health` → 403, `/api/errors` → 403, `/api/balances` → 403, `/api/portfolio` → 403
+
+No new code changes to main since 2026-05-29 (23 days). External APIs (GeckoTerminal, DexScreener) also 403 from this execution environment.
+
+### Run #35 Job Status
+
+| Job | Status | Reason |
+|-----|--------|--------|
+| 🏥 Medic | ⛔ BLOCKED | API 403 — bot parked/stopped intentionally |
+| 🔍 Scout | ⛔ BLOCKED | External APIs 403; last token-add May 16 (reverted). CLAUDE.md Rule 1 respected. |
+| 📊 Auditor | ⛔ BLOCKED | No portfolio/trades API available |
+
+### Recommended Actions for Henry
+
+1. **Review Option B results** — 30-day window closed June 15. Did the quality-7-cohort beat cbBTC/WETH 60/40 by ≥5% annualized?
+2. **Decide on next phase** — resume live trading, extend paper window, or different strategy?
+3. **Update CLAUDE.md** — clarify new operating rules post-window (is cohort still locked? what's next?)
+4. **If resuming** — restart Railway service (efficient-peace), verify paper mode, then promote to live when ready
+5. **Egress allowlist** — add `autonomous-trading-bot-production.up.railway.app` + `api.geckoterminal.com` to this environment's network policy so future medic runs can actually check the bot
+
+---
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
