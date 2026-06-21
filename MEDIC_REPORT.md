@@ -1,12 +1,68 @@
 # MEDIC REPORT — 2026-06-21T UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #40)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #41)
 
-## Jobs Status This Run (Run #40 — 2026-06-21T UTC)
+## Jobs Status This Run (Run #41 — 2026-06-21T UTC)
 
-- **Medic**: PATTERN D — API unreachable (persistent constraint, 40 consecutive runs, 403/egress-blocked on all endpoints). Same root cause as runs #1–39: `autonomous-trading-bot-production.up.railway.app` not in network egress allowlist. MEDIC_REPORT updated (Run #40).
-- **Scout**: No qualifying tokens. GeckoTerminal still blocked. WebSearch for Base L2 trending tokens (June 2026) returned general ecosystem overviews (Aerodrome TVL ~$312M, Base stablecoin TVL $3.9B) but no verifiable pool data (address/liquidity/volume/age). Standards maintained — no additions.
-- **Auditor**: TRIGGERED by inferred BEAR market (8-month bear, BTC ~$61K per prior runs). Research conducted (see below). **No implementation this run** — all bear-market hot-mover quality gates are complete (set in Runs #36–37); portfolio is 100% USDC (no positions to optimize); AERO migration July 2026 creates contract uncertainty; no finding meets priority ≥ 2.0 AND ≤ 10 lines AND no external API dependency.
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 41 consecutive runs, 403/egress-blocked on all endpoints). Same root cause as runs #1–40: `autonomous-trading-bot-production.up.railway.app` not in network egress allowlist. MEDIC_REPORT updated (Run #41).
+- **Scout**: SKIPPED — GeckoTerminal blocked (403, egress policy). CLAUDE.md Rule 1 requires human PRs for TOKEN_REGISTRY changes. Last real scout: 2026-05-14 (MOLT), >38 days ago. No candidates verified.
+- **Auditor**: TRIGGERED by inferred BEAR market (9-month bear confirmed by WebSearch: BTC ~$62K June 10, -45% from $126K Oct-2025 peak, F&G 23-26 Extreme Fear). Research conducted — see below. **No implementation this run** — all bear-market quality gates complete; no new finding meets priority ≥ 2.0 AND ≤ 10 lines AND low/medium risk; **⚠️ CRITICAL: Staging and main have DIVERGED — requires Henry's action before any staging promotion.**
+
+## ⚠️ CRITICAL: Staging/Main Divergence (Action Required)
+
+`main` has 3 commits that `staging` does NOT have (pushed directly to main, bypassing staging):
+- `f29798d` feat(admin): /api/admin/liquidate-all — operator forced full-exit to USDC (#54)
+- `fba28c3` docs: update CLAUDE.md current version reference to v21.30.0
+- `a3154a9` chore: bump version to v21.30.0 — force Railway redeploy with INV-1 round 5
+
+`staging` has 7 commits that `main` does NOT have (the valuable improvements):
+- `baf25a5` fix(strategy): composition frame = yardstick, not target — end dead-cash ratchet ← **most critical**
+- `9a98770` improve(auditor): CULL_MIN_AGE_HOURS 72→48
+- `aac4683` improve(auditor): HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K
+- `478fd66` fix(medic): Run #35 docs
+- `e485af7` docs(medic): Run #38 docs
+- `8297369` docs(medic): Run #39 docs
+- `547bff3` docs(medic): Run #40 docs
+
+**Henry's action**: `git rebase origin/main` on staging branch, resolve any conflicts, then `./scripts/deploy/promote.sh`. The `baf25a5` dead-cash ratchet fix is critical — bot is re-entering from 100% USDC and the fix prevents it from staying over-allocated to USDC beyond MIN_DRY_POWDER_PCT.
+
+## Auditor Research Summary (Run #41 — 2026-06-21)
+
+### Signal Quality
+- **Finding**: Grid/swing/DCA strategies dominate bear-market bot literature June 2026 (Koinly, Phemex, FRB Agent). All are variants of what NVR already executes. No new on-chain signal found specific to Base L2. (Impact 2, Complexity 4, Risk medium → Priority 0.5). Watch list only.
+- **Not implemented**: NVR already covers all suggested approaches.
+
+### Execution Efficiency
+- **Finding A — AERO merger July 2026 (NO contract yet)**: Aerodrome + Velodrome merge into unified "Aero" announced. TOKEN_REGISTRY AERO entry (`0x940181a94A35A4569E4529A3CDfB74e38FD98631`) will be replaced with new contract. Distribution: 94.5% to AERO holders, 5.5% to VELO. **New contract address not yet announced.** Henry must watch Dromos Labs/Aerodrome channels and update `src/core/config/token-registry.ts` AERO entry when new address is published. Deadline: before July 2026 launch. (Impact 4, Complexity 1, Risk low → Priority 4.0 — but no code action possible yet.)
+- **Finding B — Aerodrome PA: CORRECTION**: Predictive Allocation was **announced June 14** (AERO +22%), but launch is **July 2026** — NOT live June 17 as Run #39 reported. PA will replace weekly gauge voting with real-time incentive allocation. AI agents rewarded for forecasting liquidity demand. Bot auto-benefits at DEX level when it launches. No code change needed now.
+- **Not implemented**: Waiting on new AERO contract address.
+
+### Position Sizing
+- **Finding**: All bear-market Kelly adjustments confirmed complete in constants.ts: KELLY_FRACTION=0.25 ✓, KELLY_POSITION_CEILING_PCT=12 ✓, LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 ✓, LIFETIME_DRAWDOWN_CAUTION_PCT=12 ✓. Research (2026 institutional Kelly) confirms NVR is at optimal Quarter-Kelly for this regime. (Priority 0 — already implemented.)
+- **Not implemented**: NVR ahead of current guidance.
+
+### Competitive Intelligence
+- **Market regime update**: BTC ~$62K (June 10, 2026), 3 red monthly candles, spot ETF outflows at 2026 high, F&G 23-26 (Extreme Fear). Analysts broad consensus: bottom Q3-Q4 2026, then recovery toward $100K-150K+ targets (Standard Chartered, Bernstein, JPMorgan). Market is showing "short-squeeze rebounds from extreme oversold" — bear regime intact but approaching statistical exhaustion zone.
+- **AERO token price**: $0.46 as of search. Down from governance spike. Held in TOKEN_REGISTRY as DEFI/MEDIUM. Bot should NOT buy until new merger contract is confirmed.
+- **Implication for NVR**: With bot re-entering from 100% USDC during late-stage bear, the dead-cash ratchet fix (`baf25a5`) is the single highest-impact pending change. Bot will otherwise hold excess USDC beyond the 25% MIN_DRY_POWDER_PCT minimum.
+- **Not implemented**: No ≤10 line change found.
+
+## Notable Context (Run #41 — 2026-06-21)
+
+- **⚠️ AERO TOKEN MIGRATION — JULY 2026**: Current `0x940181...` AERO contract to be replaced. New address not yet announced. Henry: monitor Aerodrome/Dromos Labs for announcement → update `src/core/config/token-registry.ts` → PR → merge. Do NOT trade AERO until new contract confirmed post-migration.
+- **⚠️ Staging/Main DIVERGED**: See critical section above. `baf25a5` dead-cash ratchet fix needs to reach main. Rebase staging on main before promoting.
+- **Option B window**: CLOSED 2026-06-15 (6 days ago). Henry: compare cohort vs cbBTC/WETH 60/40 benchmark before next strategic phase.
+- **Portfolio**: 100% USDC post `feat(admin): /api/admin/liquidate-all` (May 28). Bot re-entering from flat slate.
+- **Bear regime**: 9-month bear confirmed. BTC bottom consensus Q3-Q4 2026. NVR's bear-tuned parameters are well-calibrated for this regime. No further tightening warranted — hold current settings until regime change confirmed.
+- **Aerodrome PA**: Launching July 2026. Will reward AI agents for liquidity demand forecasting. Henry: decide whether NVR should actively participate in PA predictions when it launches.
+
+| Henry's Action Items | Priority |
+|---------------------|----------|
+| Rebase staging on main, then promote `baf25a5` dead-cash ratchet fix | 🔴 HIGH — bot re-entering from 100% USDC now |
+| Update AERO contract address when Aero merger announces new token | 🔴 HIGH — before July 2026 |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 | 🟡 MED — window closed June 15 |
+| Decide NVR participation in Aerodrome Predictive Allocation (July) | 🟡 MED — July 2026 |
+| Add egress allowlist: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — enables live medic/scout (41 runs blind) |
 
 ## Auditor Research Notes (Run #40 — 2026-06-21)
 
