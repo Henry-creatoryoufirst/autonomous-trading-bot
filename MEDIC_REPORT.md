@@ -1,3 +1,15 @@
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). This is run #35. No change from prior runs. Post-window note: The 30-day Option B benchmark window closed ~2026-06-15 (6 days ago). MEDIC_REPORT updated.
+- **Scout**: RAN — last scout commit was 2026-05-25 (27 days ago, far past 48h threshold). Found 1 candidate: **cbMEGA** (Coinbase Wrapped MEGA). Per CLAUDE.md post-window rules, not auto-adding; see `COHORT_PROPOSAL_2026-06-21.md` for details. Also flagged: Base Beryl upgrade (B20 standard) scheduled June 25, 2026.
+- **Auditor**: SKIPPED — API unreachable; cannot calculate win rate, drawdown, or losing streak. No condition determination possible.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
