@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-21T UTC | Scout ran (27 days since last), GeckoTerminal/Railway API blocked — no qualifying tokens verified; CLAUDE.md Rule 1 in effect (cohort changes need human PR); auditor research ran 4 searches, no ≤10-line low-risk improvement found — Option B window closed ~2026-06-15, bear constants calibrated 2026-05-15 held without live validation. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint; 403 on all endpoints including Railway, GeckoTerminal, and DexScreener). This is the 35th consecutive run with the same egress restriction. MEDIC_REPORT updated (Run #35). No code fix possible without data.
+- **Scout**: RAN (27 days since last scout on 2026-05-25). Both GeckoTerminal trending and new-pool endpoints returned 403. WebSearch surfaced no specific Base tokens with verifiable liquidity/volume metrics. CLAUDE.md Rule 1 remains in force: no auto-adds to TOKEN_REGISTRY or COHORT_QUALITY_7. Option B benchmark window closed ~2026-06-15 — cohort changes now require explicit human PR. Result: no qualifying tokens verified, no registry edit. `🔍 Scout: no qualifying tokens this scan — standards maintained.`
+- **Auditor**: TRIGGERED (last auditor ran 37 days ago — 2026-05-15). API blocked; trigger conditions (win_rate, drawdown, streak) could not be verified from live data. Research ran all 4 searches. No ≤10-line low-risk improvement found this cycle — see Research Summary below.
+
+## Auditor Research Summary (Run #35 — 2026-06-21)
+
+**Context**: Option B 30-day window closed ~2026-06-15. Bear-market constants last calibrated 2026-05-15 (Run #34). Without live performance data, applying additional tuning risks muddying Option B attribution. Held constants as-is.
+
+- **Signal Quality**: Research confirms multi-signal confluence (9+ signals → 68-72% win rates vs 55-62% for 6-7 signals). NVR already implements weighted confluence scoring across RSI, MACD, BB, SMA, order-flow, F&G. No new action. (Impact 2, Complexity 4, Priority 0.5)
+- **Execution Efficiency**: Aerodrome METADEX03 (Nov 2025 "Aero" upgrade) introduced embedded MEV auctions in Slipstream pools — extractable value now goes to LPs/veAERO holders instead of external bots. NVR auto-benefits as a Slipstream user without code change. Aerodrome Predictive Allocation launches July 2026 — replaces weekly gauge-voting with real-time demand-based incentive routing. This may shift liquidity concentration across pools; worth monitoring post-launch. No immediate code change. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25) confirmed as optimal by 2026 research for crypto fat-tail regimes. NVR already at KELLY_FRACTION=0.25. Volatility-targeting (automatic position reduction in high-vol periods) already implemented via TRENDING_DOWN×0.75 and VOLATILE×0.70 regime multipliers. No new action. (Priority 0)
+- **Competitive Intelligence**: Private-relay MEV protection going mainstream in 2026 (direct-to-builder submission bypasses public mempool). NVR already uses sequencer-direct RPC on Base. Permit3 (cross-chain single-signature approvals) in development — early-stage, not production-ready. No actionable code change ≤10 lines at risk:low. (Priority 0)
+
+**Watch List for Henry**: (1) Aerodrome Predictive Allocation (July 2026) — monitor if routing incentives shift away from current high-volume pools post-launch; may affect slippage on low-TVL pairs. (2) Option B post-window review: with the 30-day window closed, consider re-calibrating bear-market constants (TRENDING_DOWN, KELLY_FRACTION, HOT_MOVER_MIN_FDV_USD) against actual performance data before the next strategy period begins.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +223,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
