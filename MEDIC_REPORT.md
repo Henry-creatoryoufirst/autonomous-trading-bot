@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T16:05Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-21T16:05Z UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-d7xk58
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-21T16:05Z | Network egress still blocked (403 on Railway + GeckoTerminal). Scout attempted (37+ days since MOLT/Run#34) — GeckoTerminal blocked + CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY edits during Option B window (window closed ~2026-06-15, awaiting Henry confirmation of post-window rules). Auditor skipped — no bot API metrics available. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-21T16:05Z UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). No code changes made.
+- **Scout**: ATTEMPTED but BLOCKED — last actual token scout was 2026-05-14 (MOLT added, 37+ days ago, well over 48h threshold). Two blockers: (1) `api.geckoterminal.com` returns 403 from this execution environment (same egress policy as Railway API); (2) CLAUDE.md Rule 1 explicitly prohibits automated TOKEN_REGISTRY edits during the 30-day Option B benchmark window. Window was scheduled to close ~2026-06-15 — it has now closed. Awaiting Henry's explicit confirmation of post-window rules before Scout can add tokens. WebSearch ran (4 searches) — AERO Predictive Allocation news (30% surge, merger with Velodrome into "Aero" platform), but no specific new Base token candidates with verifiable quality metrics ($100k+ liquidity, $50k+ volume, 3+ days age) surfaced without GeckoTerminal access. No COHORT_PROPOSAL written (no qualifying candidates found).
+- **Auditor**: SKIPPED — bot API unreachable; cannot calculate win_rate, drawdown, or losing_streak without /api/trades and /api/portfolio data. Cannot determine if trigger conditions are met.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +212,16 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now Run #35 with the same network restriction. Additionally — Option B window closed ~2026-06-15:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Confirm post-Option-B-window rules:** Window closed ~June 15. Does Rule 1 (cohort locked) still apply? Scout has been unable to add tokens for 37+ days. If the window is truly closed, explicitly update CLAUDE.md so agents can resume normal scout operations.
+2. **Add to Claude Code egress allowlist** (Settings → Network Egress):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+3. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
+4. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+5. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
