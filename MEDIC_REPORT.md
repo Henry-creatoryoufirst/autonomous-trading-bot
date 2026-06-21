@@ -1,4 +1,26 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-21T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-21T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+  - **NOTE**: 37-day gap since Run #34 (2026-05-15). This is abnormal. Either the scheduled runs were paused or an environment restart cleared state.
+  - **KEY EVENT**: `2026-05-28` — `feat(admin): /api/admin/liquidate-all` — Henry manually forced full exit to USDC. Bot v21.30.0. No new commits since 2026-05-28 (24 days quiet).
+  - **Option B window**: Closed ~2026-06-15. Today (2026-06-21) is 6 days past close.
+- **Scout**: RAN (last actual scout was 2026-05-08, SYRUP — 44 days ago, well past 48h threshold). **No tokens evaluated** — GeckoTerminal API (api.geckoterminal.com) and website (www.geckoterminal.com) both return 403 from this environment. Web search confirms Base L2 TVL ~$4.2B, $931M+ 24h volume, Aerodrome dominant. Specific pool data (liquidity, volume per token) unavailable without API access. **Nothing added to TOKEN_REGISTRY.**
+- **Auditor**: SKIPPED — cannot determine win_rate, drawdown, or losing streak without `/api/trades` and `/api/portfolio`. Research findings gathered (see table below); no implementation without confirmed trigger.
+
+## Auditor Research Findings (Run #35 — passive, no trigger confirmed)
+
+| Finding | Source | Impact | Complexity | Priority | Risk | Action |
+|---------|--------|--------|------------|----------|------|--------|
+| 10–25% fractional Kelly optimal for crypto 2026 | atlaspeakresearch.com | 3 | 2 | 1.5 | low | NVR already at 25% — no change |
+| 9+ indicator confluence → 68–72% win rate | trendrider.net | 3 | 3 | 1.0 | low | Watch list |
+| Intent-based MEV protection bypasses mempool | quicknode.com | 4 | 5 | 0.8 | med | Off-limits (execution path) |
+| Aerodrome V2 unified router = gas savings | aerodrome | 2 | 3 | 0.67 | low | Auto-benefit, no code change |
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
