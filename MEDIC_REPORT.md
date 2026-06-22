@@ -1,6 +1,40 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the 35th consecutive run blocked.
+- **Scout**: NO QUALIFYING DATA — Last scout was 2026-05-14 (MOLT; 37+ days ago, threshold is 48h). GeckoTerminal API (`api.geckoterminal.com`) and DEX web pages both return 403 from this environment. Four WebSearch rounds executed but returned no token-level liquidity/volume data sufficient to evaluate candidates against filter standards (>$100K liquidity, >$50K 24h vol, >3 days old). Scout standards maintained; no unverifiable tokens proposed.
+- **Auditor**: SKIPPED — Cannot access `/api/trades`, `/api/portfolio`, `/api/patterns`, or `/api/adaptive` to assess trigger conditions (win_rate, drawdown, losing_streak, marketRegime). **Market signal change noted:** AERO +13% in week of June 14–20; Base $931.9M 24h volume (+68%); multiple sources confirm apparent bear→bull regime shift since last auditor-run constants were set (April–May 2026 bear-market tightenings may now be over-constraining). Auditor cannot auto-correct without API access.
+
+## ⚠️ New This Run — Market Regime Shift Alert
+
+The Option B benchmark window closed ~2026-06-15 (37 days after opening 2026-05-15). Based on public signals:
+- AERO (Aerodrome) rallied 13%+ in the week of June 14–20, 2026 with elevated $60M daily volume
+- Base network $931.9M 24h DEX volume, +68% vs prior day
+- Base TVL grew 23% to ~$7.8B earlier in 2026
+
+The last 34 auditor runs applied **bear-market tightenings** to 15+ constants (KELLY_FRACTION 0.35→0.25, KELLY_POSITION_CEILING_PCT 14→12, HOT_MOVER_MIN_CHANGE_H1_PCT 5→7, RIDE_THE_WAVE_MIN_MOVE 5→7, SCALE_UP_SIZE_PCT 4→3, etc.). These settings are appropriate for a 70-day bear market but likely over-constrain a bull regime. The auditor cannot run to assess or correct without API access.
+
+**Henry: this is the key new signal this run. Bear conditions that justified 15+ parameter tightenings appear resolved. Consider manually reviewing staging branch params.**
+
+## Recommended Action for Henry
+
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
+
+1. **Add to Claude Code egress allowlist:**
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
+3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+4. **Review bear→bull param adjustment:** Option B window ended ~June 15. KELLY_FRACTION=0.25, HOT_MOVER thresholds, SCALE_UP_SIZE_PCT, RIDE_THE_WAVE settings were all bear-tightened and may need bull-cycle loosening. See constants.ts audit trail comments for original pre-bear values.
+5. **Scout backlog:** 37 days since last scout (MOLT 2026-05-14). GeckoTerminal is inaccessible from this sandbox — manual review of new Base tokens warranted.
+
+---
+
+## Previous Status (Run #34 — 2026-05-15T UTC)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
