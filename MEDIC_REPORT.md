@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T UTC | Scout RAN (last scout 2026-05-16, 37 days ago, >48h) but GeckoTerminal blocked — no tokens added (CLAUDE.md Rule 1 + unverified metrics). Key strategic intelligence: Aerodrome predictive allocation launched 2026-06-17; Aero unified DEX (Aerodrome+Velodrome merge) targeting July 2026. Auditor skipped (API unreachable). |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +91,31 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout was 2026-05-16, 37 days ago, >48h threshold). GeckoTerminal API blocked — could not verify pool liquidity/volume/age. CLAUDE.md Rule 1 also prohibits auto-adding to TOKEN_REGISTRY. Strategic intelligence gathered via WebSearch (see below). No tokens added.
+- **Auditor**: SKIPPED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, or `/api/adaptive` (all 403). Win rate, drawdown, and streak unknown.
+
+## Strategic Intelligence — Run #35 (2026-06-22)
+
+### ⚠️ AERODROME ROUTER MIGRATION — ACTION REQUIRED BEFORE JULY 2026
+
+NVR's primary DEX router (Aerodrome Slipstream) is undergoing major changes:
+
+1. **2026-06-17 (LIVE)**: New **Predictive Allocation Model** — liquidity incentives now route in real-time based on forecasted future trading demand (not past activity). AERO surged 13% on 60M volume on launch day. May shift which pools have deepest liquidity.
+
+2. **July 2026 (UPCOMING)**: **Aerodrome + Velodrome merge into "Aero"** — single unified protocol with MEV-resistant pools and permissionless pool creation. Dromos Labs is building this.
+
+**Risk to NVR**: `agent-v3.2.ts` hardcodes Aerodrome router/factory addresses for `executeDirectDexSwap`. If these contracts change at the Aero launch, all DEX fallback swaps will fail. Henry should audit router addresses before July 2026 and watch for official migration announcements from Dromos Labs / Aerodrome.
+
+---
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
@@ -205,7 +226,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
