@@ -1,12 +1,55 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-22T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-c68qct
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Run #34 was 2026-05-15 — gap of ~38 days since last run.
+- **Scout**: RAN — last scout was 2026-05-16 (MOLT/OPENX/VEIL reverts), >48h threshold met. GeckoTerminal API blocked (same egress restriction). WebSearch scan found no new qualifying candidates with verifiable contract addresses. COHORT_PROPOSAL_2026-06-22.md written to repo root. Per CLAUDE.md Rule 1 (cohort locked — human PR required), TOKEN_REGISTRY unchanged.
+- **Auditor**: TRIGGERED (inferred BEAR + EXTREME FEAR market: F&G 23, ETH -60% from ATH at ~$1,617). API blocked — actual win_rate/drawdown/streak unknown. 4 research searches completed. Key finding: F&G < 25 historically precedes +22.3% 30-day BTC returns (contrarian buy signal) — holding quality cohort positions (cbBTC, WETH) preferred over further tightening. No implementation this run — without bot API data, directional changes risk timing the trough incorrectly. Findings documented in watch list below.
+
+## Auditor Research Summary (Run #35 — 2026-06-22)
+
+### Signal Quality
+- WebSearch: "DeFi trading bot confluence scoring on-chain signals alpha 2026"
+- Key finding: "filtering signals by fee-adjusted expected value, only betting if net edge exceeds 8%"
+- NVR NORMAL_CONFLUENCE_BUY=27 functions as an equivalent gate. Without win_rate data, cannot determine if threshold needs adjustment.
+- Status: No implementation. Watch list. (Impact 2, Complexity 3, Risk medium, Priority 0.67)
+
+### Execution Efficiency
+- Aerodrome+Velodrome merger to "Aero" in Q3 2026 (July predictive allocation launch) will auto-benefit NVR routing without code change.
+- No implementation. (Impact 2, Complexity 0, Priority ∞ — automatic)
+
+### Position Sizing
+- KEY FINDING: "Extreme fear readings below 25 have preceded average 30-day BTC returns of +22.3% since 2019." Current F&G = 23. This is a NEAR-BOTTOM contrarian signal. 1-in-4 scenarios see further -25% drawdowns first.
+- Implication: STALE_POSITION_MIN_AGE_HOURS=36 may be culling COHORT_QUALITY_7 holdings (cbBTC, WETH) prematurely near a market bottom. Counter-argument: smaller altcoin positions should still be recycled.
+- Status: No implementation — too risky without actual bot data on which positions are being culled. Watch list for Henry. (Impact 3, Complexity 1, Risk medium — directional uncertainty, Priority 1.5 → below 2.0 threshold due to risk)
+
+### Competitive Intelligence
+- Aerodrome "Predictive Allocation" (July 2026): replaces weekly gauge-voting with real-time liquidity incentives. May improve pool depth on NVR's core pairs.
+- Base DeFi TVL: $4.5B+, $45B/mo Aerodrome Slipstream volume. Healthy liquidity environment despite bear.
+- Status: No implementation. Watch list. (Impact 2, Complexity 3, Risk low, Priority 0.67)
+
+## Watch List for Henry's Review (Run #35)
+
+1. **F&G 23 = Near-Bottom Signal**: Extreme fear historically precedes recovery (+22.3% avg 30d BTC). Consider whether to pause STALE_POSITION exit for COHORT_QUALITY_7 tokens specifically when F&G < 25. Complex to implement safely without a per-token flag. Recommend human review before any change.
+2. **Aerodrome → Aero Merger (Q3 2026)**: Predictive Allocation launching July 2026. Monitor for any Slipstream router address changes that could break NVR's DEX routing. No action needed now, but worth tracking.
+3. **GeckoTerminal Egress Block**: 38+ days of blocked API access. Scout and Auditor severely limited. Adding `api.geckoterminal.com` and `autonomous-trading-bot-production.up.railway.app` to the egress allowlist is the highest-leverage infra fix available (described in detail below).
+
+## Run History Update
+
+| Run # | Timestamp | Action |
+|-------|-----------|--------|
+| #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear |
+| #35 | 2026-06-22T UTC | Scout ran (>48h since last), WebSearch scan, 0 qualifying candidates, COHORT_PROPOSAL written; auditor triggered (F&G 23, Extreme Fear), 4 searches, no implementation (directional uncertainty without API data) |
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Problem
 
