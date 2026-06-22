@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T19:06:42Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T19:06Z | All 3 jobs blocked (bot API + GeckoTerminal → 403/egress). Option B window CLOSED ~June 15. Scout 37 days overdue (last May 16). No changes made. CLAUDE.md Rule 1+2 active. |
 
 ## Bot Health Evidence (from git history)
 
@@ -203,17 +204,28 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
+## Jobs Status This Run (Run #35 — 2026-06-22T19:06:42Z)
+
+- **Medic**: PATTERN D — API unreachable (403 via WebFetch, egress-blocked via curl). Cannot assess bot health. MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — last scout was 2026-05-16 (37 days ago, >48h threshold met). GeckoTerminal 403/egress blocked. WebSearch returned only broad market trends; insufficient to verify quality filters ($100k liquidity, $50k volume, 3+ day pool age). CLAUDE.md Rule 1 prevents TOKEN_REGISTRY auto-adds regardless.
+- **Auditor**: BLOCKED — cannot reach `/api/trades`, `/api/portfolio`, `/api/patterns`. Cannot calculate win rate, drawdown, or losing streak. Option B window closed ~2026-06-15 per CLAUDE.md.
+
+**⚠️ NOTE: The Option B 30-day benchmark window closed ~2026-06-15.** The agent has not run successfully since Run #34 on 2026-05-15 — 38 days ago. Post-window strategy decisions are pending Henry's review.
+
+---
+
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive blocked run. The network restriction has been active since 2026-04-14 (~69 days). Urgent:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist** (environment settings):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window closed ~June 15** — review benchmark results and decide on next phase
+5. **Scout is 37 days overdue** — TOKEN_REGISTRY has not been refreshed since SYRUP (2026-05-08)
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
