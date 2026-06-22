@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T17:04Z | All 3 jobs blocked — network egress. Scout last ran 2026-05-16 (37 days ago). Bot health UNKNOWN. Auditor skipped. Egress fix still needed. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-22T17:04Z)
+
+- **Medic**: PATTERN D — API unreachable (persistent egress constraint, same as runs #1–#34). Network policy blocks `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`. Bot health UNKNOWN.
+- **Scout**: SKIPPED — Cannot reach GeckoTerminal. Note: last confirmed scout commit was 2026-05-16 (37+ days ago, well past 48h window), so scout is overdue once egress is fixed.
+- **Auditor**: SKIPPED — Cannot reach bot API for win_rate, drawdown, or regime data.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
