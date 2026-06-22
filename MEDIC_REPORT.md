@@ -1,5 +1,23 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
 
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #42)
+
+## Jobs Status This Run (Run #42 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #42). This branch (`claude/cool-sagan-3iydbj`) starts from main (Run #34 base); staging has runs #35-41 unmerged — see Henry action items below.
+- **Scout**: SKIPPED — GeckoTerminal API blocked by egress policy; web search found no new Base tokens with verifiable on-chain liquidity/volume data. KEY ALERT: Aerodrome→"Aero" merger launching July 2026; AERO token holders receive 94.5% of new Aero token — Henry should verify if bot's AERO position requires manual migration post-merger. No changes to TOKEN_REGISTRY per CLAUDE.md Rule 1.
+- **Auditor**: TRIGGERED — 100+ day bear confirmed (BTC -50% from Oct-2025 $126K peak; ETH ~$1,791 on Jun-16; $4.4B ETF outflows in 13-day streak early Jun). Research found VOL_LOW_BOOST was last reduced at 65-day bear (May 2026); at 100+ days, low-vol periods are statistically pre-continuation consolidation. IMPLEMENTED: VOL_LOW_BOOST 1.25→1.15 in constants.ts (1 line). Impact 3, Complexity 1, Risk low, Priority 3.0.
+
+## Henry: Action Items (Run #42)
+
+1. **URGENT — Merge staging → main**: Runs #35-41 are sitting on staging with 7 auditor improvements and MEDIC updates. Run #41 flagged "staging/main diverged — rebase needed." None of these have been reviewed or promoted. Use `./scripts/deploy/promote.sh` after verification.
+2. **AERO position alert**: Aerodrome → "Aero" merger launches July 2026. Your AERO token position receives 94.5% conversion to new "Aero" token. The merger may require interacting with a migration contract — watch for an official announcement from Dromos Labs. Router code auto-benefits (no NVR code change needed).
+3. **Network egress**: Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to Claude Code egress allowlist — Run #42 is the 42nd consecutive run unable to check live bot health.
+4. **Review this branch**: `claude/cool-sagan-3iydbj` has one change: VOL_LOW_BOOST 1.25→1.15. If approved, merge via normal PR workflow (do not auto-merge).
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
