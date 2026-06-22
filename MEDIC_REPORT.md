@@ -1,4 +1,39 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T12:06:47Z (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Run #35 — 2026-06-22T12:06:47Z
+
+**Branch:** claude/cool-sagan-qozfqq (feature branch, per CLAUDE.md Rule 2 — NOT staging)
+
+### Blocked this run
+| Endpoint | Error |
+|---|---|
+| `autonomous-trading-bot-production.up.railway.app/api/errors` | `Host not in allowlist` (egress policy) |
+| `autonomous-trading-bot-production.up.railway.app/api/balances` | `Host not in allowlist` |
+| `api.geckoterminal.com/api/v2/networks/base/trending_pools` | HTTP 403 Forbidden |
+| `api.geckoterminal.com/api/v2/networks/base/new_pools` | HTTP 403 Forbidden |
+| `www.coingecko.com/en/categories/base-ecosystem` | HTTP 403 Forbidden |
+
+### Jobs status
+- **Medic**: PATTERN D — API unreachable (both egress-blocked and 403). Cannot assess bot health.
+- **Scout**: BLOCKED — GeckoTerminal and CoinGecko both 403. Last real scout was 2026-05-14 (MOLT), 39 days ago. Scout proposal cannot be written without live pool data.
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`.
+
+### Notable context
+- **Option B benchmark window CLOSED** (~2026-06-15, 7 days ago). Post-window cohort changes still require explicit human PR per CLAUDE.md.
+- **v21.30.0** is current deployed version per CLAUDE.md.
+- Scout has been dormant 39 days — significantly past the 48h cycle. Once egress is fixed, scout should run immediately.
+- This is the **35th consecutive run** with the same network egress constraint.
+
+### Urgent action required
+1. Add to Claude Code environment egress allowlist: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com`
+2. Or check bot health manually: https://autonomous-trading-bot-production.up.railway.app/health
+3. Scout is 39 days overdue — run manually or fix egress so next hourly run can execute it.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
