@@ -1,6 +1,58 @@
-# MEDIC REPORT — 2026-06-21T UTC (latest)
+# MEDIC REPORT — 2026-06-22T UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #41)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #42)
+
+## Jobs Status This Run (Run #42 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (42 consecutive runs, 403/egress-blocked). Bot is alive (403 = responding, not down). Cannot verify error rates, balances, or circuit breakers. Root cause: `autonomous-trading-bot-production.up.railway.app` not in network egress allowlist.
+- **Scout**: SKIPPED — GeckoTerminal/DexScreener/CoinGecko all 403 (egress policy). Cannot verify token liquidity/volume data. Last real scout: 2026-05-14 (MOLT), 39 days ago.
+- **Auditor**: TRIGGERED by 9-month BEAR (BTC ~$63K, -50% from $126K Oct-2025 peak, cautiously constructive rebound but bear intact). 4 searches conducted. **IMPLEMENTED**: `VWS_PREFERRED_LIQUIDITY_USD` 50K→75K — bear LP withdrawal thins pools; aligns full-size trade threshold with HOT_MOVER_MIN_LIQUIDITY ($100K); pools $50K-$75K now get 50% size reduction. (Impact 2, Complexity 1, Risk low, Priority 2.0). Pushed to staging.
+
+## ⚠️ CRITICAL: Staging/Main Divergence (Action Required — Henry)
+
+`main` has 3 commits that `staging` does NOT have (pushed directly to main, bypassing staging):
+- `f29798d` feat(admin): /api/admin/liquidate-all — operator forced full-exit to USDC (#54)
+- `fba28c3` docs: update CLAUDE.md current version reference to v21.30.0
+- `a3154a9` chore: bump version to v21.30.0 — force Railway redeploy with INV-1 round 5
+
+`staging` has commits that `main` does NOT have (the valuable improvements):
+- `baf25a5` fix(strategy): composition frame = yardstick, not target — end dead-cash ratchet ← **most critical**
+- `9a98770` improve(auditor): CULL_MIN_AGE_HOURS 72→48
+- `aac4683` improve(auditor): HOT_MOVER_MIN_LIQUIDITY_USD 75K→100K
+- **[this run]** improve(auditor): VWS_PREFERRED_LIQUIDITY_USD 50K→75K
+
+**Henry's action**: `git rebase origin/main` on staging, resolve conflicts, then `./scripts/deploy/promote.sh`. The `baf25a5` dead-cash ratchet fix is critical — bot re-entered from 100% USDC and the fix prevents over-allocation beyond MIN_DRY_POWDER_PCT.
+
+## Henry's Action Items
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix | 🔴 HIGH — bot entering from 100% USDC |
+| Update AERO contract address when Aero merger announces (July 2026) | 🔴 HIGH — before July |
+| Review Option B cohort vs cbBTC/WETH 60/40 benchmark | 🟡 MED — window closed June 15 |
+| Update CLAUDE.md — Option B window ended 2026-06-15 | 🟡 MED — rules no longer current |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 42 runs blind |
+
+## Auditor Research Summary (Run #42 — 2026-06-22)
+
+### Signal Quality
+- **Finding**: Ensemble ML (LightGBM/XGBoost/Random Forest) for signal scoring mentioned in 2026 bot literature. NVR already runs LLM + deterministic rules combo. Full ML integration is high complexity (Impact 3, Complexity 5, Risk high → Priority 0.6). Watch list.
+- **Not implemented**: Out of scope for ≤ 10-line auto-implementation.
+
+### Execution Efficiency
+- **Finding — Aerodrome Slipstream**: V2 routing (34× capital efficiency, Nov-2025) and cross-chain expansion (Q2 2026) auto-benefit NVR routing without code change. Aerodrome Predictive Allocation live — AI agent rewards for forecasting. No code action needed.
+- **⚠️ AERO MERGER (July 2026)**: Aerodrome + Velodrome merge into "Aero". Current AERO contract (`0x940181a94A35A4569E4529A3CDfB74e38FD98631`) will be replaced. New address not announced. Henry must update TOKEN_REGISTRY when announced.
+- **IMPLEMENTED — VWS_PREFERRED_LIQUIDITY_USD 50K→75K**: (Impact 2, Complexity 1, Risk low, Priority 2.0). Bear LP withdrawal thins pools below $75K; 9-month bear means more existing-registry tokens now sit in 50K-75K range. Raising preferred threshold from 50K→75K forces 50% size reduction in thin pools, reducing execution slippage. Aligns with HOT_MOVER_MIN_LIQUIDITY_USD=100K (new entries already need $100K).
+
+### Position Sizing
+- **Finding**: Kelly criterion in bear recovery: "short-squeeze rebound from oversold" is NOT confirmed recovery. Quarter-Kelly (0.25×) remains correct. Research confirms NVR is at institutional guidance — KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 all optimal. (Priority 0.)
+- **Not implemented**: Already ahead of guidance.
+
+### Competitive Intelligence
+- **Finding**: BTC ~$63K June 22, cautiously constructive (holding above 200-day MA, 20/50/100 EMAs). "Divergence year" — BTC vs altcoins decoupling. Analysts project Q3-Q4 2026 bottom. No significant MEV protection gap found — NVR's FDV gate ($1M), liquidity gate ($100K), buy ratio (60%) already above industry practice.
+- **Market regime**: Still BEAR (9+ months), approaching statistical exhaustion zone. Hold current settings until 2 consecutive weeks of green closes above $70K confirms regime change.
+
+---
 
 ## Jobs Status This Run (Run #41 — 2026-06-21T UTC)
 
