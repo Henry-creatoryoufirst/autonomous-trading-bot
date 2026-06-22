@@ -1,12 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-22T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-2pkbaj
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT added, 39 days ago, well past 48h threshold). GeckoTerminal API also blocked. Used WebSearch. cbDOGE already in TOKEN_REGISTRY. cbMEGA (Coinbase Wrapped MEGA) identified as only new Coinbase-wrapped asset not yet in registry — cannot verify liquidity/volume without GeckoTerminal. Per CLAUDE.md Rule 1 (post-Option-B-window: cohort changes require explicit human PR), COHORT_PROPOSAL_2026-06-22.md written to repo root instead of auto-adding to TOKEN_REGISTRY.
+- **Auditor**: TRIGGERED by confirmed 108-day BEAR market (BTC ~$69K, -45% from $126K Oct-2025 peak; Fear/Greed 23-26). Research ran 4 searches. **STRATEGIC FINDING**: All low-complexity bear-market tightenings are COMPLETE after 35 runs. No qualifying single-constant implementation found (no remaining findings meet priority >= 2.0, risk = low, ≤ 10 lines). Near-bottom signals detected: Q3-Q4 2026 bottom widely expected; extreme fear reading; "2026 divergence year." Audit report written — NO CONSTANT CHANGED. Henry should review for RECOVERY SETUP: which bear-tightened constants to begin loosening as market approaches bottom.
+
+## Auditor Research Summary (Run #35 — 2026-06-22)
+- **Signal Quality**: AI-on-AI MEV warfare accelerating (June 2026 — Ethereum sandwich bot drained). NVR protected via sequencer-direct RPC. Specialized multi-agent cooperation mainstream (NVR Sleeves already implements). On-chain smart money already tracked (LARGE_TRADE_THRESHOLD_USD=2500). No new action. (Impact 2/Complexity 4/Risk medium → Watch list. Priority 0.5)
+- **Execution Efficiency**: Aerodrome→Aero merge completed Q2 2026. Smart contract addresses unchanged (0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5 verified in chain-config.ts). Bot auto-benefits from protocol improvements. Intent-based execution requires off-limits `executeDirectDexSwap` changes. No action. (Priority 0)
+- **Position Sizing**: KEY FINDING — drawdown-aware dynamic scaling ("cut size in half at 20% drawdown, stop at 40%") confirmed as institutional best practice. NVR has TRENDING_DOWN=0.75 static multiplier but no live-drawdown-triggered scaling. Implementation requires reading live portfolio from API (blocked in this environment). (Impact 3/Complexity 3/Risk medium → Watch list. Priority 1.0)
+- **Competitive Intelligence**: **META-FINDING** — "2026 is a divergence year" (Bitcoin, AI tokens, ETFs, altcoins decouple). Q3-Q4 2026 bottom expected per CryptoQuant, Pantera, Compass Point ($56K–$68K support). After 35 runs of unidirectional parameter tightening, FURTHER TIGHTENING IS COUNTERPRODUCTIVE. The next strategic action is preparing for recovery: loosening VOL_LOW_BOOST (1.25→1.35), CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT (15→17), SCALE_UP_MIN_GAIN_PCT (5→4) in that order — but only once live win_rate confirms uptick. (Impact 4/Complexity 2/Risk medium → Henry decision. Priority 2.0 — excluded from auto-implementation due to risk=medium and strategic timing dependency)
+
+## Recommended Action for Henry (URGENT — Recovery Setup)
+The bot has been in bear-defense mode for 108 days. 35 consecutive auditor runs have tightened every adjustable constant. The next cycle is NOT more tightening — it's staged recovery loosening. Henry should:
+
+1. **Review the watch list** in the audit report (audit-2026-06-22-UTC.md in repo root)
+2. **When live win_rate improves above 0.50** → begin loosening in order: VOL_LOW_BOOST 1.25→1.35, then CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→17, then SCALE_UP_MIN_GAIN_PCT 5→4
+3. **Fix network egress** to restore automated health monitoring (see below)
+4. **Review COHORT_PROPOSAL_2026-06-22.md** for cbMEGA addition
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 
 ## Problem
 
