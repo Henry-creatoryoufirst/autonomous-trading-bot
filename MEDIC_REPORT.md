@@ -1,3 +1,22 @@
+# MEDIC REPORT — 2026-06-22T (latest) UTC
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN — last successful token addition was SYRUP (2026-05-08), 45+ days ago; MOLT (2026-05-14) reverted. Threshold of 48h far exceeded. Searched GeckoTerminal (blocked 403), WebSearch for trending Base pools. Candidate evaluated: cbMEGA (Coinbase Wrapped MEGA, ~$792K 24h volume, launched April 2026). REJECTED — pool liquidity unverifiable (GeckoTerminal 403); $1.787M market cap with 44% daily turnover suggests thin depth, possibly below $100K liquidity floor. Per CLAUDE.md Rule 1, no auto-commit made regardless. Standards maintained.
+- **Auditor**: CANNOT CONFIRM TRIGGER — Bot API unreachable (403). Cannot check win_rate, drawdown, or losing_streak. Market signals suggest possible regime shift from bear to recovery (Aerodrome "record volume" June 2026, AERO at $0.54). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). KEY OBSERVATION: All constants are bear-tuned from the April–May 2026 bear (Runs #17–34). The 30-day Option B benchmark window closed ~2026-06-15. Henry should manually review whether bear-adjusted constants should be relaxed now that market appears to be recovering.  No code change implemented this run — cannot confirm trigger, and coordinated constant recalibration (bear→neutral/bull) requires human judgment.
+
+## Auditor Research Summary (Run #35 — 2026-06-22)
+- **Signal Quality**: Modern bots use 9+ indicator confluence for 68–72% win rates vs 55–62% with 6–7 indicators (walletfinder.ai 2026). NVR already uses multi-indicator confluence scoring. No new single-line action. (Priority 0.5)
+- **Execution Efficiency**: Base Flashblocks (July 2025) reshapes MEV economics on Base — bot already uses sequencer-direct RPC and auto-benefits. Intent-based systems (CoW/UniswapX) would improve execution quality but require off-limits execution path changes. No new action. (Priority 0.67, watch list)
+- **Position Sizing**: Quarter-Kelly (0.25f*) confirmed optimal for crypto (altrady.com 2026, lbank.com 2026). NVR already at KELLY_FRACTION=0.25. KEY WATCH: All bear-adjusted constants (KELLY_FRACTION 0.25, KELLY_POSITION_CEILING_PCT 12, RIDE_THE_WAVE_SIZE_PCT 3, SCALE_UP_SIZE_PCT 3, DECEL_MIN_PROFIT_PCT 2, STALE_POSITION_MIN_AGE_HOURS 36, CULL_MIN_AGE_HOURS 72) were tuned during 54-70 day bear. If market is recovering, coordinated relaxation back toward bull-calibrated values may be warranted — but requires confirmed win_rate data from bot API. (Priority 2.0 post-API-access, Complexity 3, Risk medium)
+- **Competitive Intelligence**: Cross-chain arbitrage (Base/Arbitrum/Optimism) emerging as major alpha for autonomous agents in 2026 (dysnix.com, phemex.com). ARMA agent (Giza/GHST) pursuing yield optimization on Base — GIZA already in registry. No new unregistered high-FDV AI agent tokens identified. (Priority 0)
+
+## Scout Candidate Log (Run #35 — 2026-06-22)
+| Token | Symbol | 24h Vol | Mkt Cap | Pool Age | Liquidity | Score | Decision |
+|-------|--------|---------|---------|----------|-----------|-------|----------|
+| Coinbase Wrapped MEGA | cbMEGA | $792K | $1.79M | ~2mo | Unverifiable (GeckoTerminal blocked) | 5/10 | REJECTED — liquidity floor unconfirmed; 44% daily turnover anomalous for cap size |
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
@@ -66,6 +85,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T UTC | Scout ran (45+ days since last add); cbMEGA evaluated but REJECTED (liquidity unverifiable, 44% turnover anomaly). Auditor: cannot confirm trigger (API unreachable); market signals suggest possible bear→recovery shift; no code change — coordinated bear-constant recalibration requires human review + API data post Option-B window close (~Jun-15). |
 
 ## Bot Health Evidence (from git history)
 
