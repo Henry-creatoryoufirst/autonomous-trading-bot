@@ -1,4 +1,31 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Environment
+- Run timestamp: 2026-06-22T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-nez9ni
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints including via WebFetch and bash curl). No egress allowlist change detected. 38 days elapsed since Run #34.
+- **Scout**: SKIPPED — GeckoTerminal API unreachable (403, not in egress allowlist). Additionally, CLAUDE.md Rule 1 prohibits automated TOKEN_REGISTRY additions; Option B benchmark window ended ~2026-06-15 but cohort changes still require explicit human PR.
+- **Auditor**: TRIGGERED by inferred regime shift (38-day gap + June 2026 research confirms "short-squeeze rebound from oversold conditions" after 70+ day bear). Top finding: STALE_POSITION_MIN_AGE_HOURS 36→48 — recovery-adjusted; quality-cohort positions deserve standard 48h runway in rebound regime (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #35 — 2026-06-22)
+- **Signal Quality**: Morpho now largest Base lending market ($1.0B borrowed vs Aave $539M). On-chain signal tooling (Nansen/Dune/Glassnode) mainstream in 2026 but complex to integrate (Impact 2/Complexity 4/Risk med) → Watch list. No new confluence signal available for simple implementation. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merger to "Aero" launching Q2 2026 — unifies liquidity layer across Optimism Superchain as MetaDEX03. Bot auto-benefits from routing improvements without code change. No new action. (Priority 0)
+- **Position Sizing**: Kelly criterion research 2026 confirms Quarter-Kelly (0.25×) correct, rolling window 3-6 months current. KEY FINDING: bear-adjusted STALE_POSITION_MIN_AGE_HOURS (36h) fires too eagerly in recovery regime — quality-cohort positions need standard 48h runway. IMPLEMENTED: 36→48. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: ARMA (Giza) autonomous yield agents achieving 15% net USDC yield across Aave/Morpho/Moonwell on Base ($35M AUM, 102K+ transactions). June 2026 market: "short-squeeze rebound from oversold conditions, macro headwinds persist but structural drivers supportive." Polystrat prediction market agent 4,200+ trades first month. Intent-based routing (CoW/1inch) — touches off-limits execution paths. Watch list for Henry. (Priority 0)
+
+## Watch List for Henry
+1. **Yield optimization frequency**: ARMA agents at 15% USDC APY suggest NVR's YIELD_CHECK_INTERVAL_CYCLES=30 (~60min) could be tightened; Morpho now outpaces Aave on Base by 2×. Review yield-optimizer.ts vs current Morpho/Moonwell APY spreads.
+2. **Bear-adjusted constant review**: KELLY_FRACTION (0.25), KELLY_POSITION_CEILING_PCT (12%), SURGE_MAX_CAPITAL_PER_TOKEN_PCT (20%), FLOW_REVERSAL_EXIT_BUY_RATIO (38) — all set for 70-day bear regime that has now ended. Systematic review of all "Bear-adjusted May-2026" constants is warranted now that Option B window is complete (~2026-06-15).
+3. **CULL_MIN_AGE_HOURS (72h)**: Also bear-adjusted (was 168h). Recovery-mode tokens culled after 3 days may miss the bounce. Consider 96→120h restoration as a follow-up to today's STALE change.
+
+## Previous MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
