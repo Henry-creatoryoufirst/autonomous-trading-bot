@@ -1,3 +1,30 @@
+# MEDIC REPORT — 2026-06-22T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Run Summary (2026-06-22 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent egress constraint). Both
+  `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`
+  return `Host not in allowlist` from the Claude Code remote environment.
+- **Scout**: OVERDUE — last confirmed token discovery was 2026-05-16 (37 days ago).
+  Cannot verify token quality (liquidity/volume) without GeckoTerminal API access.
+  WebSearch returned general Base ecosystem info (Aerodrome Predictive Allocation
+  launching July 2026, AERO +22%; Virtuals/Clanker active) but no verifiable
+  on-chain pool data. Per CLAUDE.md Rule 1, no tokens written to TOKEN_REGISTRY.
+  No COHORT_PROPOSAL written (insufficient verifiable data to propose a candidate).
+- **Auditor**: BLOCKED — cannot fetch `/api/trades`, `/api/portfolio`, or
+  `/api/patterns` to check win rate / drawdown / regime trigger conditions.
+
+## Note on Option B window
+
+The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has now closed.
+However, CLAUDE.md Rule 1 still requires cohort changes via explicit human PR only.
+No auto-additions have been made. Henry: if you want to open the cohort for new
+tokens now that the window is closed, the bot is ready; just review and merge a PR.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
