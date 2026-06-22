@@ -826,7 +826,7 @@ export const CASH_DEPLOYMENT_THRESHOLD_PCT = 20; // v20.3.1: 25% → 20% (match 
  *  CASH_DEPLOY_FEAR_THRESHOLDS removed — threshold is always CASH_DEPLOYMENT_THRESHOLD_PCT. */
 
 /** Legacy — still used as the URGENT tier's confluence discount for directive stacking */
-export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 15; // Bear-adjusted May-2026: 20→15 — 63-day bear; effective buy threshold for cash deployment 27-20=7→27-15=12; research: capital preservation critical in sustained bear; excess cash should require stronger signal before deployment
+export const CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT = 18; // Extreme-fear Jun-2026: 15→18 — F&G 23-26; effective threshold 27-15=12→27-18=9; research: F&G<25 precedes positive 30d BTC returns in ~80% of instances; Option B window closed Jun-15; position for recovery without touching ONE HARD RULE (MIN_DRY_POWDER_PCT)
 
 /** Legacy — kept for reference; tiers now define per-tier deploy percentages */
 export const CASH_DEPLOYMENT_MAX_DEPLOY_PCT = 80;
