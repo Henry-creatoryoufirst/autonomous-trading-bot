@@ -1,6 +1,6 @@
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T UTC | **Option B window COMPLETED 2026-06-15.** Scout: 38 days since last scout; GeckoTerminal blocked; wrote COHORT_PROPOSAL_2026-06-22.md (CLAUDE.md Rule 1 prevents TOKEN_REGISTRY auto-add). Auditor: AERO +30% mid-June + Aerodrome/Velodrome Aero merger July 2026 signals recovery → VOL_LOW_BOOST 1.25→1.35 (partial bear rollback, Impact 2, Priority 2.0). |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,7 +91,25 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Run #35. **NEW: Option B 30-day window completed 2026-06-15 — 7 days past window end.** Bot health unverifiable from this environment.
+- **Scout**: RAN (threshold met — 38 days since last scout 2026-05-14). GeckoTerminal API blocked. Per CLAUDE.md Rule 1, wrote COHORT_PROPOSAL_2026-06-22.md instead of TOKEN_REGISTRY commit.
+- **Auditor**: TRIGGERED (inferred bear → recovery). AERO +30% mid-June; Aerodrome/Velodrome merging into Aero July 2026 with MEV-resistant pools. Top finding: VOL_LOW_BOOST 1.25→1.35 — partial bear rollback; Option B window complete; recovery markets treat low-vol as accumulation. IMPLEMENTED in constants.ts. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-22)
+- **Signal Quality**: 9+ indicator confluence posts 68-72% win rates vs 55-62% (walletfinder.ai, trendrider.net 2026). NVR 5-agent swarm already captures key signals. Full expansion (Impact 3/Complexity 5/Risk medium) → Watch list. (Priority 0.6)
+- **Execution Efficiency**: KEY — Aerodrome+Velodrome merging into "Aero" July 2026. MEV-resistant pools; Slipstream V3 captures MEV at DEX level; LP migration deadline approaching. NVR auto-benefits via existing routing — no code change needed. AERO token +30% rally mid-June. (Impact 3, Complexity 0) → Passive benefit.
+- **Position Sizing**: Quarter-Kelly confirmed optimal; KELLY_ROLLING_WINDOW=30 already aligned with "update every 20 trades" research. VOL_LOW_BOOST 1.25→1.35 implemented (partial bear rollback for recovery accumulation phases). (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED.
+- **Competitive Intelligence**: Intent-based routing (CoW Protocol, $9B/mo) requires execution path changes (off-limits). Aero MEV-resistant pools → passive benefit July 2026. Watch list: Intent routing for future Henry-reviewed PR.
+
+## Watch List (Run #35 — for Henry)
+1. **Aero protocol July 2026** — Confirm AERO position active during LP migration to MEV-resistant pools.
+2. **Bear rollback candidates** — KELLY_FRACTION 0.25→0.28, HOT_MOVER_MIN_CHANGE_H1_PCT 7→6, STALE_POSITION_MIN_AGE_HOURS 36→42. Open PR if comfortable with market recovery.
+3. **Cohort expansion** — Window complete; see COHORT_PROPOSAL_2026-06-22.md. Requires Henry's live DexScreener verification.
+4. **Egress allowlist (still pending)** — Add `autonomous-trading-bot-production.up.railway.app` + `api.geckoterminal.com` to enable live health checks.
+
+## Jobs Status (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
