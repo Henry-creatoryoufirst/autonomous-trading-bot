@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-22T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-15wmh4
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T UTC | Scout: GeckoTerminal 403 (env block); 39 days since last scout (MOLT 2026-05-14); CLAUDE.md Rule 1 still prohibits auto-adds post-window; wrote COHORT_PROPOSAL_2026-06-22.md. Auditor: inferred BEAR (F&G extreme fear 23-26, BTC $75K ~45% below Oct-2025 $126K peak, below 50/100/200-day MAs, 3 red monthly candles). BREAKER_SIZE_REDUCTION 0.7→0.6 (40% vs 30% post-loss size cut) — 2026 Kelly research confirms reducing post-streak sizing. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Note: 38 days since last update (Run #34 was 2026-05-15).
+- **Scout**: RAN RESEARCH (>48h since last scout — MOLT added 2026-05-14, 39 days ago). GeckoTerminal API also 403 (env block). CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY post-Option-B-window (~2026-06-15 end); changes still require explicit human PR. Wrote `COHORT_PROPOSAL_2026-06-22.md` to repo root with research findings and context. No specific candidates could be evaluated without pool data.
+- **Auditor**: TRIGGERED by inferred BEAR market regime (BTC peaked $126K Oct-2025, now $75K ~45% below peak; Fear & Greed extreme fear 23-26; 3 consecutive red monthly candles; below 50/100/200-day MAs). Ran 4 searches. Top finding: `BREAKER_SIZE_REDUCTION` 0.7→0.6 (40% vs 30% size cut for 24h after consecutive-loss breaker) — 2026 Kelly criterion research: "reduced position sizing during losing streaks significantly improves long-term outcomes." IMPLEMENTED in `src/core/config/constants.ts`. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-22)
+- **Signal Quality**: Confluence 9/12+ indicators → 68-72% win rate (vs 55-62% at 6-7/12). Platforms use 2.5M+ daily signals combining price, on-chain, NLP sentiment. NVR already uses confluence + swarm scoring. No new actionable constant. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome/Velodrome merger to "Aero" unified liquidity layer in progress. Base Flashblocks (200ms, since Oct 2025). Bot auto-benefits from protocol improvements without code change. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — 2026 Kelly production framework explicitly adds "drawdown-probability constraint" step after raw Kelly. "Reduced position sizing during losing streaks significantly improves long-term outcomes." NVR already at Quarter-Kelly (0.25). BREAKER_SIZE_REDUCTION 0.7→0.6 directly implements this constraint at the consecutive-loss breaker. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Intent-based MEV protection going mainstream (private relays, on-chain order flow auctions). NVR's sequencer-direct RPC already provides this protection. "Tokens with custom transfer mechanics, brand-new DEX forks, small liquidity pools" = where last real edge lives. Quality cohort (7 tokens, established) is the correct countermeasure. No new action. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`

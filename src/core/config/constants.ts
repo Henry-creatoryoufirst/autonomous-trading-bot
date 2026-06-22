@@ -673,7 +673,7 @@ export const BREAKER_DAILY_DD_PCT = 7;         // 7% daily drawdown → pause (a
 export const BREAKER_WEEKLY_DD_PCT = 15;       // 15% weekly drawdown → pause
 export const BREAKER_SINGLE_TRADE_LOSS_PCT = 3;// Single trade > 3% of portfolio → pause
 export const BREAKER_PAUSE_HOURS = 1;          // 1 hour pause — get back in the game faster
-export const BREAKER_SIZE_REDUCTION = 0.7;     // 30% size reduction for 24h after breaker
+export const BREAKER_SIZE_REDUCTION = 0.6;     // Bear-adjusted Jun-2026: 0.7→0.6 — 40% size cut (vs 30%) for 24h after consecutive-loss breaker; 2026 Kelly research: "reduced position sizing during losing streaks significantly improves long-term outcomes"; F&G extreme fear 23-26, BTC $75K (~45% below Oct-2025 peak)
 export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size reduction
 
 // ============================================================================
