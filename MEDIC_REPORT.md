@@ -1,4 +1,28 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-22T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-22T UTC)
+
+⚠️ **OPTION B WINDOW ENDED 2026-06-15** — 7 days have passed since the 30-day benchmark window closed. Per CLAUDE.md, cohort changes and post-window strategic decisions now require explicit human review. No auto-changes made.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on Railway + GeckoTerminal + all external APIs). Bot health unknown; this is an infrastructure constraint, not a bot failure. MEDIC_REPORT updated (Run #35).
+- **Scout**: CANNOT SCAN — GeckoTerminal API blocked by egress policy. Last successful scout was 2026-05-14 (MOLT added, 39 days ago). Per CLAUDE.md Rule 1 + post-window policy, TOKEN_REGISTRY changes require explicit human PR regardless. No TOKEN_REGISTRY changes made.
+- **Auditor**: CANNOT VERIFY TRIGGERS (API blocked — can't compute win_rate, drawdown, losing_streak). Research ran 4 searches. Findings: NVR already at best practice across all 4 areas — no qualifying low-risk ≤10-line improvements found. No code changes made.
+
+### Auditor Research Summary (Run #35 — 2026-06-22)
+- **Signal Quality**: Multi-signal confluence 9+ indicators posts 68-72% win rates (vs 55-62% for 6-7). NVR swarm architecture (5 agents, flow-dominant 35% weight) already aligned with 2026 best practice. No new action. (Priority 0)
+- **Execution Efficiency**: Aerodrome+Velodrome merge targeted July 2026 — "Aero" merged platform. Slipstream concentrated liquidity already in use. Bot auto-benefits without code change. AERO predictive allocation model (June 2026) may improve routing rewards. No action needed. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal for crypto bear/volatile regimes (multiple 2026 sources). NVR already at KELLY_FRACTION=0.25. Kelly rolling window every 20-30 trades matches KELLY_ROLLING_WINDOW=30. No change needed. (Priority 0)
+- **Competitive Intelligence**: Intent-based DEX (solver competition, zero slippage, MEV-protected) is the emerging frontier. OpenOcean cross-DEX aggregation could improve routes beyond Aerodrome. Both require touching execute* functions (off-limits). Watch list. (Impact 3/Complexity 5/Risk HIGH → disqualified)
+
+### Henry — Action Items for Post-Window Review
+1. **Option B benchmark complete**: Review results vs cbBTC/WETH 60/40 benchmark for the May 15 → June 15 window
+2. **Cohort review**: CLAUDE.md requires explicit human PR for any additions. Scout has been unable to scan for 39 days (API egress blocks). Consider running a manual GeckoTerminal scan or expanding egress allowlist.
+3. **Strategy parameter review**: 12 bear-market adjustments were made May 3-15 (bear-regime tightening). With window closed, some parameters may warrant re-relaxing if market has recovered.
+4. **API egress**: The monitoring agent has been blind since April 14 (Run #1). Adding `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to the egress allowlist would restore full monitoring capability.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +90,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-22T UTC | **Option B window ended 2026-06-15.** Scout/API blocked (egress policy, GeckoTerminal + Railway unreachable). Auditor research: NVR already at best practice — no qualifying changes. No TOKEN_REGISTRY or constants.ts changes. Henry: see post-window action items above. |
 
 ## Bot Health Evidence (from git history)
 
