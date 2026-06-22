@@ -96,6 +96,61 @@ Because the API is unreachable, the medic cannot determine:
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
 - **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
+---
+
+## Jobs Status This Run (Run #36 — 2026-06-22T UTC)
+
+| Run # | Timestamp | Action |
+|-------|-----------|--------|
+| #35 | 2026-06-21/22 | Multiple runs (issues #74–#78) — all PATTERN D. Option B window closed flagged. No code changes. |
+| #36 | 2026-06-22T UTC | PATTERN D (persistent). Auditor research ran (WebSearch only — GeckoTerminal/Railway blocked). See below. |
+
+### Medic
+
+PATTERN D (persistent — Run #36). Railway API and GeckoTerminal both unreachable from the Claude Code managed environment (egress allowlist). Bot health unknown from this environment. No code changes.
+
+**Bot status from git history**: Last commit was `feat(admin): /api/admin/liquidate-all` (#54) on 2026-05-28 — forced full exit to USDC. Bot has been in full-USDC state for ~25 days. No trading-related commits since. This is likely intentional (end-of-Option-B administrative pause), but cannot be confirmed without Railway access.
+
+### Scout
+
+Cannot run — GeckoTerminal API blocked by egress policy. Last token added: MOLT (2026-05-14, ~39 days ago). Option B window has closed (June 15), so the window-scoped cohort lock no longer applies, but auto-adds via the scout agent still require egress access that isn't available. No TOKEN_REGISTRY changes.
+
+### Auditor
+
+**Trigger conditions**: Cannot evaluate (bot API unreachable). Research ran via WebSearch only.
+
+**New findings from Run #36 research:**
+
+#### 1. Aerodrome Predictive Allocation — July 2026 (HIGH strategic value)
+
+- **What it is**: Aerodrome is replacing its weekly gauge voting system with "Predictive Allocation" in July 2026. The mechanism rewards participants who accurately forecast where future liquidity demand will arise — rather than backward-looking gauge votes.
+- **AERO + VELO merger**: Aerodrome and Velodrome are merging into a unified cross-chain DEX called "Aero" (Base + Optimism + Ethereum mainnet). AERO holders receive **94.5% of the new unified token supply**. This is significant hidden upside in the existing AERO registry position.
+- **AI agents specifically mentioned**: Developers expect 80% efficiency gains and say the model creates a new primitive attractive to "trading firms and AI agents."
+- **Market response**: AERO jumped +22% on the June 14 announcement by Dromos Labs. AERO already launched ~$60M+ daily volume week of June 14–20.
+- **Impact on NVR**: AERO is already in TOKEN_REGISTRY (DEFI sector). The merger token-claim upside (94.5% of "Aero" to AERO holders) is alpha that the bot should hold AERO to capture. Currently moot because bot is in full-USDC state.
+- **Source**: CryptoBriefing, DL News, Blockonomi — confirmed June 14, 2026 announcement by Dromos Labs.
+- **Score**: Impact 5, Complexity N/A (no code change needed — just hold AERO), Risk low.
+
+#### 2. Market regime clarification — still Extreme Fear, not "bear→bull"
+
+Several prior agent run issues (#77 in particular) stated "market appears to have shifted bear→bull." This run's research found the broader data contradicts this:
+- Bitcoin: ~$63,649
+- Ethereum: ~$1,772
+- Sentiment: "Extreme Fear"
+- Base TVL: $3.82B (down from $5.6B peak Oct 2025), declined 11.96% in early June 2026
+
+The AERO +22% move was token-specific (Predictive Allocation announcement), not a broad market recovery. **All bear-adjusted constants from May runs remain appropriate.** Do not loosen them until BTC stabilizes above $70K and Fear & Greed exits fear territory.
+
+#### 3. Kelly criterion — no new improvements found
+
+Half-Kelly (0.25) remains best practice for crypto in sustained bear/fear regimes. Combining with multi-agent confidence weighting yields 20–30% better Sharpe ratios, but this would be a major architecture change (out of 10-line limit). Current KELLY_FRACTION=0.25 is correctly calibrated.
+
+**Action taken**: No code changes. Bear-market constants remain appropriate given Extreme Fear market conditions. AERO merger finding noted for Henry's strategic review — AERO position worth holding for July Predictive Allocation launch and token merger upside.
+
+### Open Issues Note
+
+23 GitHub issues are currently open from previous agent runs (issues #56–#78). Most are duplicates of the same PATTERN D report. Henry: please bulk-close these once the egress allowlist is fixed — they will no longer be needed once the medic can reach the bot API directly.
+
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
 - **Execution Efficiency**: Aerodrome/Velodrome protocols set to merge in 2026; Slipstream V3 gas-aware routing auto-benefits NVR without code change. No new action. (Priority 0)
