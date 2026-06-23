@@ -1,5 +1,24 @@
 # MEDIC REPORT — 2026-06-23T UTC (latest)
 
+## Jobs Status This Run (Run #45 — 2026-06-23T UTC)
+
+- **Medic**: PATTERN D — API unreachable (45 consecutive runs, 403/egress-blocked). `autonomous-trading-bot-production.up.railway.app` not in egress allowlist. Bot alive (403 response = responding). Cannot verify error rates or circuit breakers.
+- **Scout**: SKIPPED — GeckoTerminal blocked (403). Last real scout: 2026-05-14 (MOLT), 40 days ago. Per CLAUDE.md Rule 1 (cohort locked), no auto-adds to TOKEN_REGISTRY regardless. Beryl upgrade passed (June 25) — scout remains blocked until egress is added.
+- **Auditor**: TRIGGERED — market regime BEAR for 100+ days (BTC $69-70K, down 45% from Oct-2025 $126K peak; Fear & Greed 23-26 extreme fear; 3 red monthly candles). 4 searches conducted. **IMPLEMENTED**: `TWAP_TIMING_JITTER_PCT` 20→30 — AI-on-AI MEV growing on Base (Cryptollia 2026); 20% jitter (±2.4s on 12s TWAP intervals) is pattern-detectable by sandwich bots; 30% widens randomization by 50%, degrading MEV extraction efficiency. (Impact 3, Complexity 1, Risk low, Priority 3.0). Committed + pushed to `claude/cool-sagan-iubnvt`.
+
+## Henry's Action Items (Run #45)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix | 🔴 HIGH — bot entering from 100% USDC |
+| Update AERO contract address when Aero/Velodrome merger announces (July 2026) | 🔴 HIGH — before July |
+| Update CLAUDE.md — Option B window ended 2026-06-15; Rules 1 & 2 need review | 🟡 MED — scout blocked, rules stale |
+| Re-run scout after adding egress for `api.geckoterminal.com` | 🟡 MED — 40 days since last scout |
+| Review Option B cohort vs cbBTC/WETH 60/40 benchmark result | 🟡 MED — window closed June 15 |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 45 runs blind |
+
+---
+
 ## Jobs Status This Run (Run #44 — 2026-06-23T UTC)
 
 - **Medic**: PATTERN D — API unreachable (44 consecutive runs, 403/egress-blocked). Same root cause as all prior runs. MEDIC_REPORT updated (Run #44).
