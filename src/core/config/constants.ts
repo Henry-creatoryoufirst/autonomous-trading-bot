@@ -689,7 +689,7 @@ export const VWS_MAX_SPREAD_PCT = 0.5;             // Skip trade if VWS > 0.5%
 export const VWS_TRADE_AS_POOL_PCT_MAX = 5;        // Max trade size as % of pool liquidity
 export const VWS_TRADE_AS_POOL_PCT_WARN = 2;       // Warn if trade > 2% of pool
 export const VWS_MIN_LIQUIDITY_USD = 20_000;       // Bear-adjusted May-2026: 10K→20K — 63-day bear; $10K pools in sustained downtrends carry 2-3× realized slippage vs bull (LP withdrawal + thinner depth); $20K floor cuts the worst-slippage tail without significantly reducing trade count
-export const VWS_PREFERRED_LIQUIDITY_USD = 50_000; // Preferred minimum for full-size trades
+export const VWS_PREFERRED_LIQUIDITY_USD = 75_000; // Bear-adjusted Jun-2026: 50K→75K — 9-month bear; LP withdrawal thins pools; aligns full-size trade threshold with bear-market liquidity reality; pools $50K-$75K get 50% size reduction (VWS_THIN_POOL_SIZE_REDUCTION=0.5); HOT_MOVER_MIN_LIQUIDITY is already $100K — this raises execution bar for existing-registry positions to match
 export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools between min and preferred
 
 /**
@@ -738,7 +738,7 @@ export const HOT_MOVER_MIN_CHANGE_H1_PCT = 7; // Bear-adjusted Apr-2026: 5→7 �
 export const HOT_MOVER_MIN_VOLUME_H1_USD = 200_000; // Bear-adjusted May-2026: 150K→200K — 65-day bear; total Base DEX vol suppressed (~$673M/day vs bull peaks); $150K/h threshold no longer filters thin MEV-sandwich pumps; $200K floor requires broader market participation
 
 /** Min pool liquidity — below this is a rug risk, skip it */
-export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
+export const HOT_MOVER_MIN_LIQUIDITY_USD = 100_000; // Bear-adjusted Jun-2026: 75K→100K — 8-month bear; LP withdrawal thins pools below $100K in sustained downtrends; completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓, buy ratio 55→60% ✓, H1 change 5→7% ✓, liquidity ✓)
 
 /** How often to scan GeckoTerminal trending pools (ms) — reuses cached data, free */
 export const HOT_SCAN_INTERVAL_MS = 90_000;
@@ -999,8 +999,8 @@ export const DUST_CLEANUP_INTERVAL_CYCLES = 10;
 // This is the middle tier between dust cleanup (<$5) and meaningful holds (>$100).
 // ============================================================================
 
-/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear) */
-export const CULL_MIN_AGE_HOURS = 72; // Bear-adjusted May-2026: 120→72 — 65-day bear; dead sub-$100 research positions recycle 40% faster; Kelly criterion research confirms sustained bear regimes require accelerated capital rotation out of non-performing positions to reduce portfolio drag; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards prevent culling genuine winners
+/** Minimum position age in hours before culling is considered (7 days → 5 days in 56-day bear → 3 days in 65-day bear → 2 days in 8-month bear) */
+export const CULL_MIN_AGE_HOURS = 48; // Bear-adjusted Jun-2026: 72→48 — 8-month bear (BTC -50% from Oct-2025 $126K peak); dead sub-$100 positions averaging 2 days without momentum are statistical zeros in this regime; CULL_MAX_MOMENTUM=3% + CULL_MIN_PNL_PCT=-5% guards prevent culling genuine winners
 
 /** Only cull positions under this USD value — don't touch meaningful holds */
 export const CULL_MAX_USD = 100;
