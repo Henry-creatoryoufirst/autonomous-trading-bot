@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-23T20:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-e927bt
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-23T UTC | Option B benchmark window closed ~2026-06-15. Scout ran (38+ days since last scout); GeckoTerminal blocked by egress policy — WebSearch substituted; no TOKEN_REGISTRY additions (COHORT_PROPOSAL_2026-06-23.md filed instead per CLAUDE.md Rule 1). Auditor ran research-only (bot API still blocked); market signals suggest post-bear recovery (AERO +13% in 24h, cbAssets pool APRs 600-900%); no constants changed — regime confirmation requires Henry's manual verification before any bull-market recalibration. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-23T20:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (38+ days since last scout — MOLT added 2026-05-14). GeckoTerminal blocked by egress policy; WebSearch substituted. Key signals: AERO +13% in 24h ($61M vol), cbBTC-cbADA pool ~906% APR, cbBTC-cbXRP pool ~634% APR on Aerodrome Slipstream, $620M weekly stablecoin DEX volume on Base. COHORT_QUALITY_7 already covers cbBTC/cbXRP/cbADA/cbSOL (all in high-APR pools). No new TOKEN_REGISTRY additions — cannot verify pool liquidity/volume/age thresholds without GeckoTerminal access. COHORT_PROPOSAL_2026-06-23.md filed per CLAUDE.md Rule 1.
+- **Auditor**: RESEARCH-ONLY — cannot check live metrics (bot API blocked). Market signals suggest post-bear recovery but regime confirmation requires Henry's manual verification before any bull-market constant recalibration. Key findings: (1) Aerodrome Predictive Allocation upgrade in July 2026 is a major catalyst; (2) cbAssets Slipstream pool APRs suggest COHORT_QUALITY_7 is in a new incentive cycle; (3) bear-adjusted constants (KELLY_FRACTION=0.25, VOL_LOW_BOOST=1.25, HOT_MOVER thresholds) may be due for post-recovery recalibration — flagged for Henry's review. No code changes made — cannot auto-implement regime-dependent adjustments without confirmed live metrics.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +214,17 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. URGENT — Option B window has closed:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Egress allowlist (unblocks Medic + Scout automatically):**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+3. **Manually verify bot health:** `https://autonomous-trading-bot-production.up.railway.app/health`
+4. **Option B window is CLOSED (~June 15):** Now is the time to review bear-adjusted constants for post-recovery recalibration. See `COHORT_PROPOSAL_2026-06-23.md` for market signals and candidate adjustments.
+5. **COHORT_QUALITY_7 review:** The 7-token cohort appears well-positioned (cbBTC-cbXRP/cbADA pools at 600-900% APR on Aerodrome). Consider whether cbLTC (HOLD_ONLY due to thin liquidity) should be swapped for a more liquid quality asset now that the window is closed.
+6. **Aerodrome Predictive Allocation (July 2026):** Major upgrade shifting gauge voting to prediction markets. Consider AERO position sizing given this protocol catalyst.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
