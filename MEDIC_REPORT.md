@@ -1,3 +1,35 @@
+# MEDIC REPORT — 2026-06-23T21:10 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Run Summary (2026-06-23)
+
+**Date:** 2026-06-23T21:10 UTC  
+**Branch:** claude/cool-sagan-lry3lr  
+
+All three jobs blocked or skipped this run:
+
+| Job | Status | Reason |
+|-----|--------|--------|
+| 🏥 Medic | BLOCKED | `/api/errors` and `/api/balances` → 403 (proxy policy denial) |
+| 🔍 Scout | SKIPPED | GeckoTerminal blocked (403) + CLAUDE.md Rule 1 cohort lock |
+| 📊 Auditor | BLOCKED | `/api/trades`, `/api/portfolio` → 403 (proxy policy denial) |
+
+**⚠️ Option B Benchmark Window Status:** The 30-day Option B window started 2026-05-15 and expired ~2026-06-15. Today is 2026-06-23 — the window has **closed**. CLAUDE.md Rules 1 & 2 (cohort lock + no auto-merge to staging/main) remain in force until Henry explicitly lifts them via a CLAUDE.md update.
+
+**Proxy evidence:**
+```json
+{
+  "kind": "connect_rejected",
+  "detail": "gateway answered 403 to CONNECT (policy denial or upstream failure)",
+  "host": "autonomous-trading-bot-production.up.railway.app:443"
+}
+```
+
+**Action needed:** Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to the Claude Code session's egress allowlist at https://code.claude.com/docs/en/claude-code-on-the-web. This has been blocked for 35+ consecutive hourly runs since ~2026-04-14.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
