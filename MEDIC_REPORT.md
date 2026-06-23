@@ -1,3 +1,24 @@
+# MEDIC REPORT — 2026-06-23T UTC (latest)
+
+## Jobs Status This Run (Run #44 — 2026-06-23T UTC)
+
+- **Medic**: PATTERN D — API unreachable (44 consecutive runs, 403/egress-blocked). Same root cause as all prior runs. MEDIC_REPORT updated (Run #44).
+- **Scout**: GeckoTerminal blocked (403). Ran WebSearch instead. No new tokens verified with required metrics ($100K liquidity, $50K 24h vol, 3-day pool age). **KEY FINDING: Base Beryl upgrade targets June 25, 2026 (in 2 days)** — B20 native token standard, faster withdrawals (7→5 days), Reth V2 overhaul. Expected to spur new pool launches. Scout should re-run 48–72h post-Beryl (target: June 27–28) when qualified pools have formed.
+- **Auditor**: SKIPPED — API blocked (cannot check win rate/drawdown/losing streak trigger conditions). Last auditor run was Run #42 (2026-06-22T00:14 UTC, ~24h ago); VWS_PREFERRED_LIQUIDITY_USD 50K→75K was implemented. Research gathered this run found no new implementable findings (confidence scoring already optimal, Kelly already at Quarter-Kelly; same conclusions as runs #38–43). No changes made.
+
+## Henry's Action Items (Run #44 — unchanged from prior runs)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix | 🔴 HIGH — bot entering from 100% USDC |
+| Update AERO contract address when Aero/Velodrome merger announces (July 2026) | 🔴 HIGH — before July |
+| **Re-run scout June 27–28** after Beryl upgrade (new B20 token pools expected) | 🟡 MED — add egress or manually trigger |
+| Review Option B cohort vs cbBTC/WETH 60/40 benchmark | 🟡 MED — window closed June 15 |
+| Update CLAUDE.md — Option B window ended 2026-06-15 | 🟡 MED — rules no longer current |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 44 runs blind |
+
+---
+
 # MEDIC REPORT — 2026-06-22T UTC (latest)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #43)
