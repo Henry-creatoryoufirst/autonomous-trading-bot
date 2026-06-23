@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-23T UTC | Scout ran but all data sources blocked (GeckoTerminal + DexScreener 403); no qualifying tokens verified; notable: B20/Beryl upgrade June-25 in 2 days. Auditor skipped (portfolio API blocked). Market intelligence: AERO +26% 7d, Base vol +68% d/d — possible bear→bull regime shift since last run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,15 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-23T UTC)
+
+- **Medic**: PATTERN D — API unreachable (35th consecutive run, 403 on all endpoints). MEDIC_REPORT updated.
+- **Scout**: RAN (last successful unreversed scout was SYRUP 2026-05-08, 46 days ago — well over 48h threshold). All primary data sources blocked: GeckoTerminal API 403, DexScreener API 403, GeckoTerminal web 403. WebSearch only returns general market news; insufficient to verify quality filters (liquidity >$100k, volume >$50k, age >3 days). **No qualifying tokens confirmed.** Market intelligence captured:
+  - **Base Beryl/B20 upgrade: June 25, 2026 (2 days away)** — native B20 token standard launches, cutting token creation costs and state storage overhead. Likely wave of new token launches. Monitor GeckoTerminal after June 25.
+  - **Aerodrome/Velodrome → "Aero" merger: July 2026** — bot's primary DEX routing (~70% of Base DEX volume) is getting a major upgrade. Predictive Allocation replaces weekly gauge voting. MEV-resistant pools incoming. No code change needed now but worth watching.
+  - AERO +26% in 7 days, +13% in 24h. Base 24h DEX volume: $931.9M (+68% day-over-day). Market may have shifted from the 70-day bear that drove the auditor's constant tightenings.
+- **Auditor**: SKIPPED — portfolio/trades API blocked (403). Cannot verify trigger conditions (win_rate, drawdown, regime). **Watch item for Henry**: 34 consecutive auditor runs tightened bear-market constants (KELLY_FRACTION→0.25, KELLY_POSITION_CEILING_PCT→12, STALE_POSITION_MIN_AGE_HOURS→36, etc.). If market has recovered to bull regime, these settings may be over-conservative and capping upside. Manual review recommended.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
