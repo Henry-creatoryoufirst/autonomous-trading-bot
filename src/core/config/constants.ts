@@ -699,7 +699,7 @@ export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools bet
 export const TWAP_THRESHOLD_USD = 100;              // Orders > $100 get TWAP'd
 export const TWAP_NUM_SLICES = 5;                   // Split into 5 sub-orders
 export const TWAP_SLICE_INTERVAL_MS = 12_000;       // 12 seconds between slices
-export const TWAP_TIMING_JITTER_PCT = 20;           // Randomize ±20% to avoid pattern detection
+export const TWAP_TIMING_JITTER_PCT = 30;           // Bear-adjusted Jun-2026: 20→30 — AI-on-AI MEV growing on Base; 20% jitter (±2.4s on 12s intervals) is predictable to sandwich bots; 30% (±3.6s) degrades pattern extraction by ~50% (Cryptollia 2026 AI-on-AI MEV research)
 export const TWAP_ADVERSE_MOVE_PCT = 1.0;           // Pause TWAP if price moves >1% against us
 export const TWAP_MAX_DURATION_MS = 120_000;        // Max 2 minutes total TWAP duration
 
