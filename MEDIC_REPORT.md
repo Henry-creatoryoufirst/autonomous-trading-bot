@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-23T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-13spfu (no staging branch exists remotely)
 
 ## Problem
 
@@ -89,6 +89,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-23T UTC)
+
+- **Medic**: PATTERN D — API 403 on all endpoints (persistent). ALSO: staging branch missing from remote. No critical code error found. MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout 2026-05-14, ~40 days ago — well past 48h threshold). WebFetch to GeckoTerminal also returned 403. Used WebSearch. Registry is comprehensive; Beryl/B20 upgrade is a WATCH item. No qualifying new tokens identified outside existing registry. Per CLAUDE.md Rule 1: COHORT_PROPOSAL written to claude/cool-sagan-13spfu instead of auto-modifying TOKEN_REGISTRY. See COHORT_PROPOSAL_2026-06-23.md.
+- **Auditor**: SKIPPED — Cannot access /api/trades, /api/portfolio, /api/patterns, /api/adaptive (all 403). No basis for trigger condition check. Bot was intentionally liquidated 2026-05-28 per commit f29798d. Market signals from web search suggest recovery/bull conditions (AERO +30%, VIRTUAL +228% vol) — BEAR trigger unlikely. No action taken.
+
+---
+
+## ⚠️ IMPORTANT CONTEXT (new since Run #34)
+
+**Bot was intentionally liquidated 2026-05-28** — commit `f29798d feat(admin): /api/admin/liquidate-all` shows Henry swept all positions to USDC ("pulling all real capital out of efficient-peace to run the system on paper until it's proven"). The 403s on the API may mean the Railway service was stopped post-liquidation, not just network egress blocking.
+
+**No staging branch** — `git branch -r` shows only `origin/main` and `origin/claude/cool-sagan-13spfu`. The deploy workflow (stage.sh → promote.sh) cannot run without recreating it.
+
+**Option B window** — started 2026-05-15, 30-day window completed ~2026-06-15. Window is now closed.
+
+**Base Beryl upgrade** — activated June 25, 2026. B20 token standard launched (stablecoin/RWA focus). Watch for new qualified B20 tokens in next scout cycle.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
