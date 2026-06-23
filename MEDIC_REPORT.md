@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-23T UTC | Scout BLOCKED — dual constraint: CLAUDE.md Rule 1 (cohort locked, Option B window ended ~Jun-15 but no human PR yet) + GeckoTerminal API egress-blocked; 39 days since last scout (threshold passed). Auditor BLOCKED — API unreachable. No registry changes. Strategic alerts: Base Beryl upgrade June 25 (B20 token standard launch), Aerodrome+Velodrome merge to Aero in July 2026, AERO pool migration required. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,29 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-23T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). 35th consecutive blocked run since 2026-04-14. MEDIC_REPORT updated.
+- **Scout**: BLOCKED — two independent constraints prevent execution:
+  1. **CLAUDE.md Rule 1** (cohort locked during Option B window; window ended ~June 15 but CLAUDE.md still prohibits auto-adds — requires explicit human PR to enable)
+  2. **GeckoTerminal API egress-blocked** (403 from execution sandbox — cannot verify liquidity/volume/pool age)
+  - Last scout: 2026-05-15 (39 days ago, threshold of 48h long passed)
+  - Scout research via WebSearch: all major Base tokens already in registry. No unregistered tokens with verifiable data found.
+  - **Watch list** — upcoming token events requiring Henry review:
+    - B20 tokens (Base Beryl upgrade, June 25): new native token standard launching in 2 days — no tradeable tokens yet
+    - Aero (July 2026): AERO + VELO merging; AERO holders get 94.5%, VELO holders 5.5% of new AERO supply. Bot already holds AERO (registry entry exists). Pool migration to MEV-resistant pools required — Henry should verify LP positions migrate correctly.
+- **Auditor**: BLOCKED — cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive (all 403). Cannot determine if any trigger condition is met.
+  - Market context from WebSearch: Bitcoin bouncing, AERO up 30% on BTC recovery signal. Market appears to have exited 70-day bear regime. No auditor action taken.
+
+## Strategic Alerts for Henry (Run #35)
+
+1. **Option B Window Ended ~June 15**: The 30-day benchmark window is complete (~8 days ago). If outperformance vs cbBTC/WETH 60/40 was achieved, the cohort can now be expanded via explicit human PR. Consider reviewing cohort expansion candidates.
+2. **Base Beryl Upgrade — June 25 (2 days)**: New B20 native token standard launches. Potential for new token listings with B20 format. Monitor for any B20 tokens that achieve $100k+ liquidity and $50k+ 24h volume within 3+ days of launch.
+3. **Aero Merger — July 2026**: Dromos Labs merges AERO + VELO → single AERO token. Bot's existing AERO position and registry entry remain valid (same token, 94.5% weight). Verify Aerodrome pool migrations to MEV-resistant pools are complete for all LP positions.
+4. **Egress Still Blocked (Run 35)**: 71 days of consecutive medic blindness. If bot is healthy, no action needed. If bot has degraded, medic cannot detect it.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +229,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
