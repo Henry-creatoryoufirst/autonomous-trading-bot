@@ -1,3 +1,42 @@
+# MEDIC REPORT — 2026-06-23T22:06 UTC (latest)
+
+## Jobs Status This Run (Run #35 — 2026-06-23T22:06 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **Option B window closed ~2026-06-15 (8 days ago).**
+- **Scout**: TRIGGERED (last scout 2026-05-14, MOLT — 40 days ago). GeckoTerminal API still blocked. CLAUDE.md cohort lock still in place (no human PR to unlock). NVR-HQ vault not in checkout. Research-only via WebSearch. No tokens added. Key intelligence below.
+- **Auditor**: BLOCKED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`. Cannot compute trigger conditions.
+
+### Scout Research — Key Intelligence (2026-06-23)
+
+#### ⚠️ URGENT: Base Beryl Upgrade — June 25, 2026 (2 days away)
+- **B20 token standard** launches as a Rust precompile (ERC-20 superset, backward compatible)
+- Reth V2: 50% less disk, 33% more throughput, faster sync
+- Withdrawal window: 7 days → 5 days
+- Built with stablecoin issuers and tokenized asset platforms in mind (role-based permissions, supply caps, policy registry)
+- **Action for Henry**: Monitor for any RPC disruption on June 25 post-upgrade. Bot likely fine (no breaking changes), but worth checking Railway logs that evening.
+- Sources: https://blog.thirdweb.com/base-beryl-upgrade-explained-b20-token-standard-faster-withdrawals-and-reth-v2/
+
+#### Aerodrome + Velodrome Merger to "Aero"
+- Aerodrome and Velodrome merging into unified "Aero" platform before July 2026
+- Covers Base, Optimism, Ethereum mainnet, Circle's Arc chain
+- **Predictive Allocation** replaces weekly gauge voting (July 2026) — AI agents explicitly mentioned as beneficiaries
+- AERO +30% in last 3 days on the news; $12.4B 30-day DEX volume; $453M TVL
+- **Action for Henry**: Aerodrome Slipstream router used by `executeDirectDexSwap` should still work post-merger (Slipstream V2 is the stable contract). Monitor migration timeline.
+
+#### No New Qualifying Scout Tokens Found
+WebSearch did not surface specific tokens meeting all 4 filters (>$100K liq, >$50K 24h vol, >3 days old, not in registry). GeckoTerminal still blocked — degraded scan.
+
+### Recommended Action for Henry
+
+**This is Run #35 — API has been unreachable for 71 days (since April 14, 2026).**
+
+1. **IMMEDIATE**: Check bot logs on **June 25** after 18:00 UTC (Beryl upgrade activation)
+2. **INFRASTRUCTURE**: Add to Claude Code egress allowlist: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com`
+3. **COHORT**: Option B window closed ~June 15. If you want to re-open the scout for cohort additions, update CLAUDE.md to remove the cohort lock, then trigger a manual run.
+4. **AERO MERGER**: Confirm Aerodrome Slipstream contract addresses don't change in the merger migration.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
