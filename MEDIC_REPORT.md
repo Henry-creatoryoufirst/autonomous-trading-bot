@@ -1,3 +1,25 @@
+# MEDIC REPORT — 2026-06-23T13:10 UTC (latest)
+
+## Jobs Status This Run (Run #45 — 2026-06-23T13:10 UTC)
+
+- **Medic**: PATTERN D — API unreachable (45 consecutive runs, 403/egress-blocked). Root cause unchanged: `autonomous-trading-bot-production.up.railway.app` blocked by execution environment's network egress policy. Bot is alive (Railway responding with 403, not timeout). Cannot verify error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #45).
+- **Scout**: GeckoTerminal blocked (403). WebSearch run. **BERYL LAUNCHES TOMORROW**: Base Beryl upgrade confirmed for June 25, 2026 at 18:00 UTC (~29h from this run). B20 native token standard (superset of ERC-20, lower creation cost, baked-in stablecoin precision), Reth V2 (-50% disk, +33% throughput), withdrawal window 7→5 days. No specific token candidates with verified metrics ($100K liq / $50K vol / 3-day age) found — GeckoTerminal data unavailable. Scout re-run remains June 27–28 post-Beryl.
+- **Auditor**: SKIPPED — API blocked (cannot check win rate/drawdown/losing streak trigger). Last implementation: Run #42 (VWS_PREFERRED_LIQUIDITY_USD 50K→75K). Same research conclusions as runs #38–44: ensemble ML out of scope, Kelly at Quarter-Kelly optimal, AERO merger still unannounced. No changes made.
+
+## Henry's Action Items (Run #45 — updated urgency)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **AERO/Velodrome merger contract update** — July 2026 (<10 days away) | 🔴 HIGH — before July |
+| **Beryl launches tomorrow June 25 18:00 UTC** — prep scout re-run June 27–28 | 🟡 MED — B20 new pool wave expected |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🟡 MED — 8 days overdue |
+| Update CLAUDE.md — Option B window ended 2026-06-15 | 🟡 MED — rules no longer current |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 45 runs blind |
+
+---
+
 # MEDIC REPORT — 2026-06-23T UTC (latest)
 
 ## Jobs Status This Run (Run #44 — 2026-06-23T UTC)
