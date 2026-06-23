@@ -1,4 +1,30 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T23:15 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #36+)
+
+## Jobs Status This Run (2026-06-23T23:15 UTC)
+
+- **Medic**: PATTERN D — `autonomous-trading-bot-production.up.railway.app` returns 403 from egress proxy (35th+ consecutive block). Bot health unknown.
+- **Scout**: BLOCKED — `api.geckoterminal.com` returns 403. Last scout was 2026-05-14 (MOLT, 40 days ago). CLAUDE.md Rule 1 cohort-lock applies until Henry explicitly updates CLAUDE.md post-Option-B window.
+- **Auditor**: BLOCKED — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all return 403. No win_rate or drawdown calculable.
+
+## Key Facts (from GitHub issue history + codebase)
+
+- **Option B window closed ~2026-06-15** (8 days ago). No automated performance summary generated. CLAUDE.md rules remain in force until Henry explicitly updates them.
+- **Bot was liquidated to full USDC on 2026-05-28** via `feat(admin): /api/admin/liquidate-all` (#54). This is 26 days ago. No code changes since. Unknown if bot is actively trading or still in cash-only state.
+- **No staging branch exists** on remote — Medic safety protocol cannot be followed even if a fix were needed.
+- **AERO → Aero merger is July 2026** — bot holds AERO; token migration needs decision before July.
+- **Base Beryl upgrade (June 25)** introduced B20 native token standard — new token wave expected; scout cannot evaluate without GeckoTerminal access.
+
+## Repeated Action Items for Henry (unchanged from prior runs)
+
+1. Add to Claude Code egress allowlist: `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`
+2. Manually verify bot health: https://autonomous-trading-bot-production.up.railway.app/api/errors
+3. Confirm bot is actively trading or intentionally in USDC (last known state: full USDC, May 28)
+4. Create staging branch: `git checkout main && git checkout -b staging && git push -u origin staging`
+5. Update CLAUDE.md to lift cohort-lock now that Option B window has closed
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
