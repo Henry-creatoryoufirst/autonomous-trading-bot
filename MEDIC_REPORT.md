@@ -1,4 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T18:06Z (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-23T18:06 UTC)
+
+**IMPORTANT CONTEXT:** 39-day gap since last run. Option B window ended ~2026-06-15 (8 days ago).
+As of the 2026-05-29 commit (`feat(admin): /api/admin/liquidate-all`), Henry pulled all real capital
+out of efficient-peace and switched to paper/dry-run mode. The ~$1,700 in WETH + Aave + cbLTC
+was being swept to USDC for withdrawal. Capital status is unknown (may still be in paper mode).
+
+- **Medic**: PATTERN D — API unreachable (403 railway.app; 502 api.geckoterminal.com; 403 api.coingecko.com). Cannot assess bot health. MEDIC_REPORT updated (Run #35).
+- **Scout**: TRIGGERED — last scout commit was 2026-05-25 (29 days ago, well past 48h threshold). Could not run — GeckoTerminal API blocked (502 gateway error from proxy). No token evaluation possible.
+- **Auditor**: SKIPPED — cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive due to proxy blocking railway.app.
+
+### Henry: Action Required
+The Option B 30-day window has closed (~2026-06-15). The automated agent has been blind for 39 days.
+Please:
+1. **Check bot status manually** — is efficient-peace still in paper mode? Has capital been re-deployed?
+2. **Review the Option B result** — did the strategy outperform cbBTC/WETH 60/40 by ≥5% annualized?
+3. **Update egress policy** if you want automated health monitoring restored (see "Recommended Action" below)
+4. **Consider COHORT_QUALITY_7 review** — window closed, human PR can now make changes if warranted
+
+### Proxy Blocks This Run (2026-06-23)
+| Host | Status |
+|------|--------|
+| `autonomous-trading-bot-production.up.railway.app` | 403 Policy Denial |
+| `api.geckoterminal.com` | 502 Gateway Error |
+| `www.geckoterminal.com` | 403 Policy Denial |
+| `api.coingecko.com` | 403 Policy Denial |
+| `lunarcrush.ai` | 403 Policy Denial |
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
