@@ -1,3 +1,29 @@
+# MEDIC REPORT — 2026-06-23T12:05Z (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Post-Option-B Run)
+
+## Jobs Status This Run (2026-06-23T12:05 UTC)
+
+- **Medic**: PATTERN D — Railway API unreachable (egress not in allowlist). Bot health UNKNOWN. No code changes.
+- **Scout**: BLOCKED — `api.geckoterminal.com` also not in egress allowlist. Scout last ran genuinely 2026-05-16 (~38 days ago, all three auto-adds were reverted). CLAUDE.md Rule 1 also prohibits auto-adds to TOKEN_REGISTRY without explicit human PR, even though Option B window ended 2026-06-15.
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` to check trigger conditions. Research-only pass completed (see below). No code changes made.
+
+## Auditor Research Summary (2026-06-23)
+- **Signal Quality**: Hybrid AI+rules bots outperform full autonomous AI in 2026 (Coin Bureau, Chainstack). On-chain metrics (exchange inflows/outflows, whale deposits, CryptoQuant) add alpha over pure technicals — NVR already uses this pattern. No urgent gap.
+- **Execution Efficiency**: Aerodrome Slipstream auto-routes optimally (CL pools, stable pools, multi-hop). 0.5% slippage tolerance is 2026 consensus optimal MEV defense on liquid pairs. NVR's current approach is well-aligned.
+- **Position Sizing**: Half-Kelly with drawdown-proportional reduction is 2026 consensus. NVR's 8% Kelly fallback + drawdown breaker is correct. Candidate improvement: regime-aware Kelly (Quarter-Kelly in BEAR) — estimated 2-3 line change in constants.ts. Deferred pending live trigger confirmation.
+- **Competitive Intel**: MEV infrastructure itself is becoming an attack surface in June 2026 (a major sandwich bot on Ethereum was drained). NVR's Aerodrome routing (not a known MEV target) insulates us. No action needed.
+
+## Notable Context (2026-06-23)
+- **Option B window ended**: 30-day window ran 2026-05-15 → ~2026-06-15. Now closed for 8 days. Cohort changes still require explicit human PR per CLAUDE.md.
+- **Base Beryl upgrade**: Coinbase targeting 2026-06-25 for Base mainnet Beryl upgrade + B20 token standard. May spur new token launches. Scout should run a quality pass shortly after — requires fixing egress first.
+- **No code merges since 2026-05-28**: Bot running v21.30.0 live for 26 days with no changes. Stable. `feat(admin): /api/admin/liquidate-all` was last merge — unclear if liquidation was triggered.
+
+## Branch Note
+This run developed on `claude/cool-sagan-2pwybn` per CLAUDE.md Rule 2 (no pushes to staging/main from automated agents). Previous medic runs that pushed to staging pre-dated the Option B CLAUDE.md rules.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
