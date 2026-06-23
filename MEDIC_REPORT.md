@@ -1,4 +1,43 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Jobs Status This Run (2026-06-23 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint). Both `autonomous-trading-bot-production.up.railway.app` (Host not in allowlist via curl) and `api.geckoterminal.com` (403 via WebFetch) blocked. Bot health unknown for this run.
+- **Scout**: SKIPPED — GeckoTerminal blocked, cannot fetch trending/new pools. Additionally: the 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has now completed. CLAUDE.md still requires explicit human PR for any cohort changes even post-window; auto-adds remain prohibited. Last actual scout commit: 2026-05-14 (MOLT, ~40 days ago, which was reverted). Scout is overdue by 38+ days on the 48h cadence. No qualifying token proposals written this run because source data is unavailable.
+- **Auditor**: SKIPPED — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all unreachable. Cannot calculate win rate, drawdown, or losing streak to trigger audit. No inferred bear-market trigger available — Option B window closed and bot status is unknown.
+
+## New Findings This Run
+
+### No `staging` branch exists (critical gap)
+All three jobs are designed to push to `staging` before any change. The remote
+has no staging branch (confirmed via GitHub API + `git branch -a`). Available branches:
+- `main`, `claude/*` agent branches
+- `audit/post-v21.25-2026-04-29`
+- `auto/critic-deletion-2026-06-05-confluence_strong` (created 2026-06-05, not merged)
+- `chore/single-source-drift-cleanup`
+
+If a critical Medic fix were needed, the safety protocol cannot be followed.
+
+### Option B window: COMPLETED
+The 30-day benchmark window closed ~2026-06-15. No outcome record exists in this
+repo. The result (outperform cbBTC/WETH 60/40 ≥5% annualized) is unrecorded.
+
+### `auto/critic-deletion-2026-06-05-confluence_strong` branch unreviewed
+Created 2026-06-05 (18 days ago), not merged to main. Contains changes to
+confluence scoring. No human review visible. Token registry is identical to main.
+
+### Last production code change: 2026-05-28 (26 days ago)
+`feat(admin): /api/admin/liquidate-all` was the last commit to main. The bot
+has run unchanged code for 26 days with no human-reviewed updates.
+
+### Agent has been blind since Run #34 (2026-05-15)
+The 38-day gap between Run #34 and this run represents 38 days without health
+monitoring. If the bot entered a failure pattern during this period, it would
+have been undetected. Manual Telegram / Basescan check strongly recommended.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
