@@ -1,3 +1,25 @@
+# MEDIC REPORT — 2026-06-23T18:05 UTC (latest)
+
+## Jobs Status This Run (Run #47 — 2026-06-23T18:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (47 consecutive runs, 403/egress-blocked). Curl returned HTTP 000 (connection failed before reaching server). Root cause unchanged: `autonomous-trading-bot-production.up.railway.app` blocked by execution environment egress policy. Bot alive (Railway responding, not timed out). Cannot verify error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #47).
+- **Scout**: GeckoTerminal blocked (403). WebSearch run. **BERYL LAUNCHES TOMORROW June 25 at 18:00 UTC (~24h away)** — still fully confirmed. New detail this run: B20 has two token subtypes: *asset tokens* (configurable decimals + rebasing support) and *stablecoin tokens* (fixed 6 decimals, self-declared currency code). Exchanges including Binance preparing deposit/withdrawal pauses around activation window. Node operators need `base/node v1.1.1+` before cutover. Base Cobalt upgrade next (September 2026, account abstraction). No qualifying token candidates found (GeckoTerminal pool data unavailable). Scout re-run window: June 27–28 post-Beryl.
+- **Auditor**: SKIPPED — API blocked. AERO merger new detail this run: **merged token distribution will be 94.5% to AERO holders / 5.5% to VELO holders**; veVELO migrates to veAERO per Q2 2026 migration schedule; platform rebranding to "Aero" (dropping "-drome"). Still no new contract address announced. Current AERO `0x940181a94A35A4569E4529A3CDfB74e38FD98631` remains active. Target: monitor for contract announcement in next 1–2 weeks.
+
+## Henry's Action Items (Run #47)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **AERO → "Aero" rebrand + new contract** — July 2026 (~1 week away); 94.5%/5.5% AERO/VELO split | 🔴 HIGH — update token-registry.ts when announced |
+| **Beryl launches TOMORROW June 25 18:00 UTC** — exchanges pausing deposits/withdrawals; node v1.1.1+ required | 🟡 MED — B20 pool wave: scout re-run June 27–28 |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🟡 MED — 8 days overdue |
+| Update CLAUDE.md — Option B window ended 2026-06-15; rules no longer current | 🟡 MED — blocking future automated runs from full authority |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 47 runs blind |
+
+---
+
 # MEDIC REPORT — 2026-06-23T17:05 UTC (latest)
 
 ## Jobs Status This Run (Run #46 — 2026-06-23T17:05 UTC)
@@ -391,7 +413,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #29 | 2026-05-05T03:12 UTC | Scout skipped (UP added 05-04 16:15, <48h); auditor lowered FLOW_REVERSAL_EXIT_BUY_RATIO 40→38 — 57-day bear depresses buy-ratio baselines; exits earlier on distribution |
 | #31 | 2026-05-06T~current UTC | Scout skipped (cbADA at 05:08 UTC, <48h); auditor lowered RIDE_THE_WAVE_SIZE_PCT 4→3 — 60-day bear; harmonises wave-ride sizing with SCALE_UP_SIZE_PCT (already 3); wave rides carry higher false-breakout risk than scale-ups in sustained downtrends |
 | #30 | 2026-05-05T~current UTC | Scout skipped (cbADA scout at 05:08 UTC, <48h); auditor lowered KELLY_POSITION_CEILING_PCT 14→12 — 59-day bear; Institutional Kelly-VAPS research: tighter ceiling needed beyond Quarter-Kelly fraction alone |
-| #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
+| #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h threshold); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
