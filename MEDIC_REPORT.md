@@ -1,3 +1,25 @@
+# MEDIC REPORT — 2026-06-23T17:05 UTC (latest)
+
+## Jobs Status This Run (Run #46 — 2026-06-23T17:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (46 consecutive runs, 403/egress-blocked). Root cause unchanged: `autonomous-trading-bot-production.up.railway.app` blocked by execution environment's network egress policy. Bot is alive (Railway is responding, not timed out). Cannot verify error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #46).
+- **Scout**: GeckoTerminal blocked (403). WebSearch run. **BERYL LAUNCHES TOMORROW (June 25 at 18:00 UTC — confirmed, ~25h away)**: B20 native token standard goes live (superset of ERC-20, Rust precompile, built-in compliance tools), Reth V2 (-50% disk / +33% throughput), withdrawal window 7→5 days. Base Cobalt upgrade next (September 2026, account abstraction). No specific qualifying token candidates found via WebSearch (GeckoTerminal pool-level liquidity/volume/age data unavailable without API access). Scout re-run targeted June 27–28 post-Beryl to catch new B20 pool launches.
+- **Auditor**: SKIPPED — API blocked (cannot check win rate/drawdown/losing streak trigger conditions). AERO merger status checked: **still July 2026, new contract address not yet announced** (current 0x940181...$0.54, $61M/24h vol). No auditor implementation this run. All prior research conclusions (Quarter-Kelly, HOT_MOVER gates, VWS liquidity floor) remain valid.
+
+## Henry's Action Items (Run #46)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **AERO/Velodrome merger contract update** — July 2026 (~1 week away) | 🔴 HIGH — before July |
+| **Beryl launches TOMORROW June 25 18:00 UTC** — prep scout re-run June 27–28 | 🟡 MED — B20 new pool wave expected |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🟡 MED — 8 days overdue |
+| Update CLAUDE.md — Option B window ended 2026-06-15 | 🟡 MED — rules no longer current |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 46 runs blind |
+
+---
+
 # MEDIC REPORT — 2026-06-23T13:10 UTC (latest)
 
 ## Jobs Status This Run (Run #45 — 2026-06-23T13:10 UTC)
