@@ -1,6 +1,26 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T05:06 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ ACTION REQUIRED — Option B Benchmark Window Has Closed
+
+The 30-day Option B benchmark window (started 2026-05-15, target end ~2026-06-15) ended
+**8 days ago**. Today is 2026-06-23. Henry must:
+
+1. **Evaluate Option B results** — did the COHORT_QUALITY_7 strategy outperform cbBTC/WETH
+   60/40 by ≥5% annualized over the 30-day window? Check Railway bot P&L vs benchmark.
+2. **Decide on cohort evolution** — cohort changes can now proceed via explicit human PR.
+   Write COHORT_PROPOSAL docs or open PRs directly. The lock from CLAUDE.md Rule 1 was
+   specific to the benchmark window.
+3. **Fix medic visibility** — the automated agent has been BLIND to live bot health for the
+   entire 35-run history. The Anthropic egress gateway does not allow outbound connections
+   to `autonomous-trading-bot-production.up.railway.app`. Add this host to the network
+   egress allowlist in the Claude Code on-the-web environment settings to restore medic
+   functionality. See: https://code.claude.com/docs/en/claude-code-on-the-web
+
+---
+
+## Previous Status (archived below — see run history in this file)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +86,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-23T05:06 UTC | **OPTION B WINDOW CLOSED** (ended ~2026-06-15, 8 days ago). Scout blocked (GeckoTerminal 403, egress policy). Auditor blocked (API 403). All 3 jobs inoperable from egress-restricted env. Human review required. |
 
 ## Bot Health Evidence (from git history)
 
