@@ -1,6 +1,35 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-23 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: ATTEMPTED — Last scout was 2026-05-25 (29 days ago, >48h threshold). GeckoTerminal API returned 403. LunarCrush MCP server unavailable. WebSearch returned no specific Base token contract/liquidity data. Scout data sources comprehensively blocked — no candidates evaluated, no proposal written.
+- **Auditor**: SKIPPED — Cannot check win_rate, drawdown, or marketRegime without API data. Bot is in deliberate paper-only mode (TRADING_ENABLED=false since 2026-05-29).
+
+### Key Context — New Since Run #34
+
+| Item | Detail |
+|---|---|
+| **Bot status** | Deliberately liquidated 2026-05-29. Henry pulled all real capital to paper mode. |
+| **Capital withdrawn** | Liquid USDC ($1,152.88) + remaining ~$1,700 (WETH+Aave+cbLTC) swept to USDC via `/api/admin/liquidate-all`. |
+| **Option B window** | ENDED ~2026-06-15 (8 days ago). 30-day benchmark comparison with cbBTC/WETH 60/40 requires manual review of Railway logs + on-chain data to assess outcome. |
+| **Main branch** | No new commits since 2026-05-29. Bot at v21.30.0. |
+| **API status** | 403 on ALL endpoints including `/health` and `/` root — bot may be stopped or Railway service restricted. |
+| **Network egress** | Both curl (egress policy) and WebFetch (403) fail for `autonomous-trading-bot-production.up.railway.app`. |
+| **Market data** | GeckoTerminal, LunarCrush all blocked. Scout cannot run until egress policy updated. |
+
+### Recommended Actions for Henry (Run #35)
+
+1. **Decide on re-engagement**: Option B window ended 2026-06-15. Review on-chain data to assess whether the cohort (cbBTC/WETH/cbXRP/cbLTC/LINK/cbADA/cbSOL) outperformed the 60/40 benchmark by ≥5% annualized.
+2. **Check Railway dashboard**: Is the `efficient-peace` service running, paused, or stopped? A 403 on `/health` suggests it may be stopped entirely.
+3. **Fix egress policy** (if re-engaging): Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to the Claude Code network allowlist so the medic/scout/auditor can run properly.
+4. **If re-engaging with real capital**: Deploy fresh capital → restart bot → the automated agent will resume normal monitoring on next run.
+
+---
+
+## Previous Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
