@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-23T19:00 UTC (latest)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-23T19:00 UTC | Scout ran (39 days since last scout — >48h threshold). GeckoTerminal API blocked. Web search found no new specific qualifying candidates. Ecosystem intel: Base Beryl upgrade (B20) June 25, Aerodrome→Aero merger July 2026. No token additions (CLAUDE.md cohort-lock compliance; Option B window ended ~June 15 but await Henry explicit PR). Auditor: cannot run, API blocked. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,16 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-23T19:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is now 39 days since the last successfully-logged run.
+- **Scout**: RAN (39 days since last scout — >48h threshold). GeckoTerminal API blocked; used WebSearch instead. No specific new token candidates found that meet the quality filter ($100k+ liq, $50k+ 24h vol, 3+ day pool age). **Ecosystem intelligence:**
+  - **Base Beryl upgrade June 25** (2 days away): Introduces B20 native token standard; expect a wave of new token launches and pool creation in late June/July. Next scout run should check GeckoTerminal closely.
+  - **Aerodrome → "Aero" merger July 2026**: Dromos Labs merging Aerodrome + Velodrome into unified "Aero" protocol. AERO token remains governance token. **Risk:** Pool addresses may change; confirm routing still works post-migration. Henry may want to review AERO position and ensure bot handles any address changes.
+  - **Top Base projects (stable):** Aerodrome, Virtuals Protocol, Aave, Brett — all already in registry.
+  - CLAUDE.md cohort-lock still respected: no additions to TOKEN_REGISTRY. Option B window ended ~June 15; awaiting Henry's explicit PR for any new additions.
+- **Auditor**: BLOCKED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns` or `/api/adaptive`. Cannot compute win_rate, drawdown, or losing_streak. **Post-Option-B strategic note:** The 30-day benchmark window ended ~June 15. Henry should review whether constants tuned for a 70-day BEAR regime (Runs #21–#34) still apply or need post-pivot recalibration now that the strategy is in the next phase.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +216,17 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction (Run #35 — 2026-06-23).**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+3. **Manually verify bot health:** Check Railway dashboard for efficient-peace service; confirm no crash loops
+4. **Action: Aerodrome→Aero migration (July 2026):** Review whether bot's Aerodrome routing remains valid post-merger. AERO token governance changes may not affect pool routing directly, but confirm.
+5. **Action: Post-Option-B strategy recalibration:** The 30-day Option B benchmark window ended ~June 15. Constants were tuned for a sustained BEAR regime. If the market has shifted, the auditor constants (KELLY_FRACTION, HOT_MOVER_MIN_FDV_USD, etc.) may need human-reviewed recalibration.
+6. **Action: New cohort candidates (post-window):** The cohort-lock was for the 30-day Option B window. Henry can now open a human PR to add or revise registry tokens if the strategy calls for it.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
