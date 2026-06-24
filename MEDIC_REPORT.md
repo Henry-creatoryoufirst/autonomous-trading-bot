@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #36+)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35–36+ | 2026-06-24T21:xx UTC | All jobs blocked. API unreachable (403). Scout 40+ days overdue. Option B window closed ~June 15 (9 days ago, no outcome recorded). **CRITICAL: Base Beryl upgrade activates TOMORROW June 25 — B20 native token standard launches.** Bot in full-USDC state since 2026-05-28 (`liquidate-all` merge, 27 days ago). |
 
 ## Bot Health Evidence (from git history)
 
@@ -90,11 +91,40 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #36+ — 2026-06-24T21:xx UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent, 403). Neither Railway API nor GeckoTerminal reachable from this environment. Cannot assess bot health. Bot last known state: full USDC since 2026-05-28 (27 days).
+- **Scout**: SKIPPED — GeckoTerminal blocked (403). Scout is 41 days overdue (last: MOLT, 2026-05-14). **NOTE: Base Beryl upgrade activates June 25 (TOMORROW) — B20 native token standard. First new post-Beryl tokens will appear in trending pools within days. Restore GeckoTerminal access ASAP.**
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio` (403). Cannot evaluate trigger conditions. No code changes.
+
+---
+
+## ⚠️ CRITICAL ITEMS FOR HENRY (2026-06-24)
+
+### 1. Base Beryl Upgrade — June 25 (TOMORROW)
+Base activates the Beryl upgrade tomorrow, introducing the B20 native token standard:
+- Drastically cheaper token creation → immediate surge of new token launches
+- Built-in compliance tooling (supply caps, policy registry, role-based permissions)
+- **Opportunity**: First scout run after June 25 should check trending/new pools for qualifying B20-native tokens
+- Restore `api.geckoterminal.com` access before this wave hits (current egress blocks it)
+
+### 2. Bot in full USDC since 2026-05-28 (27 days)
+The `liquidate-all` admin endpoint was merged on 2026-05-28 (#54). Unknown if this was intentional or if the bot re-deployed and re-entered positions. Verify via Railway logs or BaseScan.
+
+### 3. Option B window closed June 15 (9 days ago)
+No automated performance summary exists. Recommend recording the cbBTC/WETH 60/40 comparison manually before the data window becomes harder to reconstruct.
+
+### 4. Fix egress allowlist (blocks all monitoring)
+Add to Claude Code environment egress allowlist:
+- `autonomous-trading-bot-production.up.railway.app`
+- `api.geckoterminal.com`
+Docs: https://code.claude.com/docs/en/claude-code-on-the-web
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
