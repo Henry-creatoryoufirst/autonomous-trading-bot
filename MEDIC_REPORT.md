@@ -1,6 +1,29 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T17:04Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+, 2026-06-24T17:04Z)
+
+---
+
+## Run #35+ Entry — 2026-06-24T17:04Z (claude/cool-sagan-c2v0o1)
+
+**Medic**: PATTERN D — `autonomous-trading-bot-production.up.railway.app` blocked by egress proxy (403 CONNECT). Same as all prior runs. Now 40+ consecutive runs API-blind.
+
+**Scout**: SKIPPED — GeckoTerminal API also blocked by egress policy. Additionally, CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY during Option B window; that window ended ~2026-06-15, but no human has explicitly re-opened auto-scouting. Last actual scout-that-added-tokens: 2026-05-14 MOLT (reverted), 2026-05-16 OPENX+VEIL (both reverted).
+
+**Auditor**: SKIPPED — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all unreachable.
+
+**Key new context since Run #34 (2026-05-15):**
+- **Option B 30-day window ended ~2026-06-15** — benchmark period is complete. CLAUDE.md cohort-lock rule (Rule 1) was for this window. Window is over.
+- **`feat(admin): /api/admin/liquidate-all` deployed and triggered** — commit f29798d "operator forced full-exit to USDC". Bot may currently be 100% USDC with no open positions.
+- **Bot at v21.30.0** — multiple spec-035 INV-1 through INV-11 fixes deployed. Cost-basis tracker overhauled. HOLD_ONLY_TOKENS added for cbLTC (thin liquidity).
+- **Beryl upgrade** mentioned in earlier today's runs (~June 25 18:00 UTC) — unconfirmed, check Aerodrome/Base announcements.
+
+**Action still required (unchanged from Run #34):**
+1. Add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to egress allowlist for this session type — without this, no automated health checks are possible.
+2. Review whether to re-open cohort auto-discovery now that Option B window has ended.
+3. Verify current bot state — did the liquidate-all complete? Is it back to trading?
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
