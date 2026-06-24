@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T22:10 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-24T22:10 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-p5vmui
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-24T22:10 UTC | Scout ran (40 days since Run #34; CLAUDE.md Rule 1 active — COHORT_PROPOSAL_2026-06-24.md written, no registry edit; GeckoTerminal blocked, WebSearch only; no unregistered qualifying token confirmed). Auditor: 4 searches ran; all 2026 research findings already implemented (drawdown Kelly halving, MEV FDV floor $1M, slippage guards). No code change this run. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-24T22:10 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). 40-day gap since Run #34.
+- **Scout**: RAN — 40 days since Run #34 (well past 48h threshold). CLAUDE.md Rule 1 remains in effect (cohort locked; even post-window ~2026-06-15, changes require explicit human PR). GeckoTerminal API blocked (403). Used WebSearch only — cannot verify pool liquidity/volume/age quantitatively. No unregistered qualifying token confirmed. Potential candidate ONDO (Ondo Finance, RWA) identified but unverified — see COHORT_PROPOSAL_2026-06-24.md.
+- **Auditor**: CANNOT VERIFY TRIGGERS (portfolio API blocked). Ran 4 research searches regardless (40-day gap warrants it). All major 2026 research findings are ALREADY implemented in NVR — no code change warranted. See summary below.
+
+## Auditor Research Summary (Run #35 — 2026-06-24)
+- **Signal Quality**: Multi-layer signal stacking (technical + on-chain + social) is the 2026 best-practice. NVR already implements: F&G as macro veto, whale flow (LARGE_TRADE_THRESHOLD_USD=2500), RSI+MACD+BB+SMA technicals, AI review. Full Nansen/Dune smart-money integration remains high-complexity (Impact 3/Complexity 4/Risk medium) → Watch list. No new ≤10-line action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome Slipstream auto-routes through optimal path (CL, stable, multi-hop) — bot auto-benefits without code change. Aerodrome+Velodrome Q2-2026 merge confirmed — unified AERO holder supply benefit. Permit2 batch approvals already implemented. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING from research — "halve position sizes when portfolio drops 20% from peak; Quarter-Kelly → Eighth-Kelly." NVR ALREADY exceeds this: LIFETIME_DRAWDOWN_CAUTION_PCT=12 (halves at 12%, more conservative than 20%) and LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 (blocks new buys entirely at 20%). NVR is ahead of 2026 recommendations. No new action. (Priority 0)
+- **Competitive Intelligence**: Sandwich bot drain in June 2026 (MEV infrastructure attack surface). Tight slippage (0.5% on liquid pairs) is the 2026 best practice. NVR: HOT_MOVER_MIN_FDV_USD=1M prevents micro-cap MEV targets; VWS_MIN_LIQUIDITY_USD=20K ($20K pool floor); sequencer-direct RPC already active. CoW Protocol batch auctions would require touching executeDirectDexSwap (off-limits). No new ≤10-line action. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
