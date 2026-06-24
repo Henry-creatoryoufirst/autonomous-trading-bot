@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-24T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-f5axlv
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-24T UTC | Scout: no qualifying tokens (Beryl B20 launch June 25 = brand-new pools, fail age filter) — COHORT_PROPOSAL_2026-06-24.md written; auditor: raised NORMAL/REENTRY_CONFLUENCE_BUY 27→30 — 8-month bear (BTC -50% from $126K ATH), full portfolio liquidated 2026-05-28, 2026 research: 9+ signals achieves 68-72% win rate |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-24T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Notable: full portfolio liquidation to USDC endpoint (`/api/admin/liquidate-all`) was added and used on 2026-05-28 — confirms severe bear conditions prompted defensive human intervention. 40 days since last run.
+- **Scout**: RAN — last actual scout was 2026-05-14 (MOLT, ~41 days ago). Full research executed: 3 scout searches + GeckoTerminal/DexScreener attempted (403). Findings: pre-Beryl pause period. Base Beryl upgrade launches TOMORROW (June 25, 2026) with B20 native token standard — new pools will be brand-new and fail the >3-day age filter. No tokens pass all quality gates. COHORT_PROPOSAL_2026-06-24.md written per CLAUDE.md Rule 1. Watch: B20 token wave, Aero merger (July 2026), router address change.
+- **Auditor**: TRIGGERED by inferred 8-month BEAR market (BTC ~$63K, down ~50% from Oct 2025 ATH ~$126K; full portfolio liquidation 2026-05-28 confirms deteriorating conditions). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: NORMAL_CONFLUENCE_BUY + REENTRY_CONFLUENCE_BUY 27→30 — 8-month bear requires tighter entry signal gate; 2026 research confirms 9+ confluence signals achieves 68-72% win rate vs 55-62% for 6-7 signals; current 27 threshold was set at 46-day bear (far milder conditions). IMPLEMENTED in constants.ts. (Impact 4, Complexity 1, Risk low, Priority 4.0). Watch list: Aero merger router change (Priority 3.0, Risk Med — requires execution code monitoring, July 2026).
+
+## Auditor Research Summary (Run #35 — 2026-06-24)
+- **Signal Quality**: 2026 confluence research confirms 9+ of 12 signals achieves 68-72% win rate vs 55-62% for 6-7 signals. Current NORMAL_CONFLUENCE_BUY=27 was set at 46-day bear; 8-month bear warrants raising to 30. IMPLEMENTED: 27→30 on both NORMAL and REENTRY thresholds. (Impact 4, Complexity 1, Risk low, Priority 4.0)
+- **Execution Efficiency**: Aero merger (Aerodrome + Velodrome → "Aero") planned July 2026. Slipstream Swap Router `0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5` may change post-merger. MEV-resistant pool migration completed May 2026. Watch list — requires execution code monitoring (Impact 3, Complexity 1, Risk Med, Priority 3.0).
+- **Position Sizing**: Quarter-Kelly already implemented (KELLY_FRACTION=0.25). Research confirms this is industry standard for 2026 bear conditions. No further change needed. (Priority 0)
+- **Competitive Intelligence**: Multi-agent architecture is 2026 standard (ElizaOS dominates). NVR's Claude adversarial review is genuinely differentiated. Cross-chain arbitrage (Base↔Arbitrum↔Optimism) is an alpha source NVR doesn't exploit — complex, off-limits for auto-implementation. Watch list for Henry. (Priority 1.0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +218,15 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
+
+**NEW (Run #35):**
+- Review `COHORT_PROPOSAL_2026-06-24.md` — scout found no qualifying tokens today (pre-Beryl pause). Re-scout recommended July 1–3 after Beryl B20 wave settles.
+- Review `constants.ts` diff: NORMAL/REENTRY_CONFLUENCE_BUY 27→30. Both on `claude/cool-sagan-f5axlv` branch.
+- **Aero merger (July 2026):** Verify Slipstream router address unchanged post-merger before allowing large trades. Current: `0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5`.
+- **Full liquidation 2026-05-28:** If bot is sitting fully in USDC, review deployment triggers before re-enabling — current NORMAL_CONFLUENCE_BUY=30 is appropriately defensive.
+
+**Persistent (since Run #1):**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
