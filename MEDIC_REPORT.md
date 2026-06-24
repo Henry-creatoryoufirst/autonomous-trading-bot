@@ -1,3 +1,26 @@
+# MEDIC REPORT — 2026-06-24T06:05 UTC (latest)
+
+## Jobs Status This Run (Run #48 — 2026-06-24T06:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (48 consecutive runs, 403/egress-blocked). Curl returned HTTP 000. Root cause unchanged: `autonomous-trading-bot-production.up.railway.app` blocked by execution environment egress policy. Bot alive (Railway responding, not timed out). Cannot verify error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #48).
+- **Scout**: GeckoTerminal blocked (403). WebSearch run. **BERYL LAUNCHES TOMORROW June 25 at 18:00 UTC (~36h away)**. New details this run: (1) B20 is a standard for third-party issuers (stablecoins, RWAs) implemented as Rust precompiles — NOT a Base native governance token. Prediction markets at 28.5% probability for a Base token by Dec 31 2026. (2) **Cobalt upgrade (September 2026)** newly confirmed: native account abstraction, ~50% cheaper transfers, 2x throughput, gas payments in B20 — direct NVR cost-reduction opportunity. (3) No qualifying token candidates found (GeckoTerminal blocked). Scout re-run: June 27–28 post-Beryl.
+- **Auditor**: SKIPPED — API blocked (cannot verify win rate/drawdown trigger conditions). AERO merger new detail: **Aerodrome migrating liquidity to MEV-resistant pools** ahead of July launch + expanding to Ethereum and Arc from Circle. Still no new contract address. Monitor for announcement.
+
+## Henry's Action Items (Run #48)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **AERO → "Aero" rebrand + new contract + MEV-resistant pools** — July 2026 (~1 week); update token-registry.ts + router config | 🔴 HIGH — before July |
+| **Beryl launches TOMORROW June 25 18:00 UTC** — exchanges pausing deposits/withdrawals; scout re-run June 27–28 for B20 pool wave | 🟡 MED — ~36h away |
+| **Cobalt (September 2026)**: native account abstraction + ~50% cheaper transfers — begin sizing implications for NVR gas strategy | 🟡 MED — 3 months out |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🟡 MED — 9 days overdue |
+| Update CLAUDE.md — Option B window ended 2026-06-15; rules no longer current | 🟡 MED — blocking future automated runs from full authority |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 48 runs blind |
+
+---
+
 # MEDIC REPORT — 2026-06-23T18:05 UTC (latest)
 
 ## Jobs Status This Run (Run #47 — 2026-06-23T18:05 UTC)
