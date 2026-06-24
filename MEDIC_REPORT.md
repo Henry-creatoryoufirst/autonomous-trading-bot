@@ -1,12 +1,17 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ STRATEGIC FLAG — Option B benchmark window completed ~2026-06-15 (9 days ago)
+All bear-adjusted constants (KELLY_FRACTION, HOT_MOVER thresholds, STALE_POSITION_MIN_AGE_HOURS, etc.)
+were tuned during a 52–70 day bear market ending ~May 2026. Henry should review and recalibrate now
+that the window has closed. See Run #35 Auditor section below for the full list.
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-24T08:04 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-fuu7qy (session branch; staging not available in this checkout)
 
 ## Problem
 
@@ -66,6 +71,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-24T08:04 UTC | Scout blocked: CLAUDE.md Rule 1 (cohort locked post-Option B pivot) + GeckoTerminal proxy-blocked; Auditor: cannot trigger (API down); CRITICAL FLAG: Option B 30-day window completed ~2026-06-15 — bear-adjusted constants need Henry review |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +95,59 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-24T08:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent proxy policy denial on `autonomous-trading-bot-production.up.railway.app`). GeckoTerminal also proxy-blocked. MEDIC_REPORT updated (Run #35). This is Run #35 of the same persistent constraint — no bot-side failure indicated.
+- **Scout**: BLOCKED (two reasons):
+  1. CLAUDE.md Rule 1 — cohort locked post-Option B pivot; no auto-adds to TOKEN_REGISTRY; OPENX + VEIL auto-adds on 2026-05-16 were reverted as canonical example. Proposal file would go to NVR-HQ Cathedral vault, but NVR-HQ is not in this checkout.
+  2. `api.geckoterminal.com` is proxy-blocked — cannot verify token liquidity, volume, or pool age metrics.
+  Last successful scout was SYRUP (2026-05-08, Run #33) — 47 days elapsed (well past 48h threshold).
+  WebSearch found no specific Base tokens with verifiable on-chain metrics. Scout deferred pending Henry action (see Recommended Action).
+- **Auditor**: CANNOT TRIGGER — API unreachable; win_rate, drawdown, losing_streak, and marketRegime cannot be checked. Research ran 4 WebSearch queries. No code changes implemented (trigger unverifiable). See Auditor Research below.
+
+## ⚠️ AUDITOR CRITICAL FLAG — Option B Window Complete (Run #35)
+
+The 30-day Option B benchmark window opened 2026-05-15 and completed ~**2026-06-15** (Henry review due).
+Today is 2026-06-24 — 9 days past window close. No prior run has flagged this milestone because the API
+has been unreachable for all 35 runs.
+
+**Bear-adjusted constants requiring post-window review** (all were tightened during 52–70 day bear, May 2026):
+
+| Constant | Bear-Adjusted Value | Original | Tuned For |
+|----------|---------------------|----------|-----------|
+| `KELLY_FRACTION` | 0.25 (Quarter-Kelly) | 0.35 | 54-day bear |
+| `KELLY_POSITION_CEILING_PCT` | 12% | 14% | 59-day bear |
+| `KELLY_ROLLING_WINDOW` | 30 trades | 50 | 50-day bear |
+| `HOT_MOVER_MIN_BUY_RATIO` | 0.60 | 0.55 | 47-day bear |
+| `HOT_MOVER_MIN_CHANGE_H1_PCT` | 7% | 5% | 46-day bear |
+| `HOT_MOVER_MIN_VOLUME_H1_USD` | $200K | $150K | 65-day bear |
+| `HOT_MOVER_MIN_POOL_AGE_HOURS` | 48h | 24h | 63-day bear |
+| `HOT_MOVER_MIN_FDV_USD` | $1M | $500K | 70-day bear |
+| `SCALE_UP_SIZE_PCT` | 3% | 4% | 59-day bear |
+| `SCALE_UP_MIN_GAIN_PCT` | 5% | 3% | 46-day bear |
+| `SCALE_UP_BUY_RATIO_MIN` | 60% | 55% | bear |
+| `RIDE_THE_WAVE_SIZE_PCT` | 3% | 4% | 60-day bear |
+| `RIDE_THE_WAVE_MIN_MOVE` | 7% | 5% | F&G 31 fear |
+| `SURGE_MAX_CAPITAL_PER_TOKEN_PCT` | 20% | 25% | 52-day bear |
+| `STALE_POSITION_MIN_AGE_HOURS` | 36h | 48h | 61-day bear |
+| `CULL_MIN_AGE_HOURS` | 72h | 168h | 65-day bear |
+| `VWS_MIN_LIQUIDITY_USD` | $20K | $10K | 63-day bear |
+| `CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT` | 15 | 20 | 63-day bear |
+| `GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT` | 72h | 48h | 57-day bear |
+| `SCOUT_UPGRADE_BUY_RATIO` | 60% | 55% | 62-day bear |
+| `DECEL_MIN_DROP_FROM_PEAK` | 6pp | 8pp | 55-day bear |
+
+**Research finding (Run #35):** Advanced Kelly in 2026 tracks market regime dynamically (trend + BTC dominance
++ volatility) to size up in favorable conditions. NVR's `DEFAULT_REGIME_MULTIPLIERS` already has the regime
+multiplier framework (BULL=1.2, NEUTRAL=1.0, BEAR=0.7), but the baseline `KELLY_FRACTION=0.25` was a
+manual bear-time override. If current regime is NEUTRAL or BULL, `KELLY_FRACTION` returning to 0.30–0.35
+is the highest-priority recalibration. (Impact 4, Complexity 1, Risk medium — needs Henry sign-off).
+
+**Competitive intelligence:** Successful Base bots in 2026 use specialized-agent cooperation (NVR's Sleeves
+architecture is already aligned) and standardized Risk Evaluators (NVR has risk-reviewer.ts). The gap vs.
+top performers is social/narrative signal ingestion (AIXBT-style crypto Twitter monitoring) — complex,
+out-of-scope for auto-implementation.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -203,17 +262,28 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
-## Recommended Action for Henry
+## Recommended Action for Henry (Updated Run #35 — 2026-06-24)
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run (since 2026-04-14) with the same network restriction.**
 
-1. **Add to Claude Code egress allowlist:**
+### Priority 0 — Option B Window Review (NEW — 9 days overdue)
+The 30-day Option B benchmark window **closed ~2026-06-15**. Before anything else:
+1. Pull the 30-day P&L vs. cbBTC/WETH 60/40 benchmark from the bot dashboard
+2. Document whether Option B outperformed by ≥5% annualized (the stated goal)
+3. Decide cohort evolution — CLAUDE.md says changes come via explicit human PR post-window
+4. Consider recalibrating the 20+ bear-adjusted constants listed in Run #35 above (especially `KELLY_FRACTION 0.25→0.30` if market has recovered to NEUTRAL/BULL)
+
+### Priority 1 — Fix Medic/Scout network access
+1. **Add to Claude Code egress allowlist** (Claude Code settings for this session/repo):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+2. **Or** expose a lightweight read-only status proxy on an already-allowed domain
+3. **Manually verify bot health:** autonomous-trading-bot-production.up.railway.app/health
+
+### Priority 2 — Scout resumption
+Once the Option B window review is complete and cohort changes are decided via human PR, re-enable
+the Scout by lifting CLAUDE.md Rule 1's auto-add restriction or adjusting to allow the proposal workflow.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
