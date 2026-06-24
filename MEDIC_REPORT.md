@@ -1,12 +1,38 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-24T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-sfen7j
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-24T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). egress proxy blocks `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`.
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT added), 40 days ago. GeckoTerminal API blocked. WebSearch only. **No specific new qualifying tokens identified** — web search returns general Base ecosystem narrative without on-chain metrics (address, pool age, vol, liquidity). Standards maintained; no COHORT_PROPOSAL_2026-06-24.md created (no verified candidates). CLAUDE.md Rule 1 remains in effect (cohort lock); COHORT_QUALITY_7 unchanged.
+- **Auditor**: TRIGGERED — inferred BEAR/corrective regime: BTC retraced 48% from $122K ATH to ~$62K, ETH ~$1,650, BTC dominance 58%, Altcoin Season Index 46/100 (Bitcoin Season), BTC ETF outflows $1.67B/week (3-week trend, $4.21B total). Bear regime clearly extends beyond 48h threshold. Research ran 4 searches. **No actionable constant change implemented** — all obvious bear-market calibrations were completed in May 2026 runs (Kelly 0.25, HOT_MOVER_MIN_FDV_USD 1M, SCOUT_UPGRADE_BUY_RATIO 60, etc.). Stabilisation signal observed (BTC above key MAs, RSI 56) — constants are correctly set for continued cautious positioning into a potential recovery.
+
+## Auditor Research Summary (Run #35 — 2026-06-24)
+
+- **Signal Quality**: Aerodrome Predictive Allocation Model (announced June 14, launch July 2026) — shifts weekly gauge votes to a forward-looking prediction market that rewards accurate forecasting of future liquidity demand. Could surface early momentum signals before they appear in traditional price/volume. Architecture change required to consume governance vote data — complex (Impact 3, Complexity 4, Risk medium, Priority 0.75). → **Watch list for Henry**.
+- **Execution Efficiency**: Aerodrome's Predictive Allocation upgrade passively benefits NVR — better liquidity distribution means lower slippage on BLUE_CHIP cohort swaps. Bot auto-benefits without code change. AERO surged 44% week of June 16 following announcement; already in registry. No action needed.
+- **Position Sizing**: BTC stabilising above key MAs with RSI 56 — cautiously constructive signal. However, $1.67B/week ETF outflow over 3 weeks indicates institutional risk-off still dominant. All Kelly/VAPS parameters already bear-calibrated (KELLY_FRACTION=0.25, KELLY_POSITION_CEILING_PCT=12, TRENDING_DOWN×0.75). No further tightening warranted; no loosening warranted until ETF flows turn positive. (Impact 1, Complexity 1, Risk low, Priority 1.0) **No action**.
+- **Competitive Intelligence**: Intent-based trading (Solvers + Intents, zero slippage, gasless, MEV-free) at growing market share in 2026. Bot's MEV protection via sequencer-direct RPC already active. Intent routing requires `executeDirectDexSwap` refactor — off-limits for auto-implementation. (Impact 4, Complexity 5, Risk high, Priority 0.8) → **Watch list for Henry**.
+
+## Recommended Action for Henry (Run #35)
+
+1. **Persistent blocker (35 consecutive runs):** Add to Claude Code egress allowlist:
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+2. **Market context:** BTC at ~$62K (-48% from $122K ATH), ETH ~$1,650. Bear/corrective regime. Option B 30-day benchmark window completed ~2026-06-15. Consider cohort review per CLAUDE.md Rule 1 procedure (human PR required).
+3. **Aerodrome Predictive Allocation** launching July 2026 — monitor for liquidity signal opportunity.
+4. **Intent-based routing** (CoW Protocol / 1inch Fusion style) — evaluate for next major architecture cycle.
+
+---
 
 ## Problem
 
@@ -66,6 +92,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-24T UTC | Scout ran (40 days since MOLT); no qualifying tokens found (GeckoTerminal blocked, WebSearch only, no specific candidates with verified metrics); auditor triggered (BTC -48% from $122K ATH, ETH ~$1,650, BTC dominance 58%); no constants changed (all bear calibrations complete from May 2026 runs; BTC stabilising above key MAs, RSI 56 — no further tightening or loosening warranted) |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,7 +232,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
