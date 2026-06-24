@@ -1,23 +1,33 @@
-# MEDIC REPORT — 2026-06-24T06:05 UTC (latest)
+# MEDIC REPORT — 2026-06-24T23:03 UTC (latest)
+
+## Jobs Status This Run (Run #49 — 2026-06-24T23:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (49 consecutive runs, 403/egress-blocked). Root cause unchanged: `autonomous-trading-bot-production.up.railway.app` blocked by execution environment egress policy. Cannot verify error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #49).
+- **Scout**: GeckoTerminal blocked (403). **BERYL IN ~19h — June 25 at 18:00 UTC**. WebSearch confirms: B20 token standard launches simultaneously; 33% throughput boost + 50% disk cut (Reth V2/Storage V2); withdrawals cut 7→5 days; chain ID 8453 unchanged. No qualifying token candidates (GeckoTerminal blocked). Scout re-run: June 27–28 post-Beryl for B20 pool wave.
+- **Auditor**: SKIPPED — API blocked (cannot verify portfolio trigger conditions). External market confirmed BEAR: **BTC $59.7K (−45% from $126.3K cycle high)**, Fear & Greed **23–26 (extreme fear)**, three consecutive red monthly candles, largest single-week ETF outflow of 2026. New AERO finding: **MEV-resistant pool migration is LIVE NOW** — Aerodrome already migrating liquidity to new MEV-resistant pools with redesigned dynamic-fee module (fees temporarily drop at block-start, then restore). LPs who don't migrate will stop earning AERO emissions. Merger contract still unannounced; current `0x940181a94A35A4569E4529A3CDfB74e38FD98631` remains active. AERO at $0.51. **Merger now ~1 week away (early July target).**
+
+## Henry's Action Items (Run #49)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **AERO MEV-resistant pool migration LIVE** — LPs must migrate NOW to keep emissions; new merged "Aero" contract expected within days; update token-registry.ts + router config pre-merger | 🔴 HIGH — merger ~1 week |
+| **Beryl in ~19h (June 25 18:00 UTC)** — B20 token standard, Reth V2, 5-day withdrawals; scout re-run June 27–28 for B20 pool wave | 🔴 HIGH — imminent |
+| **Cobalt (September 2026)**: native account abstraction + ~50% cheaper transfers — begin sizing implications for NVR gas strategy | 🟡 MED — 3 months out |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🔴 HIGH — 9 days overdue |
+| Update CLAUDE.md — Option B window ended 2026-06-15; automated agent rules no longer fully accurate | 🟡 MED — blocking full agent authority |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 49 runs blind |
+
+---
+
+# MEDIC REPORT — 2026-06-24T06:05 UTC
 
 ## Jobs Status This Run (Run #48 — 2026-06-24T06:05 UTC)
 
 - **Medic**: PATTERN D — API unreachable (48 consecutive runs, 403/egress-blocked). Curl returned HTTP 000. Root cause unchanged: `autonomous-trading-bot-production.up.railway.app` blocked by execution environment egress policy. Bot alive (Railway responding, not timed out). Cannot verify error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #48).
 - **Scout**: GeckoTerminal blocked (403). WebSearch run. **BERYL LAUNCHES TOMORROW June 25 at 18:00 UTC (~36h away)**. New details this run: (1) B20 is a standard for third-party issuers (stablecoins, RWAs) implemented as Rust precompiles — NOT a Base native governance token. Prediction markets at 28.5% probability for a Base token by Dec 31 2026. (2) **Cobalt upgrade (September 2026)** newly confirmed: native account abstraction, ~50% cheaper transfers, 2x throughput, gas payments in B20 — direct NVR cost-reduction opportunity. (3) No qualifying token candidates found (GeckoTerminal blocked). Scout re-run: June 27–28 post-Beryl.
 - **Auditor**: SKIPPED — API blocked (cannot verify win rate/drawdown trigger conditions). AERO merger new detail: **Aerodrome migrating liquidity to MEV-resistant pools** ahead of July launch + expanding to Ethereum and Arc from Circle. Still no new contract address. Monitor for announcement.
-
-## Henry's Action Items (Run #48)
-
-| Action | Priority |
-|--------|----------|
-| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
-| **AERO → "Aero" rebrand + new contract + MEV-resistant pools** — July 2026 (~1 week); update token-registry.ts + router config | 🔴 HIGH — before July |
-| **Beryl launches TOMORROW June 25 18:00 UTC** — exchanges pausing deposits/withdrawals; scout re-run June 27–28 for B20 pool wave | 🟡 MED — ~36h away |
-| **Cobalt (September 2026)**: native account abstraction + ~50% cheaper transfers — begin sizing implications for NVR gas strategy | 🟡 MED — 3 months out |
-| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
-| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🟡 MED — 9 days overdue |
-| Update CLAUDE.md — Option B window ended 2026-06-15; rules no longer current | 🟡 MED — blocking future automated runs from full authority |
-| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 48 runs blind |
 
 ---
 
