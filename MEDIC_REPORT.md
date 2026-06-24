@@ -1,4 +1,30 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T15:04Z (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-24T15:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: NOT RUN — API (GeckoTerminal) also blocked. Last `feat(scout)` was 2026-05-16 (reverted). CLAUDE.md cohort-lock requires human PR for any TOKEN_REGISTRY changes regardless. Option B 30-day window **has now elapsed** (~2026-06-15) — cohort lock can now be lifted via explicit human PR if Henry decides.
+- **Auditor**: NOT RUN — Bot API (trades, portfolio, patterns, adaptive) all blocked by network policy. Cannot compute win_rate, drawdown, or losing_streak.
+
+## NEW CONTEXT SINCE RUN #34 (2026-05-15)
+
+**CRITICAL STATE CHANGE: Henry liquidated efficient-peace on 2026-05-29.**
+
+Last main commit: `feat(admin): /api/admin/liquidate-all` (2026-05-29):
+> "Henry is pulling all real capital out of efficient-peace to run the system on paper until it's proven. The liquid USDC ($1,152.88) was already withdrawn; this sweeps the remaining ~$1,700 (WETH + Aave + cbLTC) to USDC so it can be withdrawn too."
+
+As of 2026-06-24, efficient-peace has been in **paper-trade mode for 26 days** with no commits to main since 2026-05-29.
+
+Option B 30-day benchmark window: **ELAPSED** (started 2026-05-15, ended ~2026-06-15).
+
+**Action items for Henry (2026-06-24):**
+1. Is efficient-peace paper-trading results satisfactory? Ready to re-deploy live?
+2. Option B window closed — cohort lock can now be lifted via human PR.
+3. Network policy still blocks this job from reaching Railway/GeckoTerminal — fix needed for automated runs to resume.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
