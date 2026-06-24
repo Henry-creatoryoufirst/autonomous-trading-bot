@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-24T UTC | Scout ran (30+ days since last addition); cbMEGA found ($791K 24h vol, ~55 days old, Coinbase wrapped MEGA) — COHORT_PROPOSAL_2026-06-24.md written (pool TVL unverifiable, CLAUDE.md Rule 1 still in file post-window); Auditor blocked (API unreachable); Medic PATTERN D continues (40+ days) |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-24T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the 40th+ consecutive run with the same network restriction.
+- **Scout**: RAN (30 days since last matching scout commit, well past 48h). GeckoTerminal API blocked (proxy policy). WebSearch used instead. Found cbMEGA (Coinbase Wrapped MEGA, `0xcb111e6a2a3bde90856d299d61341ac302167d23`, $791K 24h vol, ~55 days old, Coinbase cb* program). **Not added to TOKEN_REGISTRY** — CLAUDE.md Rule 1 still present (Option B window ended ~June 15 but CLAUDE.md not updated). Pool TVL unverifiable (GeckoTerminal blocked). Proposal written to `COHORT_PROPOSAL_2026-06-24.md`.
+- **Auditor**: BLOCKED — All required API endpoints (trades, portfolio, patterns, adaptive) unreachable due to proxy policy. Cannot determine win_rate, drawdown, or losing_streak. Skipping to avoid false triggers.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +212,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 40th+ consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
