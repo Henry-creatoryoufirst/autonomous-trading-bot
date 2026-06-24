@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -89,6 +89,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-24T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **⚠️ OPTION B WINDOW ENDED ~2026-06-15 — 9 days elapsed. Henry review required.**
+- **Scout**: SKIPPED — two reasons: (1) GeckoTerminal API blocked by same egress policy (403); (2) CLAUDE.md Rule 1 enforced — cohort still requires explicit human PR even after window close.
+- **Auditor**: SKIPPED — Railway API unreachable; cannot read win_rate, drawdown, or losing_streak. Inferred: Option B window has completed; Henry should review 30-day performance vs cbBTC/WETH 60/40 benchmark before enabling further automated strategy tuning.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
