@@ -459,9 +459,9 @@ export const DEFAULT_REGIME_MULTIPLIERS = {
  * Normal SELL entry: confluence <= -18
  * Re-entry SELL:     confluence <= -35 (within TRADE_EXECUTED window)
  */
-export const REENTRY_CONFLUENCE_BUY = 27;   // v10.4: Narrowed from 30 — 5pt premium was causing "sell-all, buy-nothing" lockout. 2pt premium still rewards fresh entries over re-entries.
+export const REENTRY_CONFLUENCE_BUY = 30;   // Bear-adjusted Jun-2026: 27→30 — 8-month bear (BTC -50% ATH); 2026 confluence research: 9+ signals achieves 68-72% win rate vs 55-62% for 6-7 signals; maintains equal-caution principle with NORMAL_CONFLUENCE_BUY
 export const REENTRY_CONFLUENCE_SELL = -23;  // v10.4: Narrowed from -28 — symmetrical 3pt premium above normal (-20)
-export const NORMAL_CONFLUENCE_BUY = 27;    // Bear-adjusted May-2026: 25→27 — 46-day bear market; false-positive entry rate elevated; unify with re-entry threshold for equal caution on all buys.
+export const NORMAL_CONFLUENCE_BUY = 30;    // Bear-adjusted Jun-2026: 27→30 — 8-month bear, BTC -50% ATH; false-positive entry rate elevated; higher signal-stack threshold reduces spurious entries; 46-day bear set 27, now 8+ months requires tighter gate
 export const NORMAL_CONFLUENCE_SELL = -18;  // Bear-adjusted May-2026: -20→-18 — 51-day bear; sell-side was the last untouched threshold; lower magnitude allows exits on weaker sell signals, reducing position overhang in sustained downtrend.
 
 // ========================================================================
