@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-24T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-24T UTC | Scout ran (39+ days since last add); DEUS/XMAQUINA candidate documented in COHORT_PROPOSAL_2026-06-24.md — no TOKEN_REGISTRY change (CLAUDE.md Rule 1 + address unverifiable). **CRITICAL: Aerodrome→Aero merger July 2026** — pool addresses changing, routing must be re-verified before July cutover. No code changes (too complex for auto-impl). |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-24T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on both `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com`). This is run #35 with the same block. Updated MEDIC_REPORT.
+- **Scout**: RAN — last scout commit was 2026-05-14 (MOLT added), >39 days ago, well above 48h threshold. GeckoTerminal API blocked; used WebSearch. Found DEUS (XMAQUINA) as candidate (AI/Robotics DAO, Aerodrome Base, $810K 24h vol, $1M+ liq, pool age 28d). **No TOKEN_REGISTRY change made** — CLAUDE.md Rule 1 applies; 30-day Option B window ended 2026-06-15 but changes require explicit human PR. Contract address could not be verified (API blocked). Wrote `COHORT_PROPOSAL_2026-06-24.md` to branch for Henry's review.
+- **Auditor**: CONDITIONS UNKNOWN (API blocked; cannot read win_rate, drawdown, or market regime). Research ran regardless due to critical finding. **KEY FINDING: Aerodrome → Aero migration (July 2026)** — Aerodrome is merging into Aero with Slipstream V3 MEV-resistant pools. LPs must migrate by July or forfeit emissions. NVR's `executeDirectDexSwap` router addresses and `DEX_SWAP_TOKENS` routing may be affected. Impact 5, Complexity 4, Risk HIGH — too large for auto-implementation (>10 lines, touches execution path). Documented in `COHORT_PROPOSAL_2026-06-24.md` Watch List. No code changes pushed.
+
+## Auditor Research Summary (Run #35 — 2026-06-24)
+- **Signal Quality**: No new findings beyond prior runs. Smart money wallet clustering remains watch list. (Priority 0.5)
+- **Execution Efficiency**: **CRITICAL** — Aerodrome/Aero merger in July 2026 requires pool address migration. Slipstream V3 pools are MEV-resistant (internal MEV auction revenue accrues to LPs). Current Aerodrome pool addresses may change. Bot routing and `DEX_SWAP_TOKENS` fallback must be re-verified before July. (Impact 5, Complexity 4, Risk HIGH → Watch List for Henry)
+- **Position Sizing**: Quarter-Kelly (KELLY_FRACTION=0.25) already confirmed optimal. Half-Kelly research confirms current approach. No new action needed.
+- **Competitive Intelligence**: MEV-resistant pool migration is competitive alpha — bots trading through new Aero V3 pools will benefit from sequencer MEV auction revenue returned to LPs. NVR benefits automatically once routing is confirmed valid on new pool contracts.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
