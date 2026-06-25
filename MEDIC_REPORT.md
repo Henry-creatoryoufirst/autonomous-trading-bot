@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T00:07Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-25T00:07Z | Scout OVERDUE (40+ days since last run, MOLT 2026-05-16), but GeckoTerminal also blocked. Option B window closed ~2026-06-15. Auditor: API blocked, trigger conditions unknown; web research ran anyway (see findings). |
 
 ## Bot Health Evidence (from git history)
 
@@ -222,3 +223,37 @@ PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmen
 - No changes to agent-v3.2.ts
 - No production changes
 - MEDIC_REPORT.md conflict resolved; committed to staging only
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-25T00:07Z)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). This is now Run #35. MEDIC_REPORT updated.
+- **Scout**: OVERDUE (40+ days since last run — MOLT added 2026-05-16, threshold 48h). However, GeckoTerminal API (`api.geckoterminal.com`) is also blocked by the same egress policy. Cannot formally qualify candidates without pool liquidity/volume/age data. WebSearch found general Base ecosystem info (Zora, Clanker, Brett, cbDOGE active). Per CLAUDE.md Rule 1, cohort changes require explicit human PR regardless — auto-adds are prohibited. Scout cannot run this session.
+- **Auditor**: API blocked — cannot calculate win_rate, drawdown, or losing_streak to check triggers. WebSearch research ran anyway (4 searches). Key findings below. No code changes implemented (trigger conditions unverifiable).
+
+## Auditor Research Summary (Run #35 — 2026-06-25)
+
+- **Signal Quality**: 9+ indicator confluence historically produces 68–72% win rates vs 55–62% for 6–7 indicators. If win rate drops below 0.45 trigger, check whether minimum confluence gate has drifted below 7. A gate of 7 vs 6 costs some trade frequency but significantly improves precision. (Impact 3, Complexity 2, Risk low, Priority 1.5) → NOT implemented (trigger not verified).
+- **Execution Efficiency**: Base Flashblocks (launched July 2025) enable tighter slippage tolerance — 0.5% on liquid BLUE_CHIP pairs is viable without rejection risk given sub-second block times. Aerodrome Slipstream already provides MEV resistance. NVR may be leaving 50–150 bps/trade on the table with default 2% slippage on cbBTC/WETH/cbSOL. (Impact 3, Complexity 2, Risk low, Priority 1.5) → NOT implemented (touch of slippage params without live metrics is risky).
+- **Position Sizing**: Volatility-targeting (scale Kelly fraction by `target_vol / realized_vol`) confirmed by academic research to improve risk-adjusted returns vs constant sizing. Current bot uses fixed KELLY_FRACTION=0.25. Adding vol-targeting would auto-reduce in high-vol regimes. Complexity medium (need 7-day realized vol per asset). (Impact 4, Complexity 3, Risk medium, Priority 1.3) → Watch list for Henry.
+- **Competitive Intelligence**: Base chain cyclic-arbitrage probes were 50%+ of gas in Q1 2025. MEV protection via private relay and sequencer-direct RPC already active in NVR. No new action needed. Alert: Web search returned several typosquatted Aerodrome phishing sites — `connect-aerodrom-slipstream.pages.dev`, `aerodrrome-slipstream-guide.pages.dev` — do NOT visit or approve transactions on these. Real site: aerodrome.finance.
+
+## Context: Option B Window Closed
+
+The 30-day Option B benchmark window (2026-05-15 to ~2026-06-15) has now closed as of this run (2026-06-25). Per CLAUDE.md Rule 1, cohort changes still require explicit human PR — the rule does not auto-lift. Henry should review whether to formally open the cohort or extend the constraint via PR.
+
+## Recommended Action for Henry
+
+**This is now Run #35 with the same network restriction (since 2026-04-14):**
+
+1. **Allow-list these hosts** in the scheduled agent session's egress policy:
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+2. **Manually check bot health** at:
+   - https://autonomous-trading-bot-production.up.railway.app/api/errors
+   - https://autonomous-trading-bot-production.up.railway.app/api/balances
+   - https://autonomous-trading-bot-production.up.railway.app/api/portfolio
+3. **Scout is 40+ days overdue.** Run a manual session (or grant GeckoTerminal egress) to evaluate Base pool candidates.
+4. **Option B window closed ~2026-06-15.** Decide whether to lift the cohort auto-add restriction (per CLAUDE.md Rule 1 — requires human PR).
+5. **Slippage tightening on BLUE_CHIP pairs** (0.5% with Flashblocks) is low-risk and likely captures 50–150 bps per trade — worth a human-reviewed PR.
