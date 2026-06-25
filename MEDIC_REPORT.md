@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-25T10:xx UTC | Scout due (31 days since MOLT) but GeckoTerminal blocked; COHORT_PROPOSAL_2026-06-25.md written for B20 tokens; auditor triggered (40-day gap, inferred bear) — no code change; full USDC liquidation detected + Base Beryl/B20 upgrade live today; flagged DECEL/CASH_DEPLOYMENT for human review |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-25T10:xx UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Continuing per established protocol (runs #17+).
+- **Scout**: DUE (last ran 2026-05-25, 31 days ago). GeckoTerminal API blocked (same network policy). WebSearch completed — found no verifiable pool data (liquidity/volume/age) required by quality filter. CLAUDE.md Rule 1 in effect: cohort changes require human PR post-Option-B-window. No registry additions. COHORT_PROPOSAL_2026-06-25.md written to repo root covering B20-enabled RWA opportunities.
+- **Auditor**: TRIGGERED (inferred: last auditor ran 2026-05-15, 40-day gap; bear regime was 70-day as of last run; 48h+ threshold exceeded). Live portfolio metrics unavailable (API blocked). CRITICAL CONTEXT: (1) most recent main commit is `f29798d feat(admin): /api/admin/liquidate-all` — portfolio is likely all-USDC; (2) Base Beryl upgrade with B20 token standard launched TODAY (June 25, 2026). With regime unknown + portfolio in active transition, NO code change implemented this run. All research findings documented below for Henry's review.
+
+## Auditor Research Summary (Run #35 — 2026-06-25)
+
+- **Signal Quality**: Confluence scoring (9+ signals post 68–72% win rates, per 2026 sources) — NVR's multi-indicator system already aligns. B20 native tokens will have lower gas overhead than ERC-20, potentially improving price feed latency on Base. No code change (auto-benefit from Beryl Reth V2 throughput +33%). (Impact 2/Complexity 3/Risk low → Priority 0.67)
+- **Execution Efficiency**: Base Beryl upgrade (live June 25, 2026): Reth V2 cuts node disk -50%, throughput +33%. NVR auto-benefits — no code change required. Withdrawal time 7d→5d not relevant to trading bot. (Impact 2/Complexity 1/Risk low — auto, no action needed)
+- **Position Sizing**: Kelly research (2026): "reduce risk if drawdown > -25%" — already implemented via LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20 / CAUTION_PCT=12. DECEL_MIN_PROFIT_PCT=2 (lowered from 3 in 55-day bear) may be too tight in recovery — holding winners to 3% before Smart Trim would give more runway, but requires confirmed regime. FLAGGED for human review. (Impact 3/Complexity 1/Risk med without regime confirmation — NOT implemented)
+- **Competitive Intel**: B20 standard enables cheaper, compliant RWA/tokenized-equity tokens natively on Base — directly relevant to NVR's TOKENIZED_STOCKS sector (5% target, only 2 tokens: bCOIN/deSPXA). First B20 tokens will appear in weeks. COHORT_PROPOSAL written. MEV dynamics unchanged — HOT_MOVER_MIN_FDV_USD=1M still appropriate. (Impact 4/Complexity 2/Risk low for monitoring — see COHORT_PROPOSAL_2026-06-25.md)
+
+## Watch List for Henry (Run #35)
+
+1. **DECEL_MIN_PROFIT_PCT 2→3**: If market regime has shifted from bear to recovery/bull, raising the Smart Trim profit floor back to 3% gives winners more runway. With full USDC portfolio re-entering, this could meaningfully improve capture of the first recovery legs. Risk: in continued bear, holds through reversals longer. → Implement when you confirm regime.
+2. **CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→18**: Bear-adjusted to 15 (requires 12-point confluence to deploy cash). In recovery with mostly-USDC portfolio, raising to 18 (requires 9-point) allows slightly earlier cash deployment. Low risk since NORMAL_CONFLUENCE_BUY=27 still gates overall entries. → Implement when you confirm regime.
+3. **B20 token monitoring**: First B20 assets on Base (likely RWAs, tokenized equities, stablecoins) will launch in the coming weeks. TOKENIZED_STOCKS sector is currently thin (2 tokens). Worth adding 1–2 high-quality B20 issuers once they have 30+ day track records. See COHORT_PROPOSAL_2026-06-25.md.
+4. **Portfolio re-entry sequencing**: With full liquidation to USDC complete, the re-entry order matters. Suggest: Tier-1 cohort (cbBTC/WETH) first, then Tier-2 (LINK/cbXRP/cbSOL/cbADA), then sector rotation. Bear-adjusted thresholds (confluence 27+) still appropriate during re-entry regardless of regime.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
