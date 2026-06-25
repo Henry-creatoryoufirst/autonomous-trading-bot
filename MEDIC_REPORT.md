@@ -1,3 +1,24 @@
+# MEDIC REPORT — 2026-06-25T02:04 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Jobs Status This Run (2026-06-25T02:04 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
+- **Scout**: BLOCKED — GeckoTerminal (`api.geckoterminal.com`) also blocked by egress policy. Scout is 42 days overdue (last add: MOLT 2026-05-14). Cannot verify quality-filter metrics (liquidity, volume, pool age) without GeckoTerminal. No tokens added — adding unverified tokens would risk registry pollution.
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` from Railway (403). Trigger conditions cannot be assessed.
+
+**Note — Option B window**: The 30-day benchmark window started 2026-05-15, targeting close ~2026-06-15. As of today (2026-06-25) the window has ended. Cohort rules remain in effect until Henry explicitly signals the window is closed and reviewed.
+
+**Blocked hosts (confirmed via proxy status endpoint):**
+- `autonomous-trading-bot-production.up.railway.app:443` — Railway bot API
+- `api.geckoterminal.com:443` — Scout token data
+- `lunarcrush.ai:443` — Signal enrichment
+
+**Available in this environment:** GitHub MCP, WebSearch (Anthropic-routed), git operations.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
