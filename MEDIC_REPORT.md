@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-25T~23:00 UTC | Option B window closed 2026-06-15. Scout: blocked (GeckoTerminal proxy 403 + Rule 1). Auditor: no qualifying auto-impl found (all Priority ≤1.0). Key context: liquidate-all admin action, Aero merger imminent, cbADA/cbLTC pools bootstrapping on Base today. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,26 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-25T~23:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). No critical fix applied. MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — GeckoTerminal API also unreachable (proxy 403). CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY auto-adds regardless (requires explicit human PR, even post-Option B window). No qualifying tokens found via WebSearch alone — cbADA/cbLTC (Coinbase fresh launch today 2026-06-25) already in registry; no other verifiable candidates identified. Scout SKIPPED.
+- **Auditor**: TRIGGERED by inferred market context: Option B window closed 2026-06-15 (40+ day bear); most recent commit is `feat(admin): /api/admin/liquidate-all` suggesting full USDC conversion by Henry. Cannot verify win_rate/drawdown via API. Ran 4 research searches. Top finding scored Priority 1.0 — no finding qualifies for auto-implementation (all medium-risk or medium-complexity). Research documented below. No code change this run.
+
+## ⚠️ KEY CONTEXT FOR HENRY (Run #35 — 2026-06-25)
+
+1. **Option B window has closed** — 30-day benchmark ran 2026-05-15 → 2026-06-15. Post-window: COHORT_QUALITY_7 lock can now be modified via explicit human PR per CLAUDE.md.
+2. **Liquidate-all action** — Most recent repo commit is `feat(admin): /api/admin/liquidate-all`. Bot is likely in full-USDC mode. Redeployment strategy decision pending.
+3. **Aero merger imminent** — Aerodrome + Velodrome merging into unified "Aero" DEX targeting Q2/Q3 2026 with Predictive Allocation (replaces weekly voting, projects 80% efficiency gain). This will reshape Base liquidity distributions; slippage on some pairs may spike temporarily at launch. Monitor routing performance closely.
+4. **Chainlink CCIP now sole bridge** for all cb-wrapped tokens (cbBTC, cbXRP, cbADA, cbLTC, cbDOGE). Enhances security of wrapped token redemption.
+5. **cbADA + cbLTC fresh launch** — Coinbase announced new cbADA/cbLTC pools on Base today (2026-06-25). Both already in TOKEN_REGISTRY. cbLTC in HOLD_ONLY_TOKENS (thin liquidity). cbADA may see improving liquidity now that pools are bootstrapping — watch for potential reclassification.
+
+## Auditor Research Summary (Run #35 — 2026-06-25)
+- **Signal Quality**: 2026 research confirms 9+ indicator confluence achieves 68-72% win rates vs 55-62% at 6-7 indicators. NVR's NORMAL_CONFLUENCE_BUY=27 already requires strong multi-indicator agreement. Full on-chain integration (funding rates, open interest) still complex. (Impact 2/Complexity 4/Risk medium → Watch list, Priority 0.5)
+- **Execution Efficiency**: Aerodrome → Aero merger (targeting July 2026) will shift liquidity distributions dynamically via Predictive Allocation. Bot auto-benefits from routing improvements. Risk: temporary pool depth disruption at merger launch. Action: monitor VWS_MIN_LIQUIDITY_USD (currently $20K) — may need temporary increase at Aero migration. (Impact 2/Complexity 2/Risk medium, Priority 1.0)
+- **Position Sizing**: Research confirms Half-Kelly optimal for crypto; NVR already at Quarter-Kelly (KELLY_FRACTION=0.25) — more conservative than recommended. Hybrid Kelly+VIX regime scaling already implemented (TRENDING_DOWN ×0.75). No change needed. (Priority 0)
+- **Competitive Intelligence**: MEV-protected private mempool submission (direct-to-block-builder) going mainstream in 2026. Would reduce sandwich attacks on TWAP slices. Touches off-limits execution path (executeSingleSwap/executeDirectDexSwap). → Watch list for future sprint. (Impact 3/Complexity 3/Risk medium, Priority 1.0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
