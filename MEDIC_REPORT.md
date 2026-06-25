@@ -1,4 +1,26 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #37+)
+
+## Jobs Status This Run (Run #37+ — 2026-06-25T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints for 37+ consecutive runs). Railway URL and GeckoTerminal both blocked by egress proxy policy. Bot health cannot be verified from this environment.
+- **Scout**: SKIPPED — GeckoTerminal blocked (403). Last successful scout was 2026-05-14 (MOLT). 42 days overdue. WebSearch returns no pool-level liquidity/volume data. Per CLAUDE.md Rule 1, any candidates would go to COHORT_PROPOSAL anyway (Option B window closed ~2026-06-15).
+- **Auditor**: BLOCKED — cannot reach /api/trades, /api/portfolio, /api/patterns, /api/adaptive (403).
+
+## CRITICAL CONTEXT FOR HENRY — 2026-06-25
+
+1. **TODAY is Base Beryl upgrade activation (June 25)** — B20 native token standard launches on Base mainnet today. Issue #84 flagged this as "tomorrow"; that's now today. New token creation is dramatically cheaper → expect surge of new pools over next 2-4 weeks. Once GeckoTerminal egress is restored, the scout should prioritize B20-native tokens.
+
+2. **Bot has been in full USDC for 28+ days** — `feat(admin): /api/admin/liquidate-all` merged May 28 (#54). The bot was forced to full USDC exit. No production code change since. Verify via Railway logs or BaseScan `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1` that the bot is actually trading again, not still sitting in cash.
+
+3. **PR #55 still open** (sleeve state persistence / SPEC-038 Phase A0) — open since May 29, 27 days unreviewed. Blocking the strategy tournament. Needs your merge before the tournament can run.
+
+4. **Egress fix still needed** (37th request) — add to allowlist at code.claude.com:
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
