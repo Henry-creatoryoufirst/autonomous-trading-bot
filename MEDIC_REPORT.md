@@ -1,12 +1,50 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T07:05 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚑ OPTION B WINDOW HAS ENDED (~2026-06-15) — Henry: review results and decide next phase
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-25T07:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-2ax378
+
+## Jobs Status This Run (Run #35 — 2026-06-25T07:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — GeckoTerminal API also 403 (egress policy). Last scout was 2026-05-14 (MOLT, reverted) / last accepted was SYRUP 2026-05-08 (47 days ago, far past 48h threshold). NOTE: per CLAUDE.md the Option B cohort-lock was a hard rule "during the 30-day window" (~2026-05-15 to ~2026-06-15). Window is now complete. Awaiting Henry's decision on cohort freeze status post-window.
+- **Auditor**: BLOCKED — cannot fetch /api/trades, /api/portfolio, /api/patterns from prod (403). Cannot compute win_rate, drawdown, losing_streak.
+
+## Notable Events Since Run #34 (2026-05-15)
+
+From `git log --since=2026-05-15 main`:
+- **2026-05-29**: `feat(admin): /api/admin/liquidate-all` — operator forced full-exit to USDC (#54). Henry manually triggered a full liquidation.
+- **2026-05-25**: v21.30.0 deployed — INV-1 round 5, cost-basis tracker aligned to wallet truth.
+- **2026-05-21**: MirrorAgent wired into heavy-cycle prompt (feat/spec-036 Phase 1 #42).
+- **2026-05-21**: Anthropic Files API for auditor persistence — survives Railway redeploys.
+- **2026-05-19**: System Auditor (audit-of-audits layer) + 4 SEVERE invariants shipped.
+- **No main-branch commits since 2026-05-29** (27 days). Bot running v21.30.0.
+
+## Persistent Network Policy Blocker
+
+All Railway + GeckoTerminal endpoints return 403 from the Claude Code egress proxy:
+```
+GET https://autonomous-trading-bot-production.up.railway.app/api/errors      → 403
+GET https://autonomous-trading-bot-production.up.railway.app/api/balances    → 403
+GET https://api.geckoterminal.com/api/v2/networks/base/trending_pools        → 403
+```
+Per proxy README: "403 from the proxy = not allowed by organization's egress policy. Do not retry."
+This has been the constraint since Run #1 (2026-04-14). Henry must add these hosts to the allowlist in the Claude Code remote environment settings to enable the agent's live monitoring capabilities.
+
+## What Is NOT Known (same as Run #34)
+
+Because the API is unreachable, the medic cannot determine:
+- Whether `summary.totalFailed / summary.totalAttempted > 0.5`
+- Whether any error pattern (A/B/C) is active in `recentFailedTrades`
+- Whether circuit breakers are blocked
+- Current portfolio balance, P&L, or win rate since the May 29 liquidation
+- Whether the bot re-deployed positions after the liquidation or remains in USDC
 
 ## Problem
 
