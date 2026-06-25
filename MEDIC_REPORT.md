@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T13:03 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-25T13:03 UTC | Scout ran (last scout 2026-05-25, >30 days elapsed) — GeckoTerminal blocked, WebSearch fallback, no new qualifying tokens found (registry already comprehensive); auditor skipped (cannot determine trigger — API blocked); CLAUDE.md Rule 1 cohort lock maintained; Option B window ended ~2026-06-15 |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,21 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-25T13:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Now **35 consecutive blocked runs** since 2026-04-14.
+- **Scout**: RAN (last scout 2026-05-25, >30 days elapsed). GeckoTerminal API blocked; WebSearch fallback used. **No new qualifying tokens found.** Registry already comprehensively covers Base L2 (VIRTUAL, AIXBT, BRETT, DEGEN, AERO, TOSHI, LUNA, CLANKER, GAME, MORPHO, AAVE, PENDLE, ENA, ZRO, cbBTC, cbDOGE, cbSOL, cbXRP, cbLTC, cbADA, WETH, LINK, etc.). Notable ecosystem development: AERO's "Predictive Allocation" upgrade launches July 2026 (prediction-market mechanics for gauge voting). Per CLAUDE.md Rule 1, cohort remains locked — no TOKEN_REGISTRY edits. Option B window ended ~2026-06-15.
+- **Auditor**: SKIPPED (cannot confirm trigger — bot API unreachable; cannot compute win_rate, drawdown, or losing_streak). Research completed anyway — see findings below. No auto-implementation without confirmed trigger.
+
+## Auditor Research Findings (Run #35 — unconfirmed trigger — for Henry's review)
+
+- **Signal Quality**: Industry 2026 data shows 9+ indicator confluence → 68-72% win rate vs 55-62% at 6-7 indicators. Current `NORMAL_CONFLUENCE_BUY=27` already bear-adjusted (May-2026: 25→27). No change warranted without live win-rate data. (Impact 4, Complexity 3, Risk medium, Priority 1.33)
+- **Position Sizing**: Research confirms Half-Kelly captures ~75% optimal growth with dramatically lower drawdowns. Bot already uses Quarter-Kelly (`KELLY_FRACTION=0.25`), which is MORE conservative. No downgrade to half-Kelly without knowing current market regime. (Impact 3, Complexity 2, Risk low, Priority 1.50)
+- **Execution Efficiency**: Aerodrome Universal Router supports Permit2 batch operations (`PERMIT2_PERMIT_BATCH`, `PERMIT2_TRANSFER_FROM_BATCH`) — multi-token approval in one tx. Complex change, touches execution path (off-limits for auditor). Watch list. (Impact 2, Complexity 4, Risk medium, Priority 0.50)
+- **Competitive Intel**: QuickNode/OpenOcean cross-DEX aggregation on Base (Aerodrome + Uniswap + Sushiswap). Already partially covered by Aerodrome Slipstream dominance (~50% Base volume). Complex integration. Watch list. (Impact 3, Complexity 4, Risk medium, Priority 0.75)
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +221,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
