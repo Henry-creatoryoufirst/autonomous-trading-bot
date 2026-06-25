@@ -1,12 +1,38 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-25T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ugd1z2
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-25T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). 40-day gap since Run #34 (2026-05-15). MEDIC_REPORT updated.
+- **Scout**: BLOCKED — GeckoTerminal API 403 (proxy constraint) AND CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY. Last valid scout ~2026-05-08 (SYRUP). **Option B window ended ~2026-06-15 — Henry: please review cohort expansion opportunity manually.**
+- **Auditor**: TRIGGERED by inferred 110-day bear market (48h+ threshold met). BTC at $62K (down 30% from $122K ATH), total market cap down 48%, Fed removed easing language June 18, record $4.4B ETF outflows in June 2026, BTC dominance 58%. Research ran 4 searches. Top finding: CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→10 — materially tighter cash deployment signal bar in risk-off, rate-hawkish, institutional-outflow environment. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-25)
+- **Signal Quality**: 9+ indicator confluence → 68-72% win rate vs 55-62% at 6-7 signals (2026 AI signal research). Full on-chain integration (funding rates, OI) complex (Impact 2/Complexity 4/Risk med) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome METADEX03 (Nov 2025) internalizes MEV extraction to LP/veAERO holders; bot auto-benefits at DEX level. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — VaR-adjusted Kelly + daily circuit breaker at 5% confirms bear-market capital preservation priority. CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 15→10: effective threshold 27-15=12→27-10=17 (41% more restrictive). Appropriate for 110-day bear + hawkish Fed + institutional selling. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intel**: AI bots achieving 30% lower execution costs via intelligent order splitting (off-limits to implement). BTC dominance 58% = altcoin environment highly selective; positions in COHORT_QUALITY_7 quality assets remains correct strategy. No additional constant change warranted.
+
+## Scout Note (Run #35)
+Last meaningful scout runs: SYRUP ~2026-05-08, MOLT 2026-05-14 (reverted per CLAUDE.md Rule 1). Scout is 40+ days overdue but:
+1. GeckoTerminal API blocked (proxy 403) — cannot verify pool quality metrics
+2. CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY regardless
+3. Option B window ended ~2026-06-15 — cohort expansion now permitted via explicit human PR
+
+**Henry action needed**: Manual scout via GeckoTerminal/DexScreener + human PR to expand TOKEN_REGISTRY.
+
+---
+
+## Previous Run Summary
 
 ## Problem
 
@@ -90,7 +116,7 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
-## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
+## Jobs Status This Run (Run #34 — 2026-05-15T UTC) [Previous Run]
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
