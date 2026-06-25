@@ -1,9 +1,26 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-25T08:05 UTC (approx)
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-ux8d2d (staging branch does not exist in this remote)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-25T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Branch note: `staging` branch does not exist in remote (only `main` and `claude/cool-sagan-ux8d2d`). Committing to dev branch instead.
+- **Scout**: RAN (last scout 2026-05-14, 41+ days ago, >48h threshold). GeckoTerminal API blocked (proxy). WebSearch used as fallback. One candidate identified: **OPG (OpenGradient)** — Base AI infrastructure token, contract `0xFbC2051AE2265686a469421b2C5A2D5462FbF5eB`, listed Binance+Upbit June 15, $169M+ 24h CEX volume. DEX pool liquidity on Aerodrome/Base cannot be verified from this environment. Per **CLAUDE.md Rule 1 (cohort is locked)**, cannot add to TOKEN_REGISTRY. Writing `COHORT_PROPOSAL_2026-06-25.md` instead.
+- **Auditor**: SKIPPED — API unreachable, cannot verify win_rate / drawdown / marketRegime triggers. Option B window ended ~2026-06-15 (10 days ago); human review of performance vs cbBTC/WETH 60/40 benchmark is now due.
+
+## New Finding — Staging Branch Missing
+The `staging` branch does not exist in the remote repository (only `main` and the dev branch). Previous runs committed to staging; this run commits to `claude/cool-sagan-ux8d2d`. **Henry: please check if the staging branch was deleted or never pushed. If Railway staging is meant to track a `staging` branch, it may need to be recreated.**
+
+## Environment
+- Run timestamp: 2026-06-25T08:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
 - Current branch: staging
