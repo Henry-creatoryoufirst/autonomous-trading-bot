@@ -1,4 +1,39 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+---
+
+## Jobs Status This Run (Run #35 — 2026-06-25T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). ⚠️ Note: Option B 30-day benchmark window ended ~2026-06-15. MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (41 days since last scout — MOLT added 2026-05-14, well past 48h threshold). GeckoTerminal blocked by egress policy — cannot retrieve pool liquidity/volume/age for quality scoring. WebSearch found no verifiable new Base tokens with confirmed liquidity >$100k, 24h vol >$50k, and age >3 days. CLAUDE.md prohibits TOKEN_REGISTRY auto-adds; Cathedral vault not present in this repo checkout. No tokens added.
+- **Auditor**: SKIPPED — bot API blocked; cannot evaluate trigger conditions (win_rate, drawdown, streak). Research ran 4 searches for watch list only. No implementation (trigger unconfirmed + no qualifying ≤10-line, priority ≥2.0 finding).
+
+### Scout Research Summary (2026-06-25)
+
+41 days since last successful scout. GeckoTerminal and DexScreener are blocked by egress policy — pool-level data unavailable for quality scoring.
+
+**WebSearch findings — no Registry additions, candidates for Henry's manual review:**
+- **Base Beryl upgrade (B20 token standard)** launched TODAY (June 25, 2026): new native tokenization standard for RWAs, stablecoins, and tokenized equities on Base. May produce new tradeable assets within weeks. Recommend monitoring Aerodrome new pools once GeckoTerminal access is restored.
+- **Aerodrome → "Aero" merge** (MetaDEX03, targeting July 2026): Aerodrome + Velodrome unifying; Predictive Allocation replaces weekly gauge voting. Bot auto-benefits from routing improvements without code changes.
+- **Coinbase wrapped tokens**: no evidence of new cbSUI / cbPOL / cbDOT / cbBNB launches found.
+- **COHORT STATUS**: Option B window ended ~2026-06-15. COHORT_QUALITY_7 (7 tokens) unchanged. Human PR required for any cohort changes per CLAUDE.md.
+
+### Auditor Research Summary (2026-06-25) — Watch List Only
+
+Trigger cannot be confirmed (API blocked). Research for watch list; 40 days since last auditor run.
+
+- **Signal Quality**: AI trading bots in 2026 (DeepAlpha, FRB Agent) use ATR + wallet clustering confluence. NVR confluence pipeline is competitive. Full Nansen/Dune on-chain integration remains complex (Impact 3 / Complexity 4 / Risk medium → Priority 0.75). Watch list for Henry.
+- **Execution Efficiency**: Aerodrome merging with Velodrome → "Aero" with Predictive Allocation (July 2026). Bot auto-benefits from DEX-level routing without code change. No action.
+- **Position Sizing**: 2026 crypto Kelly research confirms Quarter-Kelly + ATR-volatility scalar. NVR at KELLY_FRACTION=0.25 with TRENDING_DOWN=0.75 is well-calibrated. ATR dynamic multiplier would improve sizing in variable-volatility regimes (Impact 3 / Complexity 3 → Priority 1.0). Watch list for Henry.
+- **Competitive Intelligence**: AI-on-AI MEV growing on Base. Private relay (MEV-protection mode) going mainstream. NVR's sequencer-direct RPC provides baseline protection; HOT_MOVER_MIN_FDV_USD=1M (Run#34) remains well-calibrated. No new code action.
+
+**⚠️ Post-Option-B watch item**: All bear-market settings were calibrated for 60-70 day bear (May 2026). CULL_MIN_AGE_HOURS=72, STALE_POSITION_MIN_AGE_HOURS=36, KELLY_FRACTION=0.25 etc. If market has recovered post-June-15, these settings may cull positions too aggressively in a recovery regime. **Henry: check bot dashboard to assess current market regime and determine if settings need normalization.**
+
+---
+
+# MEDIC REPORT — 2026-05-15T (prior run)
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +101,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-25T UTC | Scout ran (41 days, GeckoTerminal blocked — no additions, no qualifying data); auditor skipped (trigger unconfirmed — API blocked). ⚠️ Option B window ended ~2026-06-15. Bear settings may need normalization. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,15 +241,19 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**Run #35 — 41 days without bot API or GeckoTerminal access. Persistent network policy constraint.**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist (highest priority):**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Post-Option-B review (Option B window ended ~2026-06-15):**
+   - All strategy constants are still at bear-market calibration (KELLY_FRACTION=0.25, CULL_MIN_AGE_HOURS=72, etc.)
+   - If the market has recovered, consider normalizing these settings via human PR
+   - Full scout needed once GeckoTerminal is accessible — 41 days since last successful scan
+5. **Base Beryl upgrade launched today (June 25, 2026)** — B20 token standard. Watch for new RWA/tokenized-equity pools on Aerodrome that may be scout candidates.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
