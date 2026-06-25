@@ -1,4 +1,34 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #37+)
+
+## Jobs Status This Run (Run #37+ — 2026-06-25T UTC)
+
+- **Medic**: PATTERN D — `autonomous-trading-bot-production.up.railway.app` blocked by egress proxy (403). Cannot assess failure rate, circuit breakers, or balance. Bot health unverifiable.
+- **Scout**: SKIPPED — GeckoTerminal (`api.geckoterminal.com`) also blocked (403). Last scout was 2026-05-14 (MOLT), 41+ days overdue. NOTE: Base Beryl upgrade (B20 native token standard) activates TODAY (June 25) — a wave of new token launches expected. Scout cannot run until egress is restored.
+- **Auditor**: BLOCKED — all portfolio endpoints (`/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`) blocked by egress proxy. Cannot assess win rate, drawdown, or streak. No code changes made.
+
+## New context since last entry (Run #34 — 2026-05-15)
+
+- **2026-05-28**: `feat(admin): /api/admin/liquidate-all` merged to main (#54) — forced full exit to USDC. Bot has been in full USDC for **28 days** as of today. Unknown if it has re-entered positions.
+- **2026-06-15**: Option B benchmark window (~30 days from 2026-05-15) expired. Cohort lock (CLAUDE.md Rule 1) was window-scoped; Henry has not updated CLAUDE.md to lift or extend it.
+- **2026-06-25 (TODAY)**: Base **Beryl upgrade** activates — B20 native token standard launches. Biggest new-token catalyst on Base in 2026. Scout should sweep GeckoTerminal for qualifying B20 pools once egress is restored.
+- **PR #55** (`fix/sleeve-state-persistence`) has been open since 2026-05-29 — sleeve state not persisted across Railway redeploys. Unreviewed.
+
+## Action needed from Henry
+
+1. **Egress allowlist** (blocks all three agent jobs every run since April 14):
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   See: https://code.claude.com/docs/en/claude-code-on-the-web
+
+2. **Verify bot status**: Is it still in full USDC after the May 28 liquidation? Check Railway logs or BaseScan `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1`.
+
+3. **Review PR #55** (sleeve state persistence) — open 27 days.
+
+4. **Post-Beryl scout**: Once egress is restored, the next run will sweep GeckoTerminal for B20-native tokens and write COHORT_PROPOSAL files for your review (per CLAUDE.md Rule 1).
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
