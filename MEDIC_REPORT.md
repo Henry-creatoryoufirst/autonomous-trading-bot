@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-25T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-25T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-dyg8ur
 
 ## Problem
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-25T UTC | Scout ATTEMPTED — last ran 2026-05-25 (31 days), GeckoTerminal API blocked; no registry change per CLAUDE.md Rule 1 (human PR required). Auditor SKIPPED — cannot assess trigger conditions (API unreachable). Key context: Base Beryl upgrade live today (B20 token standard), Aerodrome Predictive Allocation Model live since June 17, AERO +30% June 16. Option B 30-day window ended ~June 15. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -90,11 +91,34 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #35 — 2026-06-25T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the **35th consecutive run** with this restriction — now 40 days since last active run (#34).
+- **Scout**: ATTEMPTED — last scout ran 2026-05-25 (31 days ago, well over 48h). GeckoTerminal API (`api.geckoterminal.com`) also blocked by network policy. WebSearch used but cannot provide token addresses or verified liquidity/volume data. Per CLAUDE.md Rule 1, TOKEN_REGISTRY changes require explicit human PR regardless. No registry change made. Key market context gathered: (1) Base Beryl upgrade activated today (June 25) — introduces B20 native token standard, may spawn new high-liquidity Base-native tokens worth watching; (2) Aerodrome Predictive Allocation Model live since June 17 — shifts LP incentives toward predictive demand allocation; AERO token +30% June 16 (already in registry); (3) Base volume $931M/24h (+68% vs yesterday), Uniswap V3 on Base $117M/24h (+169%).
+- **Auditor**: SKIPPED — cannot assess trigger conditions (trades, portfolio, patterns, adaptive data all require bot API which is blocked). WebSearch research gathered but no implementation without confirmed trigger. Key research finding for watch list: multi-signal confluence (9+ indicators) achieves 68-72% win rates per 2026 AI trading signal research; Smart Money (Nansen-style) wallet tracking integration remains the highest-impact unimplemented alpha source (Impact 4, Complexity 4, Risk medium — Henry-level decision).
+
+## Key Context Since Last Active Run (May 15 → June 25, 2026)
+
+### Option B Benchmark Window Status
+- Window ran 2026-05-15 → ~2026-06-15 (30 days). Window is NOW CLOSED (June 25 = 10 days post-close).
+- CLAUDE.md Rule 1 still applies: TOKEN_REGISTRY changes require explicit human PR even post-window.
+- **Action needed from Henry**: Review Option B performance outcomes; decide cohort changes for next window.
+
+### Aerodrome Predictive Allocation Model (June 17, 2026)
+- Major protocol change: LP incentives now reward accurate demand prediction rather than historical volume.
+- Bot uses Aerodrome Slipstream as primary router — this change affects LP economics but NOT our swap routing.
+- AERO in registry already. No code change needed, but Henry should be aware routing fee dynamics may shift.
+
+### Base Beryl Upgrade (June 25, 2026 — TODAY)
+- Introduces B20 native token standard + withdrawal efficiency improvements.
+- May spawn new high-quality native Base tokens. Scout should be run manually once API access is restored.
+- No immediate impact on trading loop.
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
 - **Scout**: SKIPPED — last scout ran 2026-05-14 (MOLT added), ~24h ago, less than 48h threshold.
-- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV 500K→1M ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Auditor**: TRIGGERED by inferred 70-day BEAR market (48h+ threshold met). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_MIN_FDV_USD 500K→1M — MEV bots dominate micro-cap Base pumps in sustained bear regimes (MEXC 2026 research); completes hot-mover quality-gate tightening set (pool age 24→48h ✓, volume 150K→200K ✓, FDV ✓). IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 
 ## Auditor Research Summary (Run #34 — 2026-05-15)
 - **Signal Quality**: Smart money wallet clustering — already partially implemented (LARGE_TRADE_THRESHOLD_USD=2500, whale flow). Full on-chain signal integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
@@ -205,7 +229,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction (~40 days). Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
