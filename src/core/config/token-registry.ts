@@ -532,6 +532,12 @@ export const TOKEN_REGISTRY: Record<string, {
     symbol: "SYRUP", name: "Maple Finance", coingeckoId: "maple-finance",
     sector: "DEFI", riskLevel: "MEDIUM", minTradeUSD: 25, decimals: 18,
   },
+  // === AUTO-DISCOVERED (scout 2026-06-26) ===
+  GAI: {
+    address: "0x3489256febdb1dc930dc3743617ad387cd6d3568",
+    symbol: "GAI", name: "GraphAI", coingeckoId: "graphai",
+    sector: "AI_TOKENS", riskLevel: "HIGH", minTradeUSD: 10, decimals: 18,
+  },
   // === AUTO-DISCOVERED (scout 2026-05-14) ===
   MOLT: {
     address: "0xb695559b26bb2c9703ef1935c37aeae9526bab07",
