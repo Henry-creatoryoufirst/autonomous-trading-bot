@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-26T08:00 UTC (approx)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-4mlwi4
 
 ## Problem
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-26T UTC | Scout ran (41 days since MOLT, >48h) but GeckoTerminal blocked + CLAUDE.md Rule 1 forbids auto-add; research-only. Option B window completed (~2026-06-15). Auditor: API blocked, trigger conditions unverifiable — no code changes. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,31 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints via egress proxy). Run #35. MEDIC_REPORT updated.
+- **Scout**: RAN RESEARCH — 41+ days since last scout (MOLT 2026-05-14 was last token add). GeckoTerminal API (`api.geckoterminal.com`) also proxy-blocked. Web search found trending Base mentions (Lighter/LIT, Seeker/SKR, Sentient/SENT) but no verifiable on-chain pool data (liquidity/volume/age). CLAUDE.md Rule 1 prohibits auto-adding to TOKEN_REGISTRY regardless. No TOKEN_REGISTRY changes. Unverifiable candidates noted below for Henry's manual review.
+- **Auditor**: SKIPPED — Cannot confirm any trigger condition (win_rate, drawdown, losing_streak, marketRegime all require production API, which is blocked). No code changes made. Research conducted and summarized below.
+
+### Scout Research Summary (Run #35 — 2026-06-26)
+
+| Candidate | Notes | Status |
+|-----------|-------|--------|
+| Lighter (LIT) | Decentralized trading infra, trending Base mentions | Unverifiable — no pool data |
+| Seeker (SKR) | Crypto-native mobile, mentioned in L2 trend articles | Unverifiable — no pool data |
+| Sentient (SENT) | Decentralized AI, trending | Unverifiable — no pool data |
+
+GeckoTerminal blocked — quality filter (liq >$100k, vol >$50k, age >3 days) cannot be confirmed for any candidate. No additions made. Henry: manual check at https://www.geckoterminal.com/base/pools recommended. The 30-day Option B window completed ~2026-06-15 — cohort expansion is now unblocked for human-reviewed PRs.
+
+### Auditor Research Summary (Run #35 — 2026-06-26)
+
+- **Signal Quality**: Multi-indicator confluence (9+ signals) with funding rates + OI added to existing technical signals shows 68-72% win rate historically (vs 55-62% for 6-7 signals). NVR already uses 7-signal swarm. Adding funding rates (FUNDING_RATE_STD_DEV_THRESHOLD already defined in constants.ts) would be Impact 3/Complexity 3/Risk medium. → Watch list.
+- **Execution Efficiency**: Aerodrome Slipstream v3 has built-in MEV auction revenue for LPs; bot already routes through Aerodrome and auto-benefits. No code change needed.
+- **Position Sizing**: Half-Kelly (0.50) captures ~75% of growth at 75% less variance per Thorp research. BUT NVR is already at quarter-Kelly (0.25), which is MORE conservative than half-Kelly. Going to half-Kelly would increase risk (0.25→0.50) — inappropriate without confirmed recovery from bear regime. KELLY_FRACTION unchanged.
+- **Competitive Intelligence**: Multi-agent specialization is 2026 standard (ElizaOS, Virtuals Protocol). Risk evaluators with 5% portfolio hard limits standard. NVR's 15% per-token cap + sector overrides already more conservative. MEV protection already active via sequencer-direct RPC. No new action.
+
+**No implementation this run**: Trigger conditions unverifiable (API blocked). All research candidates are either already implemented or above the auto-implementation complexity threshold.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +231,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Critical:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
