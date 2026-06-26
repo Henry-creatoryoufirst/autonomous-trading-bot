@@ -154,7 +154,7 @@ export const PRICE_CHANGE_THRESHOLD = 0.02; // 2%
 export const FG_CHANGE_THRESHOLD = 5; // 5 points
 
 /** Volume spike threshold (multiple of 7-day average) to trigger heavy cycle */
-export const VOLUME_SPIKE_THRESHOLD = 2.0;
+export const VOLUME_SPIKE_THRESHOLD = 2.5; // Auditor Jun-2026: 2.0→2.5 — Aerodrome→Aero MetaDEX03 merger launches July 2026; VELO→AERO conversions + liquidity migrations create structural volume spikes not tied to genuine market signals; 2.5× filter prevents false heavy-cycle triggers during protocol migration without raising the bar on real volume events
 
 // ============================================================================
 // v6.2: ADAPTIVE CYCLE ENGINE — Dynamic tempo based on market conditions

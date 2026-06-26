@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T03:00 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,25 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-26T03:00 UTC | Scout: GeckoTerminal API blocked (proxy policy); CLAUDE.md Rule 1 locks cohort post-window (explicit human PR required). Auditor: triggered by inferred 110-day bear (MOLT 2026-05-14 was last scout; cbBTC ~$62K vs $126K Oct-2025 peak). Research: Aerodrome→Aero MetaDEX03 merger July 2026 — structural volume spikes during VELO→AERO conversion + liquidity migration. VOLUME_SPIKE_THRESHOLD 2.0→2.5 implemented (filters merger noise, Priority 2.0). |
+
+## Jobs Status This Run (Run #35 — 2026-06-26T03:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Proxy policy blocks `autonomous-trading-bot-production.up.railway.app`. MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED (two reasons): (1) GeckoTerminal API blocked by egress proxy policy — no pool liquidity/volume data available; (2) CLAUDE.md Rule 1 — cohort locked, changes require explicit human PR even post-window. WebSearch found no candidates with verifiable liquidity data. Aerodrome (AERO) at $0.47, cbBTC at ~$62K — existing registry tokens, no new additions warranted.
+- **Auditor**: TRIGGERED by inferred 110-day BEAR (cbBTC ~$62K vs $126K Oct-2025 peak, 50% drawdown; last auditor data showed 70-day bear 2026-05-15). Research ran 4 searches. Top finding: **VOLUME_SPIKE_THRESHOLD 2.0→2.5** — Aerodrome→Aero MetaDEX03 merger launches July 2026; VELO→AERO conversions + liquidity migrations create structural volume spikes that are protocol migration noise, not market signals; 2.5× filter prevents false heavy-cycle triggers. (Impact 2, Complexity 1, Risk low, Priority 2.0) IMPLEMENTED in constants.ts.
+
+## Auditor Research Summary (Run #35 — 2026-06-26)
+
+- **Signal Quality**: Morpho surpassed Aave as Base's largest lending market ($1.0B borrowed vs $539M). NVR's MORPHO registry entry + LARGE_TRADE_THRESHOLD_USD=2500 whale-flow already cover this. Smart-money wallet clustering (Nansen/Dune) remains complex (Impact 2/Complexity 4/Risk medium). No new action. (Priority 0.5) → Watch list.
+- **Execution Efficiency**: KEY FINDING — Aerodrome→Aero MetaDEX03 merger July 2026. Dromos Labs merging AERO (Base) + VELO (Optimism) into unified "Aero" with MEV capture at DEX level (no centralized sequencer). Structural volume spikes during VELO→AERO conversion events. **VOLUME_SPIKE_THRESHOLD 2.0→2.5 IMPLEMENTED.** Bot auto-benefits from MetaDEX03 MEV protection at execution layer without further code change. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+- **Position Sizing**: Kelly ATR-derived volatility sizing best practice confirmed (Prevayo 2026). NVR already at KELLY_FRACTION=0.25 + TRENDING_DOWN×0.75 + ATR_TRAILING_STOP_MULTIPLIER=2.5. No gap found. No new action. (Priority 0)
+- **Competitive Intelligence**: Intent-based MEV protection mainstream; NVR's sequencer-direct RPC already active. ElizaOS most deployed open-source agent framework — NVR runs Claude (superior reasoning). Social-graph alpha (X, Farcaster, Lens) is a gap: alpha-hunter scanning for early trends. Complex integration (Impact 3/Complexity 4/Risk medium) → Watch list. (Priority 0.75)
+
+## Watch List (for Henry's review)
+
+- **AERO merger catalyst trade (July 2026)**: Aerodrome+Velodrome merging into "Aero" (MetaDEX03) targeting July 2026. AERO token continues (0x940181a9). VELO holders get 5.5% of AERO supply, AERO holders 94.5%. Pre-merger AERO accumulation could be a strategic catalyst trade — currently at $0.47 ($424M TVL on Base). Recommend Henry review: this is an AI-cycle decision (not a constant), but the bot should be prompted to consider AERO as a merger-catalyst position.
+- **Social-graph alpha**: X/Farcaster/Lens scanning for early Base ecosystem trends. Polystrat agent (Olas, launched Feb 2026) completed 4,200+ trades in first month with 376% peak returns via prediction markets. Complex but high-impact (Impact 3/Complexity 4) — multi-sprint implementation.
 
 ## Bot Health Evidence (from git history)
 
