@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-26T UTC | Scout RAN — GeckoTerminal 403 blocked; WebSearch found TOSHI/BRETT/AIXBT as top Aerodrome pools; COHORT_PROPOSAL_2026-06-26.md written (cohort locked per Rule 1, no auto-add). Auditor RAN — API 403; no trigger confirmed; Aerodrome→Velodrome merger + Predictive Allocation July 2026 flagged as WATCH item. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,16 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). 42 days since last successful health check. Note: `feat(admin): /api/admin/liquidate-all` was added on 2026-05-28 (main) — unknown whether an emergency liquidation was triggered; cannot verify from this environment.
+- **Scout**: RAN — last scout was MOLT (2026-05-14), 43 days ago, past 48h threshold. GeckoTerminal API blocked (403). Used WebSearch. Found TOSHI, BRETT, AIXBT as top Aerodrome pools. Per CLAUDE.md Rule 1, wrote COHORT_PROPOSAL_2026-06-26.md instead of touching TOKEN_REGISTRY.
+- **Auditor**: RAN — bot API blocked; trigger conditions unverifiable. Research complete (4 searches). Key watch item: Aerodrome "Predictive Allocation" launching July 2026 — liquidity gauge voting replaced by prediction market. No constants change without confirmed trigger. Full findings in COHORT_PROPOSAL_2026-06-26.md appendix.
+
+## ⚠️ ATTENTION REQUIRED (Run #35)
+
+**42 days without API health check.** Bot health is completely opaque from this agent environment. The `feat(admin): /api/admin/liquidate-all` endpoint added on 2026-05-28 suggests a possible emergency event. Consider checking Railway logs directly or allowing `autonomous-trading-bot-production.up.railway.app` in this session's egress policy.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
