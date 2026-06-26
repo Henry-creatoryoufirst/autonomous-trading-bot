@@ -1,4 +1,54 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout was 2026-05-25, MOLT, 32 days ago — well past 48h threshold). GeckoTerminal API also blocked by same network policy. Scout ran via WebSearch. No qualifying tokens with fully-verified on-chain data. COHORT_PROPOSAL_2026-06-26.md written with candidates for Henry's manual review. See cohort proposal for details. NOTE: Per CLAUDE.md Rule 1 (cohort locked), no auto-add to TOKEN_REGISTRY was made.
+- **Auditor**: SKIPPED — cannot verify live win_rate, drawdown, or losing_streak without bot API access. Market regime context noted: market recovering from 70-day bear (BTC reclaimed bull support band May 2026, AERO +44% week of June 21). Watch-list item: bear-tuned parameters from Runs #17–34 may be over-conservative for recovery market. No parameter change made without live data confirmation.
+
+## Key Context Change Since Last Run (Run #34, 2026-05-15)
+
+1. **Bot in paper mode since 2026-05-28** — Henry withdrew all capital ($1,152.88 USDC already withdrawn; remaining ~$1,700 WETH+Aave+cbLTC liquidated to USDC via new /api/admin/liquidate-all endpoint). Bot running on paper/simulation only.
+2. **Option B window completed ~2026-06-15** — The 30-day benchmark window (2026-05-15 to ~2026-06-15) has now ended. Henry should review cohort performance vs cbBTC/WETH 60/40 benchmark. Cohort changes require human PR per CLAUDE.md Rule 1.
+3. **Market regime shifted** — After 70-day bear (thru ~2026-05-15), market has been recovering. Bitcoin consolidating around $63.4K, Altcoin season index recovering, AERO (Aerodrome, NVR's primary DEX) up 44% the week of June 21.
+4. **Bear-tuned parameters** — Many constants were tightened during the bear run (Runs #17–34). These are in constants.ts with "Bear-adjusted" comments. With recovery underway, some thresholds may warrant relaxation when Henry restarts live trading.
+
+## Parameter Watch-List for Recovery Market (for Henry's Review)
+
+The following constants were tightened during the 70-day bear and may need revisiting before restarting live capital:
+
+| Constant | Current Value | Pre-Bear Value | Bear Rationale |
+|----------|---------------|----------------|----------------|
+| KELLY_FRACTION | 0.25 | 0.30 | Quarter-Kelly for fat-tail crypto bear |
+| KELLY_POSITION_CEILING_PCT | 12% | 14% | Tighter ceiling for sustained downtrend |
+| KELLY_ROLLING_WINDOW | 30 | 50 | Faster response to bear win-rate decay |
+| HOT_MOVER_MIN_CHANGE_H1_PCT | 7% | 5% | Bear pumps reverse ~70% of the time |
+| HOT_MOVER_MIN_VOLUME_H1_USD | $200K | $150K | $150K no longer filtered thin MEV pumps |
+| HOT_MOVER_MIN_FDV_USD | $1M | $500K | MEV dominates micro-cap pumps in bear |
+| HOT_MOVER_MIN_POOL_AGE_HOURS | 48h | 24h | Bear amplified new-pool MEV risk |
+| HOT_MOVER_MIN_BUY_RATIO | 0.60 | 0.55 | 55-60% in bear = MEV distribution |
+| SCALE_UP_MIN_GAIN_PCT | 5% | 3% | 3% reversals easy in bear |
+| SCALE_UP_BUY_RATIO_MIN | 60 | 55 | Aligned with HOT_MOVER |
+| SCALE_UP_SIZE_PCT | 3% | 4% | False breakout risk in bear |
+| RIDE_THE_WAVE_SIZE_PCT | 3% | 4% | Harmonised with SCALE_UP |
+| SURGE_MAX_CAPITAL_PER_TOKEN_PCT | 20% | 25% | Surge = dead-cat in bear |
+| STALE_POSITION_MIN_AGE_HOURS | 36h | 48h | Faster capital recycling in bear |
+| CULL_MIN_AGE_HOURS | 72h | 120h | Faster sub-$100 culling in bear |
+| DECEL_MIN_DROP_FROM_PEAK | 6pp | 8pp | Earlier Smart Trim activation in bear |
+| VWS_MIN_LIQUIDITY_USD | $20K | $10K | Bear slippage floor |
+| SCOUT_UPGRADE_BUY_RATIO | 60 | 55 | Bear confirmation threshold |
+| GUARDIAN_NOVEL_TOKEN_HOURS_DEFAULT | 72h | 48h | Extended novel token oversight |
+
+**Henry's action items before restarting live capital:**
+1. Review the Option B benchmark window results (cohort vs cbBTC/WETH 60/40)
+2. Decide whether to restore pre-bear parameter values or keep conservative settings
+3. Add bot API + GeckoTerminal to Claude Code egress allowlist (see Recommended Action below)
+
+---
+
+## MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
