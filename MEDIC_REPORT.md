@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-26T19:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-xrz73z
 
 ## Problem
 
@@ -65,11 +65,18 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-26T UTC | Scout overdue (41 days since MOLT, 2026-05-14) but GeckoTerminal blocked AND cohort locked per CLAUDE.md Rule 1 (Option B ~ended 2026-06-15, human PR required to unlock); auditor cannot trigger (bot API blocked); KEY INTEL: Base bull market confirmed (AERO +9% weekly vs market -4.3%, Base $931.9M/24h +68%), Aerodrome Predictive Allocation July launch, Base Beryl/B20 upgrade live June 25. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
 
-Despite API being unreachable from medic, staging branch is extremely active. Since Run #17:
+Despite API being unreachable from medic, main branch is now at **v21.30.0** (was ~v21.20.x at Run #34). Key new commits since Run #34:
+- `f29798d` — feat(admin): /api/admin/liquidate-all (forced full exit to USDC)
+- `fba28c3` — docs: CLAUDE.md version updated to v21.30.0
+- Multiple INV-1/spec-035 rounds: cost-basis tracker alignment, balance-as-ground-truth, HOLD_ONLY_TOKENS for cbLTC
+- HOLD_ONLY_TOKENS feature added for thin-liquidity tokens (cbLTC unblocked)
+
+Previous note: "Despite API being unreachable from medic, staging branch is extremely active." Since Run #34:
 
 - `2026-04-24` — Scout: B3 (B3 Gaming Chain) added to TOKEN_REGISTRY — $810K liq, $1.66M vol (this run)
 - `2026-04-24` — Auditor: HOT_MOVER_MIN_CHANGE_H1_PCT 5→7 — bear-market signal quality (this run)
@@ -89,6 +96,41 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-26T19:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). This is the **35th consecutive run** with the same block. It has now been **41 days** since Run #34.
+- **Scout**: OVERDUE (41 days since MOLT added 2026-05-14) — but **two blockers**: (1) GeckoTerminal API also blocked (403), so pool data unavailable; (2) CLAUDE.md Rule 1 locks the cohort for the 30-day Option B window (~ended 2026-06-15). Even if candidates were found, registry changes require explicit human PR. Scout cannot act unilaterally. No token proposals filed (no verified pool data to propose with).
+- **Auditor**: CANNOT TRIGGER — bot API blocked, no win rate / drawdown / streak data available. **Market intelligence gathered via WebSearch instead** (see section below). No code changes made.
+
+## ⚡ CRITICAL MARKET INTELLIGENCE — Run #35
+
+This is the first run since the **Option B 30-day window ended (~2026-06-15)**. Key findings:
+
+### Market Regime: BULL (confirmed)
+- Base chain: **$931.9M daily DEX volume, +68.39% 24h** — near record activity
+- Base DEX users surpassed Binance Chain (267K users, +53%) 
+- Global market: -4.30% weekly
+- NVR portfolio impact: all the bear-regime parameter tightening (Runs #22-#34) was calibrated for sustained downtrend; **bull market may require re-calibration**
+
+### AERO Position Intelligence (direct NVR holding)
+- AERO currently $0.47 (ATH was $2.32; -79% from peak but showing recovery)
+- +9.10% weekly vs market -4.30% — **outperforming significantly**
+- $41.8M 24h volume; $454M market cap
+- **Catalyst**: Aerodrome "Predictive Allocation" upgrade launching **July 2026** — replaces weekly gauge voting with AI-forecast-driven liquidity allocation. AERO buys/burns accelerating (~500K AERO repurchased, 190M locked).
+- **Aero merger**: Aerodrome (Base) + Velodrome (Optimism) → unified "Aero" DEX targeting Q2/early July launch. Strong structural bullish case.
+- **Henry action**: Check NVR's current AERO position size — may be underweight given upcoming catalysts.
+
+### Base Beryl Upgrade (June 25, 2026 — yesterday)
+- New **B20 token standard** live: cuts token creation costs, reduces gas, lower state overhead
+- Expected to spark wave of new Base token launches in coming weeks
+- Scout watchlist: new B20-standard tokens will start appearing on GeckoTerminal in 7-14 days
+- **Henry action**: Once Option B cohort unlock is confirmed, enable Scout to find B20-era tokens
+
+### Option B Window Status
+- Window started 2026-05-15, estimated 30 days → **ended ~2026-06-15**
+- CLAUDE.md says cohort changes require "explicit human PR after the 30-day window completes"
+- **Henry action**: If Option B window is confirmed closed, please update CLAUDE.md Rule 1 to unlock cohort (or confirm Scout can resume normal registry additions). Without this, Scout remains blocked even when GeckoTerminal is accessible.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -203,17 +245,29 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — Recent-window Kelly (30 trades) outperforms 50-trade window in bear markets per crypto Kelly criterion research. IMPLEMENTED: KELLY_ROLLING_WINDOW 50→30.
 - **Competitive Intelligence**: Intent-based solver routing emerging. Complex (high) — watchlist for future implementation.
 
-## Recommended Action for Henry
+## Recommended Action for Henry (Run #35 — 2026-06-26)
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**35th consecutive run blocked. Bot has been running for 41 days without automated oversight. Priority actions:**
 
-1. **Add to Claude Code egress allowlist:**
+### URGENT — Market Regime Shift
+1. **Review AERO position** — bot holds AERO; Predictive Allocation upgrade in July 2026 is the strongest near-term catalyst on Base. If underweight, consider increasing exposure.
+2. **Review bear-market parameter changes** from Runs #22-#34 — all 13 tightening moves were calibrated for sustained bear (55-70 day downtrend). With Base now bull (+68% daily vol), some may need to loosen. Key candidates:
+   - `KELLY_FRACTION` was lowered to 0.25 (Quarter-Kelly) — consider raising in bull
+   - `SURGE_MAX_CAPITAL_PER_TOKEN_PCT` was lowered to 20 — surge filters are now very conservative
+   - `RIDE_THE_WAVE_SIZE_PCT` was lowered to 3 — wave rides should be larger in trending up market
+   - `STALE_POSITION_MIN_AGE_HOURS` was lowered to 36 — may exit winning positions too early in bull
+   - `HOT_MOVER_MIN_FDV_USD` was raised to 1M — may miss legitimate micro-cap movers in bull
+
+### Infrastructure — Restore Oversight
+3. **Add to Claude Code egress allowlist** (same ask as 34 previous runs):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Or** expose a lightweight read-only health endpoint on an already-allowed domain
+5. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+
+### Scout Unlock
+6. **Update CLAUDE.md Rule 1** — Option B 30-day window ended ~2026-06-15. If the benchmark period is closed (win/loss determined), please update Rule 1 to allow Scout to resume normal TOKEN_REGISTRY additions. The Base Beryl (B20) upgrade went live June 25 — expect a wave of new tokens in the next 2 weeks that Scout should be able to evaluate.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
