@@ -1,6 +1,31 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: ATTEMPTED — last scout was 2026-05-25 (>32 days ago, well past 48h threshold). GeckoTerminal API (api.geckoterminal.com) also blocked by egress proxy. Cannot verify liquidity, volume, or pool age for any candidate. No tokens added. Note: CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY regardless; candidates require human PR now that Option B window (~2026-06-15) has ended.
+- **Auditor**: TRIGGER STATUS UNKNOWN — cannot fetch win_rate, drawdown, or regime data (bot API blocked). Research conducted (4 searches). No finding met priority ≥ 2.0 threshold with risk ≤ medium. NVR-HQ not in checkout — report skipped. No code changes pushed.
+
+## ⚠️ KEY FLAGS FOR HENRY
+
+1. **Option B window ended ~2026-06-15** (11 days ago). Time to review 30-day benchmark performance: did cbBTC/WETH 60/40 + quality-7 cohort outperform by ≥5% annualized? Results should drive the next strategic decision.
+2. **Scout is 32 days overdue** — last ran 2026-05-25. GeckoTerminal blocked from this sandbox. Scout cannot run until egress allowlist is updated OR Henry runs it manually from a permitted environment.
+3. **35 consecutive runs without health data** — proxy has blocked autonomous-trading-bot-production.up.railway.app since ~2026-04-14. Medic is flying blind.
+
+## Auditor Research Findings (Run #35 — 2026-06-26)
+
+*No trigger condition could be confirmed (API blocked). Research conducted as reference only.*
+
+| Area | Finding | Impact | Complexity | Risk | Priority | Action |
+|------|---------|--------|------------|------|----------|--------|
+| Signal Quality | 9+ indicator confluence achieves 68-72% win rate vs 55-62% for 6-7; macro sentiment (F&G) as veto | 3 | 4 | med | 0.75 | Watch list — already partially implemented |
+| Execution | Aerodrome Nov-2025 "Aero" upgrade: METADEX03 + Slipstream V3 + embedded MEV auctions (LPs capture extractable value) | 2 | 2 | low | 1.0 | Bot may auto-benefit; no code change identified |
+| Position Sizing | Half-Kelly = 75% max growth, 75% variance reduction; crypto research suggests 1/10th Kelly for new tokens | 2 | 1 | med | 2.0 | KELLY_FRACTION already at 0.25 (Quarter-Kelly); further reduction would be very conservative in bull/neutral regimes — defer to Henry |
+| Competitive Intel | TWAP splitting large trades + MEV private relay going mainstream; TEE-based agent execution emerging in 2026 | 3 | 4 | med | 0.75 | Touches execution path (off-limits); watch list for Henry |
+
+**No implementation this run** — triggers unknown, and highest-priority finding (Half-Kelly to 1/10th) requires regime awareness to avoid over-conservatism in post-bear conditions.
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -65,6 +90,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-26T UTC | Scout attempted but GeckoTerminal blocked; no tokens added (32 days since last scout); auditor research ran, no qualifying finding (triggers unknown); CLAUDE.md Option B window ended ~2026-06-15 |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -205,15 +231,16 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run (11+ weeks) with the same network restriction. Urgent:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist** (settings → network policy):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
+2. **Or** expose a lightweight read-only health endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window review:** The 30-day benchmark window ended ~2026-06-15. Review performance vs cbBTC/WETH 60/40 before the next strategic decision.
+5. **Scout restart:** Last token scout was 2026-05-25 (32 days ago). Once egress allowlist includes api.geckoterminal.com, the next hourly run will auto-scout.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
