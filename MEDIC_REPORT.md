@@ -66,6 +66,24 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-26T10:03 UTC | Scout skipped (GeckoTerminal/DexScreener blocked + CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY auto-adds); auditor: bot API unreachable, trigger conditions unverifiable; 4 research searches ran — no finding cleared priority ≥ 2.0 / ≤10 lines bar; no change. |
+
+## Jobs Status This Run (Run #35 — 2026-06-26T10:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from egress proxy). MEDIC_REPORT updated (Run #35). ~41 days since last documented run (#34). No code changes.
+- **Scout**: SKIPPED — Two blockers: (1) GeckoTerminal API and DexScreener blocked by egress proxy, cannot verify pool liquidity/volume/age; (2) CLAUDE.md Rule 1 explicitly prohibits `feat(scout): add <SYMBOL> to TOKEN_REGISTRY` auto-commits. Option B 30-day window has closed (~2026-06-15) but CLAUDE.md still requires explicit human PR for cohort/registry changes. Candidates cannot be responsibly evaluated without real pool data.
+- **Auditor**: NOT TRIGGERED — Bot API (all `/api/*` endpoints on Railway) unreachable, cannot check win_rate, drawdown, losing_streak, or marketRegime. Trigger conditions unverifiable. 4 research searches ran (signal quality, execution efficiency, position sizing, competitive intel). No finding cleared priority ≥ 2.0 + risk low/medium + ≤10 lines threshold. No change to constants.ts.
+
+### Auditor Research Summary (Run #35 — 2026-06-26)
+- **Signal Quality**: Smart money wallet clustering + NLP sentiment (FinBERT+VADER) — already partially implemented (whale tracking, confluence scoring). Full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. Priority 0.5. No action.
+- **Execution Efficiency**: Aerodrome Slipstream $45B/30-day volume, intelligent multi-hop routing, auto-benefits without code change. Slipstream + Velodrome convergence bringing further routing depth. No action needed. Priority 0.
+- **Position Sizing**: Kelly research confirms Quarter-Kelly (0.25×) still optimal for crypto volatility. NVR already at KELLY_FRACTION=0.25, KELLY_ROLLING_WINDOW=30. "Drawdown-probability constraint" (posterior confidence shrinkage) mentioned — complex, touches sizing math (Impact 2/Complexity 3). Priority 0.67. Watch list for Henry.
+- **Competitive Intelligence**: Two MEV searchers absorb >50% of new gas on OP-Stack rollups (Base). Private relay / intent-based execution growing. NVR already has sequencer-direct RPC for MEV protection. No new actionable code change. Priority 0.
+
+### Notable Context (Run #35)
+- Most recent repo commit: `feat(admin): /api/admin/liquidate-all — operator forced full-exit to USDC (#54)` — Henry triggered a manual full liquidation. Bot may be running from a fresh USDC-only state. Approach new auditor changes with extra caution until bot health is confirmed via direct Telegram or Railway dashboard.
+- Option B 30-day benchmark window has closed (~2026-06-15). Cohort still requires explicit human PR per CLAUDE.md.
+- Staging branch not available in this checkout (only `main` and `claude/cool-sagan-dd9nkp`). This run committed to `claude/cool-sagan-dd9nkp` per session instructions.
 
 ## Bot Health Evidence (from git history)
 
