@@ -1,3 +1,19 @@
+# MEDIC REPORT — 2026-06-26T05:03 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-26T05:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: DEGRADED — last scout was 2026-05-14 (MOLT added, 41 days ago, well over 48h threshold). GeckoTerminal API and all external financial data APIs blocked by proxy policy. Web search fallback returned only general information — no specific pool metrics retrievable. Per CLAUDE.md Rule 1 (cohort locked), could not add to TOKEN_REGISTRY regardless. No COHORT_PROPOSAL written (no verifiable candidates meeting quality criteria). Notable ecosystem signals via web search: (1) ENA: Coinbase Ventures open-market buy + savings product for 100M users launching ~June 8 (ENA already in registry — bullish catalyst); (2) AERO: Predictive Allocation upgrade July 2026, 44% weekly gain, $17B monthly volume; (3) Base Beryl upgrade + B20 token standard launched June 25 — may produce new quality token launches worth scanning in next unblocked run; (4) Base native token: 69% Polymarket odds for 2026. No qualifying new tokens added.
+- **Auditor**: BLOCKED — cannot fetch /api/trades, /api/portfolio, /api/patterns, or /api/adaptive. Trigger conditions (win_rate, drawdown, losing_streak, market regime) cannot be evaluated. NVR-HQ not in this checkout; report file skipped. No code changes made.
+
+## Auditor Research (Run #35 — partial, web-search only, no trigger confirmed)
+- **Signal Quality**: Base MCP (Model Context Protocol) launched May 26, 2026 — enables AI agents to swap/trade on Base natively. Could be exploited by NVR as an on-chain signal feed. High impact, medium complexity. Watch list.
+- **Execution Efficiency**: Aerodrome+Velodrome merger (Aero unified DEX) targeting Q2/early-July 2026 — eliminates cross-chain liquidity fragmentation. NVR auto-benefits at DEX level without code change.
+- **Position Sizing**: No new findings — API blocked, cannot assess current regime.
+- **Competitive Intelligence**: B20 token standard on Base (June 25) cuts token creation costs — watch for new liquid tokens post-launch in next capable scout run.
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
