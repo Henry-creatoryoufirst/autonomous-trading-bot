@@ -1,4 +1,31 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #37)
+
+## Jobs Status This Run (Run #37 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from egress proxy). Bot health unknown.
+- **Scout**: BLOCKED — GeckoTerminal 403 (egress). Last scout: 2026-05-14 (43 days ago). No TOKEN_REGISTRY changes per CLAUDE.md Rule 1.
+- **Auditor**: BLOCKED — `/api/trades`, `/api/portfolio`, `/api/patterns` all 403. Cannot assess win rate, drawdown, or losing streak.
+
+### ⚡ NEW THIS RUN — Base Beryl upgrade activated yesterday (June 25)
+
+**Base mainnet activated the Beryl upgrade on June 25, 2026**, introducing the B20 native token standard:
+- Token creation is now dramatically cheaper → immediate wave of new token launches on Base already underway
+- B20 tokens run as Rust precompiles in Base's node (not standalone ERC-20 contracts)
+- Built-in compliance tooling: supply caps, policy registry, role-based access
+- GeckoTerminal trending pools will start showing B20-native tokens immediately
+
+**Action needed:** Once `api.geckoterminal.com` is added to the egress allowlist, the next scout run should immediately scan trending/new pools for B20-native tokens passing the quality filter (liquidity > $100k, 24h vol > $50k, pool age > 3 days). Per CLAUDE.md Rule 1 (window closed June 15), findings go to `COHORT_PROPOSAL_<date>.md` — not auto-added.
+
+### Other persistent context (no change from Run #36)
+
+- Bot has been in full USDC since May 28 forced liquidation (28+ days)
+- Aerodrome → "Aero" merger targeting July 2026; bot's AERO position needs a decision before migration
+- Bear-market constants (KELLY_FRACTION=0.25, HOT_MOVER_MIN_CHANGE_H1_PCT=7, etc.) calibrated for 70+ day bear that has likely ended — review when egress is restored
+- Option B window closed ~June 15; cohort lock expired, but explicit human PR still required for additions
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
