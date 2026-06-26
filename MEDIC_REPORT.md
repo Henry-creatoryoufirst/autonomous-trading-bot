@@ -126,6 +126,34 @@ Because the API is unreachable, the medic cannot determine:
 - **Position Sizing**: KEY FINDING — RIDE_THE_WAVE_SIZE_PCT 4→3: Kelly/volatility research confirms all momentum-chasing vectors should be harmonised in sustained bear. SCALE_UP_SIZE_PCT was already reduced 4→3 (most recent staging commit). Wave rides target 4h momentum moves, which statistically have ~65% reversal rate in bear markets, making them higher-risk than adding to proven winners. Aligning at 3% eliminates the inconsistency. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
 - **Competitive Intelligence**: Grid/DCA strategies standard for bear markets. NVR's wave-riding already implements equivalent physics. Hard position limits (15% portfolio cap) already enforced. MEV protection via sequencer-direct RPC already active. No new action.
 
+---
+
+## Jobs Status This Run (Run #37 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). This is the 37th+ consecutive blocked run since 2026-04-14. MEDIC_REPORT updated.
+- **Scout**: BLOCKED — GeckoTerminal API (api.geckoterminal.com) returns 403 from this execution environment. Last scout ran 2026-05-25 (32 days ago, well over 48h threshold).
+- **Auditor**: BLOCKED — All bot API endpoints return 403 from this execution environment. Cannot assess win rate, drawdown, or market regime.
+
+### New Developments Since Last Reported Run
+
+1. **Base Beryl upgrade activated June 25 (yesterday)** — B20 native token standard is now live. Token creation dramatically cheaper → expected surge of new Base token launches. This is the biggest new-token catalyst of 2026. The Scout should check GeckoTerminal for B20-native pools as soon as egress is restored.
+
+2. **Option B window closed ~June 15 (11 days ago)** — The 30-day benchmark window (2026-05-15 → 2026-06-15) has completed. Per CLAUDE.md Rule 1, the cohort remains locked until Henry explicitly updates CLAUDE.md and creates human-reviewed PRs. The automated agent is NOT unlocking it.
+
+3. **Bot likely in full USDC since May 28 (~29 days)** — The last production commit was `feat(admin): /api/admin/liquidate-all` (PR #54, merged ~2026-05-28). If the bot redeployed and re-entered positions, that is unverifiable from here. Henry should check Railway logs or BaseScan: `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1`.
+
+4. **PR #55 open and unreviewed** — `fix/sleeve-state-persistence` (SPEC-038 Phase A0, sleeve state survives Railway redeploys). Created 2026-05-29. Still open.
+
+5. **AERO → Aero merger approaching July 2026** — Bot holds AERO. Dromos Labs is merging Aerodrome + Velodrome. AERO holders receive 94.5% of new unified token supply. Likely benign but pool addresses and the AERO registry entry may need updating post-migration.
+
+6. **29+ open GitHub issues about this egress block** — Issues #75–#84 (and earlier) all document the same constraint. No new GitHub issue filed this run to avoid further noise.
+
+### Fix Required (same as every run since #1)
+
+Add to the Claude Code session's egress allowlist at https://code.claude.com/docs/en/claude-code-on-the-web:
+- `autonomous-trading-bot-production.up.railway.app`
+- `api.geckoterminal.com`
+
 ## Jobs Status This Run (Run #31 — 2026-05-06T09:05 UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #31).
