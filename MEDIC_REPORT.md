@@ -1,12 +1,32 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T06:05Z (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ NEW FLAGS — Run #35 (2026-06-26)
+
+**1. Option B window has likely closed.**
+The 30-day benchmark window started 2026-05-15 → closed ~2026-06-15. Today is 2026-06-26 (11 days past close). CLAUDE.md Rule 1 (cohort lock) was scoped to "the 30-day Option B benchmark window." Henry should review whether the cohort can now be updated.
+
+**2. Bot has been in full USDC for ~29 days.**
+Commit `f29798d feat(admin): /api/admin/liquidate-all` (2026-05-28) forced a full exit to USDC. No code changes to main since then. The bot appears to have been halted intentionally; no new positions have been taken for nearly a month.
+
+**3. Network policy still blocking bot API (35th consecutive run).**
+All `/api/*` endpoints on `autonomous-trading-bot-production.up.railway.app` are unreachable. Medic, Scout, and Auditor all require API or external data access. No health checks possible from this environment.
+
+## Scout Candidates (WebSearch only — no pool data verifiable)
+
+Per CLAUDE.md Rule 1, no tokens added to TOKEN_REGISTRY. NVR-HQ not in this checkout so COHORT_PROPOSAL file can't be written there. Candidates noted here for Henry's review:
+
+| Symbol | Category | Notes | Verify |
+|--------|----------|-------|--------|
+| VIRTUAL | AI/DeFi | Virtuals Protocol AI agent launchpad on Base; hundreds of millions market cap; strong momentum; $AIXBT, $LUNA, $GAME tokens growing. June 2026 activity confirmed. | Pool age, $100k+ liquidity |
+| AERO | DeFi/Blue Chip | Aerodrome — already NVR's router; 44% weekly gain June 21, 2026; $453M TVL; merger with Velodrome + Predictive Allocation upgrade July 2026. Likely already in registry. | Check existing registry |
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-26T06:05Z UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-e5dcug
 
 ## Problem
 
@@ -65,6 +85,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-26T06:05Z UTC | API still blocked (35th run). ⚠️ Option B window closed ~2026-06-15. ⚠️ Bot liquidated to USDC 2026-05-28 (29 days ago). No code activity since liquidation. Scout blocked (GeckoTerminal 403); cohort locked per Rule 1 regardless. Auditor blocked (no portfolio API). |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +110,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-26T06:05Z UTC)
+
+- **Medic**: PATTERN D — API unreachable (35th consecutive run). No trade errors assessable.
+- **Scout**: BLOCKED — GeckoTerminal 403 from network policy; CLAUDE.md Rule 1 also prohibits TOKEN_REGISTRY auto-adds regardless. Last scout >48h ago (2026-05-25). Candidates noted in header above.
+- **Auditor**: BLOCKED — cannot reach `/api/trades`, `/api/portfolio`, `/api/patterns`. No trigger assessment possible. Noted: bot fully liquidated since 2026-05-28; Option B window likely closed 2026-06-15.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
