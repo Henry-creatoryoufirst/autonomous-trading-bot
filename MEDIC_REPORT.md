@@ -1,4 +1,18 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — GeckoTerminal API (`api.geckoterminal.com`) also blocked by egress policy. Scout would have run (last run was 2026-05-14, MOLT, 43 days ago — well over 48h threshold). Web-research-only candidate found: TRX (via Aerodrome/LayerZero integration on Base, June 2026); cannot verify quality thresholds without on-chain data. No TOKEN_REGISTRY changes made. **NOTE: Option B 30-day window completed ~2026-06-15. COHORT_QUALITY_7 lock status unclear — Henry must review.**
+- **Auditor**: BLOCKED — bot API unreachable. Win rate, drawdown, and losing streak cannot be calculated. No changes made.
+
+### Notable Context (Run #35)
+- **41-day gap** since last run (Run #34 was 2026-05-15). This is unusual — cron may have been paused or the session was not triggered.
+- **Option B window COMPLETE**: The 30-day benchmark window started 2026-05-15 and ended ~2026-06-15. CLAUDE.md cohort lock was "for the 30-day window" — Henry should decide whether to lift the automated-agent cohort restriction.
+- **Aerodrome/Velodrome merge**: Scheduled July 2026, combining into "Aero" platform with Predictive Allocation replacing weekly gauge voting. Will auto-benefit NVR routing without code change.
+- **TRX on Base**: Aerodrome integrated TRON's TRX via LayerZero (June 2026). Potential addition if Henry wants to expand the cohort post-Option-B. Needs manual liquidity/volume verification.
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
