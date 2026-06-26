@@ -1,3 +1,42 @@
+# MEDIC REPORT — 2026-06-26T23:03Z (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-26T23:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: CANNOT RUN — GeckoTerminal API blocked. Last successful scout was cbSOL/UP (2026-05-04); SYRUP was last token added before Option B lockdown. The Option B 30-day window has now closed (~2026-06-15); cohort freeze has expired, but API access is still blocked.
+- **Auditor**: CANNOT RUN — All bot portfolio/trade API endpoints blocked.
+
+## Critical Context This Run (Run #35)
+
+**NEW — Bot in dry-run/paper mode since 2026-05-29:**
+Last commit to `main` (f29798d, 2026-05-29): Henry liquidated all real capital from efficient-peace (~$2,852 total: $1,152.88 USDC already withdrawn + ~$1,700 WETH/Aave/cbLTC swept via `/api/admin/liquidate-all`). Bot is parked in `TRADING_ENABLED=false`. No real capital at risk for 28 days.
+
+**NEW — Option B 30-day window has closed:**
+- Window opened: 2026-05-15
+- Window targeted close: ~2026-06-15
+- Today: 2026-06-26 — **11 days past close**
+- The CLAUDE.md cohort freeze (Rule 1) was contingent on this window. The 30-day benchmark period has elapsed. Human debrief + cohort review is now unblocked.
+
+**NEW — No staging branch exists:**
+The Medic/Scout/Auditor runbook says to push to `staging`, but that branch does not exist on origin. This run committed to `claude/cool-sagan-akh7y0`. If Henry wants to re-enable staging-based automation, create: `git checkout -b staging main && git push origin staging`
+
+**NEW — Auto-critic branch created today:**
+`auto/critic-deletion-2026-06-26-confluence_strong` (SHA: 530c53b8) was created on 2026-06-26. This may be from a separate automated process modifying `confluence_strong` thresholds. Henry should review what it changes before deciding whether to merge.
+
+**ONGOING — No main branch commits since 2026-05-29 (28 days):**
+Bot is effectively frozen on v21.30.0. The staging branch (where auditor changes landed) was never promoted. All prior auditor changes (KELLY_FRACTION 0.35→0.25, KELLY_POSITION_CEILING_PCT 14→12, STALE_POSITION_MIN_AGE_HOURS 48→36, etc.) are queued but not in production.
+
+## Recommended Actions for Henry (Run #35 Priority)
+
+1. **Option B debrief:** 30-day window closed 2026-06-15. Review paper-trade performance vs cbBTC/WETH 60/40 benchmark. Decide: re-deploy real capital or extend paper period?
+2. **Review auto-critic branch:** Check `auto/critic-deletion-2026-06-26-confluence_strong` for what it changes and whether to merge.
+3. **Staging branch:** If re-activating the automated agent pipeline: `git checkout -b staging main && git push origin staging`
+4. **Egress allowlist:** To restore live bot monitoring add `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` to the Claude Code remote environment's proxy allowlist.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
