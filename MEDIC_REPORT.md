@@ -1,3 +1,26 @@
+# MEDIC REPORT — 2026-06-26T16:05 UTC (latest)
+
+## Jobs Status This Run (Run #50 — 2026-06-26T16:05 UTC)
+
+- **Medic**: PATTERN D — bot API 403 (persistent, 50 runs). `autonomous-trading-bot-production.up.railway.app` egress-blocked. Cannot assess error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #50).
+- **Scout**: GeckoTerminal blocked (403). **Beryl launched yesterday June 25 at 18:00 UTC — B20 token standard is LIVE.** AERO trading halted during upgrade window, now resumed. Next scout (June 27+) should prioritize B20-standard token pools (pool age ≥3 days from June 25 launch). Target: first confirmed B20 pools with $100K+ liquidity.
+- **Auditor**: SKIPPED (API blocked). Market update: BTC **~$60,113** (−3.5%/24h), testing 200-week MA near $62,457. Seven consecutive weeks of ETF outflows. Fear & Greed **18 — Extreme Fear** (FOMC week, hawkish Fed). AERO **~$0.49** (+12%/24h, recovering from $0.27 June 17 low); Velodrome merger targeting **early July** with Predictive Allocation system launching July; 497K AERO buyback confirmed. Layer 2 sector −3%/24h.
+
+## Henry's Action Items (Run #50)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **Beryl is LIVE** — verify bot's Aerodrome Slipstream router works post-upgrade; B20 token standard may affect contract interactions | 🔴 HIGH — upgrade happened yesterday |
+| **AERO merger now ~1 week away (early July)** — new "Aero" contract address not yet announced; update `token-registry.ts` when published; AERO MEV-resistant pools LIVE now | 🔴 HIGH — before July |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🔴 HIGH — 11 days overdue |
+| **Cobalt upgrade (September 2026)**: native account abstraction, ~50% cheaper transfers, gas in B20 tokens — begin sizing implications for NVR gas strategy | 🟡 MED — 3 months out |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Update CLAUDE.md — Option B window ended 2026-06-15; automated agent rules no longer accurate | 🟡 MED — blocking full agent authority |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 50 runs blind |
+
+---
+
 # MEDIC REPORT — 2026-06-24T23:03 UTC (latest)
 
 ## Jobs Status This Run (Run #49 — 2026-06-24T23:03 UTC)
