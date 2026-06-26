@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-26T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-26T14:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-fh223y
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-26T UTC | Scout ran (41+ days since last) but GeckoTerminal blocked + CLAUDE.md Rule 1 prohibits auto-adds; no additions made. Auditor triggered (106-day bear, BTC $64K -45% from ATH, F&G 18-21 Extreme Fear). Research ran 4 searches. Top finding: BREAKER_WEEKLY_DD_PCT 15→13 — 106-day bear; industry practice lower-end (13%) for extended downtrend; completes DD breaker tightening set (daily 8→7 ✓, weekly 15→13 ✓). IMPLEMENTED in constants.ts. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-26T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Branch: claude/cool-sagan-fh223y (CLAUDE.md Rule 2: no staging push).
+- **Scout**: RAN (41+ days since last scout). GeckoTerminal API also blocked by proxy. WebSearch produced no verifiable Base-native token candidates with confirmed liquidity/volume data. CLAUDE.md Rule 1 prohibits auto-additions to TOKEN_REGISTRY during Option B window. No additions made.
+- **Auditor**: TRIGGERED — 106-day bear (BTC ~$64K, -45% from ATH of $126K in Oct 2025), F&G 18-21 (Extreme Fear), Bitcoin dominance 58%. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: BREAKER_WEEKLY_DD_PCT 15→13 — 106-day sustained bear; industry practice 12-15% range for weekly DD circuit breaker; 13% (lower-end) appropriate for 8-month downtrend; daily breaker already tightened (8→7 in prior auditor run), weekly was the remaining outlier in the DD breaker set. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-26)
+- **Signal Quality**: GMGN-style multi-wallet correlation tracking (cluster of wallets buying same token in time window as confluence signal). Already partially implemented via SMART_RETAIL_DIVERGENCE_THRESHOLD=20 and LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full multi-wallet correlation engine complex (Impact 2/Complexity 4/Risk medium) → Watch list for Henry. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Slipstream remains dominant on Base (46.6% of L2 DeFi TVL). No new gas optimization from Slipstream itself — bot auto-benefits at DEX level. Base Flashblocks (July 2025) reduce block latency but require no bot code changes. Permit2 batching already implemented. No new action. (Priority 0)
+- **Position Sizing**: KEY FINDING — 106-day bear with F&G at 18-21. Research confirms BREAKER_WEEKLY_DD_PCT 15→13: "industry practice 12-15% for weekly DD circuit breakers; lower end for sustained downtrends." NVR's daily breaker was already tightened (8→7) but weekly at 15% is the high end of the range in an 8-month bear. Tightening to 13% completes the pair. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: Intent-based routing (CoW Swap, $9B/mo) still dominant DEX aggregator approach; requires touching executeDirectDexSwap (off-limits). MEV protection via sequencer-direct RPC already active. "Defensive tools 2025-2026 finally good enough for average DeFi trader" — slippage tolerance is single cheapest defense; NVR's VWS_MAX_SPREAD_PCT=0.5% already enforcing this. No new action. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
