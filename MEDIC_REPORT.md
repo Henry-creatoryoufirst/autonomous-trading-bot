@@ -1,12 +1,34 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-27T00:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ja6f2u
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: ATTEMPTED — last scout was MOLT on 2026-05-14 (43+ days ago, well past 48h threshold). However, `api.geckoterminal.com` blocked by egress policy. WebSearch used as fallback but insufficient for quality filtering (no precise liquidity/volume/pool-age data). COHORT_PROPOSAL_2026-06-27.md written to repo root. Per CLAUDE.md Rule 1 (Option B window ended ~2026-06-15): no auto-adds to TOKEN_REGISTRY; proposals require explicit human PR.
+- **Auditor**: TRIGGERED — inferred BEAR market (F&G 23-26 extreme fear, BTC -45% from Oct-2025 peak $126K → ~$62K, 3 consecutive red monthly candles, largest ETF outflow week of year). Post-liquidation fresh-start context (operator liquidate-all via admin endpoint). Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STAGNATION_THRESHOLD_HOURS 6→8 — same extreme-fear regime (F&G 23-26) that triggered 4→6 in April; post-liquidation fresh start warrants 2h more patience before forced exploration trades. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+- **Signal Quality**: Multi-modal confluence (on-chain + technicals + sentiment) confirmed as 2026 best practice. NVR already implements all three legs. AI agents in 2026 use ETF flow vs BTC correlation and stablecoin yield shifts as additional signals. Full integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome+Velodrome merge in progress (2026). Slipstream's gas-aware routing already benefits NVR at DEX level without code change. Intent-based routing (SUAVE, CoW Protocol) architecture change required (off-limits). No action needed. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25f*) confirmed optimal per Prevayo 2026 — "ideal when you have genuine uncertainty about probability estimates." NVR already at KELLY_FRACTION=0.25. KEY FINDING deferred: post-liquidation recovery warrants longer stagnation patience. STAGNATION_THRESHOLD_HOURS 6→8 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MevX dominating meme-coin MEV in 2026. HOT_MOVER_MIN_FDV_USD=1M already defends against micro-cap MEV sandwich. Risk Evaluators with 30-min rest periods after losses standard in 2026 (BREAKER_PAUSE_HOURS=1h already exceeds this). No new action. (Priority 0.5)
+
+## Notable Context for Henry
+- **Liquidate-All**: Most recent main commit (f29798d) is `feat(admin): /api/admin/liquidate-all — operator forced full-exit to USDC`. Bot is starting fresh from 100% USDC position.
+- **Option B Window**: Ended ~2026-06-15 (30 days after 2026-05-15 pivot). No auto-adds to cohort per CLAUDE.md Rule 1; COHORT_PROPOSAL_2026-06-27.md written for Henry's review.
+- **Branch**: No staging branch available; working on `claude/cool-sagan-ja6f2u` per session dev instructions (CLAUDE.md Rule 2).
+- **Market**: BTC ~$62,606 (down 45% from Oct-2025 peak), ETH ~$1,681, F&G 23-26 (extreme fear), 3 consecutive red monthly candles. CLARITY Act Senate vote expected July 4 = potential catalyst.
+
+---
+
+## ARCHIVED: Previous Run Status (Run #34 — 2026-05-15T UTC)
 
 ## Problem
 
