@@ -1,6 +1,22 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ MILESTONE: Option B 30-Day Window Has Completed (~2026-06-15)
+
+The Option B benchmark window (started 2026-05-15, 30-day window) **ended approximately 2026-06-15**. Today is 2026-06-27. Key implications:
+- Henry should now **manually assess** whether the strategy outperformed cbBTC/WETH 60/40 by ≥5% annualized
+- The "cohort is locked" constraint (CLAUDE.md Rule 1) was set for this window — **human review of cohort now appropriate**
+- All scout proposals from this window are queued for Henry's review
+- No automated agent has run since Run #34 (2026-05-15) — a **42-day gap**
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (33 days since last scout, 2026-05-25 — well past 48h threshold). All live data APIs blocked (GeckoTerminal, CoinGecko, DexScreener, DefiLlama, LunarCrush — all 403 via egress proxy). Web research only returned qualitative market data, insufficient for quality-filter metrics (liquidity $, 24h volume, pool age). Cannot produce verified COHORT_PROPOSAL. Option B window has completed — Henry should now manually review scout candidates.
+- **Auditor**: SKIPPED — cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive (all 403 blocked). Cannot calculate win_rate or drawdown to determine trigger.
+
+---
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +82,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-27T UTC | **42-DAY GAP** — Option B window completed ~2026-06-15. Scout ran but all live data APIs blocked (GeckoTerminal, CoinGecko, DexScreener all 403). Bot API still blocked. Auditor skipped (no metrics available). Henry: review Option B results and decide cohort/strategy next steps. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,15 +222,31 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**Run #35 — Option B window has completed. Three actions needed:**
 
+### 🏆 Priority 1 — Option B Assessment
+The 30-day window ended ~2026-06-15. Manually check:
+- Bot P&L vs cbBTC/WETH 60/40 benchmark over the window (2026-05-15 → 2026-06-15)
+- Whether ≥5% annualized outperformance was achieved
+- Current portfolio state: https://autonomous-trading-bot-production.up.railway.app/api/portfolio
+- Trade outcomes: https://autonomous-trading-bot-production.up.railway.app/api/trades?limit=50
+
+### 🔓 Priority 2 — Post-Window Cohort Decision
+CLAUDE.md Rule 1 locked the cohort for the 30-day Option B window. That window has now ended.
+- Review any COHORT_PROPOSAL files accumulated during the window
+- Decide via intentional human PR whether to add/adjust tokens in `COHORT_QUALITY_7`
+- Consider whether to update CLAUDE.md to lift or modify the lock
+
+### 🌐 Priority 3 — Fix Egress Policy (now 35th consecutive blocked run)
+The automated agent cannot see bot health or market data:
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
+   - `api.coingecko.com`
+   - `api.llama.fi`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
