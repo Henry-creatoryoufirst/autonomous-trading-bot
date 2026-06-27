@@ -1,8 +1,31 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
+- Run timestamp: 2026-06-27T09:05 UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-wlwixh
+
+## Jobs Status This Run (Run #35 — 2026-06-27T09:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). **NEW**: This run is on branch `claude/cool-sagan-wlwixh` (CLAUDE.md Rule 2 compliance — not pushing to staging).
+- **Scout**: RAN (last scout 2026-05-14, 43 days ago, >48h threshold). GeckoTerminal API also blocked — quality filter (liq >$100k, vol >$50k, pool age >3d) cannot be verified. Web research identified no new high-quality Base candidates with verifiable on-chain addresses. HYPE (Hyperliquid) has Base bridge demand but trades on its own L1, not Base DEX pools. Aerodrome/Velodrome merge targeting July 2026 — AERO already tracked. **No additions made per CLAUDE.md Rule 1 (cohort locked, TOKEN_REGISTRY auto-adds prohibited)**. Standards maintained.
+- **Auditor**: SKIPPED — cannot fetch /api/trades, /api/portfolio, /api/patterns, or /api/adaptive (all 403). Cannot calculate win_rate, drawdown, or losing_streak to check trigger conditions. Last auditor run: Run #34 (2026-05-15, 43 days ago). **Notable**: Option B 30-day benchmark window completed ~2026-06-15; no auditor has run since window close. Recommend Henry run manual audit or add bot API to egress allowlist.
+
+## ⚠️ CRITICAL ACTION NEEDED — 43-DAY GAP
+
+The Option B benchmark window closed ~2026-06-15 (12 days ago). The agent has not been able to assess bot health, win rate, or drawdown since Run #34 (2026-05-15). The auditor has not run since then either. **Henry should manually review:**
+1. Bot health: https://autonomous-trading-bot-production.up.railway.app/health
+2. Trade performance: https://autonomous-trading-bot-production.up.railway.app/api/trades?limit=50
+3. Option B outcome: Did the strategy outperform cbBTC/WETH 60/40 by ≥5% over the 30-day window?
+4. Whether to extend Option B parameters or initiate a new strategy phase
+
+---
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
+
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
