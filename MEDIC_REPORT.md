@@ -1,3 +1,37 @@
+# MEDIC REPORT — 2026-06-27T22:05 UTC (latest)
+
+## Jobs Status This Run (Run #51 — 2026-06-27T22:05 UTC)
+
+- **Medic**: PATTERN D — bot API 403 (persistent, 51 runs). `autonomous-trading-bot-production.up.railway.app` egress-blocked. Cannot assess error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #51).
+- **Scout**: GeckoTerminal blocked (403). Last scout was 2026-05-25 (>30 days ago — overdue). **B20 pools not yet qualifying**: Beryl launched June 25; pools need ≥3 days age, first qualifying window opens **June 28**. No candidates found this run. Next scout run: June 28+ (tomorrow) for first B20-native pool wave.
+- **Auditor**: SKIPPED (API blocked — cannot verify win rate/drawdown trigger conditions). Market update: BTC **~$60,237** (+$124 from $60,113 yesterday). Fear & Greed **36 — Fear** (recovering from 18 Extreme Fear at Run #50; sentiment improving). AERO **~$0.47** (still recovering from $0.27 low June 17). **AERO merger contract address: still NOT announced** — Predictive Allocation launching July, merger targeting early July; 94.5% AERO / 5.5% VELO distribution confirmed; MEV-resistant pool migration LIVE (LPs must migrate to keep emissions).
+
+## Henry's Action Items (Run #51)
+
+| Action | Priority |
+|--------|----------|
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + 3 auditor improvements | 🔴 HIGH — unmerged since May 28 |
+| **AERO → "Aero" merger early July** — no new contract address yet; monitor daily; update `token-registry.ts` + router when announced; LPs must migrate to MEV-resistant pools NOW to keep emissions | 🔴 HIGH — days away |
+| **Review Option B cohort performance** vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🔴 HIGH — 12 days overdue |
+| **Beryl post-upgrade check** — verify Aerodrome Slipstream router works correctly post-B20 activation (B20 changes how node processes token txns) | 🔴 HIGH — launched June 25 |
+| **B20 scout window opens June 28** — first Beryl-era pools will be ≥3 days old; run scout tomorrow for new B20-standard token pools with $100K+ liquidity | 🟡 MED — tomorrow |
+| **Cobalt upgrade (September 2026)**: native account abstraction, ~50% cheaper transfers, gas in B20 tokens — begin sizing implications for NVR gas strategy | 🟡 MED — 3 months out |
+| Merge PR #55 (sleeve state persistence) — unmerged since May 29 | 🟡 MED — tournament prerequisite |
+| Update CLAUDE.md — Option B window ended 2026-06-15; automated agent rules no longer accurate | 🟡 MED — blocking full agent authority |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 51 runs blind |
+
+## Market Intelligence (Run #51)
+
+**Bitcoin**: $60,237 (+$124/24h). Hit ~$58K low late June (lowest since Sept 2024, −50% from $126.3K cycle high). Fear & Greed 36 (Fear) ↑ from 29 yesterday, down from 43 (Neutral) last week. Sentiment improving from extreme fear territory.
+
+**AERO / Aerodrome**: $0.47 — recovering from $0.27 June 17 low (+74%). Merger ("Aero") targeting early July. METADEX03 OS with embedded MEV auctions, Predictive Allocation (replaces weekly gauge voting), cross-chain expansion to Ethereum + Circle's Arc. No new contract address. Current `0x940181a94A35A4569E4529A3CDfB74e38FD98631` remains active until announced.
+
+**Beryl / B20 (LIVE since June 25)**: B20 is a native node-level token standard (not a smart contract); superset of ERC-20. Asset tokens (configurable decimals, rebasing) and stablecoin tokens (fixed 6 decimals). Lowers tx costs, reduces node storage, increases throughput. Withdrawals cut 7→5 days. Chain ID 8453 unchanged. No exchange disruption post-activation. B20-native pool wave expected June 28+ on Aerodrome.
+
+**Cobalt (September 2026)**: Native account abstraction + ~50% cheaper transfers. Gas can be paid in B20 tokens. Direct NVR cost-reduction opportunity — begin planning.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
