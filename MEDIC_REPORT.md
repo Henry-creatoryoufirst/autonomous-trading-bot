@@ -1,3 +1,22 @@
+# MEDIC REPORT — 2026-06-27T21:03 UTC (latest)
+
+## Run #35 — 2026-06-27T21:03 UTC
+
+**Medic**: PATTERN D — API unreachable (403 policy denial on all endpoints, 35th consecutive blocked run). Bot health unknown.
+
+**Scout**: OVERDUE (last scout commit: 2026-05-25, >33 days ago). Cannot run — `api.geckoterminal.com` blocked by egress policy.
+
+**Auditor**: SKIPPED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns` (API blocked).
+
+**Notable since Run #34 (2026-05-15):**
+- 12 commits merged to main (spec-035 invariants, HOLD_ONLY_TOKENS, SDK 0.97, MirrorAgent, liquidate-all)
+- `feat(admin): /api/admin/liquidate-all` added (2026-06-27, commit f29798d) — operator forced full-exit to USDC. Was this triggered? Henry: please confirm portfolio status.
+- Option B window has CLOSED (30 days from 2026-05-15 = completed ~2026-06-15, today is 2026-06-27).
+
+**Action required**: Same as prior runs — add Railway and GeckoTerminal to egress allowlist.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
