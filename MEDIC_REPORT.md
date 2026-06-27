@@ -1,5 +1,43 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-27T04:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints, proxy policy denial for railway.app:443). MEDIC_REPORT updated (Run #35).
+- **Scout**: COULD NOT RUN — last scout was 2026-05-25 (~33 days ago, well past 48h threshold). All data sources blocked: GeckoTerminal API/site (403), DexScreener (403), CoinGecko (403), DappRadar (403), DefiLlama (403). Cannot meet quality filter requirements without on-chain data. COHORT NOTE: Option B window closed ~2026-06-15 (12 days ago). Per CLAUDE.md Rule 1, cohort changes still require explicit human PR — no TOKEN_REGISTRY changes made.
+- **Auditor**: TRIGGER CONDITIONS UNKNOWN — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all blocked. Cannot calculate win_rate, drawdown, or losing_streak. Research ran 4 searches (see summary below). No constants changed (trigger unconfirmed). NVR-HQ not in checkout — audit report file skipped.
+
+## ⚠️ GAP ALERT: 43-Day Reporting Blackout (2026-05-15 → 2026-06-27)
+
+This is the **first run since Run #34 on 2026-05-15**. The Option B benchmark window (2026-05-15 → ~2026-06-15) has **closed**. Henry needs to manually assess:
+1. Did the bot outperform cbBTC/WETH 60/40 by ≥5% annualized over the 30-day window?
+2. Are there cohort changes to make now that the lock period is over?
+3. What is the current bot health? (API still unreachable from this environment)
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+
+**NOTE**: Trigger conditions could not be assessed — findings are advisory only, no changes implemented.
+
+### Signal Quality
+On-chain analysis tools (Nansen, Dune, Glassnode, CryptoQuant) remain the standard for alpha in 2026. TVL/fees/active addresses on Base chain are trackable via DefiLlama chain metrics. NVR already implements LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full Nansen/Dune integration remains complex (Impact 3/Complexity 4/Risk medium) → Watch list. No action.
+
+### Execution Efficiency
+**KEY FINDING**: Aerodrome merged with Velodrome into "Aero" with MetaDEX03 launch (confirmed 2025-2026). MetaDEX03 includes Slipstream V3 — the first DEX-level MEV auction revenue interception from centralized sequencers. Bot auto-benefits from this if routing through Aerodrome Slipstream pools. No code change needed; confirm routing is using Slipstream V3 pools (check `gecko-terminal.ts` routing config). (Impact 2/Complexity 1/Risk low) → Advisory.
+
+### Position Sizing
+Research confirms hybrid Kelly + VIX-based volatility regime scaling outperforms static fractional Kelly in drawdown control. However, NVR already implements TRENDING_DOWN×0.75 multiplier + KELLY_POSITION_CEILING_PCT=12 + KELLY_FRACTION=0.25 (Quarter-Kelly). New academic finding: applying a drawdown-probability constraint as final step (after computing raw Kelly × regime multiplier) could further protect in tail scenarios. Actionable but cannot confirm trigger → Watch list. (Impact 2/Complexity 2/Risk low)
+
+### Competitive Intelligence
+Intent-based trading (Intents/Solvers protocol) gaining significant traction on Base in 2026 — zero slippage, pre-trade MEV protection by keeping orders off-chain until solver commits. 0.5-2% slippage tolerance is the current research recommendation on liquid pairs, with 2% described as "generous." If NVR's slippage config is above 2% on major pairs (cbBTC/WETH), tightening could reduce slippage costs. Off-limits for auto-implementation (touches execution path) → Watch list for Henry. (Impact 3/Complexity 2/Risk medium)
+
+### Highest-Priority Watch List Items for Henry
+1. **Check slippage config on liquid pairs** — research confirms ≤2% optimal; verify in agent-v3.2.ts swap config
+2. **Option B window close assessment** — manually compare portfolio vs cbBTC/WETH 60/40 benchmark
+3. **Cohort expansion** — now that 30-day lock is over, human PR to update TOKEN_REGISTRY is appropriate (especially the 33-day scout gap means candidates should be manually reviewed at geckoterminal.com/base/pools)
+4. **Fix monitoring egress** — add `autonomous-trading-bot-production.up.railway.app` + `api.geckoterminal.com` to Claude Code allowlist (35 consecutive blocked runs)
+
+## Previous Run Summary (Run #34 — 2026-05-15T UTC)
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
