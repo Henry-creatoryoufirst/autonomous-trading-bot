@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-27T UTC | Scout RAN (MOLT added 2026-05-14, 44 days ago); CLAUDE.md Rule 1 prohibits TOKEN_REGISTRY adds — COHORT_PROPOSAL_2026-06-27.md filed in repo root (VELVET candidate, pending Henry verification); auditor SKIPPED — cannot confirm trigger conditions without API access; Option B window CLOSED 2026-06-14 |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,52 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints).
+  MEDIC_REPORT updated (Run #35). No changes to agent-v3.2.ts.
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT added, 44 days ago, >48h threshold).
+  CLAUDE.md Rule 1 prohibits automatic TOKEN_REGISTRY additions (Option B window closed
+  2026-06-14 but human-PR requirement persists). GeckoTerminal + DEXscreener APIs blocked
+  (403). Scout research used WebSearch only. One candidate found: VELVET (Velvet Capital,
+  DeFAI portfolio OS on Base, ~$4M liq, ~$2.1M 24h vol — unverified). Filed as
+  COHORT_PROPOSAL_2026-06-27.md in repo root (NVR-HQ not in this checkout).
+  No TOKEN_REGISTRY commit made.
+- **Auditor**: SKIPPED — cannot check win_rate, drawdown, losing_streak, or marketRegime
+  without API access. Option B 30-day window completed ~2026-06-14. Bear-adjusted
+  constants from Apr-May 2026 bear cycle remain in place; Henry should review whether
+  to ease HOT_MOVER/KELLY/SURGE/STALE thresholds if market regime has recovered.
+
+## Scout Research Summary (Run #35 — 2026-06-27)
+- **Trending pools fetch**: BLOCKED (api.geckoterminal.com → 403)
+- **New pools fetch**: BLOCKED (api.geckoterminal.com → 403)
+- **WebSearch 1** — "new tokens Base L2 high volume trending pools June 2026": General
+  ecosystem overview only; Base leads L2 DEX volume ($1.17B/day). No specific pool data.
+- **WebSearch 2** — "Base chain DEX trending tokens high liquidity volume 2026":
+  BRETT, TOSHI, AERO, MORPHO confirmed dominant. One DEXscreener snapshot surfaced VELVET
+  (VELVET/USDC on Base, $2.1M vol, $4.0M liq) — address unverified.
+- **WebSearch 3** — Aerodrome/Velodrome merger: CONFIRMED. Q2 2026 merger into unified AERO
+  token. AERO already in TOKEN_REGISTRY. Post-merger AERO covers Base + Optimism + OP
+  Superchain. NVR's existing AERO position auto-qualifies.
+- **Candidate VELVET**: DeFAI portfolio OS on Base, AI-powered routing, MEV protection,
+  $4M liq / $2.1M vol (unverified snapshot). Filed in COHORT_PROPOSAL_2026-06-27.md.
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+Trigger conditions not confirmed (API blocked). Research runs captured for Henry's review:
+- **Signal Quality**: 2026 AI crypto signal research confirms 9+ / 12-indicator confluence
+  scores produce 68–72% win rates vs 55–62% for 6–7/12. NVR's NORMAL_CONFLUENCE_BUY=27
+  is calibrated for bear market. If regime has recovered, raising to 30+ could further
+  improve signal quality. **WATCH LIST — not implemented (trigger unconfirmed).**
+- **Execution Efficiency**: Aerodrome/Velodrome merger confirmed (Q2 2026). Unified AERO
+  protocol now routes across Base + Optimism + OP Superchain — NVR auto-benefits. No
+  code change needed.
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed optimal. All 2026 research re-validates
+  existing NVR constants. Bear-adjusted values from Apr-May may be too conservative in
+  a recovered regime — but cannot confirm without API data. **WATCH LIST — not implemented.**
+- **Competitive Intel**: Velvet Capital (velvet.capital) — AI DeFi trading terminal on Base
+  with MEV protection + AI routing. Similar architecture to NVR. Notable competitor/barometer
+  for what DeFAI products offer in 2026. No specific implementable finding.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,7 +252,7 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
@@ -213,7 +260,12 @@ Because the API is unreachable, the medic cannot determine:
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window is CLOSED (2026-06-14):** Review COHORT_PROPOSAL_2026-06-27.md for
+   VELVET candidate — verify address on basescan.org, then open a human PR if it qualifies
+5. **Bear-adjusted constants review:** Apr-May 2026 bear market tightened many thresholds
+   (KELLY_FRACTION=0.25, HOT_MOVER_MIN_BUY_RATIO=0.60, RIDE_THE_WAVE_SIZE_PCT=3, etc.).
+   If crypto markets have recovered in June 2026, these may be too conservative — review
+   /api/trades and /api/portfolio to assess win rate and drawdown before easing.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
