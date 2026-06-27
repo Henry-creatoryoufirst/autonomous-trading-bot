@@ -1,6 +1,33 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #38)
+
+## Jobs Status This Run (Run #38 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (403 from egress proxy on ALL endpoints). Run #38 of this issue.
+- **Scout**: BLOCKED — GeckoTerminal API 403 (egress policy). B20 tokens from Base Beryl (June 25) still don't meet 3-day pool age filter until June 28. No registry changes.
+- **Auditor**: BLOCKED — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all return 403. No portfolio metrics available.
+
+## 🚨 Time-Sensitive Items (as of 2026-06-27)
+
+| Item | Urgency | Notes |
+|------|---------|-------|
+| AERO → "Aero" merger | **~1-2 weeks (early July 2026)** | Bot holds AERO. Token conversion expected at 94.5% of new supply. Pool/contract addresses may change. Routing in agent-v3.2.ts (`executeDirectDexSwap`, Slipstream router) may need update. Decision: hold through migration or exit? |
+| Bot in full USDC | **30 days** (since 2026-05-28 liquidation) | PR #54 forced full exit. Unknown if bot has re-entered positions. Verify via Railway logs or BaseScan `0xB7c51b1A8F967eF6BF906Fe4B484817Fe784a7C1`. |
+| B20 token scout | **Tomorrow (June 28)** | First day B20 tokens from Base Beryl meet the 3-day pool age filter. Scout can run as soon as GeckoTerminal egress is restored. |
+| PR #55 unmerged | ~4 weeks old | `fix/sleeve-state-persistence` — sleeve state resets on Railway redeploy. Strategy tournament (SPEC-038) blocked until merged. |
+
+## Fix Required
+
+Add these to Claude Code session egress allowlist at https://code.claude.com/docs/en/claude-code-on-the-web:
+- `autonomous-trading-bot-production.up.railway.app`
+- `api.geckoterminal.com`
+
+---
+
+## MEDIC REPORT — 2026-05-15T (latest) UTC
+
+## Status (historical): API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
