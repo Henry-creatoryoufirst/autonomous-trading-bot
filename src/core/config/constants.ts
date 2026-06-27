@@ -621,7 +621,7 @@ export const ATR_COMPARISON_LOG_COUNT = 20;
  * Kelly % = (WinRate × AvgWin − (1 − WinRate) × AvgLoss) / AvgWin
  * Position = Kelly% × KELLY_FRACTION × Portfolio
  */
-export const KELLY_FRACTION = 0.25;           // Bear-adjusted May-2026: 0.30→0.25 — 54-day bear; true Quarter-Kelly (0.25×); effective max 4.2%→3.5% portfolio per trade; research: Quarter-Kelly optimal for sustained bear regimes (crypto fat tails + bear drawdown control)
+export const KELLY_FRACTION = 0.20;           // Bear-adjusted Jun-2026: 0.25→0.20 — 113-day bear; fifth-Kelly (0.20×); F&G 23-26 (extreme fear), BTC -45% from Oct-2025 peak; effective max ~2.8% portfolio per trade; research (Prevayo 2026, Altrady): professional traders use 10-25% of full Kelly — 0.25× was upper bound, 0.20× centers the professional range at extreme-fear conditions
 export const KELLY_MIN_TRADES = 20;           // Need at least 20 trades before Kelly kicks in
 export const KELLY_ROLLING_WINDOW = 30;       // Bear-adjusted Apr-2026: 50→30 — tighter recent window responds faster to bear-market win-rate decay
 // 2026-05-15 Option B pivot: floor raised $3 → $25 for the quality-asset

@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -65,6 +65,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-27T UTC | Scout: no new qualifying tokens (AERO already in registry; GeckoTerminal blocked; June 2026 TGEs STRATO/HOME/TEA unverifiable); auditor lowered KELLY_FRACTION 0.25→0.20 — 113-day bear; F&G 23-26 extreme fear; BTC -45% from Oct-2025 peak; fifth-Kelly centers professional range at extreme-fear conditions (Prevayo 2026, Altrady research) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints; proxy confirmed blocking autonomous-trading-bot-production.up.railway.app:443). MEDIC_REPORT updated (Run #35).
+- **Scout**: NO NEW TOKENS — Last scout commit was 2026-05-08 (SYRUP), well past 48h threshold; GeckoTerminal blocked (proxy 403); top June 2026 Base candidate AERO already in TOKEN_REGISTRY; three new TGEs (STRATO, HOME/DeFi.app, TEA) could not be verified without pool data. Option B benchmark window has now closed (~2026-06-15). Cohort remains locked pending Henry's explicit PR.
+- **Auditor**: TRIGGERED by inferred 113-day BEAR market + extreme fear (F&G 23-26, BTC -45% from Oct-2025 peak). Research ran 4 searches. Top finding: KELLY_FRACTION 0.25→0.20 — extended bear (113 days) + extreme fear warrants reducing from upper bound of professional Kelly range (25%) to center (20%). Research (Prevayo.com 2026 Kelly Criterion Mastery, Altrady.com): "professional traders use between 10% and 25% of full Kelly." At 0.25f, NVR was at the absolute upper bound; 0.20f (fifth-Kelly) centers the range. Effective max position reduces from ~3.5% → ~2.8% portfolio per trade. (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTED in constants.ts. Committed to branch `claude/cool-sagan-ejch4m`.
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+- **Signal Quality**: 5-factor confluence and DeFiLlama TVL-trend checks emerging as alpha signals in 2026. Already partially captured by NVR's confluence scoring. Full on-chain TVL integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome METADEX03 / Slipstream V3 (Nov-2025 Aero upgrade) with embedded MEV auctions — bot auto-benefits from DEX-level improvements without code change. Predictive Allocation upgrade planned July 2026. No code change needed. (Priority 0)
+- **Position Sizing**: KEY FINDING — Prevayo.com 2026 Kelly Criterion Mastery: "Professional traders use 10-25% of full Kelly; extreme fear/high-vol conditions warrant lower end." At F&G 23-26 (extreme fear), 0.25f is the upper bound. KELLY_FRACTION 0.25→0.20 IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: MevX 2026 (MEXC analysis) — multi-chain MEV/trading bots now use wallet tracking at lower thresholds ($1500-$2000 for smart money signals). Velvet Capital intent-based execution routing (requires off-limits execution changes). AI-on-AI MEV growing — NVR's sequencer-direct RPC already provides MEV protection. Watch list for Henry. (Priority 1.0 for LARGE_TRADE_THRESHOLD_USD reduction — deferred in favor of Kelly sizing)
+
+## Note: Option B Window Status (Run #35 — 2026-06-27)
+The 30-day Option B benchmark window opened 2026-05-15 and closed ~2026-06-15. Today (2026-06-27) is 12 days past the close. CLAUDE.md has not been updated to reflect this. Auditor changes to constants.ts continue normally. Cohort (COHORT_QUALITY_7) remains locked pending Henry's explicit human PR — no automated changes to TOKEN_REGISTRY or COHORT_QUALITY_7 made. Henry: if you want to resume normal scout operations or adjust the cohort, please update CLAUDE.md to lift Rule 1.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
