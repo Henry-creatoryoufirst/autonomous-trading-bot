@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -89,6 +89,14 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — All data APIs blocked by egress policy (`api.geckoterminal.com`, `api.dexscreener.com`, `defillama.com`, `coingecko.com` all returned 403). Cannot verify pool liquidity >$100k, 24h volume >$50k, or pool age >3 days for any candidate. No qualifying tokens (standards maintained). Last scout commit was 2026-05-25 (33 days ago).
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio`, or `/api/patterns` to compute win_rate, drawdown, or losing_streak trigger conditions. Skipped.
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
