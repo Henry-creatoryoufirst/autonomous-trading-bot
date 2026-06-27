@@ -1,12 +1,33 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints — same proxy policy as every prior run). MEDIC_REPORT updated (Run #35). **Note: 42-day gap since Run #34 (2026-05-15) — Option B window ended ~2026-06-15.**
+- **Scout**: SKIPPED — GeckoTerminal blocked (403 same policy). Last successful scout was MOLT on 2026-05-14 (44 days ago, well past 48h threshold). Cannot verify quality filters (liquidity, volume, pool age) without API access. No token additions. Per CLAUDE.md Rule 1, cohort changes require explicit human PR regardless.
+- **Auditor**: PARTIAL — Bot API blocked, cannot retrieve win_rate/drawdown/streak metrics to verify trigger conditions. Research ran (4 searches). **KEY EXTERNAL RISK FOUND: Aerodrome → Aero merger launching early July 2026 — see Watch List below.** No code changes made (trigger conditions unverifiable). Option B window has ended; Henry should review and decide next strategy iteration.
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+
+- **Signal Quality**: Confluence scoring with 9+/12 indicator agreement achieves 68-72% win rates (vs 55-62% at 6-7/12). On-chain wallet flow data (funding rates, open interest, exchange flows) as additional confluence signals is the frontier improvement. NVR already uses order-flow buy-ratio + whale threshold. Full on-chain signal integration remains complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action.
+- **Execution Efficiency**: **🚨 AERODROME → AERO MERGER — IMMINENT RISK.** Dromos Labs confirmed merger of Aerodrome (Base) + Velodrome (Optimism) into unified "Aero" DEX launching **early July 2026**. Migration requires LPs to move to new MEV-resistant pools. New AERO token tokenomics unified. NVR bot uses `AERODROME_SLIPSTREAM_ROUTER = 0xBE6D8f0d05cC4be24d5167a3eF062215bE6D18a5` (chain-config.ts:114). Old router contract should persist on-chain, but **pool liquidity is migrating to new Aero contracts**. GeckoTerminal pool data will shift to reporting new Aero pools; the bot's pool-detection logic and routing may miss new pool format. **Action required: Henry to verify new Aero router address and update `chain-config.ts` before July 2026 go-live.** (Impact 5/Complexity 2/Risk high) → Watch list (router address not yet public).
+- **Position Sizing**: Half-Kelly and Quarter-Kelly confirmed optimal for crypto in 2026 literature (Fidelity Bitcoin 2026, Prevayo Kelly Mastery 2026). NVR KELLY_FRACTION=0.25 (Quarter-Kelly) already at research-recommended optimum. No new action. (Priority 0)
+- **Competitive Intelligence**: Private mempool / transaction relay (MEV protection) going mainstream in 2026. NVR already uses `https://rpc.flashbots.net/fast?chainId=8453` as first-priority RPC — already protected. MEV auction integration in METADEX03 (Aerodrome Slipstream V3, Nov 2025) auto-benefits NVR DEX trades. ElizaOS/autonomous agent frameworks gaining traction. No new action needed. (Priority 0)
+
+## Watch List (for Henry's review)
+
+1. **🚨 AERODROME → AERO ROUTER MIGRATION (URGENT — July 2026)**: New Aero DEX launches early July 2026. Verify new router contract address at aerodrome.finance/docs or Dromos Labs channels and update `src/core/config/chain-config.ts` line 114 before migration goes live. Old pools will lose liquidity; bot DEX fallback trades will degrade or fail without update.
+2. **Option B window closed (~2026-06-15)**: 30-day benchmark window ended. Henry should review final P&L attribution and decide: extend Option B with same cohort, expand cohort (via explicit human PR), or pivot strategy shape. Scout has 44-day backlog of candidates to review.
+3. **Scout backlog (44 days)**: GeckoTerminal unreachable from execution environment. Scout cannot run quality filters. Henry may want to run a manual scout via GeckoTerminal UI or unblock the domain for future runs.
+
+---
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-27T UTC (Run #35)
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-cltbtk
 
 ## Problem
 
@@ -66,6 +87,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-27T UTC | **42-day gap since #34. Option B window ended ~2026-06-15.** Scout skipped (GeckoTerminal 403, API blocked). Auditor: bot API blocked — no trigger metrics. KEY FINDING: Aerodrome → Aero merger launching early July 2026; router migration may break DEX trades — Henry must verify new router address before go-live. No code changes (trigger unverifiable). |
 
 ## Bot Health Evidence (from git history)
 
