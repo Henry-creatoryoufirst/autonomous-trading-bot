@@ -1,8 +1,36 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
+- Run timestamp: 2026-06-27T UTC
+- Medic agent: NVR Capital autonomous agent (hourly run)
+- Working directory: /home/user/autonomous-trading-bot
+- Current branch: claude/cool-sagan-fr3imt (CLAUDE.md Rule 2 prohibits staging push)
+
+## Jobs Status This Run (Run #35 — 2026-06-27T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). ~42-day gap since last medic log — substantial human-driven development occurred (spec-035 INV fixes, v21.30.0, liquidate-all endpoint, HOLD_ONLY_TOKENS, MirrorAgent). Cohort unchanged (COHORT_QUALITY_7 locked per CLAUDE.md Rule 1; Option B window ended ~2026-06-15).
+- **Scout**: SKIPPED — GeckoTerminal blocked (403 from egress proxy). Last confirmed scout add: SYRUP (2026-05-08, Run #33). 50-day gap exceeds 48h threshold, but data source unavailable. MOLT (2026-05-14), OPENX + VEIL (2026-05-16) were all reverted. COHORT_QUALITY_7 locked — no auto-adds regardless. Per CLAUDE.md Rule 1, any candidate would require COHORT_PROPOSAL file and human PR.
+- **Auditor**: SKIPPED — bot API blocked. Cannot fetch /api/trades, /api/portfolio, /api/patterns, /api/adaptive. Cannot evaluate trigger conditions (win_rate, drawdown, losing_streak, market regime). No research or changes this run.
+
+## ⚠️ Henry Action Required
+
+The Option B benchmark window ended ~2026-06-15. **Next steps:**
+1. **Evaluate Option B results**: Compare cbBTC/WETH 60/40 benchmark vs. NVR performance over the 30-day window.
+2. **Cohort unlock**: If proceeding to next phase, human PR needed to update COHORT_QUALITY_7 (CLAUDE.md Rule 1 still applies post-window).
+3. **Unblock APIs** (persistent blocker since Run #1 in April): Add to Claude Code egress allowlist:
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+4. **Scout backlog**: 50-day gap — if cohort is unlocked post-Option B, a fresh scout scan is warranted.
+
+---
+
+# Previous Run History
+
+## Status (Run #34): API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+
+## Environment (Run #34)
 - Run timestamp: 2026-05-07T04:05 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
@@ -65,6 +93,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #31 | 2026-05-06T09:05 UTC | Scout skipped (cbADA scout at 05:08 UTC 2026-05-05, ~28h ago, <48h); auditor lowered STALE_POSITION_MIN_AGE_HOURS 48→36 — 61-day bear; bear market research confirms faster stale-exit of flat $100+ positions frees dead capital sooner |
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
+| #35 | 2026-06-27T UTC | Scout skipped (GeckoTerminal blocked + COHORT locked per CLAUDE.md Rule 1, Option B window ended ~2026-06-15); Auditor skipped (bot API blocked). ⚠️ 42-day gap since Run #34. No auto changes. Henry action required: evaluate Option B results + consider cohort unlock via human PR. |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
 
 ## Bot Health Evidence (from git history)
