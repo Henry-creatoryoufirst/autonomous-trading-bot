@@ -1,3 +1,29 @@
+# MEDIC REPORT — 2026-06-27T18:03 UTC (latest)
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-27T18:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Same as all previous runs. Bot API (`autonomous-trading-bot-production.up.railway.app`) and GeckoTerminal (`api.geckoterminal.com`) both blocked by egress proxy policy.
+- **Scout**: RAN (last token addition was MOLT on 2026-05-14, >44 days ago, well above 48h threshold). GeckoTerminal blocked — cannot verify pool liquidity/volume/age to quality-filter candidates. WebSearch found top Aerodrome pools by APY are WETH-AIXBT (1,280%), WETH-TOSHI (1,015%), WETH-BRETT (387%) — all already in TOKEN_REGISTRY. No unverified candidates written to COHORT_PROPOSAL (CLAUDE.md Rule 1 requires human PR for all cohort changes; data cannot be verified without GeckoTerminal access).
+- **Auditor**: NOT TRIGGERED via API checks (API unreachable — cannot verify win_rate, drawdown, or losing_streak). Strategic research conducted regardless (42 days since last run). KEY FINDING: Aerodrome Predictive Allocation launches July 2026 — liquidity rewards shift from historical LPs to volume predictors. AERO +22% on announcement (June 12 CoinDesk). Tail-liquidity tokens in NVR portfolio may face worse slippage post-launch. No code change (cannot confirm trigger conditions). See Watch List below.
+
+## Watch List (Run #35 — for Henry's review)
+
+| Finding | Impact | Complexity | Risk | Action |
+|---------|--------|------------|------|--------|
+| Aerodrome Predictive Allocation (July 2026): liquidity migrates to high-prediction pools; low-APY tail tokens (RAVE, PEEZY, DOGINME, KEYCAT) may see worse slippage | HIGH | LOW | MEDIUM | Review tail token limits post-July launch |
+| Aerodrome+Velodrome → unified "Aero" cross-chain DEX (July 2026): router address may need update | MEDIUM | LOW | LOW | Monitor router address post-merge |
+| MetaMask Agent Wallet (June 8, 2026): scoped AI agent signing authority now live on 9 EVM chains with Blockaid scanning | LOW | HIGH | LOW | Long-term consideration for account abstraction |
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+- **Signal Quality**: Aerodrome 24h volume $418M (-13.9%), MEV-resistant pool migration completed May 2026. Confidence scoring: 9+ independent indicators → 68-72% win rate (NVR's multi-indicator confluence already captures this). No new actionable code change. (Priority 0)
+- **Execution Efficiency**: Aerodrome Slipstream had 258.2K transactions/24h. Aerodrome+Velodrome merger into "Aero" cross-chain DEX planned July 2026 — auto-benefits routing efficiency without code change. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) with 20% drawdown buy-block already confirmed optimal per 2026 research. "If bankroll drops 20% cut sizes in half" matches NVR's LIFETIME_DRAWDOWN_CAUTION_PCT=12 + LIFETIME_DRAWDOWN_BUY_BLOCK_PCT=20. Already well-calibrated. No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — Aerodrome Predictive Allocation (announced June 14, CoinDesk June 12) replaces gauge-voting with prediction-market liquidity rewards. Low-volume pools lose LP incentives; liquidity migrates to high-volume predictive pools. Impact on NVR: tail tokens with thin Aerodrome liquidity may face increased slippage after July launch. AERO +22%+ already captured by registry entry. No immediate code change. (Impact 4, Complexity 2, Risk medium, Priority 2.0) → Watch List.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
@@ -66,6 +92,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-27T18:03 UTC | Scout ran (44 days since last addition) — GeckoTerminal blocked, no verifiable new candidates; top Aerodrome pools (AIXBT/TOSHI/BRETT) already in registry. Auditor research: Aerodrome Predictive Allocation (July 2026) is strategic watch item; no trigger conditions confirmed. |
 
 ## Bot Health Evidence (from git history)
 
