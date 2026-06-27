@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T13:00 UTC (latest)
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-27T13:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-ik35ur
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-27T13:00 UTC | Scout ran (last scout 2026-05-14, 43+ days ago); per CLAUDE.md Rule 1 COHORT locked — wrote COHORT_PROPOSAL_2026-06-27.md; GeckoTerminal blocked, WebSearch only; no verifiable token candidates with pool data. Auditor: market VOLATILE/corrective (BTC ~$65k, -45% from $126k ATH; ETH ~$1,673); no qualifying implementation (no finding at Priority≥2.0, risk=low, ≤10 lines); Aero merger July 2026 watch-listed. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,23 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-27T13:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (403 on all endpoints). GeckoTerminal also blocked. Persistent proxy policy constraint — not a bot failure. MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (last scout was 2026-05-14, 43+ days ago, well past 48h threshold). Per CLAUDE.md Rule 1, COHORT is LOCKED — no TOKEN_REGISTRY modification allowed; wrote `COHORT_PROPOSAL_2026-06-27.md` instead. GeckoTerminal blocked (WebSearch only); no verifiable new token candidates with contract addresses + pool liquidity data surfaced. Ecosystem watch: Aerodrome "Aero" merger (Aerodrome + Velodrome) targeted July 2026; routing auto-benefits NVR without code change.
+- **Auditor**: TRIGGERED (inferred VOLATILE/corrective market: BTC ~$65k, -45% from $126k ATH Oct-2025; ETH ~$1,673; June 2 flash crash below $70k). API unreachable — win_rate/drawdown/losing_streak cannot be confirmed from live data. Research ran 4 searches. No qualifying implementation found (no finding achieved Priority ≥ 2.0, risk = low, ≤ 10 lines). NVR-HQ not in checkout — audit report skipped per task instructions.
+
+## Auditor Research Summary (Run #35 — 2026-06-27)
+- **Signal Quality**: Confluence scoring systems with 9+/12 signals achieve 68-72% win rates (vs 55-62% at 6-7/12). NVR NORMAL_CONFLUENCE_BUY=27 and SWARM flow-weighted scoring already implement multi-signal discipline. Raising bar further requires understanding how 27-pt threshold maps to swarm 12-signal framework — complex to validate without live trade data. (Impact 2, Complexity 3, Risk medium, Priority 0.67) → Watch list. No action.
+- **Execution Efficiency**: Aerodrome METADEX03 (Nov-2025) with Slipstream V3 + embedded MEV auctions already in production. July 2026 "Aero" merger (Aerodrome + Velodrome) will further improve routing — bot auto-benefits. $453.76M TVL, $12.4B 30-day volume as of June 3, 2026. No code change needed. (Priority 0)
+- **Position Sizing**: NVR at Quarter-Kelly (0.25×) — more conservative than Half-Kelly (0.5×) recommended by most 2026 research. Bitcoin 54% annualized volatility. TRENDING_DOWN=0.75 multiplier already applied. Already at optimal conservative calibration. (Impact 1, Complexity 1, Risk low, Priority 1.0) → No action.
+- **Competitive Intelligence**: AI-on-AI MEV arms race on Base accelerating (cryptollia.com 2026). MevX dominant multi-chain MEV bot. NVR already has sequencer-direct RPC + TWAP_TIMING_JITTER_PCT=20 for MEV protection. Quicknode MEV Protection + Gas Refund bundle could reduce gas waste but requires execution integration (off-limits). (Impact 2, Complexity 3, Risk medium, Priority 0.67) → Watch list. No action.
+
+## Watch List (for Henry's review)
+1. **Aerodrome "Aero" July 2026 merger**: Aerodrome + Velodrome merging into unified "Aero" platform. MEV-resistant pool migration underway. Bot should auto-benefit from routing improvements; watch for any routing contract address changes in Aerodrome docs that might need updating in `executeDirectDexSwap`.
+2. **Confluence scoring calibration**: Once API is accessible, compare NVR's 6-7 signal scenarios vs 9+ to validate current NORMAL_CONFLUENCE_BUY=27 positioning. If win rate is near 0.45, raising to 30+ could improve quality.
+3. **COHORT_PROPOSAL_2026-06-27.md**: Token scout proposal written to repo root — requires Henry's human review before any TOKEN_REGISTRY change.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
