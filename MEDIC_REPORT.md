@@ -1,6 +1,24 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-27T08:03 UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## ⚠️ CRITICAL GAP: 42-DAY ABSENCE FROM LAST LOGGED RUN
+
+Last documented run: **Run #34 — 2026-05-15T UTC** (42 days ago).
+Current date: **2026-06-27**. Token Scout is severely overdue (42 days vs 48h threshold).
+
+**Option B 30-day benchmark window** (2026-05-15 + 30 days) technically **closed ~2026-06-15**.
+The window has passed. Henry should review whether post-window rules now apply.
+
+## Jobs Status This Run (Run #35 — 2026-06-27T08:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). 42-day gap since last run. Bot health UNKNOWN.
+- **Scout**: OVERDUE (42 days since last scout on 2026-05-15) but CANNOT RUN — GeckoTerminal API blocked (403 policy denial). WebSearch available but returns only general ecosystem summaries — no verifiable per-pool liquidity/volume data to meet quality filter (>$100k liquidity, >$50k vol, >3 days old). Standards cannot be met without confirmed metrics. Scout skipped to avoid adding unverified tokens.
+- **Auditor**: CANNOT RUN — Bot API `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all blocked (403). Win rate, drawdown, losing streak unknown. Audit trigger evaluation impossible. No code changes made.
+
+---
+
+## Previous Run Status
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +84,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-27T08:03 UTC | **42-DAY GAP** — API unreachable (403). Scout 42d overdue but GeckoTerminal blocked (403). Auditor skipped (no trade data). Option B window closed ~2026-06-15. No code changes. |
 
 ## Bot Health Evidence (from git history)
 
@@ -205,15 +224,18 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**Run #35 (2026-06-27): 42-day gap since last run. Option B window closed ~2026-06-15. This is now the 35th consecutive run with the same network restriction.**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist** (fixes all three jobs permanently):
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
-2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
-3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+2. **Option B post-window review**: The 30-day benchmark window (2026-05-15→2026-06-15) has closed.
+   Decide whether to loosen the cohort-lock and automated-change rules now that the window is past.
+3. **Scout backfill**: TOKEN_REGISTRY last updated 2026-05-14 (MOLT). Base ecosystem has been
+   evolving for 42 days with no scout coverage. Manual review of GeckoTerminal trending pools recommended.
+4. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
+5. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
