@@ -1,3 +1,40 @@
+# MEDIC REPORT — 2026-06-28T19:05 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-28T19:05 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN — last scout was 2026-05-14 (MOLT added, >48h threshold). GeckoTerminal API blocked (403). WebSearch ran 4 searches. No new tokens found with verifiable metrics (liquidity >$100K, 24h vol >$50K, pool age >3 days not in TOKEN_REGISTRY). AERO +44% this week on Predictive Allocation announcement — already in registry. No COHORT_PROPOSAL warranted; cannot verify quality thresholds without GeckoTerminal API. Result: no qualifying tokens this scan — standards maintained.
+- **Auditor**: TRIGGERED by inferred ~80-day BEAR market (confirmed from public data: BTC $73K→$59K in June 2026, -18%; ETH $2,004→$1,636, -18%). Cannot access API for win_rate/drawdown/losing_streak. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: STALE_POSITION_MIN_AGE_HOURS 36→30 — 80-day bear; BTC -18% in June alone; $100+ positions flat for 1.25 days are dead money in deepened downtrend; accelerates Option B dry-powder replenishment. (Impact 3, Complexity 1, Risk low, Priority 3.0). IMPLEMENTED in constants.ts. Pushed to claude/cool-sagan-e7xcp6.
+
+## Auditor Research Summary (Run #35 — 2026-06-28)
+- **Signal Quality**: Best 2026 practice combines macro liquidity, market structure, on-chain health, derivatives positioning, and technical confluence. NVR's swarm agent already implements all layers. No new actionable signal. (Impact 2, Complexity 4, Priority 0.5) → No action.
+- **Execution Efficiency**: Aerodrome Predictive Allocation launching July 2026 — replaces weekly gauge voting with real-time prediction markets for liquidity incentives, 80% efficiency gain projected, AERO +22-44% on announcement. Bot auto-benefits from routing efficiency improvements at DEX level without code change. AERO already in registry; continued appreciation likely as July launch approaches. Watch: prediction market dynamics could inform a new pool-demand signal (Impact 3, Complexity 4, Priority 0.75) → watch list for Henry.
+- **Position Sizing**: Quarter-Kelly (0.25×) confirmed appropriate for extended bear. KEY FINDING: STALE_POSITION_MIN_AGE_HOURS 36→30 — consistent with bear-adjustment trend (48→36 at day 61, 36→30 at day 80). Guards (MAX_GAIN=1%, MAX_MOMENTUM=2%) prevent false exits. IMPLEMENTED. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: Aerodrome Predictive Allocation explicitly targets AI agents as primary beneficiaries — sophisticated traders who anticipate pool demand earn premium incentives. NVR's confluence + momentum scoring could eventually feed into prediction market positioning for AERO. (Impact 4, Complexity 4, Priority 1.0) → watch list for Henry.
+
+## Key Market Intelligence (June 2026)
+- BTC: $73,568 (June 1) → $59,334 (June 25) = -19.4% decline
+- ETH: $2,004 (June 1) → $1,636 (June 25) = -18.4% decline
+- Bear market cause: ETF outflows, potential CLARITY Act delay, money rotating to AI stocks
+- Base DEX volume: $931.9M in 24h (+68.39% single-day spike) — volatility, not recovery
+- AERO: +22-44% in June on Predictive Allocation announcement (stands out in bear)
+- Option B window ended ~2026-06-15; cohort still requires explicit human PR per CLAUDE.md
+
+## Recommended Action for Henry
+
+**Ongoing (Run #35, same as prior 34 runs):**
+1. **Add to Claude Code egress allowlist:**
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+2. **Review staged change**: `STALE_POSITION_MIN_AGE_HOURS` 36→30 on branch `claude/cool-sagan-e7xcp6`
+3. **Strategic alert**: Aerodrome Predictive Allocation launches July 2026 — AERO is already in registry and positioned for continued appreciation; NVR may benefit from the upgraded routing efficiency
+4. **Option B window closed**: ~2026-06-15 completed the 30-day benchmark. Manual cohort review can now proceed via explicit human PR if desired.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
