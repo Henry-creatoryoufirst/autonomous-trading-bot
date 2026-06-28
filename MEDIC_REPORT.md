@@ -1,4 +1,22 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-28T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Jobs Status This Run (Run #35+ — 2026-06-28T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from egress proxy). See "Recommended Action" below — this is the 44th day since last documented update, 75th+ day overall.
+- **Scout**: BLOCKED — Two reasons: (1) `api.geckoterminal.com` is blocked by egress proxy (cannot fetch pool liquidity/volume data to run quality filter); (2) CLAUDE.md Rule 1 prohibits `feat(scout): add` commits to TOKEN_REGISTRY. **The Option B benchmark window closed ~2026-06-15 (30 days from 2026-05-15).** The Scout has not run since 2026-05-14 (MOLT was the last scout add — 45 days ago, well past the 48h threshold). Henry needs to decide post-window policy: re-enable auto-discovery, or keep manual-PR-only.
+- **Auditor**: BLOCKED — Cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` due to egress proxy. Cannot evaluate trigger conditions (win_rate, drawdown, losing_streak, marketRegime). No research run this cycle.
+
+## ⚠️ Option B Window Closed — Action Required
+
+The 30-day Option B benchmark window (2026-05-15 → ~2026-06-15) has closed. CLAUDE.md Rule 1 was written as a "HARD rule during the 30-day Option B benchmark window" — the window is over. Key decisions needed:
+
+1. **Scout policy post-window**: Re-enable auto-discovery to TOKEN_REGISTRY, or keep human-PR-only? Scout is 45 days overdue.
+2. **Egress allowlist**: Still blocking all health monitoring. Medic has been blind since April 2026.
+3. **Auditor trigger**: Market conditions unknown for 44 days. If bot is underperforming, Auditor can't detect it.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
