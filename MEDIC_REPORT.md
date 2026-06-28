@@ -1,3 +1,36 @@
+# MEDIC REPORT — 2026-06-28T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-28T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — CLAUDE.md Rule 1 prohibits auto-adds to TOKEN_REGISTRY at all times (requires explicit human PR). GeckoTerminal API also blocked (403). Last successful scout that stuck: SYRUP 2026-05-08. Last scout attempt: 2026-05-16 (MOLT added → reverted per Rule 1). **NOTE: Option B benchmark window closed ~2026-06-15. Henry should now review TOKEN_REGISTRY additions via manual PR.**
+- **Auditor**: SKIPPED — cannot calculate trigger conditions (win_rate, drawdown, losing_streak) without API access.
+
+## Key Developments Since Last Run (#34 — 2026-05-15)
+
+1. **Option B benchmark window closed** (~2026-06-15). The 30-day window is complete. NVR should assess whether it outperformed cbBTC/WETH 60/40 by ≥5% annualized.
+2. **Scout has been idle 43 days** (since 2026-05-16 attempt was reverted). TOKEN_REGISTRY has not been updated since SYRUP was added 2026-05-08.
+3. **Market environment changed**: The 70-day bear documented in Run #34 (2026-05-15) may have shifted significantly. Without API access, cannot confirm current regime.
+4. **Aerodrome + Velodrome merge** into unified "Aero" DEX targeting Q2 2026/early July 2026. NVR routes through Aerodrome — bot auto-benefits from improved routing without code change.
+
+## Scout Research Summary (Run #35)
+
+GeckoTerminal API blocked (403). WebSearch only. Findings:
+
+| Candidate | Notes | Verdict |
+|-----------|-------|---------|
+| SOON/WETH | ~$96k liquidity (below $100k threshold per WebSearch estimate), small FDV $10.9M | REJECT — under liquidity floor |
+| VIRTUAL | Already in TOKEN_REGISTRY | SKIP |
+| AERO | Already in TOKEN_REGISTRY | SKIP |
+| VEIL | Previously attempted and reverted per Rule 1 | SKIP |
+| HYPE (Hyperliquid) | Not on Base chain | SKIP |
+
+No qualifying candidates found that meet all criteria AND can be verified. Due to CLAUDE.md Rule 1, any additions require Henry's explicit PR regardless.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
