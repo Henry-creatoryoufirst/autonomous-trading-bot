@@ -1,3 +1,34 @@
+# MEDIC REPORT — 2026-06-28T UTC (latest)
+
+## Jobs Status This Run (Run #51 — 2026-06-28T UTC)
+
+- **Medic**: PATTERN D — bot API 403 (persistent, 51 runs). `autonomous-trading-bot-production.up.railway.app` egress-blocked. Cannot assess error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #51).
+- **Scout**: GeckoTerminal blocked (403). WebSearch for B20 pool wave: **B20 targets stablecoin/RWA issuers (not retail tokens)** — Beryl upgrade live June 26 confirms B20 is institutional. No qualifying token candidates from web search (no pool-level liquidity/volume data accessible without GeckoTerminal API). Standards maintained.
+- **Auditor**: TRIGGERED — BEAR regime confirmed (BTC ~$60K, F&G 13-36 Fear/Extreme Fear; 9-month bear). Last auditor code change was Run #42 (VWS_PREFERRED 50K→75K). Four research searches completed. **IMPLEMENTED: `VWS_MIN_LIQUIDITY_USD` 20K→30K** — closes gap between min execution floor (was 20K, last adjusted May) and recently-raised preferred threshold (75K) and HOT_MOVER min (100K). In Extreme Fear, LP withdrawal accelerates below 30K; $20K pools carry 4-6× realized slippage vs bull. (Impact 3, Complexity 1, Risk low, Priority 3.0). Committed to `src/core/config/constants.ts`.
+
+## Henry's Action Items (Run #51)
+
+| Action | Priority |
+|--------|----------|
+| **AERO merger now imminent (early July)** — 94.5% AERO / 5.5% VELO split; new "Aero" contract address not yet published; update `token-registry.ts` AERO entry when MetaDEX03 contract goes live; check if router constant in `agent-v3.2.ts` needs update | 🔴 HIGH — days away |
+| Rebase staging on main → promote `baf25a5` dead-cash ratchet fix + auditor improvements (VWS_PREFERRED 75K, HOT_MOVER_LIQ 100K, CULL 48h, VWS_MIN 30K) | 🔴 HIGH — unmerged since May 28 |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🔴 HIGH — 13 days overdue |
+| **B20 token standard live** — targets stablecoin/RWA issuers; NVR's TOKENIZED_STOCKS sector may see new B20 entrants; monitor for first B20-native high-liquidity pools in coming weeks | 🟡 MED — ongoing |
+| Update CLAUDE.md — Option B window ended 2026-06-15; scout auto-add prohibition can be revisited | 🟡 MED — blocking full agent authority |
+| Merge PR #55 (sleeve state persistence) | 🟡 MED — tournament prerequisite |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 51 runs blind |
+
+## Auditor Research Summary (Run #51 — 2026-06-28)
+
+**Trigger**: Inferred BEAR/Extreme Fear (BTC ~$60K, F&G 13-36; 9-month bear since $126K Oct-2025 peak)
+
+- **Signal Quality**: On-chain analytics tools (Nansen, Arkham Intelligence, WalletFinder.ai) provide smart-money wallet clustering as pre-pump alpha signal. Already partially captured by LARGE_TRADE_THRESHOLD_USD=2500 whale flow. Full integration requires Nansen/Dune API access (Impact 3/Complexity 5/Risk med) → Watch list. (Priority 0.6)
+- **Execution Efficiency**: Aerodrome METADEX03 upgrade — MEV auctions embedded in Slipstream V3 router; ~0.3 ETH/day rerouted from sandwich bots to LPs/veAERO stakers; auto-benefits NVR routing without code change. AERO merger imminent (early July); router address will change — needs manual registry update. (Priority 0)
+- **Position Sizing**: KEY FINDING — `VWS_MIN_LIQUIDITY_USD` 20K→30K IMPLEMENTED. Quarter-Kelly KELLY_FRACTION=0.25 confirmed optimal (2026 professional standard); KELLY_POSITION_CEILING_PCT=12 calibrated. VWS_PREFERRED raised to 75K (Run #42) and HOT_MOVER_MIN_LIQUIDITY raised to 100K (Run #38) in June, but base floor VWS_MIN unchanged at 20K since May. In Extreme Fear (F&G<20), LP withdrawal accelerates to 4-6× bull-market rate; thin $20K-$30K pools fill poorly. 30K floor closes the gap. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+- **Competitive Intelligence**: AI-on-AI MEV arms race (cryptollia.com 2026) — CoW Protocol batch auctions making front-running ineffective; Velvet Capital DeFAI growing. MEV protection via sequencer-direct RPC already active in NVR. Intent-based routing requires off-limits executeDirectDexSwap changes → Watch list. (Priority 0)
+
+---
+
 # MEDIC REPORT — 2026-06-26T16:05 UTC (latest)
 
 ## Jobs Status This Run (Run #50 — 2026-06-26T16:05 UTC)

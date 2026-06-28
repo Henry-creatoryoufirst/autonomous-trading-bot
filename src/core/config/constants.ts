@@ -688,7 +688,7 @@ export const BREAKER_SIZE_REDUCTION_HOURS = 24;// Duration of post-breaker size 
 export const VWS_MAX_SPREAD_PCT = 0.5;             // Skip trade if VWS > 0.5%
 export const VWS_TRADE_AS_POOL_PCT_MAX = 5;        // Max trade size as % of pool liquidity
 export const VWS_TRADE_AS_POOL_PCT_WARN = 2;       // Warn if trade > 2% of pool
-export const VWS_MIN_LIQUIDITY_USD = 20_000;       // Bear-adjusted May-2026: 10K→20K — 63-day bear; $10K pools in sustained downtrends carry 2-3× realized slippage vs bull (LP withdrawal + thinner depth); $20K floor cuts the worst-slippage tail without significantly reducing trade count
+export const VWS_MIN_LIQUIDITY_USD = 30_000;       // Extreme-Fear-adjusted Jun-2026: 20K→30K — 9-month bear, F&G 13 (Extreme Fear); LP withdrawal accelerates in Extreme Fear regimes; VWS_PREFERRED=75K + HOT_MOVER_MIN_LIQ=100K raised Jun-2026 — base floor now aligned; $20K pools in Extreme Fear carry 4-6× realized slippage vs bull
 export const VWS_PREFERRED_LIQUIDITY_USD = 75_000; // Bear-adjusted Jun-2026: 50K→75K — 9-month bear; LP withdrawal thins pools; aligns full-size trade threshold with bear-market liquidity reality; pools $50K-$75K get 50% size reduction (VWS_THIN_POOL_SIZE_REDUCTION=0.5); HOT_MOVER_MIN_LIQUIDITY is already $100K — this raises execution bar for existing-registry positions to match
 export const VWS_THIN_POOL_SIZE_REDUCTION = 0.5;   // 50% size cut for pools between min and preferred
 
