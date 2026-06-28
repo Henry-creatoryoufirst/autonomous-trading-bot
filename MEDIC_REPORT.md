@@ -90,6 +90,17 @@ Because the API is unreachable, the medic cannot determine:
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
 
+## Jobs Status This Run (Run #39 — 2026-06-28T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent, 39 consecutive runs since 2026-04-14). Both `autonomous-trading-bot-production.up.railway.app` and `api.geckoterminal.com` return 403 via egress proxy.
+- **Scout**: SKIPPED — GeckoTerminal API blocked + CLAUDE.md Rule 1 still in effect. 34 days since last scout (2026-05-25). B20 tokens on Base now ≥3 days old (crossed pool-age filter today, June 28). Manual check at geckoterminal.com/explore/new-crypto-pools/base recommended.
+- **Auditor**: SKIPPED — all bot portfolio endpoints unreachable; no trigger metrics available.
+
+### New findings Run #39
+- **PR #55** (sleeve state persistence, `fix/sleeve-state-persistence`) open and unmerged for **30 days** (filed 2026-05-29). Risks sleeve track records resetting on next Railway redeploy, blocking the strategy tournament (SPEC-038).
+- **PR #11** (funding rate monitor, `feat/spec-034-phase-1a-funding-monitor`) open and unmerged for **43 days** (filed 2026-05-16).
+- Bot has been in full USDC for **31 days** since the `/api/admin/liquidate-all` on 2026-05-28 (PR #54). Unknown whether it has re-entered positions.
+
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
 - **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #34).
