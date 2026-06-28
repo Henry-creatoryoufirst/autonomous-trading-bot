@@ -154,7 +154,7 @@ export const PRICE_CHANGE_THRESHOLD = 0.02; // 2%
 export const FG_CHANGE_THRESHOLD = 5; // 5 points
 
 /** Volume spike threshold (multiple of 7-day average) to trigger heavy cycle */
-export const VOLUME_SPIKE_THRESHOLD = 2.0;
+export const VOLUME_SPIKE_THRESHOLD = 2.5; // Extreme-Fear-adjusted Jun-2026: 2.0→2.5 — 9-month bear, F&G 17-36; 2× spikes in Extreme Fear are MEV liquidation/panic-sell noise; 2.5× isolates genuine demand signal
 
 // ============================================================================
 // v6.2: ADAPTIVE CYCLE ENGINE — Dynamic tempo based on market conditions
