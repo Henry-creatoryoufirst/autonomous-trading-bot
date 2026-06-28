@@ -1,3 +1,50 @@
+# MEDIC REPORT — 2026-06-28T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
+
+## Jobs Status This Run (2026-06-28T ~05:15 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Same issue as Run #34 (2026-05-15). **This is now 44+ days without resolution** — the Option B 30-day window closed ~2026-06-15 but bot health remains unverifiable.
+- **Scout**: OVERDUE — last scout commit 2026-05-25 (34 days ago, well past 48h threshold). RAN research. All on-chain data APIs (GeckoTerminal, DexScreener, CoinGecko) blocked by proxy (403). WebSearch returned general market data but no specific candidates with verifiable on-chain metrics (liquidity/volume/pool-age). **No qualifying tokens identified — data sources unavailable.** (Per CLAUDE.md Rule 1: any scout proposals go to COHORT_PROPOSAL, not TOKEN_REGISTRY, until Henry explicitly reviews.)
+- **Auditor**: API BLOCKED — cannot retrieve win_rate, drawdown, or losing_streak to check trigger conditions. Research runs completed (4 searches). Top findings below. Per job spec, NO implementation without confirmed trigger conditions.
+
+## Auditor Research Findings (2026-06-28)
+
+### Signal Quality
+- 9+/12 confluent indicators → 68–72% win rate vs 55–62% with 6–7/12 (source: walletfinder.ai, trendrider.net)
+- Current bot: `confluenceBuy: 8` (default). Raising to 10 could improve precision at cost of trade frequency.
+- Impact 3/5, Complexity 1/5, Risk low — **Priority 3.0** (meets ≥2.0 threshold)
+- **NOT implemented** — trigger conditions (win_rate, drawdown, streak) could not be verified.
+
+### Execution Efficiency — KEY FINDING for Henry
+- **Aerodrome "Aero" METADEX03 upgrade (Nov 2025)**: Merged Aerodrome + Velodrome into "Aero", introducing Slipstream V3 with **embedded MEV auctions** that internalize extractable value to veAERO holders instead of arbitrage bots. Industry's first DEX-level MEV capture.
+- Source: [CoinDesk Nov 2025](https://www.coindesk.com/tech/2025/11/13/leading-base-dex-aerodrome-merges-into-aero-in-major-overhaul), [The Block](https://www.theblock.co/post/378634/aerodrome-upgrades-evm-extensions-circles-arc-metadex)
+- **Action item**: Henry should verify NVR's Aerodrome router address is the new SlipStream V3 router (not the old V2 address). The Nov 2025 upgrade may have changed router addresses. Bot currently uses `0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5` (from BaseScan results).
+- Impact 3/5, Complexity 4/5 (router address change is consequential) — **NOT auto-implemented, watch list**.
+
+### Position Sizing
+- Quarter-Kelly (0.25×) remains confirmed optimal for crypto volatility in 2026. Current `KELLY_FRACTION = 0.25` is already correctly calibrated.
+- 2026 research mentions multi-agent Kelly yielding 20-30% better Sharpe — requires deep architectural change, not auto-implementable.
+- No new action. **Priority 0**.
+
+### Competitive Intelligence
+- MEV protection via private relay / intent-based execution (1inch, CoW Protocol) gaining adoption (34%+ DEX aggregator share). Architecture requires touching `executeDirectDexSwap` (off-limits).
+- QuickNode's Base DeFi Power Bundle offers MEV protection + gas refund for Telegram bots — structural reference, not directly applicable.
+- **Watch list for Henry**: Intent-based routing upgrade could meaningfully reduce sandwich exposure.
+
+## Outstanding Recommendations for Henry (Urgent — now 44 days outstanding)
+
+1. **Add to Claude Code egress allowlist** (blocks Medic + Scout every run):
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+   - `api.dexscreener.com`
+   - `api.coingecko.com`
+2. **Verify Aerodrome router address** is updated to the Aero/Slipstream V3 router (post-Nov 2025 METADEX03 upgrade)
+3. **Option B window closed ~2026-06-15** — consider whether to continue enforcing cohort lock or open the next rotation
+4. **Scout backlog**: 34 days since last scout — consider running manually or resolving proxy access so agent can resume
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
