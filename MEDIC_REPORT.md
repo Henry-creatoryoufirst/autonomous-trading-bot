@@ -215,10 +215,31 @@ Because the API is unreachable, the medic cannot determine:
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
 4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
+## Jobs Status This Run (Run #35 — 2026-06-28T00:10 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on railway.app + geckoterminal.com). MEDIC_REPORT updated (Run #35). Gap since last run: ~43 days.
+- **Scout**: DUE (last scout commit 2026-05-25, 33 days ago — past 48h threshold). GeckoTerminal blocked. WebSearch partial scan: AERO surged 44% week of 2026-06-21, Predictive Allocation upgrade launching July 2026, Aerodrome+Velodrome merger into "Aero" in July 2026. No new Base tokens identified meeting quantitative quality bar (WebSearch only, no pool liquidity/volume data available). Additionally, CLAUDE.md Rule 1 remains active: cohort locked until explicit human PR — even post Option-B window (ended ~2026-06-15).
+- **Auditor**: SKIPPED — cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, or `/api/adaptive`; no win_rate, drawdown, or losing streak data available. Cannot evaluate trigger conditions.
+
+## Key Post-Option-B Notes (for Henry)
+
+The 30-day Option B benchmark window ended ~2026-06-15 (13 days ago). The agent has been unable to run for ~43 days due to network egress restriction. During this gap:
+- No bot health checks were performed
+- No scout runs occurred
+- No auditor tuning occurred
+- TOKEN_REGISTRY was not modified (cohort remained locked)
+
+**Recommended immediate actions:**
+1. Unblock egress to `autonomous-trading-bot-production.up.railway.app` + `api.geckoterminal.com` in the agent environment network policy
+2. Manually check bot health at https://autonomous-trading-bot-production.up.railway.app/health
+3. Decide whether to open the cohort for human-PR-reviewed additions now that Option B window is closed
+4. Review AERO Predictive Allocation upgrade (July 2026) — Aerodrome pool incentives model is changing, which may affect AERO's behavior in the registry
+
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
 
 ## Safety
 - No changes to agent-v3.2.ts
 - No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- No TOKEN_REGISTRY changes
+- MEDIC_REPORT.md updated; committed to claude/cool-sagan-v33t5o (per session branch rules, not staging)
