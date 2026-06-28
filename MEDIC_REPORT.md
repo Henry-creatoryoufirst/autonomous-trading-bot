@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-28T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -89,6 +89,24 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-28T UTC)
+
+⚠️ **OPTION B WINDOW ENDED ~2026-06-15** — The 30-day benchmark window (2026-05-15 → 2026-06-15) has closed. Cohort lock from CLAUDE.md ground rules has lapsed; cohort changes now require human PR review but are no longer blocked by the window rule. Scout has been overdue since 2026-05-14 (MOLT) — 45 days ago, far exceeding the 48h threshold.
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints from proxy policy). MEDIC_REPORT updated (Run #35).
+- **Scout**: CANNOT RUN — 48h threshold exceeded (last valid scout: MOLT added 2026-05-14, 45 days ago). GeckoTerminal (`api.geckoterminal.com`) also blocked by network policy. Scout is overdue by ~43 days and requires egress allowlist fix to resume.
+- **Auditor**: CANNOT RUN — bot API blocked; cannot fetch `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` to calculate win_rate, drawdown, or losing_streak trigger conditions.
+
+### Notable git activity since Run #34 (2026-05-15 → 2026-06-28):
+- `v21.30.0` deployed — INV-1 round 5 (cost-basis tracker aligned to wallet truth)
+- `feat(admin)` — `/api/admin/liquidate-all` operator forced full-exit endpoint added
+- `feat(execution)` — `HOLD_ONLY_TOKENS` feature — skips trade execution on thin-liquidity cohort tokens (unblocks cbLTC)
+- `feat(spec-035)` — INV-1/9/10/11 invariant spec fixes across 5 PRs
+- `feat(spec-036)` — MirrorAgent wired into heavy-cycle prompt (Phase 1)
+- `feat(spec-035)` — Anthropic Files API for auditor persistence (survives Railway redeploys)
+- `feat(tooling)` — SDK 0.97 upgrade + heavy-cycle prompt caching telemetry
+- `feat(spec-034)` — Phase 1a funding-arb paper sleeve scaffold
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,15 +223,17 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. URGENT — Scout is 45 days overdue:**
 
-1. **Add to Claude Code egress allowlist:**
+1. **Add to Claude Code egress allowlist (run #35 — still blocked):**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Option B window ended ~2026-06-15** — cohort lock has lapsed; Scout can now propose new tokens via human-reviewed PRs
+5. **Scout is 45 days overdue** — last valid scout: MOLT (2026-05-14). Run manually or fix the egress allowlist.
+6. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
