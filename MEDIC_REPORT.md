@@ -1,4 +1,55 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-28T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-28T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: DUE (last scout 2026-05-14, MOLT; 45 days elapsed). Ran WebSearch research — GeckoTerminal API also blocked (403), preventing pool address + liquidity data retrieval. WebSearch surfaced Lighter (LIT), Seeker (SKR), Sentient (SENT) as trending new launches in June 2026, but no verified Base contract addresses with on-chain liquidity data. **Per CLAUDE.md Rule 1, TOKEN_REGISTRY additions require explicit human PR** — no additions made. Candidates flagged for Henry's review below.
+- **Auditor**: Trigger conditions cannot be checked (API blocked). Research performed on all 4 axes. Key finding: **Option B 30-day window completed ~2026-06-15** (13 days ago) — strategic review milestone for Henry. Regime-aware Kelly sizing is the top research finding (already well-implemented). Aerodrome METADEX03 MEV auction router upgrade is a new signal (Slipstream V3). No auto-implementation (can't verify trigger conditions). Research summary below.
+
+## Scout Research — June 2026 Candidates (for Henry's review)
+
+Per CLAUDE.md Rule 1 (cohort locked, changes require human PR), these are proposals only:
+
+| Token | Category | Notes | Status |
+|-------|----------|-------|--------|
+| Lighter (LIT) | DeFi/Infra | Decentralized trading infrastructure; trending June 2026. No Base address verified. | Watch list |
+| Seeker (SKR) | Mobile/Social | Crypto-native mobile; trending. No verified Base address or liquidity data. | Watch list |
+| Sentient (SENT) | AI Tokens | Decentralized AI; trending. No Base address confirmed. | Watch list |
+
+None of the above could be verified against the 4 Scout quality filters (liquidity >$100K, 24h vol >$50K, pool age >3 days, not already in registry) due to blocked GeckoTerminal API. Henry should check GeckoTerminal directly before any PR.
+
+## Auditor Research Summary (Run #35 — 2026-06-28)
+
+### Signal Quality (Impact 3, Complexity 4, Priority 0.75) — No action
+- 9+ indicator confluence systems report 68–72% win rate vs 55–62% for 6–7 indicators.
+- Smart money wallet clustering (Nansen-style) adds alpha above technical indicators alone.
+- NVR already captures whale flow via LARGE_TRADE_THRESHOLD_USD=2500. Full on-chain integration remains complex. Watch list.
+
+### Execution Efficiency (Impact 2, Complexity 2, Priority 1.0) — Watch list
+- **NEW**: Aerodrome Slipstream METADEX03 upgrade embeds MEV auctions directly into V3 router, diverting sandwich/arbitrage profits back to LPs and veAERO stakers.
+- Base G89 "Flashblocks" (200ms, Oct 2025) means trades settle faster — NVR already benefits.
+- Slipstream V3 router on Basescan: `0xbe6d8f0d05cc4be24d5167a3ef062215be6d18a5`
+- Henry: confirm bot routes through the V3 router to capture METADEX03 MEV rebates. (Touches execution path — off-limits for auto-implementation.)
+
+### Position Sizing (Impact 4, Complexity 2, Priority 2.0) — No action (trigger unverifiable)
+- Regime-aware Kelly: size up in favorable conditions, reduce in VOLATILE/BEAR via BTC dominance tracking.
+- Volatility-adjusted formula: Expected Return ÷ Variance — higher-vol assets get smaller allocation even with strong edge.
+- **NVR already implements this**: KELLY_FRACTION=0.25 (Quarter-Kelly) + KELLY_POSITION_CEILING_PCT=12 + TRENDING_DOWN×0.75. Well-calibrated. No new lever needed.
+- Priority 2.0 qualifies for auto-implementation, but cannot verify trigger conditions this run (API blocked).
+
+### Competitive Intelligence (Impact 3, Complexity 4, Priority 0.75) — Watch list
+- 2026 "pro" bots use specialized multi-agent architecture: Analyst → Auditor → Executor.
+- NVR already has equivalent via sleeves + risk-reviewer + adversarial AI review.
+- Hard position limits ("5% of total balance") are now industry standard — NVR enforces via Kelly ceiling.
+- No new actionable pattern found.
+
+## Option B Window Milestone
+
+The Option B benchmark window (2026-05-15 to ~2026-06-15) has now completed. Today is 2026-06-28. **Henry: this is the trigger for the post-window review** — compare NVR performance vs cbBTC/WETH 60/40 benchmark over the window period to determine if the ≥5% annualized outperformance threshold was met.
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
