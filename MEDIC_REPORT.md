@@ -1,4 +1,4 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-29T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-29T UTC | Scout overdue (46d since MOLT) but GeckoTerminal also blocked. Auditor blocked (all APIs 403). Option B window ended ~2026-06-15 — review required. All 3 jobs blocked by proxy egress policy. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,13 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-29T15:xx UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: BLOCKED — last scout ran 2026-05-14 (MOLT added), 46 days ago (>48h threshold). However GeckoTerminal API also returns 403 from this environment, so no pool data is fetchable. Additionally CLAUDE.md Rule 1 prohibits auto-TOKEN_REGISTRY additions; even post-Option-B-window, additions require explicit human PR review. Scout cannot proceed.
+- **Auditor**: BLOCKED — all bot API endpoints (trades, portfolio, patterns, adaptive) return 403 from this environment. Cannot calculate win_rate, drawdown, or losing_streak. Cannot determine if audit trigger conditions are met.
+- **ACTION NEEDED**: Option B 30-day benchmark window started 2026-05-15 and ended ~2026-06-15. As of 2026-06-29 we are 14 days **post-window**. Henry should review Option B benchmark results. Scout is 46 days overdue. All three jobs require either (a) proxy allowlist expansion to include `*.railway.app` and `api.geckoterminal.com`, or (b) migration of monitoring agent to an environment with unrestricted egress.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
