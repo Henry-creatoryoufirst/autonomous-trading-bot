@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-29T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-29T~19:00 UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-6ec41j
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-29T~19:00 UTC | Scout ran (44 days since MOLT) — GeckoTerminal + CoinGecko blocked, WebSearch produced no qualifying new candidates; no registry changes. Auditor triggered (June bear leg: BTC $59K -19%, ETH $1.56K -22%, lowest since 2024, $2.97B ETF outflows). BREAKER_DAILY_DD_PCT 7→6 — bear deepened materially since Apr adjustment; industry practice 5-6%; earlier circuit breaker protects against accelerating losses in new bear leg. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-29T~19:00 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35). Note: no staging branch in this checkout; changes pushed to `claude/cool-sagan-6ec41j` per CLAUDE.md Rule 2.
+- **Scout**: RAN (last scout was MOLT 2026-05-14, 44+ days ago). GeckoTerminal API blocked (403), CoinGecko API blocked (403). WebSearch returned no new qualifying Base token candidates — only confirmed tokens already in TOKEN_REGISTRY (VIRTUAL, AIXBT, LUNA, GAME, TIBBIR, ETHY, AXR). No registry changes. Standards maintained.
+- **Auditor**: TRIGGERED by confirmed deepening BEAR market. June 2026 bear leg: BTC $59,334 (-19% in June, lowest since 2024); ETH $1,561 (-22% in June); $2.97B BTC ETF outflows; CLARITY Act delay; capital rotation from crypto to AI stocks. Research ran 4 searches. Top finding: BREAKER_DAILY_DD_PCT 7→6 — bear materially deeper since Apr (8→7) adjustment; industry practice 5-6%; June bear leg increases probability of multi-percent daily drawdowns, earlier circuit breaker protects against cascading losses. IMPLEMENTED in constants.ts. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-29)
+- **Signal Quality**: 9+ indicator confluence gives 68-72% win rate (vs 55-62% for 6-7/12); Nansen AI 500M+ labeled addresses. NVR already has multi-signal confluence. Full smart-money on-chain integration complex (Impact 2/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.5)
+- **Execution Efficiency**: Aerodrome Predictive Allocation launches July 2026, projects 80% efficiency gains. Bot auto-benefits from DEX-level improvement without code change. Aerodrome+Velodrome merger into unified Aero DEX also upcoming. No code action needed. (Priority 0 — passive gain)
+- **Position Sizing**: KEY FINDING — Risk-constrained Kelly: "reduced position sizing during losing streaks significantly improves long-term outcomes." Industry practice is 5-6% daily DD threshold (current was 7%). BREAKER_DAILY_DD_PCT 7→6 completes the bear calibration. (Impact 3, Complexity 1, Risk low, Priority 3.0) IMPLEMENTED.
+- **Competitive Intelligence**: Grid/futures-grid strategies optimal in ranging volatile bear markets. Requires execution-path changes (off-limits). ElizaOS, ARMA (Giza yield optimizer) — architectural, not actionable here. Production agents combine ML+LLM+deterministic rules — already NVR's pattern. No new actionable change. (Priority 0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
@@ -205,20 +218,21 @@ Because the API is unreachable, the medic cannot determine:
 
 ## Recommended Action for Henry
 
-**This is now the 31st consecutive run with the same network restriction. Urgent:**
+**This is now the 35th consecutive run with the same network restriction. Urgent:**
 
 1. **Add to Claude Code egress allowlist:**
    - `autonomous-trading-bot-production.up.railway.app`
    - `api.geckoterminal.com`
+   - `api.coingecko.com`
    - `api.dexscreener.com`
 2. **Or** expose a lightweight read-only status endpoint on an already-allowed domain
 3. **Manually verify bot health:** https://autonomous-trading-bot-production.up.railway.app/health
-4. **Consider staging promotion:** `./scripts/deploy/stage.sh` → verify → `./scripts/deploy/promote.sh`
+4. **Consider merging `claude/cool-sagan-6ec41j` → staging:** `BREAKER_DAILY_DD_PCT` has been lowered to 6% (from 7%) to respond to the June 2026 bear leg. Review and promote when convenient.
 
 ## Pattern Classification
 PATTERN D — Unknown / Cannot Assess (API unreachable — persistent environmental constraint, not a trade-error pattern)
 
-## Safety
+## Safety (Run #35)
 - No changes to agent-v3.2.ts
-- No production changes
-- MEDIC_REPORT.md conflict resolved; committed to staging only
+- Only `src/core/config/constants.ts` changed (1 line: BREAKER_DAILY_DD_PCT 7→6)
+- Pushed to `claude/cool-sagan-6ec41j` (NOT staging or main) per CLAUDE.md Rule 2
