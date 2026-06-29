@@ -1,5 +1,27 @@
 # MEDIC REPORT — 2026-06-29T UTC (latest)
 
+## Jobs Status This Run (Run #53 — 2026-06-29T UTC)
+
+- **Medic**: PATTERN D — bot API 403 (persistent, 53 runs). `autonomous-trading-bot-production.up.railway.app` egress-blocked. Cannot assess error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #53).
+- **Scout**: SKIPPED — last scout ran 2026-06-28 (<48h ago). VELVET proposal (8.75/10) still pending Henry's review.
+- **Auditor**: SKIPPED — API unavailable for trigger-condition check. Web search confirmed: **AERO merger still no new contract address as of June 29 afternoon UTC.** Current router `0x940181a94A35A4569E4529A3CDfB74e38FD98631` remains valid. Merger still targeting July 2026 (Phemex, Ainvest). No new actionable findings since Run #52.
+
+## Henry's Action Items (Run #53)
+
+| Action | Priority |
+|--------|----------|
+| **AERO merger imminent (July 2026)** — no contract address yet; when published, update `token-registry.ts` AERO entry + verify router constant in `agent-v3.2.ts` stays valid | 🔴 HIGH — imminent |
+| Rebase staging on main → promote dead-cash ratchet fix + auditor improvements (VWS_PREFERRED 75K, HOT_MOVER_LIQ 100K, CULL 48h, VWS_MIN 30K, VOLUME_SPIKE 2.5) | 🔴 HIGH — unmerged since May 28 |
+| Review Option B cohort performance vs cbBTC/WETH 60/40 benchmark (window closed June 15) | 🔴 HIGH — 14 days overdue |
+| Review VELVET scout proposal (June 28) — `feat(scout): candidate proposal 2026-06-28` on staging | 🟡 MED — pending human review |
+| Update CLAUDE.md — Option B window ended 2026-06-15; scout auto-add prohibition + agent rules need revision | 🟡 MED — blocking full agent authority |
+| Merge PR #55 (sleeve state persistence) | 🟡 MED — tournament prerequisite |
+| Add egress: `autonomous-trading-bot-production.up.railway.app`, `api.geckoterminal.com` | 🟢 LOW — 53 runs blind |
+
+---
+
+# MEDIC REPORT — 2026-06-29T UTC (latest)
+
 ## Jobs Status This Run (Run #52 — 2026-06-29T UTC)
 
 - **Medic**: PATTERN D — bot API 403 (persistent, 52 runs). `autonomous-trading-bot-production.up.railway.app` egress-blocked. Cannot assess error rates, balances, or circuit breakers. MEDIC_REPORT updated (Run #52).
