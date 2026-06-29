@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-29T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35+)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-29T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-gb1y2u
 
 ## Problem
 
@@ -89,6 +89,12 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35+ — 2026-06-29T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated.
+- **Scout**: CANNOT RUN — GeckoTerminal API (api.geckoterminal.com) also blocked by egress policy. Last scout-added token: MOLT (2026-05-14). OPENX+VEIL (2026-05-16) were added then reverted. Scout has not successfully placed a durable token add in 46+ days. NOTE: Option B window ended ~2026-06-15 (14 days ago) — cohort lock (CLAUDE.md Rule 1) still in effect until Henry explicitly removes it.
+- **Auditor**: CANNOT RUN — Railway bot API blocked; cannot fetch trading metrics (win_rate/drawdown/streak). Last auditor tuning: Run #34 (2026-05-15), HOT_MOVER_MIN_FDV_USD 500K→1M. No changes pushed this run.
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
