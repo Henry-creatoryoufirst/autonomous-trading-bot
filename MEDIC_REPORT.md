@@ -1,12 +1,12 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-29T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
-- Run timestamp: 2026-05-07T04:05 UTC
+- Run timestamp: 2026-06-29T UTC
 - Medic agent: NVR Capital autonomous agent (hourly run)
 - Working directory: /home/user/autonomous-trading-bot
-- Current branch: staging
+- Current branch: claude/cool-sagan-bliy4l
 
 ## Problem
 
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-29T UTC | Scout skipped (GeckoTerminal API blocked by proxy policy); auditor raised HOT_MOVER_COOLDOWN_MS 25→30 min — Coinbase AI agent launched Jun-11-2026 + AI-on-AI MEV research confirms intensified bot competition for Base hot movers; 30-min cooldown prevents NVR chasing AI-coordinated micro-pumps before price discovery resolves |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,18 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-29T UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — last scout ran 2026-05-16 (MOLT, 44 days ago); GeckoTerminal API also blocked by proxy policy — cannot fetch pool data even though 48h threshold exceeded.
+- **Auditor**: TRIGGERED by inferred 114-day bear + competitive regime intensification. Research ran 4 searches (signal quality, execution efficiency, position sizing, competitive intel). Top finding: HOT_MOVER_COOLDOWN_MS 25→30 min — Coinbase AI agent launched Jun-11-2026 (cryptodaily.co.uk) + MEXC 2026 AI-on-AI MEV report confirms intensified bot competition for Base hot movers; 30-min cooldown prevents NVR chasing AI-coordinated micro-pumps before price discovery resolves. IMPLEMENTED in constants.ts. (Impact 2, Complexity 1, Risk low, Priority 2.0)
+
+## Auditor Research Summary (Run #35 — 2026-06-29)
+- **Signal Quality**: AI agents now use social graph scanning (X, Farcaster, Lens) for early trend detection. Already partially implemented via whale-flow tracking (LARGE_TRADE_THRESHOLD_USD=2500). Full social-graph integration complex (Impact 3/Complexity 4/Risk medium) → Watch list. No new action. (Priority 0.75)
+- **Execution Efficiency**: Aerodrome/Velodrome protocols set to merge in 2026; Slipstream smart-routing auto-benefits NVR at DEX level. TWAP execution splits already implemented. No code change needed. (Priority 0)
+- **Position Sizing**: 2026 research confirms Quarter-Kelly (0.25×) optimal for crypto; fractional Kelly between 10-25% recommended. NVR already at KELLY_FRACTION=0.25 + KELLY_POSITION_CEILING_PCT=12 + TRENDING_DOWN×0.75. Dynamic edge adjustment (Bitcoin dominance as regime signal) too complex for 10-line patch. No new action. (Priority 0.5)
+- **Competitive Intelligence**: KEY FINDING — Coinbase launched AI agent for autonomous spot/derivatives trading June 11, 2026 (cryptodaily.co.uk); Agentic.Market/x402 volumes concentrate USDC on Base; MEXC 2026 confirms AI-on-AI MEV competition intensifying. HOT_MOVER_COOLDOWN_MS 25→30 min closes the gap where NVR could re-enter an AI-pumped token within a single Aerodrome LP rebalancing cycle (~25 min). IMPLEMENTED. (Impact 2, Complexity 1, Risk low, Priority 2.0)
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 

@@ -744,7 +744,7 @@ export const HOT_MOVER_MIN_LIQUIDITY_USD = 75_000;
 export const HOT_SCAN_INTERVAL_MS = 90_000;
 
 /** Cooldown per token after it fires a hot mover alert — prevents spam re-alerting */
-export const HOT_MOVER_COOLDOWN_MS = 25 * 60 * 1000;
+export const HOT_MOVER_COOLDOWN_MS = 30 * 60 * 1000; // Competitive-adjusted Jun-2026: 25→30 min — Coinbase AI agent (Jun-11-2026) + MEXC AI-on-AI MEV research confirm intensified bot competition for Base hot movers; 30-min cooldown prevents NVR from chasing AI-coordinated micro-pumps before price discovery resolves
 
 /** When hot movers are detected, override adaptive cycle to run within this many ms */
 export const HOT_MOVER_URGENT_CYCLE_MS = 90_000;
