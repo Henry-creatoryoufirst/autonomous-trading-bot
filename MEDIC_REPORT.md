@@ -1,6 +1,6 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-29T (latest) UTC
 
-## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
 
 ## Environment
 - Run timestamp: 2026-05-07T04:05 UTC
@@ -66,6 +66,7 @@ The Claude Code execution sandbox has an **egress proxy** that only allows outbo
 | #32 | 2026-05-07T04:05 UTC | Scout skipped (cbADA at 05:08 UTC 2026-05-05, ~47h ago, <48h threshold); auditor raised SCOUT_UPGRADE_BUY_RATIO 55→60 — 62-day bear; aligns scout graduation with HOT_MOVER_MIN_BUY_RATIO (60) and SCALE_UP_BUY_RATIO_MIN (60); Kelly criterion research confirms new/uncertain positions require stronger confirmation in bear regimes |
 | #33 | 2026-05-08T UTC | Scout added SYRUP; auditor lowered CASH_DEPLOYMENT_CONFLUENCE_DISCOUNT 20→15 + raised VWS_MIN_LIQUIDITY_USD 10K→20K (63-day bear; bear slippage floor + capital preservation) |
 | #34 | 2026-05-15T UTC | Scout skipped (MOLT added 2026-05-14, ~24h ago, <48h threshold); auditor raised HOT_MOVER_MIN_FDV_USD 500K→1M — 70-day bear; MEV bots dominate micro-cap Base pumps; completes quality-gate set (pool age ✓, volume ✓, FDV ✓) |
+| #35 | 2026-06-29T18:xx UTC | Option B window ended ~2026-06-15 (107-day bear: BTC $59.5K, ETH $1.57K). Proxy blocks Railway API + GeckoTerminal + DexScreener — medic and scout cannot access live data (persistent infrastructure constraint). Auditor TRIGGERED: TWAP_TIMING_JITTER_PCT 20→30 — competitive intel confirms two Base MEV searchers absorb >50% network gas; wider TWAP jitter reduces front-running predictability. Scout SKIPPED: all token data APIs blocked by network policy. |
 
 ## Bot Health Evidence (from git history)
 
@@ -89,6 +90,20 @@ Because the API is unreachable, the medic cannot determine:
 - Whether any error pattern (A/B/C) is active in `recentFailedTrades`
 - Whether all circuit breakers are blocked
 - Current portfolio balance, P&L, or win rate
+
+## Jobs Status This Run (Run #35 — 2026-06-29T18:xx UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). Proxy policy blocks `autonomous-trading-bot-production.up.railway.app`. MEDIC_REPORT updated (Run #35).
+- **Scout**: SKIPPED — proxy policy blocks `api.geckoterminal.com` and `api.dexscreener.com`. Cannot evaluate any candidates. Last scout was 2026-05-14 (MOLT, ~45 days ago — well past the 48h threshold but technically blocked this run). Note: Option B window ended ~2026-06-15; COHORT_QUALITY_7 lock expired but token data APIs are inaccessible anyway.
+- **Auditor**: TRIGGERED by inferred 107-day BEAR market (BTC $59,500, ETH $1,570, declining since mid-June, DeFi TVL down 37% in 2026). Ran 4 searches. Top finding: TWAP_TIMING_JITTER_PCT 20→30 IMPLEMENTED (Impact 3, Complexity 1, Risk low, Priority 3.0).
+
+## Auditor Research Summary (Run #35 — 2026-06-29)
+- **Signal Quality**: Multi-layer confluence (macro liquidity, market structure, on-chain, derivatives, technical) — already implemented. AI-assisted trading 34% ROI vs 29% fully-automated (research confirms value of Claude supervision layer NVR already has). No new actionable change. (Priority 0)
+- **Execution Efficiency**: Aerodrome Slipstream v3 introduced internal MEV auctions that route MEV revenue to token operators + LPs — NVR auto-benefits via DEX-level routing without code change. Aerodrome/Velodrome Aero merger planned July 2026 — further auto-benefit. No new action. (Priority 0)
+- **Position Sizing**: Quarter-Kelly (0.25×) still confirmed as optimal crypto bear market sizing. Fractional Kelly 10-25% is the professional standard — NVR already at KELLY_FRACTION=0.25 + KELLY_POSITION_CEILING_PCT=12. No new action. (Priority 0)
+- **Competitive Intelligence**: KEY FINDING — "On Base (OP-Stack rollups), two searchers alone absorb over half of the new gas capacity, driving a persistent fee floor" (QuickNode 2026). MEV competition on Base has intensified significantly. TWAP_TIMING_JITTER_PCT 20→30 IMPLEMENTED — widens random timing window from ±2.4s to ±3.6s on 12s slices, reducing predictability to front-running bots. Slipstream v3 internal MEV auctions complement at DEX layer. (Impact 3, Complexity 1, Risk low, Priority 3.0)
+
+---
 
 ## Jobs Status This Run (Run #34 — 2026-05-15T UTC)
 
