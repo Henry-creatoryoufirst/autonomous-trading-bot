@@ -1,4 +1,38 @@
-# MEDIC REPORT — 2026-05-15T (latest) UTC
+# MEDIC REPORT — 2026-06-29T (latest) UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #40)
+
+## Jobs Status This Run (Run #40 — 2026-06-29T UTC)
+
+- **Medic**: PATTERN D — API unreachable (40th consecutive run; egress proxy 403 for `autonomous-trading-bot-production.up.railway.app`). MEDIC_REPORT updated (Run #40).
+- **Scout**: BLOCKED — GeckoTerminal (`api.geckoterminal.com`) blocked by same egress policy. Scout is 35 days overdue (last run: 2026-05-25). DexScreener, CoinGecko API, and DefiLlama also blocked. CLAUDE.md Rule 1 still in effect (Henry has not updated CLAUDE.md to lift cohort lock post-Option-B window). No TOKEN_REGISTRY changes.
+- **Auditor**: BLOCKED — all bot portfolio endpoints (`/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`) return 403. Cannot evaluate trigger conditions (win_rate, drawdown, losing_streak). No code changes.
+
+## Outstanding Watchlist (as of Run #40)
+
+| Item | Age | Status |
+|------|-----|--------|
+| Egress blocks Railway API + GeckoTerminal | 77 days (since 2026-04-14) | **Unresolved** — fix at https://code.claude.com/docs/en/claude-code-on-the-web |
+| PR #55 — sleeve state persistence (SPEC-038) | 31 days open | **Critical** — sleep state resets on each Railway redeploy; strategy tournament (SPEC-038) blocked until merged |
+| PR #11 — multi-venue funding-rate monitor | 44 days open | Lower urgency, stale |
+| Bot in full USDC | ~32 days (since 2026-05-28 liquidation #54) | **Verify** via Railway logs or BaseScan |
+| Scout overdue | 35 days | GeckoTerminal blocked; CLAUDE.md Rule 1 in force |
+| Base Beryl B20 standard | Live since 2026-06-25 | New tokens launching; scout can't evaluate until egress fixed |
+| Aerodrome → "Aero" merger | July 2026 | AERO routing contracts may change; review before migration |
+| CLAUDE.md Rule 1 post-Option-B | Window closed ~2026-06-15 | Henry has not updated CLAUDE.md to lift; rules remain in force |
+
+## Run History (#35–#40 — all PATTERN D, no code changes)
+
+| Run # | Timestamp | Action |
+|-------|-----------|--------|
+| #35 | 2026-06-22T10:09 UTC | PATTERN D; Option B window noted closed (~2026-06-15); 4 auditor research searches, no qualifying improvement; GitHub issue #78 |
+| #36 | 2026-06-23T01:09 UTC | PATTERN D; HYPE scout proposal written to COHORT_PROPOSAL_2026-06-23.md; GitHub issue #79 |
+| #37 | 2026-06-23T~multiple UTC | PATTERN D (multiple runs); Base Beryl upgrade announced for June 25; AERO merger alert; GitHub issues #80–#83 |
+| #38 | 2026-06-28T09:08 UTC | PATTERN D; Base Beryl B20 live (June 25); B20 tokens now crossing 3-day scout age threshold; GitHub issue #86 |
+| #39 | 2026-06-28T14:08 UTC | PATTERN D; PR #55 flagged 30 days stale; GitHub issue #87 |
+| #40 | 2026-06-29T UTC | PATTERN D — this entry. No new findings beyond Run #39. |
+
+---
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
 
