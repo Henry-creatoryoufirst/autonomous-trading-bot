@@ -1,3 +1,19 @@
+# MEDIC REPORT — 2026-06-29T17:03 UTC
+
+## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #35)
+
+## Jobs Status This Run (Run #35 — 2026-06-29T17:03 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: OVERDUE (last scout commit 2026-05-25, 35 days ago, >48h threshold) — but GeckoTerminal API is also blocked. Cannot run.
+- **Auditor**: Option B 30-day window ended ~2026-06-15. Auditor blocked by API egress policy — `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive` all unreachable.
+
+**Notable git activity since Run #34:** Recent commit `feat(admin): /api/admin/liquidate-all` merged to main (v21.30.0). This suggests the admin liquidation endpoint was added — possible portfolio restructuring post-Option-B. Henry: if a forced liquidation was executed, please review portfolio state directly on Railway/BaseScan. The monitoring agent remains blind to live state.
+
+**Branches:** No `staging` branch exists in the remote. This run committed to `claude/cool-sagan-9c21yy` (session-designated branch).
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
