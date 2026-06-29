@@ -1,3 +1,44 @@
+# MEDIC REPORT — 2026-06-29T03:09 UTC (latest)
+
+## Jobs Status This Run (Run #35 — 2026-06-29T03:09 UTC)
+
+- **Medic**: PATTERN D — API unreachable (persistent constraint, 403 on all endpoints). MEDIC_REPORT updated (Run #35).
+- **Scout**: RAN (attempted) — last scout was 2026-05-25, 35 days ago (>48h threshold). GeckoTerminal API also blocked (403). Fallback web searches ran but provided no pool-level data (liquidity, volume, pool age) sufficient to pass the quality filter. **No tokens added** — unverified additions would violate scout standards.
+- **Auditor**: CONDITION CHECK BLOCKED — cannot access `/api/trades`, `/api/portfolio`, `/api/patterns`, `/api/adaptive`. Trigger conditions cannot be evaluated. Research was conducted (4 web searches; see findings below). **No code changes applied** — trigger conditions unverified.
+
+## Note: Option B Window Status
+
+The Option B 30-day benchmark window started 2026-05-15 and closed ~2026-06-15. Today is 2026-06-29 — **the window has ended.** CLAUDE.md states cohort changes may happen via explicit human PR after the window completes. The automated agent ground rules remain in effect until Henry explicitly modifies them.
+
+## Auditor Research Summary (Run #35 — 2026-06-29)
+
+**Signal Quality** — On-chain confluence additions:
+- Funding rate extremes (positive = crowded longs → reversal risk), OI-trend confirmation, and exchange inflow signals now standard for alpha bots in 2026. Current NVR uses 5 indicators (RSI, MACD, BB, SMA, F&G). Adding 2-3 on-chain signals could push win-rate from ~55% range to 68-72% range per research.
+- Impact: 4/5, Complexity: 4/5, Risk: medium → Watch list (too complex for ≤10 lines auto-implementation)
+
+**Execution Efficiency** — Aerodrome Slipstream METADEX03:
+- Nov 2025 METADEX03 upgrade added embedded MEV auctions routing value back to LPs/veAERO. Bot already uses Slipstream. Routing is state-of-the-art. No action needed.
+- Impact: 0 (already optimal), Priority: N/A
+
+**Position Sizing** — Half-Kelly consideration:
+- Half-Kelly (0.5×f*) captures 75% of growth with 75% less variance (Thorp research, 2026 confirmation). Current KELLY_FRACTION=0.25 is already Quarter-Kelly. Note: running 0.5× of full Kelly *is* half-Kelly. If full Kelly estimate is f*=8%, 0.5×f*=4% — and KELLY_FRACTION=0.25 of Kelly estimate effectively already approximates this. No meaningful further reduction justified without seeing current win-rate data.
+- Impact: 2/5, Complexity: 1/5, Risk: low → Watch list (trigger not verified, may over-reduce)
+
+**Competitive Intelligence** — MEV protection:
+- Private mempool submission (intent-based execution, QuickNode Base DeFi Power Bundle) going mainstream. Aerodrome METADEX03 already internalizes MEV to LPs. No additional MEV protection code needed.
+- Impact: 0 (already addressed at DEX level), Priority: N/A
+
+## Recommended Action for Henry (Run #35)
+
+1. **Add to Claude Code egress allowlist (now 35 consecutive blocked runs):**
+   - `autonomous-trading-bot-production.up.railway.app`
+   - `api.geckoterminal.com`
+2. **Option B window has closed (~2026-06-15):** Review the 45 days of auditor parameter changes on staging before deciding whether to promote or roll back. Many constants.ts tweaks were applied during the bear-market window — need human review before next merge.
+3. **Manual scout needed:** Token scout hasn't run in 35 days (last: 2026-05-25). Run a manual scout pass or restore API access.
+4. **Verify bot health directly:** Railway dashboard or Telegram @Neverrestcapital_bot.
+
+---
+
 # MEDIC REPORT — 2026-05-15T (latest) UTC
 
 ## Status: API UNREACHABLE — Cannot Assess Bot Health (Persistent Issue — Run #34)
